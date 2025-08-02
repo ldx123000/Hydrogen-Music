@@ -1,7 +1,7 @@
 {
   "name": "hydrogenmusic",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.1",
   "main": "background.js",
   "author": "ldx123000",
   "scripts": {
@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "nodemon --exec electron . --watch ./ --ext .html",
-    "dist": "vite build && electron-builder -p always"
+    "dist": "vite build && electron-builder -p always",
+    "dist-mac": "vite build && electron-builder --mac"
   },
   "dependencies": {
     "axios": "^1.2.0",
@@ -44,7 +45,7 @@
   },
   "build": {
     "productName": "Hydrogen Music",
-    "appId": "114514",
+    "appId": "com.hydrogenmusic.app",
     "asar": true,
     "directories": {
       "output": "release/${version}"
@@ -56,7 +57,9 @@
     },
     "mac": {
       "category": "public.app-category.music",
-      "icon": "./src/assets/icon/icon.png",
+      "icon": "./src/assets/icon/icon.icns",
+      "bundleVersion": "0.5.1",
+      "bundleShortVersion": "0.5.1",
       "target": [
         "dmg",
         "zip"

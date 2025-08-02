@@ -44,6 +44,9 @@ if (!gotTheLock) {
     })
 }
 const createWindow = () => {
+    // 设置应用名称（在开发模式下也生效）
+    app.setName('Hydrogen Music')
+    
     process.env.DIST = path.join(__dirname, './')
     const indexHtml = path.join(process.env.DIST, 'dist/index.html')
     const winstate = new Winstate({

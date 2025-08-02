@@ -25,13 +25,14 @@
 
 ## 👷‍♂️ 打包客户端
 
-~~由于个人设备限制，只打包了Windows平台的安装包且并未适配macOs与Linux平台。~~
-本分支已经完成了Windows平台和Linux平台的打包，macOS由于个人设备限制暂未打包。
-如有可能，您可以在开发环境中自行适配。
-
 ```shell
 # 打包
 npm run dist
+```
+
+```shell
+# mac版打包
+npm run dist-mac
 ```
 
 ## :computer: 配置开发环境
