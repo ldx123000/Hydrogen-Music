@@ -188,11 +188,11 @@ module.exports = IpcMainEvent = (win, app) => {
     ipcMain.handle('get-bili-video', async (e, request) => {
         const settings = await settingsStore.get('settings')
         if(!settings.local.videoFolder) return 'noSavePath'
-        const path = settings.local.videoFolder + "\\" + request.option.params.cid + '_'+ request.option.params.quality.substring(3) + '.mp4'
+        const videoPath = path.join(settings.local.videoFolder, request.option.params.cid + '_'+ request.option.params.quality.substring(3) + '.mp4')
         let returnCode = 'success'
-        if(await fileIsExists(path)) {
+        if(await fileIsExists(videoPath)) {
             request.option.params.timing = JSON.parse(request.option.params.timing)
-            request.option.params.path = path
+            request.option.params.path = videoPath
             saveMusicVideo(request.option.params)
             return returnCode
         } else {
@@ -212,7 +212,7 @@ module.exports = IpcMainEvent = (win, app) => {
                     cancel = c
                 })
             })
-            const writer = fs.createWriteStream(path)
+            const writer = fs.createWriteStream(videoPath)
             await result.data.pipe(writer)
             ipcMain.on('cancel-download-music-video', () => {
                 returnCode = 'cancel'
@@ -220,7 +220,7 @@ module.exports = IpcMainEvent = (win, app) => {
                 writer.once('close', () => {
                     cancel()
                     win.setProgressBar(-1)
-                    fs.unlinkSync(path)
+                    fs.unlinkSync(videoPath)
                 })
             })
             return new Promise((resolve, reject) => {
@@ -231,7 +231,7 @@ module.exports = IpcMainEvent = (win, app) => {
                         return returnCode
                     }
                     request.option.params.timing = JSON.parse(request.option.params.timing)
-                    request.option.params.path = path
+                    request.option.params.path = videoPath
                     saveMusicVideo(request.option.params)
                     resolve(returnCode)
                 })
@@ -294,7 +294,7 @@ module.exports = IpcMainEvent = (win, app) => {
         //     })
         // }
         // return await getLyricByFile(filePath)
-        const str = filePath.split('\\')
+        const str = filePath.split(path.sep)
         const folderPath = filePath.substring(0, filePath.length - str[str.length - 1].length - 1)
         const fileName = path.basename(filePath, path.extname(filePath))
         async function readLyric(path) {
@@ -311,12 +311,12 @@ module.exports = IpcMainEvent = (win, app) => {
             })
             return lyricArr
         }
-        if(await fileIsExists(folderPath + '\\' + fileName + '.lrc')) {
-            const res = await readLyric(folderPath + '\\' + fileName + '.lrc')
+        if(await fileIsExists(path.join(folderPath, fileName + '.lrc'))) {
+            const res = await readLyric(path.join(folderPath, fileName + '.lrc'))
             if(res) return lyricHandle(res)
         }
-        if(await fileIsExists(folderPath + '\\' + fileName + '.txt')) {
-            const res = await readLyric(folderPath + '\\' + fileName + '.txt')
+        if(await fileIsExists(path.join(folderPath, fileName + '.txt'))) {
+            const res = await readLyric(path.join(folderPath, fileName + '.txt'))
             if(res) return lyricHandle(res)
         }
         const metedata = await parseFile(filePath)

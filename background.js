@@ -56,7 +56,7 @@ const createWindow = () => {
         minHeight: 672,
         frame: false,
         title: "Hydrogen Music",
-        icon: path.resolve(__dirname, './src/assets/icon/icon.ico'),
+        icon: path.resolve(__dirname, './src/assets/icon/' + (process.platform === 'win32' ? 'icon.ico' : 'icon.png')),
         backgroundColor: '#fff',
         //记录窗口大小
         ...winstate.winOptions,
@@ -68,13 +68,13 @@ const createWindow = () => {
         }
     })
     myWindow = win
-    if (process.resourcesPath.indexOf('\\node_modules\\') != -1)
+    if (process.resourcesPath.indexOf(path.join('node_modules')) != -1)
         win.loadURL('http://localhost:5173/')
     else
         win.loadFile(indexHtml)
     win.once('ready-to-show', () => {
         win.show()
-        if (process.resourcesPath.indexOf('\\node_modules\\') == -1) {
+        if (process.resourcesPath.indexOf(path.join('node_modules')) == -1) {
             autoUpdater.autoDownload = false
             autoUpdater.on('update-available', info => {
                 win.webContents.send('check-update', info.version)
@@ -98,7 +98,7 @@ const createWindow = () => {
     IpcMainEvent(win, app)
     MusicDownload(win)
     LocalFiles(win, app)
-    InitTray(win, app, path.resolve(__dirname, './src/assets/icon/icon.ico'))
+    InitTray(win, app, path.resolve(__dirname, './src/assets/icon/' + (process.platform === 'win32' ? 'icon.ico' : 'icon.png')))
     registerShortcuts(win)
 }
 

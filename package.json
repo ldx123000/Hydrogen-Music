@@ -55,7 +55,12 @@
       "allowToChangeInstallationDirectory": true
     },
     "mac": {
-      "category": ""
+      "category": "public.app-category.music",
+      "icon": "./src/assets/icon/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
     "win": {
       "icon": "./src/assets/icon/icon.ico",
@@ -66,7 +71,15 @@
       ],
       "verifyUpdateCodeSignature": false
     },
-    "linux": {},
+    "linux": {
+      "category": "Audio",
+      "icon": "./src/assets/icon/icon.png",
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ]
+    },
     "publish": [
       {
         "provider": "github",

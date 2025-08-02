@@ -36,7 +36,7 @@ module.exports = async function getDirTree(baseDir, type, win) {
      */
     async function getFileJson(res,arr,dir) {
         for (let i = 0; i < res.length; i++) {
-            let tempDir = `${dir}\\${res[i]}`;
+            let tempDir = path.join(dir, res[i]);
             await newObj(tempDir, res[i]).then(async (obj) => {
                 if(obj != null)
                     arr.push(obj);

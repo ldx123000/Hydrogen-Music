@@ -37,7 +37,10 @@ module.exports = function InitTray(win, app, iconPath) {
 
     ]
     win.on('show', () => {
-        win.setThumbarButtons(Buttons)
+        // Windows-only feature: Thumbnail toolbar buttons
+        if (process.platform === 'win32') {
+            win.setThumbarButtons(Buttons)
+        }
         winIsShow = true
     })
     app.whenReady().then(() => {
@@ -133,7 +136,7 @@ module.exports = function InitTray(win, app, iconPath) {
                 Buttons[1].flags = []
                 Buttons[2].flags = ['hidden']
             }
-            if (winIsShow)
+            if (winIsShow && process.platform === 'win32')
                 win.setThumbarButtons(Buttons)
         })
     })

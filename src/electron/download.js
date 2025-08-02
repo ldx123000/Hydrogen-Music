@@ -14,7 +14,7 @@ module.exports = MusicDownload = (win) => {
         downloadObj.downloadUrl = args.url
         downloadObj.type = args.type
         const savePath = await settingsStore.get('settings')
-        downloadObj.savePath = savePath.local.downloadFolder + '\\'
+        downloadObj.savePath = path.join(savePath.local.downloadFolder, path.sep)
         win.webContents.downloadURL(downloadObj.downloadUrl)
     })
 
