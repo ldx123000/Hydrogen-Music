@@ -1,16 +1,18 @@
 <br />
 <p align="center">
 
-  <h2 align="center" style="font-weight: 600">Hydrogen Music</h2>
+  <h2 align="center" style="font-weight: 600">Hydrogen Music 复活版</h2>
 
   <p align="center">
-    ⚠️请注意：本项目是已经被删库的 [Hydrogen-Music](https://github.com/Kaidesuyo/Hydrogen-Music) 的分支。
+    首先感谢原作者的绝佳创意和辛勤付出：<a href="https://github.com/Kaidesuyo/Hydrogen-Music" target="blank"><strong>Hydrogen-Music</strong></a>
     <br />
-    因NE增加了云盾验证，密码登录可能无法使用，请使用二维码登录。
+    我关注到这个项目是在2024年年初，当时还满怀期望地等待作者重构，但是一年多后的现在，原仓库已经删除，原版已经无法登录账号，不登录账号基本上处于无法使用的状态。
+    <br />在这种情况下我决定自己重启这个项目，如果原作者觉得不妥可以与我联系，我将删除该仓库。
+    <br /> 重做了登录功能，现在NE对这方面管理的很严，市面上大部分第三方播放器都已无法登陆
     <br />
-    请尽量不要使用云盘中的上传功能，目前上传失败概率大且内存无法得到释放。
+    新增私人漫游功能，可以像原版那样探索音乐了。
     <br />
-    欢迎各位前往本仓库继续维护这个分支。
+    ⚠️请尽量不要使用云盘中的上传功能，目前上传失败概率大且内存无法得到释放。
     <br />
     <a href="#%EF%B8%8F-安装" target="blank"><strong>📦️ 下载安装包</strong></a>
     <br />
