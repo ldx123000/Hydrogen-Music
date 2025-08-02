@@ -1,0 +1,20 @@
+@font-face {
+    font-family: SourceHanSansCN-Heavy;
+    src: url('../fonts/SourceHanSansCN-Heavy.otf');
+}
+@font-face {
+    font-family: SourceHanSansCN-Bold;
+    src: url('../fonts/SourceHanSansCN-Bold.otf');
+}
+@font-face {
+    font-family: Bender-Bold;
+    src: url('../fonts/Bender-Bold.woff');
+}
+@font-face {
+    font-family: Geometos;
+    src: url('../fonts/Geometos.woff');
+}
+@font-face {
+    font-family: Gilroy-ExtraBold;
+    src: url('../fonts/Gilroy-ExtraBold.woff');
+}
