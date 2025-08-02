@@ -69,14 +69,14 @@ npm start
 ## 🖼️ 截图
 
 ![home][home-screenshot]
-![playlist][playlist-screenshot]
 ![lyric][lyric-screenshot]
+![privateFM][privateFM-screenshot:]
 ![music_video][music_video-screenshot]
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
 [home-screenshot]: img/home.png
-[playlist-screenshot]: img/playlist.png
 [lyric-screenshot]: img/lyric.png
+[privateFM-screenshot:]: img/privateFM.png
 [music_video-screenshot]: img/music_video.png
