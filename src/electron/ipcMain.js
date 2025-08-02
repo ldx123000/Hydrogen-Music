@@ -24,19 +24,10 @@ module.exports = IpcMainEvent = (win, app) => {
     let isWindowMaximized = false
     
     ipcMain.on('window-max', () => {
-        console.log('窗口最大化按钮点击，当前状态:', {
-            isMaximized: win.isMaximized(),
-            isWindowMaximized: isWindowMaximized,
-            bounds: win.getBounds(),
-            savedBounds: savedBounds
-        })
-        
         if (isWindowMaximized) {
-            console.log('执行窗口还原')
             // macOS 上 restore() 可能不可靠，手动设置窗口大小和位置
             if (savedBounds) {
                 win.setBounds(savedBounds)
-                console.log('手动还原到:', savedBounds)
             } else {
                 // 如果没有保存的边界，使用默认大小
                 win.setBounds({
@@ -45,14 +36,11 @@ module.exports = IpcMainEvent = (win, app) => {
                     width: 1024,
                     height: 672
                 })
-                console.log('还原到默认大小')
             }
             isWindowMaximized = false
         } else {
-            console.log('执行窗口最大化')
             // 保存当前窗口状态
             savedBounds = win.getBounds()
-            console.log('保存当前边界:', savedBounds)
             win.maximize()
             isWindowMaximized = true
         }
@@ -62,20 +50,17 @@ module.exports = IpcMainEvent = (win, app) => {
     win.on('maximize', () => {
         if (!isWindowMaximized) {
             isWindowMaximized = true
-            console.log('窗口已最大化（事件触发）')
         }
     })
     
     win.on('unmaximize', () => {
         if (isWindowMaximized) {
             isWindowMaximized = false
-            console.log('窗口已还原（事件触发）')
         }
     })
     
     win.on('restore', () => {
         isWindowMaximized = false
-        console.log('窗口已还原（restore事件）')
     })
     ipcMain.on('window-close', async () => {
         const settings = await settingsStore.get('settings')
@@ -182,7 +167,7 @@ module.exports = IpcMainEvent = (win, app) => {
         }
     })
     ipcMain.on('register-shortcuts', () => {
-        registerShortcuts(win)
+        registerShortcuts(win, app)
     })
     ipcMain.on('unregister-shortcuts', () => {
         Menu.setApplicationMenu(null)

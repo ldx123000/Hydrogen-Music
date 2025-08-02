@@ -132,11 +132,16 @@ export function setId(id, index) {
 }
 
 export function addToList(listType, songlist) {
+    // 移除之前的 fmReset 事件，以保留FM状态
+    // if (listInfo.value && listInfo.value.type === 'personalfm' && listType !== 'personalfm') {
+    //     ...
+    // }
+
     listInfo.value = {
         id: (listType == 'rec' ? 'rec' : (libraryInfo.value ? libraryInfo.value.id : 'none')),
         type: listType
     }
-    songList.value = songlist.slice(0,songlist.length + 1)
+    songList.value = songlist.slice(0, songlist.length + 1)
     savePlaylist()
 }
 

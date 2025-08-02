@@ -30,7 +30,17 @@ if (!gotTheLock) {
     app.whenReady().then(() => {
         createWindow()
         app.on('activate', () => {
-            if (BrowserWindow.getAllWindows().length === 0) createWindow()
+            // 在macOS上，当点击dock图标并且没有其他窗口打开时，
+            // 应该重新创建一个窗口。
+            if (BrowserWindow.getAllWindows().length === 0) {
+                createWindow()
+            } else if (myWindow) {
+                // 如果窗口只是被隐藏了，则显示它
+                if (!myWindow.isVisible()) {
+                    myWindow.show();
+                }
+                myWindow.focus();
+            }
         })
     })
 
@@ -87,14 +97,39 @@ const createWindow = () => {
     })
     winstate.manage(win)
     win.on('close', async (event) => {
-        event.preventDefault()
-        const settings = await settingsStore.get('settings')
-        if (settings.other.quitApp == 'minimize') {
-            win.hide()
-        } else if (settings.other.quitApp == 'quit') {
-            win.webContents.send('player-save')
+        // 在macOS上，'close'事件通常意味着窗口将被销毁，而不是隐藏
+        if (process.platform === 'darwin') {
+            // 如果用户设置为“最小化”，则阻止关闭并隐藏窗口
+            const settings = await settingsStore.get('settings');
+            if (settings && settings.other && settings.other.quitApp === 'minimize') {
+                event.preventDefault();
+                win.hide();
+            } else {
+                // 否则，允许窗口关闭，但不退出应用
+                // `window-all-closed`事件会处理后续逻辑
+                myWindow = null;
+            }
+        } else {
+            // 在非macOS平台上，保留您原有的逻辑
+            event.preventDefault();
+            const settings = await settingsStore.get('settings');
+            if (settings && settings.other && settings.other.quitApp === 'minimize') {
+                win.hide();
+            } else if (settings && settings.other && settings.other.quitApp === 'quit') {
+                win.webContents.send('player-save');
+                // 在发送保存指令后，需要一个机制来真正退出，例如监听一个'player-saved'事件
+                app.quit(); // 暂时直接退出
+            } else {
+                app.quit(); // 默认行为
+            }
         }
-    })
+    });
+
+    // 监听 'player-save' 完成后的事件，以便安全退出
+    // (需要在渲染器进程中添加 ipcRenderer.send('player-saved'))
+    // ipcMain.on('player-saved', () => {
+    //     app.quit();
+    // });
     //api初始化
     startNeteaseMusicApi()
     //ipcMain初始化
@@ -102,7 +137,7 @@ const createWindow = () => {
     MusicDownload(win)
     LocalFiles(win, app)
     InitTray(win, app, path.resolve(__dirname, './src/assets/icon/' + (process.platform === 'win32' ? 'icon.ico' : 'icon.png')))
-    registerShortcuts(win)
+    registerShortcuts(win, app)
 }
 
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';

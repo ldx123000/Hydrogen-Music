@@ -1,7 +1,7 @@
 const { Menu, globalShortcut } = require('electron')
 const Store = require('electron-store');
 
-module.exports = async function registerShortcuts(win) {
+module.exports = async function registerShortcuts(win, app) {
     const settingsStore = new Store({name: 'settings'});
     const shortcuts =  await settingsStore.get('settings.shortcuts');
     if(!shortcuts) return
@@ -20,78 +20,116 @@ module.exports = async function registerShortcuts(win) {
         })
         settingsStore.set('settings.shortcuts', shortcuts);
     }
-    const menu = [
+    const menuTemplate = [
+        // 在macOS上，第一个菜单项应该是应用名
+        ...(process.platform === 'darwin' ? [{
+            label: app.getName(),
+            submenu: [
+                { role: 'about' },
+                // { type: 'separator' },
+                // 移除 services 菜单，因为它会添加“语音”等不需要的选项
+                // { role: 'services' },
+                // { type: 'separator' },
+                // { role: 'hide' },
+                // { role: 'hideothers' },
+                // { role: 'unhide' },
+                // { type: 'separator' },
+                { role: 'quit' }
+            ]
+        }] : []),
         {
-            label: 'music',
+            label: '音乐',
             submenu: [
                 {
-                    role: 'playorpause',
+                    label: '播放/暂停',
                     accelerator: 'Space',
                     click: () => { win.webContents.send('music-playing-control') }
                 },
                 {
-                    role: 'playorpause',
+                    label: '播放/暂停',
                     accelerator: 'F5',
                     click: () => { win.webContents.send('music-playing-control') }
                 },
                 {
-                    role: 'playorpause',
+                    label: '播放/暂停',
                     accelerator: shortcuts.find(shortcut => shortcut.id == 'play').shortcut,
                     click: () => { win.webContents.send('music-playing-control') }
                 },
                 {
-                    role: 'last',
+                    label: '上一首',
                     accelerator: shortcuts.find(shortcut => shortcut.id == 'last').shortcut,
                     click: () => { win.webContents.send('music-song-control', 'last') }
                 },
                 {
-                    role: 'next',
+                    label: '下一首',
                     accelerator: shortcuts.find(shortcut => shortcut.id == 'next').shortcut,
                     click: () => { win.webContents.send('music-song-control', 'next') }
                 },
                 {
-                    role: 'volumeUp',
+                    label: '音量加',
                     accelerator: shortcuts.find(shortcut => shortcut.id == 'volumeUp').shortcut,
                     click: () => { win.webContents.send('music-volume-up', 'volumeUp') }
                 },
                 {
-                    role: 'volumeDown',
+                    label: '音量减',
                     accelerator: shortcuts.find(shortcut => shortcut.id == 'volumeDown').shortcut,
                     click: () => { win.webContents.send('music-volume-down', 'volumeDown') }
                 },
                 {
-                    role: 'processForward',
+                    label: '快进 (3s)',
                     accelerator: shortcuts.find(shortcut => shortcut.id == 'processForward').shortcut,
                     click: () => { win.webContents.send('music-process-control', 'forward') }
                 },
                 {
-                    role: 'processBack',
+                    label: '后退 (3s)',
                     accelerator: shortcuts.find(shortcut => shortcut.id == 'processBack').shortcut,
                     click: () => { win.webContents.send('music-process-control', 'back') }
                 },
                 {
-                    role: 'hidePlayer',
+                    label: '隐藏播放器',
                     accelerator: 'Escape',
                     click: () => { win.webContents.send('hide-player') }
                 },
             ]
         },
         {
-            label: 'Window',
+            label: '编辑',
             submenu: [
-                { role: 'close' },
-                { role: 'minimize' },
-                { role: 'zoom' },
-                { role: 'reload' },
-                { role: 'forcereload' },
-                { role: 'toggledevtools' },
+                { label: '撤销', role: 'undo' },
+                { label: '重做', role: 'redo' },
                 { type: 'separator' },
-                { role: 'togglefullscreen' },
+                { label: '剪切', role: 'cut' },
+                { label: '复制', role: 'copy' },
+                { label: '粘贴', role: 'paste' },
+                ...(process.platform === 'darwin' ? [
+                    { label: '删除', role: 'delete' },
+                    { label: '全选', role: 'selectAll' },
+                ] : [
+                    { label: '删除', role: 'delete' },
+                    { type: 'separator' },
+                    { label: '全选', role: 'selectAll' }
+                ])
+            ]
+        },
+        {
+            label: '窗口',
+            submenu: [
+                { role: 'close', label: '关闭' },
+                { role: 'minimize', label: '最小化' },
+                { role: 'zoom', label: '缩放' },
+                { type: 'separator' },
+                { role: 'reload', label: '重新加载' },
+                // { role: 'forceReload', label: '强制重新加载' },
+                // { role: 'toggleDevTools', label: '切换开发者工具' },
+                { type: 'separator' },
+                { role: 'togglefullscreen', label: '切换全屏' },
+                { type: 'separator' },
+                { role: 'front', label: '置顶' }
             ]
         }
     ]
         
-    Menu.setApplicationMenu(Menu.buildFromTemplate(menu))
+    Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate))
     
     globalShortcut.register('CommandOrControl+Shift+F12', () => {
         // 获取当前窗口并打开控制台
