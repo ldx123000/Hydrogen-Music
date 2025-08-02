@@ -1,5 +1,5 @@
 <script setup>
-  import { ref } from 'vue'
+  import { ref, onMounted, onActivated } from 'vue'
   import DataCheckAnimaton from './DataCheckAnimaton.vue';
   import { noticeOpen } from '../utils/dialog';
   import { loginHandle } from '../utils/handle'
@@ -8,6 +8,22 @@
   const loginAnimation = ref(false)
   const dataCheckAnimaton = ref(null)
   const loginStatus = ref('等待登录')
+
+  // 重置组件状态
+  const resetState = () => {
+    loginAnimation.value = false
+    loginStatus.value = '等待登录'
+  }
+
+  // 组件挂载时重置状态
+  onMounted(() => {
+    resetState()
+  })
+
+  // 组件激活时重置状态（用于keep-alive场景）
+  onActivated(() => {
+    resetState()
+  })
 
   async function startEmbeddedLogin() {
     if (loginAnimation.value) return
@@ -52,6 +68,8 @@
         
         // 延迟跳转，让用户看到成功信息
         setTimeout(() => {
+          // 重置状态，确保下次进入时组件状态正确
+          resetState()
           emits('jumpTo')
         }, 1000)
         
