@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.5.1",
   "main": "background.js",
-  "author": "ldx123000",
+  "author": {
+    "name": "ldx123000",
+    "email": "ldx123000@gmail.com"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
