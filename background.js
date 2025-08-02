@@ -5,7 +5,7 @@ const LocalFiles = require('./src/electron/localmusic')
 const InitTray = require('./src/electron/tray')
 const registerShortcuts = require('./src/electron/shortcuts')
 
-const { app, BrowserWindow, globalShortcut } = require('electron')
+const { app, BrowserWindow, globalShortcut, Menu } = require('electron')
 const Winstate = require('electron-win-state').default
 const { autoUpdater } = require("electron-updater");
 const path = require('path')
@@ -13,6 +13,8 @@ const Store = require('electron-store');
 const settingsStore = new Store({ name: 'settings' });
 
 let myWindow = null
+let forceQuit = false;
+
 //electron单例
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -52,10 +54,45 @@ if (!gotTheLock) {
         // 注销所有快捷键
         globalShortcut.unregisterAll()
     })
+
+    app.on('before-quit', () => {
+        forceQuit = true;
+    });
 }
 const createWindow = () => {
     // 设置应用名称（在开发模式下也生效）
     app.setName('Hydrogen Music')
+    
+    // 为macOS创建Dock菜单
+    if (process.platform === 'darwin') {
+        const dockMenu = Menu.buildFromTemplate([
+            {
+                label: '播放/暂停',
+                click: () => {
+                    if (myWindow) {
+                        myWindow.webContents.send('music-playing-control');
+                    }
+                }
+            },
+            {
+                label: '上一首',
+                click: () => {
+                    if (myWindow) {
+                        myWindow.webContents.send('music-song-control', 'last');
+                    }
+                }
+            },
+            {
+                label: '下一首',
+                click: () => {
+                    if (myWindow) {
+                        myWindow.webContents.send('music-song-control', 'next');
+                    }
+                }
+            }
+        ]);
+        app.dock.setMenu(dockMenu);
+    }
     
     process.env.DIST = path.join(__dirname, './')
     const indexHtml = path.join(process.env.DIST, 'dist/index.html')
@@ -97,6 +134,12 @@ const createWindow = () => {
     })
     winstate.manage(win)
     win.on('close', async (event) => {
+        if (forceQuit) {
+            // 如果是强制退出 (Cmd+Q)，则不阻止默认行为
+            myWindow = null;
+            return;
+        }
+
         // 在macOS上，'close'事件通常意味着窗口将被销毁，而不是隐藏
         if (process.platform === 'darwin') {
             // 如果用户设置为“最小化”，则阻止关闭并隐藏窗口
@@ -117,8 +160,11 @@ const createWindow = () => {
                 win.hide();
             } else if (settings && settings.other && settings.other.quitApp === 'quit') {
                 win.webContents.send('player-save');
-                // 在发送保存指令后，需要一个机制来真正退出，例如监听一个'player-saved'事件
-                app.quit(); // 暂时直接退出
+                // 在发送保存指令后，需要一个机制来真正退出
+                // 监听 'player-saved' 是一个好方法，但为了简单起见，我们设置一个超时
+                setTimeout(() => {
+                    app.quit();
+                }, 500);
             } else {
                 app.quit(); // 默认行为
             }
