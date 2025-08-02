@@ -44,7 +44,23 @@ module.exports = function InitTray(win, app, iconPath) {
         winIsShow = true
     })
     app.whenReady().then(() => {
-        tray = new Tray(iconPath)
+        // 根据平台选择不同的托盘图标
+        let trayIconPath;
+        if (process.platform === 'darwin') {
+            // 在macOS上，使用专门的模板图标
+            trayIconPath = path.resolve(__dirname, '../assets/icon/tray-icon-template.png');
+        } else {
+            // 在其他平台上，使用原始图标
+            trayIconPath = iconPath;
+        }
+
+        const image = nativeImage.createFromPath(trayIconPath);
+        // 在macOS上，将图片设置为模板图像，系统会自动处理颜色
+        if (process.platform === 'darwin') {
+            image.setTemplateImage(true);
+        }
+
+        tray = new Tray(image);
         const contextMenu = Menu.buildFromTemplate([
             {
                 label: '播放',
