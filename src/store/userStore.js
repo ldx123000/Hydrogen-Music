@@ -6,6 +6,7 @@ export const useUserStore = defineStore('userStore', {
             user: null,
             loginMode: null,
             likelist: null,
+            favoritePlaylistId: null,
             appOptionShow: false,
             biliUser: null,
             homePage: true,
@@ -18,10 +19,13 @@ export const useUserStore = defineStore('userStore', {
         },
         updateLikelist(likelist) {
             this.likelist = likelist
+        },
+        updateFavoritePlaylistId(playlistId) {
+            this.favoritePlaylistId = playlistId
         }
     },
     persist: {
         storage: localStorage,
-        paths: ['user','biliUser','homePage','cloudDiskPage']
+        paths: ['user','biliUser','homePage','cloudDiskPage','favoritePlaylistId']
     },
 })

@@ -6,10 +6,13 @@
   import { useLibraryStore } from '../store/libraryStore';
   import { useLocalStore } from '../store/localStore';
   import { useOtherStore } from '../store/otherStore';
+  import { useUserStore } from '../store/userStore';
+  import { getLikelist } from '../api/user';
   import { storeToRefs } from 'pinia';
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()
   const otherStore = useOtherStore()
+  const userStore = useUserStore()
   const { librarySongs, listType1, listType2, needTimestamp } = storeToRefs(libraryStore)
 
   const isPrivacy = ref(false)
@@ -21,21 +24,45 @@
     otherStore.addPlaylistShow = true
   }
 
-  const deleteFromPlaylist = () => {
+  const deleteFromPlaylist = async () => {
     let params = {
       op: 'del',
       pid: otherStore.selectedPlaylist.id,
       tracks: otherStore.selectedItem.id
     }
-    updatePlaylist(params).then(result => {
-      if(result.status == 200) {
-        librarySongs.value.splice((librarySongs.value || []).findIndex((song) => song.id == otherStore.selectedItem.id), 1)
+    
+    try {
+      const result = await updatePlaylist(params)
+      
+      // 根据实际返回格式判断成功
+      const isSuccess = result && (
+        (result.status === 200 && result.body && result.body.code === 200) ||
+        result.code === 200 ||
+        result.status === 200
+      )
+      
+      if(isSuccess) {
+        // 从当前歌曲列表中移除该歌曲
+        const songIndex = (librarySongs.value || []).findIndex((song) => song.id == otherStore.selectedItem.id)
+        if(songIndex !== -1) {
+          librarySongs.value.splice(songIndex, 1)
+        }
+        
+        // 检查是否从"我喜欢的音乐"歌单删除，如果是则同步更新喜欢列表
+        await updateLikelistIfFromFavorite()
+        
+        // 如果当前正在查看该歌单，实时更新歌单内容
+        await updateCurrentPlaylistIfViewing()
+        
         updatePlaylistCache()
         noticeOpen('删除成功', 2)
       } else {
         noticeOpen('删除失败', 2)
       }
-    })
+    } catch (error) {
+      console.error('删除歌曲失败:', error)
+      noticeOpen('删除失败', 2)
+    }
   }
 
   const updatePlaylistCache = () => {
@@ -50,8 +77,63 @@
         needTimestamp.value.splice(needTimestamp.value.indexOf('/playlist/track/all'), 1)
         clearTimeout(noCacheTimer)
       }, 130000);
-    if(listType1.value == 0 && listType2.value == 0) {
-      document.getElementById('myPlaylist').click()
+    try {
+      if(listType1.value == 0 && listType2.value == 0) {
+        const myPlaylistElement = document.getElementById('myPlaylist')
+        if (myPlaylistElement) {
+          myPlaylistElement.click()
+        }
+      }
+    } catch (e) {
+      console.error('点击myPlaylist失败，忽略:', e)
+    }
+  }
+
+  // 检查并更新当前查看的歌单
+  const updateCurrentPlaylistIfViewing = async () => {
+    // 检查当前是否在查看被删除歌曲的歌单
+    if (libraryStore.libraryInfo && otherStore.selectedPlaylist && 
+        libraryStore.libraryInfo.id == otherStore.selectedPlaylist.id) {
+        
+        console.log('当前正在查看被删除歌曲的歌单，正在更新歌单内容...')
+        
+        try {
+            // 重新获取歌单详情
+            await libraryStore.updatePlaylistDetail(otherStore.selectedPlaylist.id)
+            console.log('歌单已更新')
+        } catch (error) {
+            console.error('更新歌单失败:', error)
+        }
+    }
+  }
+
+  // 检查是否从"我喜欢的音乐"删除歌曲，如果是则同步更新喜欢列表
+  const updateLikelistIfFromFavorite = async () => {
+    try {
+      // 检查被删除的歌单是否是"我喜欢的音乐"歌单
+      const isFromFavoritePlaylist = userStore.favoritePlaylistId && 
+        otherStore.selectedPlaylist.id == userStore.favoritePlaylistId
+      
+      if (isFromFavoritePlaylist) {
+        console.log('从我喜欢的音乐删除歌曲，同步更新喜欢列表...')
+        
+        // 从本地喜欢列表中移除该歌曲
+        if (userStore.likelist && userStore.likelist.includes(otherStore.selectedItem.id)) {
+          const likeIndex = userStore.likelist.indexOf(otherStore.selectedItem.id)
+          userStore.likelist.splice(likeIndex, 1)
+        }
+        
+        // 异步获取最新的喜欢列表以确保数据最终一致
+        try {
+          const res = await getLikelist(userStore.user.userId)
+          userStore.updateLikelist(res.ids)
+          console.log('喜欢列表已同步更新')
+        } catch (error) {
+          console.error('同步喜欢列表失败:', error)
+        }
+      }
+    } catch (error) {
+      console.error('检查并更新喜欢列表失败:', error)
     }
   }
 
