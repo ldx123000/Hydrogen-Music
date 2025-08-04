@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { getMusicComments, postMusicComment, likeMusicComment } from '../api/song';
 import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
@@ -124,9 +124,24 @@ const toggleLikeComment = async comment => {
 };
 
 // 回复评论
-const replyComment = comment => {
-    replyingTo.value = comment;
-    newComment.value = `@${comment.user.nickname} `;
+const toggleReply = comment => {
+    if (replyingTo.value && replyingTo.value.commentId === comment.commentId) {
+        // 如果点击的是当前正在回复的评论，则取消回复
+        cancelReply();
+    } else {
+        // 否则开始回复这个评论
+        replyingTo.value = comment;
+        newComment.value = `@${comment.user.nickname} `;
+        // 使用nextTick确保DOM更新后再聚焦
+        nextTick(() => {
+            // 聚焦到回复输入框
+            const textarea = document.querySelector('.reply-textarea');
+            if (textarea) {
+                textarea.focus();
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            }
+        });
+    }
 };
 
 // 取消回复
@@ -181,74 +196,163 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="comments-container">
-        <!-- 评论区标题 -->
+    <div class="arknights-comments">
+        <!-- 评论区主标题 -->
         <div class="comments-header">
-            <div class="header-line"></div>
-            <span class="header-title">评论区</span>
-            <div class="header-line"></div>
+            <div class="header-frame">
+                <div class="frame-corner frame-tl"></div>
+                <div class="frame-corner frame-tr"></div>
+                <div class="frame-corner frame-bl"></div>
+                <div class="frame-corner frame-br"></div>
+                <div class="header-title-wrapper">
+                    <span class="header-title">COMMENTS</span>
+                    <div class="title-underline"></div>
+                </div>
+            </div>
         </div>
 
-        <!-- 发表评论 -->
-        <div class="comment-input-section" v-if="userStore.user">
-            <div class="comment-input-wrapper">
-                <div class="reply-info" v-if="replyingTo">
-                    <span class="reply-text">回复 @{{ replyingTo.user.nickname }}</span>
-                    <span class="cancel-reply" @click="cancelReply">取消</span>
-                </div>
-                <textarea v-model="newComment" class="comment-input" placeholder="发表评论..." :disabled="submitting" @keydown.enter.ctrl="submitComment"></textarea>
-                <div class="input-actions">
-                    <span class="input-tip">Ctrl+Enter 发送</span>
-                    <button class="submit-btn" @click="submitComment" :disabled="!newComment.trim() || submitting">
-                        {{ submitting ? '发送中...' : '发送' }}
-                    </button>
+        <!-- 发表评论区域 -->
+        <div class="comment-input-section" v-if="userStore.user && (!replyingTo)">
+            <div class="input-frame">
+                <div class="frame-corner frame-tl"></div>
+                <div class="frame-corner frame-tr"></div>
+                <div class="frame-corner frame-bl"></div>
+                <div class="frame-corner frame-br"></div>
+                
+                <div class="input-content">
+                    <div class="input-wrapper">
+                        <textarea 
+                            v-model="newComment" 
+                            class="comment-textarea" 
+                            placeholder="INPUT YOUR COMMENT..."
+                            :disabled="submitting" 
+                            @keydown.enter.ctrl="submitComment"
+                        ></textarea>
+                        <div class="input-border"></div>
+                    </div>
+                    
+                    <div class="input-actions">
+                        <span class="shortcut-hint">CTRL+ENTER</span>
+                        <button 
+                            class="submit-button" 
+                            @click="submitComment" 
+                            :disabled="!newComment.trim() || submitting"
+                        >
+                            <span>{{ submitting ? 'SENDING...' : 'SEND' }}</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- 未登录提示 -->
-        <div class="login-tip" v-else>
-            <span>请登录后发表评论</span>
+        <div class="login-prompt" v-else-if="!userStore.user">
+            <div class="prompt-frame">
+                <div class="frame-corner frame-tl"></div>
+                <div class="frame-corner frame-tr"></div>
+                <div class="frame-corner frame-bl"></div>
+                <div class="frame-corner frame-br"></div>
+                <span class="prompt-text">LOGIN REQUIRED TO COMMENT</span>
+            </div>
         </div>
 
-        <!-- 精彩评论 -->
-        <div class="hot-comments" v-if="hotComments.length > 0">
-            <div class="section-title">
-                <span class="title-text">精彩评论</span>
-                <span class="comment-count">({{ hotComments.length }})</span>
+        <!-- 精彩评论区域 -->
+        <div class="hot-comments-section" v-if="hotComments.length > 0">
+            <div class="section-header">
+                <div class="section-title-wrapper">
+                    <span class="section-title">HOT COMMENTS</span>
+                    <span class="section-count">[{{ hotComments.length }}]</span>
+                </div>
+                <div class="section-line"></div>
             </div>
 
-            <div class="comment-list">
-                <div class="comment-item hot-comment" v-for="comment in hotComments" :key="comment.commentId">
-                    <div class="comment-avatar">
-                        <img :src="comment.user.avatarUrl + '?param=40y40'" :alt="comment.user.nickname" />
+            <div class="comments-grid">
+                <div class="comment-card hot-card" v-for="comment in hotComments" :key="comment.commentId">
+                    <div class="card-frame">
+                        <div class="frame-corner frame-tl"></div>
+                        <div class="frame-corner frame-tr"></div>
+                        <div class="frame-corner frame-bl"></div>
+                        <div class="frame-corner frame-br"></div>
                     </div>
-
-                    <div class="comment-content">
-                        <div class="comment-header">
-                            <span class="user-name">{{ comment.user.nickname }}</span>
-                            <span class="comment-time">{{ formatTime(comment.time) }}</span>
+                    
+                    <div class="card-content">
+                        <div class="comment-meta">
+                            <div class="user-avatar">
+                                <img :src="comment.user.avatarUrl + '?param=40y40'" :alt="comment.user.nickname" />
+                                <div class="avatar-frame"></div>
+                            </div>
+                            <div class="user-info">
+                                <span class="username">{{ comment.user.nickname }}</span>
+                                <span class="timestamp">{{ formatTime(comment.time) }}</span>
+                            </div>
                         </div>
 
-                        <div class="comment-text">{{ comment.content }}</div>
+                        <div class="comment-body">{{ comment.content }}</div>
 
-                        <div class="comment-actions">
-                            <div class="action-item" @click="toggleLikeComment(comment)">
-                                <svg class="icon like-icon" :class="{ liked: comment.liked }" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                                    <path
-                                        d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z"
-                                    />
-                                </svg>
-                                <span class="like-count">{{ comment.likedCount > 0 ? comment.likedCount : '' }}</span>
+                        <div class="comment-controls">
+                            <div class="control-item like-control" :class="{ active: comment.liked }" @click="toggleLikeComment(comment)">
+                                <div class="control-icon">
+                                    <svg viewBox="0 0 1024 1024" width="14" height="14">
+                                        <path d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z" />
+                                    </svg>
+                                </div>
+                                <span class="control-text">{{ comment.likedCount > 0 ? comment.likedCount : 'LIKE' }}</span>
                             </div>
 
-                            <div class="action-item" @click="replyComment(comment)">
-                                <svg class="icon reply-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                                    <path
-                                        d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z"
-                                    />
-                                </svg>
-                                <span>回复</span>
+                            <div class="control-item reply-control" @click="toggleReply(comment)">
+                                <div class="control-icon">
+                                    <svg viewBox="0 0 1024 1024" width="14" height="14">
+                                        <path d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z" />
+                                    </svg>
+                                </div>
+                                <span class="control-text">REPLY</span>
+                            </div>
+                        </div>
+                        
+                        <!-- 内联回复框 -->
+                        <div class="inline-reply-box" v-if="replyingTo && replyingTo.commentId === comment.commentId">
+                            <div class="reply-frame">
+                                <div class="frame-corner frame-tl"></div>
+                                <div class="frame-corner frame-tr"></div>
+                                <div class="frame-corner frame-bl"></div>
+                                <div class="frame-corner frame-br"></div>
+                            </div>
+                            
+                            <div class="reply-content">
+                                <div class="reply-header">
+                                    <span class="reply-prefix">REPLY TO</span>
+                                    <span class="reply-target">{{ comment.user.nickname }}</span>
+                                    <div class="close-reply" @click="cancelReply()">
+                                        ×
+                                    </div>
+                                </div>
+                                
+                                <div class="reply-input-wrapper">
+                                    <textarea 
+                                        v-model="newComment" 
+                                        class="reply-textarea" 
+                                        placeholder="INPUT YOUR REPLY..."
+                                        :disabled="submitting" 
+                                        @keydown.enter.ctrl="submitComment"
+                                    ></textarea>
+                                    <div class="reply-input-border"></div>
+                                </div>
+                                
+                                <div class="reply-actions">
+                                    <span class="reply-shortcut-hint">CTRL+ENTER</span>
+                                    <div class="reply-buttons">
+                                        <button class="cancel-reply-btn" @click="cancelReply()">
+                                            CANCEL
+                                        </button>
+                                        <button 
+                                            class="send-reply-btn" 
+                                            @click="submitComment" 
+                                            :disabled="!newComment.trim() || submitting"
+                                        >
+                                            {{ submitting ? 'SENDING...' : 'SEND' }}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -256,85 +360,176 @@ onMounted(() => {
             </div>
         </div>
 
-        <!-- 最新评论 -->
-        <div class="latest-comments">
-            <div class="section-title">
-                <span class="title-text">最新评论</span>
-                <span class="comment-count">({{ total }})</span>
+        <!-- 最新评论区域 -->
+        <div class="latest-comments-section">
+            <div class="section-header">
+                <div class="section-title-wrapper">
+                    <span class="section-title">LATEST COMMENTS</span>
+                    <span class="section-count">[{{ total }}]</span>
+                </div>
+                <div class="section-line"></div>
             </div>
 
-            <div class="comment-list">
-                <div class="comment-item" v-for="comment in comments" :key="comment.commentId">
-                    <div class="comment-avatar">
-                        <img :src="comment.user.avatarUrl + '?param=40y40'" :alt="comment.user.nickname" />
+            <div class="comments-grid">
+                <div class="comment-card" v-for="comment in comments" :key="comment.commentId">
+                    <div class="card-frame">
+                        <div class="frame-corner frame-tl"></div>
+                        <div class="frame-corner frame-tr"></div>
+                        <div class="frame-corner frame-bl"></div>
+                        <div class="frame-corner frame-br"></div>
                     </div>
-
-                    <div class="comment-content">
-                        <div class="comment-header">
-                            <span class="user-name">{{ comment.user.nickname }}</span>
-                            <span class="comment-time">{{ formatTime(comment.time) }}</span>
+                    
+                    <div class="card-content">
+                        <div class="comment-meta">
+                            <div class="user-avatar">
+                                <img :src="comment.user.avatarUrl + '?param=40y40'" :alt="comment.user.nickname" />
+                                <div class="avatar-frame"></div>
+                            </div>
+                            <div class="user-info">
+                                <span class="username">{{ comment.user.nickname }}</span>
+                                <span class="timestamp">{{ formatTime(comment.time) }}</span>
+                            </div>
                         </div>
 
-                        <div class="comment-text">{{ comment.content }}</div>
+                        <div class="comment-body">{{ comment.content }}</div>
 
-                        <div class="comment-actions">
-                            <div class="action-item" @click="toggleLikeComment(comment)">
-                                <svg class="icon like-icon" :class="{ liked: comment.liked }" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                                    <path
-                                        d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z"
-                                    />
-                                </svg>
-                                <span class="like-count">{{ comment.likedCount > 0 ? comment.likedCount : '' }}</span>
+                        <div class="comment-controls">
+                            <div class="control-item like-control" :class="{ active: comment.liked }" @click="toggleLikeComment(comment)">
+                                <div class="control-icon">
+                                    <svg viewBox="0 0 1024 1024" width="14" height="14">
+                                        <path d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z" />
+                                    </svg>
+                                </div>
+                                <span class="control-text">{{ comment.likedCount > 0 ? comment.likedCount : 'LIKE' }}</span>
                             </div>
 
-                            <div class="action-item" @click="replyComment(comment)">
-                                <svg class="icon reply-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                                    <path
-                                        d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z"
-                                    />
-                                </svg>
-                                <span>回复</span>
+                            <div class="control-item reply-control" @click="toggleReply(comment)">
+                                <div class="control-icon">
+                                    <svg viewBox="0 0 1024 1024" width="14" height="14">
+                                        <path d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z" />
+                                    </svg>
+                                </div>
+                                <span class="control-text">REPLY</span>
+                            </div>
+                        </div>
+                        
+                        <!-- 内联回复框 -->
+                        <div class="inline-reply-box" v-if="replyingTo && replyingTo.commentId === comment.commentId">
+                            <div class="reply-frame">
+                                <div class="frame-corner frame-tl"></div>
+                                <div class="frame-corner frame-tr"></div>
+                                <div class="frame-corner frame-bl"></div>
+                                <div class="frame-corner frame-br"></div>
+                            </div>
+                            
+                            <div class="reply-content">
+                                <div class="reply-header">
+                                    <span class="reply-prefix">REPLY TO</span>
+                                    <span class="reply-target">{{ comment.user.nickname }}</span>
+                                    <div class="close-reply" @click="cancelReply()">
+                                        ×
+                                    </div>
+                                </div>
+                                
+                                <div class="reply-input-wrapper">
+                                    <textarea 
+                                        v-model="newComment" 
+                                        class="reply-textarea" 
+                                        placeholder="INPUT YOUR REPLY..."
+                                        :disabled="submitting" 
+                                        @keydown.enter.ctrl="submitComment"
+                                    ></textarea>
+                                    <div class="reply-input-border"></div>
+                                </div>
+                                
+                                <div class="reply-actions">
+                                    <span class="reply-shortcut-hint">CTRL+ENTER</span>
+                                    <div class="reply-buttons">
+                                        <button class="cancel-reply-btn" @click="cancelReply()">
+                                            CANCEL
+                                        </button>
+                                        <button 
+                                            class="send-reply-btn" 
+                                            @click="submitComment" 
+                                            :disabled="!newComment.trim() || submitting"
+                                        >
+                                            {{ submitting ? 'SENDING...' : 'SEND' }}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 加载更多 -->
-            <div class="load-more" v-if="hasMore && !loading" @click="fetchComments">
-                <span>加载更多评论</span>
-            </div>
+            <!-- 状态提示区域 -->
+            <div class="status-section">
+                <!-- 加载更多 -->
+                <div class="load-more-button" v-if="hasMore && !loading" @click="fetchComments(false)">
+                    <div class="button-frame">
+                        <div class="frame-corner frame-tl"></div>
+                        <div class="frame-corner frame-tr"></div>
+                        <div class="frame-corner frame-bl"></div>
+                        <div class="frame-corner frame-br"></div>
+                    </div>
+                    <span class="button-text">LOAD MORE</span>
+                </div>
 
-            <!-- 加载中 -->
-            <div class="loading" v-if="loading">
-                <div class="loading-spinner"></div>
-                <span>加载中...</span>
-            </div>
+                <!-- 加载中 -->
+                <div class="loading-status" v-if="loading">
+                    <div class="loading-frame">
+                        <div class="frame-corner frame-tl"></div>
+                        <div class="frame-corner frame-tr"></div>
+                        <div class="frame-corner frame-bl"></div>
+                        <div class="frame-corner frame-br"></div>
+                    </div>
+                    <div class="loading-content">
+                        <div class="loading-indicator"></div>
+                        <span class="loading-text">LOADING...</span>
+                    </div>
+                </div>
 
-            <!-- 暂无更多 -->
-            <div class="no-more" v-if="!hasMore && comments.length > 0">
-                <span>没有更多评论了</span>
-            </div>
+                <!-- 暂无更多 -->
+                <div class="no-more-status" v-if="!hasMore && comments.length > 0">
+                    <div class="status-frame">
+                        <div class="frame-corner frame-tl"></div>
+                        <div class="frame-corner frame-tr"></div>
+                        <div class="frame-corner frame-bl"></div>
+                        <div class="frame-corner frame-br"></div>
+                    </div>
+                    <span class="status-text">NO MORE COMMENTS</span>
+                </div>
 
-            <!-- 暂无评论 -->
-            <div class="no-comments" v-if="!loading && comments.length === 0 && hotComments.length === 0">
-                <span>暂无评论，快来抢沙发吧~</span>
+                <!-- 暂无评论 -->
+                <div class="empty-status" v-if="!loading && comments.length === 0 && hotComments.length === 0">
+                    <div class="status-frame">
+                        <div class="frame-corner frame-tl"></div>
+                        <div class="frame-corner frame-tr"></div>
+                        <div class="frame-corner frame-bl"></div>
+                        <div class="frame-corner frame-br"></div>
+                    </div>
+                    <span class="status-text">NO COMMENTS YET</span>
+                </div>
             </div>
         </div>
     </div>
 </template>
 
 <style scoped lang="scss">
-.comments-container {
+// 明日方舟风格评论区样式
+.arknights-comments {
     width: 100%;
     height: 100%;
     padding: 20px;
     overflow-y: auto;
     background: rgba(255, 255, 255, 0.35);
     backdrop-filter: blur(10px);
+    font-family: SourceHanSansCN-Bold, Bender-Bold, monospace;
 
+    // 自定义滚动条
     &::-webkit-scrollbar {
-        width: 4px;
+        width: 3px;
     }
 
     &::-webkit-scrollbar-track {
@@ -342,281 +537,731 @@ onMounted(() => {
     }
 
     &::-webkit-scrollbar-thumb {
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 2px;
-
+        background: rgba(0, 0, 0, 0.4);
+        
         &:hover {
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.6);
         }
     }
 }
 
+// 通用框架样式
+.frame-corner {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border: 2px solid #000;
+    
+    &.frame-tl {
+        top: -1px;
+        left: -1px;
+        border-bottom: none;
+        border-right: none;
+    }
+    
+    &.frame-tr {
+        top: -1px;
+        right: -1px;
+        border-bottom: none;
+        border-left: none;
+    }
+    
+    &.frame-bl {
+        bottom: -1px;
+        left: -1px;
+        border-top: none;
+        border-right: none;
+    }
+    
+    &.frame-br {
+        bottom: -1px;
+        right: -1px;
+        border-top: none;
+        border-left: none;
+    }
+}
+
+// 评论区标题
 .comments-header {
+    margin-bottom: 24px;
+
+    .header-frame {
+        position: relative;
+        padding: 16px 24px;
+        background: rgba(255, 255, 255, 0.4);
+        border: 1px solid rgba(0, 0, 0, 0.2);
+    }
+
+    .header-title-wrapper {
+        text-align: center;
+        position: relative;
+    }
+
+    .header-title {
+        font-family: Bender-Bold, monospace;
+        font-size: 18px;
+        font-weight: bold;
+        color: #000;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+    }
+
+    .title-underline {
+        width: 60px;
+        height: 2px;
+        background: #000;
+        margin: 8px auto 0;
+    }
+}
+
+// 评论输入区域
+.comment-input-section {
+    margin-bottom: 32px;
+
+    .input-frame {
+        position: relative;
+        background: rgba(255, 255, 255, 0.3);
+        border: 1px solid rgba(0, 0, 0, 0.15);
+    }
+
+    .input-content {
+        padding: 20px;
+    }
+
+    .reply-info {
+        display: flex;
+        align-items: center;
+        margin-bottom: 16px;
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.05);
+        border-left: 3px solid #000;
+
+        .reply-prefix {
+            font-family: Bender-Bold, monospace;
+            font-size: 10px;
+            color: rgba(0, 0, 0, 0.6);
+            margin-right: 8px;
+            letter-spacing: 1px;
+        }
+
+        .reply-target {
+            font-family: SourceHanSansCN-Bold;
+            font-size: 12px;
+            color: #000;
+            font-weight: bold;
+            flex: 1;
+        }
+
+        .cancel-reply {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.1);
+            color: #000;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            transition: all 0.2s;
+
+            &:hover {
+                background: rgba(0, 0, 0, 0.2);
+                transform: scale(1.1);
+            }
+        }
+    }
+
+    .input-wrapper {
+        position: relative;
+        margin-bottom: 16px;
+    }
+
+    .comment-textarea {
+        width: 100%;
+        min-height: 80px;
+        padding: 12px 16px;
+        background: rgba(255, 255, 255, 0.6);
+        border: none;
+        outline: none;
+        font-family: SourceHanSansCN-Bold;
+        font-size: 14px;
+        color: #000;
+        resize: vertical;
+        
+        &::placeholder {
+            color: rgba(0, 0, 0, 0.4);
+            font-family: Bender-Bold, monospace;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+
+        &:focus {
+            background: rgba(255, 255, 255, 0.8);
+            
+            + .input-border {
+                border-color: #000;
+            }
+        }
+    }
+
+    .input-border {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border: 2px solid rgba(0, 0, 0, 0.2);
+        pointer-events: none;
+        transition: border-color 0.2s;
+    }
+
+    .input-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        .shortcut-hint {
+            font-family: Bender-Bold, monospace;
+            font-size: 10px;
+            color: rgba(0, 0, 0, 0.5);
+            letter-spacing: 1px;
+        }
+
+        .submit-button {
+            position: relative;
+            padding: 10px 20px;
+            background: #000;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            font-family: Bender-Bold, monospace;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+
+            &:hover:not(:disabled) {
+                background: rgba(0, 0, 0, 0.8);
+                transform: translateY(-1px);
+            }
+
+            &:active:not(:disabled) {
+                transform: translateY(0);
+            }
+
+            &:disabled {
+                background: rgba(0, 0, 0, 0.3);
+                cursor: not-allowed;
+            }
+        }
+    }
+}
+
+// 未登录提示
+.login-prompt {
+    margin-bottom: 32px;
+
+    .prompt-frame {
+        position: relative;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.25);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        text-align: center;
+    }
+
+    .prompt-text {
+        font-family: Bender-Bold, monospace;
+        font-size: 14px;
+        color: rgba(0, 0, 0, 0.6);
+        letter-spacing: 1px;
+    }
+}
+
+// 区块标题
+.section-header {
     display: flex;
     align-items: center;
     margin-bottom: 20px;
 
-    .header-line {
+    .section-title-wrapper {
+        display: flex;
+        align-items: baseline;
+        margin-right: 16px;
+    }
+
+    .section-title {
+        font-family: Bender-Bold, monospace;
+        font-size: 14px;
+        font-weight: bold;
+        color: #000;
+        letter-spacing: 1px;
+        margin-right: 8px;
+    }
+
+    .section-count {
+        font-family: Bender-Bold, monospace;
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.6);
+    }
+
+    .section-line {
         flex: 1;
         height: 1px;
         background: rgba(0, 0, 0, 0.2);
     }
+}
 
-    .header-title {
-        margin: 0 15px;
-        font: 16px SourceHanSansCN-Bold;
-        color: black;
-        font-weight: bold;
+// 评论区域
+.hot-comments-section {
+    margin-bottom: 32px;
+}
+
+.latest-comments-section {
+    .comments-grid {
+        margin-bottom: 24px;
     }
 }
 
-.comment-input-section {
-    margin-bottom: 30px;
-
-    .comment-input-wrapper {
-        padding: 15px;
-        background: rgba(255, 255, 255, 0.6);
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        border-radius: 8px;
-
-        .reply-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            font-size: 12px;
-            color: rgba(0, 0, 0, 0.6);
-
-            .cancel-reply {
-                color: #1890ff;
-                cursor: pointer;
-
-                &:hover {
-                    text-decoration: underline;
-                }
-            }
-        }
-
-        .comment-input {
-            width: 100%;
-            min-height: 80px;
-            padding: 10px;
-            border: 1px solid rgba(0, 0, 0, 0.1);
-            border-radius: 4px;
-            resize: vertical;
-            font-family: SourceHanSansCN-Bold;
-            font-size: 14px;
-            background: rgba(255, 255, 255, 0.8);
-
-            &:focus {
-                outline: none;
-                border-color: rgba(0, 0, 0, 0.3);
-            }
-
-            &::placeholder {
-                color: rgba(0, 0, 0, 0.4);
-            }
-        }
-
-        .input-actions {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 10px;
-
-            .input-tip {
-                font-size: 12px;
-                color: rgba(0, 0, 0, 0.5);
-            }
-
-            .submit-btn {
-                padding: 8px 20px;
-                background: black;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font: 12px SourceHanSansCN-Bold;
-                cursor: pointer;
-                transition: 0.2s;
-
-                &:hover:not(:disabled) {
-                    background: rgba(0, 0, 0, 0.8);
-                }
-
-                &:disabled {
-                    background: rgba(0, 0, 0, 0.3);
-                    cursor: not-allowed;
-                }
-            }
-        }
-    }
-}
-
-.login-tip {
-    text-align: center;
-    padding: 20px;
-    color: rgba(0, 0, 0, 0.5);
-    font: 14px SourceHanSansCN-Bold;
-}
-
-.section-title {
+.comments-grid {
     display: flex;
-    align-items: center;
-    margin-bottom: 15px;
-
-    .title-text {
-        font: 14px SourceHanSansCN-Bold;
-        color: black;
-        font-weight: bold;
-    }
-
-    .comment-count {
-        margin-left: 5px;
-        font: 12px SourceHanSansCN-Bold;
-        color: rgba(0, 0, 0, 0.5);
-    }
+    flex-direction: column;
+    gap: 16px;
 }
 
-.hot-comments {
-    margin-bottom: 30px;
-
-    .hot-comment {
-        background: rgba(255, 248, 225, 0.6);
-        border-left: 3px solid #ff9800;
-    }
-}
-
-.comment-list {
-    .comment-item {
-        display: flex;
-        padding: 15px;
-        margin-bottom: 10px;
-        background: rgba(255, 255, 255, 0.4);
-        border-radius: 8px;
-        transition: 0.2s;
-
-        &:hover {
-            background: rgba(255, 255, 255, 0.6);
-        }
-
-        .comment-avatar {
-            margin-right: 12px;
-
-            img {
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                border: 1px solid rgba(0, 0, 0, 0.1);
-            }
-        }
-
-        .comment-content {
-            flex: 1;
-
-            .comment-header {
-                display: flex;
-                align-items: center;
-                margin-bottom: 8px;
-
-                .user-name {
-                    font: 13px SourceHanSansCN-Bold;
-                    color: black;
-                    font-weight: bold;
-                    margin-right: 10px;
-                }
-
-                .comment-time {
-                    font: 11px SourceHanSansCN-Bold;
-                    color: rgba(0, 0, 0, 0.5);
-                }
-            }
-
-            .comment-text {
-                font: 14px SourceHanSansCN-Bold;
-                color: rgba(0, 0, 0, 0.8);
-                line-height: 1.4;
-                margin-bottom: 10px;
-                word-break: break-word;
-                text-align: left;
-            }
-
-            .comment-actions {
-                display: flex;
-                align-items: center;
-                gap: 20px;
-
-                .action-item {
-                    display: flex;
-                    align-items: center;
-                    gap: 4px;
-                    font: 12px SourceHanSansCN-Bold;
-                    color: rgba(0, 0, 0, 0.5);
-                    cursor: pointer;
-                    transition: 0.2s;
-
-                    &:hover {
-                        color: rgba(0, 0, 0, 0.8);
-                    }
-
-                    .icon {
-                        fill: currentColor;
-                    }
-
-                    .like-icon.liked {
-                        color: #ff4757;
-                    }
-                }
-            }
-        }
-    }
-}
-
-.load-more {
-    text-align: center;
-    padding: 15px;
-    color: rgba(0, 0, 0, 0.6);
-    font: 13px SourceHanSansCN-Bold;
-    cursor: pointer;
-    transition: 0.2s;
+// 评论卡片
+.comment-card {
+    position: relative;
+    background: rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    transition: all 0.2s;
 
     &:hover {
-        color: black;
+        background: rgba(255, 255, 255, 0.45);
+        transform: translateY(-1px);
+    }
+
+    &.hot-card {
+        background: rgba(255, 248, 225, 0.4);
+        
+        &:hover {
+            background: rgba(255, 248, 225, 0.6);
+        }
+    }
+
+    .card-frame {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+    }
+
+    .card-content {
+        position: relative;
+        padding: 16px 20px;
     }
 }
 
-.loading {
+// 评论元信息
+.comment-meta {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 20px;
-    color: rgba(0, 0, 0, 0.6);
-    font: 13px SourceHanSansCN-Bold;
+    margin-bottom: 12px;
 
-    .loading-spinner {
-        width: 16px;
-        height: 16px;
-        border: 2px solid rgba(0, 0, 0, 0.1);
-        border-top: 2px solid rgba(0, 0, 0, 0.6);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
+    .user-avatar {
+        position: relative;
+        margin-right: 12px;
+
+        img {
+            width: 32px;
+            height: 32px;
+            object-fit: cover;
+        }
+
+        .avatar-frame {
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            border: 2px solid rgba(0, 0, 0, 0.2);
+        }
+    }
+
+    .user-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .username {
+        font-family: SourceHanSansCN-Bold;
+        font-size: 13px;
+        font-weight: bold;
+        color: #000;
+        text-align: left;
+    }
+
+    .timestamp {
+        font-family: Bender-Bold, monospace;
+        font-size: 10px;
+        color: rgba(0, 0, 0, 0.5);
+        letter-spacing: 0.5px;
+        text-align: left;
     }
 }
 
-.no-more,
-.no-comments {
-    text-align: center;
-    padding: 20px;
-    color: rgba(0, 0, 0, 0.5);
-    font: 13px SourceHanSansCN-Bold;
+// 评论内容
+.comment-body {
+    font-family: SourceHanSansCN-Bold;
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.85);
+    line-height: 1.5;
+    margin-bottom: 12px;
+    word-break: break-word;
+    text-align: left;
 }
 
-@keyframes spin {
+// 评论控制按钮
+.comment-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+
+    .control-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        padding: 4px 8px;
+        background: rgba(0, 0, 0, 0.05);
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
+
+        &.active {
+            background: rgba(0, 0, 0, 0.15);
+            
+            .control-icon svg {
+                fill: #ff4757;
+            }
+            
+            .control-text {
+                color: #ff4757;
+            }
+        }
+
+        .control-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            svg {
+                fill: rgba(0, 0, 0, 0.6);
+                transition: fill 0.2s;
+            }
+        }
+
+        .control-text {
+            font-family: Bender-Bold, monospace;
+            font-size: 10px;
+            color: rgba(0, 0, 0, 0.6);
+            letter-spacing: 0.5px;
+            font-weight: bold;
+        }
+    }
+}
+
+// 状态区域
+.status-section {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+}
+
+// 加载更多按钮
+.load-more-button {
+    position: relative;
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.45);
+        transform: translateY(-1px);
+    }
+
+    .button-text {
+        font-family: Bender-Bold, monospace;
+        font-size: 12px;
+        color: #000;
+        letter-spacing: 1px;
+        font-weight: bold;
+    }
+}
+
+// 加载状态
+.loading-status {
+    position: relative;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+
+    .loading-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+    }
+
+    .loading-indicator {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(0, 0, 0, 0.2);
+        border-top: 2px solid #000;
+        animation: arknights-spin 1s linear infinite;
+    }
+
+    .loading-text {
+        font-family: Bender-Bold, monospace;
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.6);
+        letter-spacing: 1px;
+    }
+}
+
+// 其他状态
+.no-more-status,
+.empty-status {
+    position: relative;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    text-align: center;
+
+    .status-text {
+        font-family: Bender-Bold, monospace;
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.5);
+        letter-spacing: 1px;
+    }
+}
+
+// 动画
+@keyframes arknights-spin {
     0% {
         transform: rotate(0deg);
     }
     100% {
         transform: rotate(360deg);
+    }
+}
+
+// 响应式设计
+// 内联回复框样式
+.inline-reply-box {
+    margin-top: 16px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    position: relative;
+    
+    .reply-frame {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+    }
+    
+    .reply-content {
+        position: relative;
+        padding: 16px;
+    }
+    
+    .reply-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+        padding: 6px 10px;
+        background: rgba(0, 0, 0, 0.05);
+        border-left: 2px solid #000;
+        
+        .reply-prefix {
+            font-family: Bender-Bold, monospace;
+            font-size: 9px;
+            color: rgba(0, 0, 0, 0.6);
+            margin-right: 8px;
+            letter-spacing: 1px;
+        }
+        
+        .reply-target {
+            font-family: SourceHanSansCN-Bold;
+            font-size: 11px;
+            color: #000;
+            font-weight: bold;
+            flex: 1;
+        }
+        
+        .close-reply {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.1);
+            color: #000;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            transition: all 0.2s;
+            
+            &:hover {
+                background: rgba(0, 0, 0, 0.2);
+                transform: scale(1.1);
+            }
+        }
+    }
+    
+    .reply-input-wrapper {
+        position: relative;
+        margin-bottom: 12px;
+    }
+    
+    .reply-textarea {
+        width: 100%;
+        min-height: 60px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.6);
+        border: none;
+        outline: none;
+        font-family: SourceHanSansCN-Bold;
+        font-size: 13px;
+        color: #000;
+        resize: vertical;
+        
+        &::placeholder {
+            color: rgba(0, 0, 0, 0.4);
+            font-family: Bender-Bold, monospace;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        
+        &:focus {
+            background: rgba(255, 255, 255, 0.8);
+            
+            + .reply-input-border {
+                border-color: #000;
+            }
+        }
+    }
+    
+    .reply-input-border {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        pointer-events: none;
+        transition: border-color 0.2s;
+    }
+    
+    .reply-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        
+        .reply-shortcut-hint {
+            font-family: Bender-Bold, monospace;
+            font-size: 9px;
+            color: rgba(0, 0, 0, 0.5);
+            letter-spacing: 0.5px;
+        }
+        
+        .reply-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .cancel-reply-btn,
+        .send-reply-btn {
+            padding: 6px 12px;
+            border: none;
+            cursor: pointer;
+            font-family: Bender-Bold, monospace;
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            
+            &:hover {
+                transform: translateY(-1px);
+            }
+            
+            &:active {
+                transform: translateY(0);
+            }
+        }
+        
+        .cancel-reply-btn {
+            background: rgba(0, 0, 0, 0.1);
+            color: rgba(0, 0, 0, 0.7);
+            
+            &:hover {
+                background: rgba(0, 0, 0, 0.15);
+            }
+        }
+        
+        .send-reply-btn {
+            background: #000;
+            color: #fff;
+            
+            &:hover:not(:disabled) {
+                background: rgba(0, 0, 0, 0.8);
+            }
+            
+            &:disabled {
+                background: rgba(0, 0, 0, 0.3);
+                cursor: not-allowed;
+                transform: none;
+            }
+        }
+    }
+}
+
+@media (max-width: 768px) {
+    .arknights-comments {
+        padding: 16px;
+    }
+    
+    .comment-card .card-content {
+        padding: 12px 16px;
+    }
+    
+    .comment-meta .user-avatar {
+        img {
+            width: 28px;
+            height: 28px;
+        }
+    }
+    
+    .header-title {
+        font-size: 16px;
+    }
+    
+    .section-title {
+        font-size: 12px;
     }
 }
 </style>
