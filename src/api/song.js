@@ -112,3 +112,61 @@ export function fmTrash(id) {
         }
     })
 }
+
+/**
+ * 说明 : 调用此接口 , 传入音乐 id, 可获得该音乐的所有评论 ( 不需要登录 )
+ * 必选参数 : id: 音乐 id
+ * 可选参数 : limit: 取出评论数量 , 默认为 20
+ * offset: 偏移数量 , 用于分页 , 如 :( 评论页数 -1)*20, 其中 20 为 limit 的值
+ * before: 分页参数,取上一页最后一项的 time 获取下一页数据(获取超过5000条评论的时候需要用到)
+ * @param {*} params 
+ * @returns 
+ */
+export function getMusicComments(params) {
+    return request({
+        url: '/comment/music',
+        method: 'get',
+        params: {
+            ...params,
+            timestamp: new Date().getTime()
+        }
+    })
+}
+
+/**
+ * 说明 : 调用此接口 , 传入音乐 id 和评论内容 , 可发送评论 ( 需要登录 )
+ * 必选参数 : id: 音乐 id, content: 评论内容
+ * 可选参数 : commentId: 回复的评论id (回复评论时必填)
+ * @param {*} params 
+ * @returns 
+ */
+export function postMusicComment(params) {
+    return request({
+        url: '/comment',
+        method: 'get',
+        params: {
+            t: 1, // 1: 发送, 0: 删除
+            type: 0, // 0: 歌曲, 1: mv, 2: 歌单, 3: 专辑, 4: 电台, 5: 视频, 6: 动态
+            ...params,
+            timestamp: new Date().getTime()
+        }
+    })
+}
+
+/**
+ * 说明 : 调用此接口 , 传入评论 id , 可给评论点赞 ( 需要登录 )
+ * 必选参数 : id: 音乐 id, cid: 评论 id, t: 是否点赞 , 1 为点赞 ,0 为取消点赞
+ * @param {*} params 
+ * @returns 
+ */
+export function likeMusicComment(params) {
+    return request({
+        url: '/comment/like',
+        method: 'get',
+        params: {
+            type: 0, // 0: 歌曲
+            ...params,
+            timestamp: new Date().getTime()
+        }
+    })
+}
