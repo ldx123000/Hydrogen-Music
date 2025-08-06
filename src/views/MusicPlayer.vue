@@ -23,8 +23,10 @@ const rightPanelMode = ref(0);
         <!-- 右侧面板 -->
         <div class="right-panel" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
             <!-- 内容区域 -->
-            <Lyric class="lyric-container" v-show="rightPanelMode === 0"></Lyric>
-            <Comments class="comments-container" v-show="rightPanelMode === 1"></Comments>
+            <Transition name="panel-switch" mode="out-in">
+                <Lyric class="lyric-container" v-if="rightPanelMode === 0" key="lyric"></Lyric>
+                <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments"></Comments>
+            </Transition>
         </div>
 
         <Transition name="fade">
@@ -114,6 +116,22 @@ const rightPanelMode = ref(0);
         transform: scale(0.85);
         opacity: 0;
         visibility: hidden;
+    }
+    
+    // 右侧面板切换动画
+    .panel-switch-enter-active {
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.12, 1);
+    }
+    .panel-switch-leave-active {
+        transition: all 0.3s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+    }
+    .panel-switch-enter-from {
+        opacity: 0;
+        transform: translateX(30px) scale(0.95);
+    }
+    .panel-switch-leave-to {
+        opacity: 0;
+        transform: translateX(-30px) scale(0.95);
     }
     .music-video {
         position: absolute;

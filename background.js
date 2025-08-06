@@ -13,6 +13,7 @@ const Store = require('electron-store');
 const settingsStore = new Store({ name: 'settings' });
 
 let myWindow = null
+let lyricWindow = null
 let forceQuit = false;
 
 //electron单例
@@ -179,11 +180,89 @@ const createWindow = () => {
     //api初始化
     startNeteaseMusicApi()
     //ipcMain初始化
-    IpcMainEvent(win, app)
+    IpcMainEvent(win, app, { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow: () => lyricWindow })
     MusicDownload(win)
     LocalFiles(win, app)
     InitTray(win, app, path.resolve(__dirname, './src/assets/icon/' + (process.platform === 'win32' ? 'icon.ico' : 'icon.png')))
     registerShortcuts(win, app)
+}
+
+// 创建桌面歌词窗口
+const createLyricWindow = () => {
+    if (lyricWindow) {
+        lyricWindow.focus()
+        return lyricWindow
+    }
+
+    const lyricWin = new BrowserWindow({
+        width: 500,
+        height: 350,
+        minWidth: 500,
+        minHeight: 250,
+        maxWidth: 900,
+        maxHeight: 500,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: true,
+        movable: true,
+        minimizable: false,
+        maximizable: false,
+        closable: true,
+        focusable: true,
+        show: false,
+        backgroundColor: 'transparent',
+        webPreferences: {
+            preload: path.resolve(__dirname, './src/electron/preload.js'),
+            webSecurity: false,
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    })
+
+    lyricWindow = lyricWin
+
+    const lyricHtml = path.join(process.env.DIST, 'desktop-lyric.html')
+    if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
+        lyricWin.loadURL('http://localhost:5173/desktop-lyric.html')
+    } else {
+        lyricWin.loadFile(lyricHtml)
+    }
+
+    lyricWin.once('ready-to-show', () => {
+        console.log('桌面歌词窗口ready-to-show事件触发')
+        lyricWin.show()
+        console.log('桌面歌词窗口显示完成')
+    })
+    
+    // 添加备用显示逻辑，防止ready-to-show事件不触发
+    setTimeout(() => {
+        if (lyricWin && !lyricWin.isDestroyed() && !lyricWin.isVisible()) {
+            console.log('强制显示桌面歌词窗口')
+            lyricWin.show()
+        }
+    }, 2000)
+
+    lyricWin.on('closed', () => {
+        lyricWindow = null
+    })
+
+    lyricWin.setMenu(null)
+    return lyricWin
+}
+
+const closeLyricWindow = () => {
+    if (lyricWindow) {
+        lyricWindow.close()
+        lyricWindow = null
+    }
+}
+
+const setLyricWindowMovable = (movable) => {
+    if (lyricWindow) {
+        lyricWindow.setMovable(movable)
+    }
 }
 
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';

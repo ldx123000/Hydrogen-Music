@@ -22,6 +22,7 @@ export const usePlayerStore = defineStore('playerStore', {
             playerChangeSong: false, //player页面切换歌曲更换歌名动画,
             lyric: null,
             lyricsObjArr: null,
+            currentLyricIndex: -1, // 当前歌词索引，用于桌面歌词同步
             lyricSize: null,
             tlyricSize: null,
             rlyricSize: null,
@@ -39,6 +40,7 @@ export const usePlayerStore = defineStore('playerStore', {
             videoIsPlaying: false,
             playerShow: true,
             lyricBlur: false,
+            isDesktopLyricOpen: false, // 桌面歌词是否打开
         }
     },
     actions: {

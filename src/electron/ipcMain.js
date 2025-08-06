@@ -9,10 +9,13 @@ const Store = require('electron-store')
 const CancelToken = axios.CancelToken
 let cancel = null
 
-module.exports = IpcMainEvent = (win, app) => {
+module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({name: 'settings'})
     const lastPlaylistStore = new Store({name: 'lastPlaylist'})
     const musicVideoStore = new Store({name: 'musicVideo'})
+    
+    // 全局存储桌面歌词窗口引用
+    let globalLyricWindow = null;
     // win.on('restore', () => {
         // win.webContents.send('lyric-control')
     // })
@@ -296,7 +299,6 @@ module.exports = IpcMainEvent = (win, app) => {
         files.forEach(filename => {
             const filePath = path.join(folderPath, filename)
             if(!musicVideo.some(video => video.path == filePath)) {
-              console.log(filePath)
                 fs.unlinkSync(filePath)
             }
         })
@@ -323,7 +325,7 @@ module.exports = IpcMainEvent = (win, app) => {
         //                 resolve(tag)
         //             },
         //             onError: (error) => {
-        //                 console.log(':(', error.type, error.info);
+        //                 
         //                 reject(error)
         //             }
         //         });
@@ -405,8 +407,6 @@ module.exports = IpcMainEvent = (win, app) => {
                         domain: '.music.163.com'
                     })
                     
-                    console.log('当前获取到的cookies:', cookies.map(c => `${c.name}=${c.value.substring(0, 10)}...`))
-                    
                     // 检查是否包含登录必需的cookie
                     const musicUCookie = cookies.find(cookie => cookie.name === 'MUSIC_U')
                     
@@ -415,8 +415,6 @@ module.exports = IpcMainEvent = (win, app) => {
                         const cookieString = cookies.map(cookie => 
                             `${cookie.name}=${cookie.value}`
                         ).join('; ')
-                        
-                        console.log('登录成功，获取到cookie:', musicUCookie.value.substring(0, 20) + '...')
                         
                         loginWindow.close()
                         resolve({
@@ -428,7 +426,7 @@ module.exports = IpcMainEvent = (win, app) => {
                     }
                     return false
                 } catch (error) {
-                    console.error('检查登录状态失败:', error)
+                    
                     return false
                 }
             }
@@ -436,7 +434,7 @@ module.exports = IpcMainEvent = (win, app) => {
             // 强制加载登录页面的函数
             const forceLoadLoginPage = async () => {
                 try {
-                    console.log('强制加载登录页面')
+                    
                     // 加载登录页面并注入脚本确保显示登录界面
                     await loginWindow.loadURL('https://music.163.com/#/login')
                     
@@ -474,28 +472,28 @@ module.exports = IpcMainEvent = (win, app) => {
                                 }, 1000);
                             `)
                         } catch (error) {
-                            console.error('注入脚本失败:', error)
+                            
                         }
                     }, 2000)
                 } catch (error) {
-                    console.error('强制加载登录页面失败:', error)
+                    
                 }
             }
 
             // 初始加载完成后，开始加载登录页面
             loginWindow.webContents.once('did-finish-load', () => {
-                console.log('空白页面加载完成，开始加载登录页面')
+                
                 forceLoadLoginPage()
             })
 
             // 监听页面加载完成
             loginWindow.webContents.on('did-finish-load', async () => {
                 const currentURL = loginWindow.webContents.getURL()
-                console.log('页面加载完成:', currentURL)
+                
                 
                 // 如果不是登录页面，强制跳转
                 if (currentURL.includes('music.163.com') && !currentURL.includes('/login')) {
-                    console.log('检测到非登录页面，强制跳转')
+                    
                     setTimeout(() => forceLoadLoginPage(), 1000)
                 }
                 
@@ -507,7 +505,7 @@ module.exports = IpcMainEvent = (win, app) => {
 
             // 监听URL变化
             loginWindow.webContents.on('did-navigate', async (event, navigationUrl) => {
-                console.log('页面导航到:', navigationUrl)
+                
                 
                 // 延迟检查登录状态
                 setTimeout(async () => {
@@ -517,7 +515,7 @@ module.exports = IpcMainEvent = (win, app) => {
 
             // 监听页面内导航（适用于SPA应用）
             loginWindow.webContents.on('did-navigate-in-page', async (event, navigationUrl) => {
-                console.log('页面内导航到:', navigationUrl)
+                
                 
                 // 检查是否跳转到了登录后的页面
                 if (navigationUrl.includes('music.163.com') && 
@@ -529,7 +527,7 @@ module.exports = IpcMainEvent = (win, app) => {
                     setTimeout(async () => {
                         const success = await checkLoginStatus()
                         if (!success) {
-                            console.log('登录检测失败，继续监听...')
+                            
                         }
                     }, 3000)
                 }
@@ -546,14 +544,14 @@ module.exports = IpcMainEvent = (win, app) => {
                 
                 try {
                     const currentURL = loginWindow.webContents.getURL()
-                    console.log(`第${forceRefreshCount}次检查URL:`, currentURL)
+                    
                     
                     if (currentURL.includes('music.163.com') && !currentURL.includes('/login')) {
-                        console.log(`第${forceRefreshCount}次强制刷新登录页面`)
+                        
                         forceLoadLoginPage()
                     }
                 } catch (error) {
-                    console.error('定期检查失败:', error)
+                    
                 }
             }, 5000)
 
@@ -581,7 +579,7 @@ module.exports = IpcMainEvent = (win, app) => {
 
             // 处理登录错误
             loginWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-                console.error('页面加载失败:', errorDescription)
+                
                 clearInterval(loginCheckInterval)
                 clearInterval(forceRefreshInterval)
                 // 清理session
@@ -617,11 +615,117 @@ module.exports = IpcMainEvent = (win, app) => {
                 )
             }
             
-            console.log('登录session已清理')
+            
             return { success: true, message: '登录session已清理' }
         } catch (error) {
-            console.error('清理登录session失败:', error)
+            
             return { success: false, message: '清理失败' }
         }
     })
+
+    // 桌面歌词相关 IPC 处理
+    const { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow } = lyricFunctions
+
+    ipcMain.handle('create-lyric-window', async () => {
+        try {
+            if (createLyricWindow) {
+                const lyricWin = createLyricWindow()
+                if (lyricWin) {
+                    globalLyricWindow = lyricWin
+                    
+                    // 监听窗口关闭事件
+                    lyricWin.on('closed', () => {
+                        globalLyricWindow = null
+                    })
+                    
+                    
+                    return { success: true, message: '桌面歌词窗口已创建' }
+                } else {
+                    return { success: false, message: '创建窗口失败' }
+                }
+            }
+            return { success: false, message: '桌面歌词功能不可用' }
+        } catch (error) {
+            
+            return { success: false, message: '创建失败' }
+        }
+    })
+
+    ipcMain.handle('close-lyric-window', async () => {
+        try {
+            if (closeLyricWindow) {
+                closeLyricWindow()
+                return { success: true, message: '桌面歌词窗口已关闭' }
+            }
+            return { success: false, message: '桌面歌词功能不可用' }
+        } catch (error) {
+            
+            return { success: false, message: '关闭失败' }
+        }
+    })
+
+    ipcMain.handle('set-lyric-window-movable', async (event, movable) => {
+        try {
+            if (setLyricWindowMovable) {
+                setLyricWindowMovable(movable)
+                return { success: true, message: '窗口移动状态已更新' }
+            }
+            return { success: false, message: '桌面歌词功能不可用' }
+        } catch (error) {
+            
+            return { success: false, message: '设置失败' }
+        }
+    })
+
+    ipcMain.on('lyric-window-ready', () => {
+        
+    })
+
+    ipcMain.on('update-lyric-data', (event, data) => {
+        let lyricWindow = globalLyricWindow
+        if (!lyricWindow && getLyricWindow) {
+            lyricWindow = getLyricWindow()
+        }
+        
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            lyricWindow.webContents.send('lyric-update', data)
+        }
+    })
+
+    ipcMain.on('request-lyric-data', (event) => {
+        win.webContents.send('get-current-lyric-data')
+    })
+
+    ipcMain.on('current-lyric-data', (event, data) => {
+        const lyricWindow = getLyricWindow && getLyricWindow()
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            lyricWindow.webContents.send('lyric-update', data)
+        }
+    })
+
+    ipcMain.handle('is-lyric-window-visible', () => {
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        return lyricWindow && !lyricWindow.isDestroyed() && lyricWindow.isVisible();
+    });
+
+    // 调整桌面歌词窗口大小
+    ipcMain.handle('resize-lyric-window', (event, { width, height }) => {
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            try {
+                lyricWindow.setSize(width, height);
+                return { success: true };
+            } catch (error) {
+                
+                return { success: false, error: error.message };
+            }
+        }
+        return { success: false, error: '窗口不存在' };
+    });
+
+    // 处理桌面歌词窗口关闭通知
+    ipcMain.on('lyric-window-closed', () => {
+        // 通知主窗口桌面歌词已关闭
+        win.webContents.send('desktop-lyric-closed');
+    });
 }

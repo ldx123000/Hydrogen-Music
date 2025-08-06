@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
@@ -9,6 +9,7 @@ import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { storeToRefs } from 'pinia';
+import { toggleDesktopLyric } from '../utils/desktopLyric';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -49,6 +50,9 @@ const {
     videoIsPlaying,
     playerShow,
     listInfo,
+    lyricsObjArr,
+    currentLyricIndex, // 添加当前歌词索引
+    isDesktopLyricOpen,
 } = storeToRefs(playerStore);
 
 // 检查是否在FM模式
@@ -61,8 +65,9 @@ const checkIsLike = computed(() => id => {
 });
 
 const toAlbum = () => {
-    if (songList.value[currentIndex.value].type != 'local') {
-        router.push('/mymusic/album/' + songList.value[currentIndex.value].al.id);
+    const currentSong = songList.value?.[currentIndex.value];
+    if (currentSong?.type != 'local') {
+        router.push('/mymusic/album/' + currentSong.al.id);
         widgetState.value = true;
         lyricShow.value = false;
         playlistWidgetShow.value = false;
@@ -72,15 +77,17 @@ const toAlbum = () => {
 };
 
 const download = () => {
-    if (songList.value[currentIndex.value].type != 'local') {
+    const currentSong = songList.value?.[currentIndex.value];
+    if (currentSong?.type != 'local') {
         let list = [];
-        list.push(songList.value[currentIndex.value]);
+        list.push(currentSong);
         localStore.updateDownloadList(list);
     }
 };
 
 const checkArtist = artistId => {
-    if (songList.value[currentIndex.value].type != 'local') {
+    const currentSong = songList.value?.[currentIndex.value];
+    if (currentSong?.type != 'local') {
         router.push('/mymusic/artist/' + artistId);
         widgetState.value = true;
         lyricShow.value = false;
@@ -90,23 +97,18 @@ const checkArtist = artistId => {
     }
 };
 const toAddMusicVideo = () => {
-    addMusicVideo.value = {
-        id: songId.value,
-        name: songList.value[currentIndex.value].name,
-        dt: time.value,
-    };
+    const currentSong = songList.value?.[currentIndex.value];
+    if (currentSong) {
+        addMusicVideo.value = {
+            id: songId.value,
+            name: currentSong.name,
+            dt: time.value,
+        };
+    }
 };
 const backToVideo = () => {
     if (videoIsPlaying.value) playerShow.value = false;
 };
-
-onMounted(() => {
-    // 可以在这里添加其他初始化逻辑
-});
-
-onUnmounted(() => {
-    // 可以在这里添加清理逻辑
-});
 </script>
 
 <template>
@@ -114,9 +116,9 @@ onUnmounted(() => {
         <div class="player">
             <div class="player-cover">
                 <div class="cover" :class="{ 'cover-change': playerChangeSong, 'back-Video': videoIsPlaying }" @click="backToVideo()">
-                    <img v-if="songList[currentIndex].type != 'local'" :src="songList[currentIndex].al.picUrl + '?param=600y600'" alt="" />
+                    <img v-if="songList?.[currentIndex]?.type != 'local'" :src="songList?.[currentIndex]?.al?.picUrl + '?param=600y600'" alt="" />
                     <img v-else v-show="localBase64Img" :src="localBase64Img" alt="" />
-                    <img v-if="songList[currentIndex].type == 'local' && !localBase64Img" src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="" />
+                    <img v-if="songList?.[currentIndex]?.type == 'local' && !localBase64Img" src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="" />
                 </div>
                 <div class="c-border c-border1"></div>
                 <div class="c-border c-border2"></div>
@@ -126,13 +128,18 @@ onUnmounted(() => {
             <div class="player-info">
                 <div class="info-music">
                     <div class="music-name-lable" :class="{ 'music-name-lable-in': playerChangeSong }"></div>
-                    <span class="music-name" :class="{ 'music-name-in': playerChangeSong }">{{ songList[currentIndex].name || songList[currentIndex].localName }}</span>
+                    <span class="music-name" :class="{ 'music-name-in': playerChangeSong }">{{ songList?.[currentIndex]?.name || songList?.[currentIndex]?.localName || '加载中...' }}</span>
                 </div>
                 <div class="info-music">
                     <div class="music-author-lable" :class="{ 'music-author-lable-video': videoIsPlaying }"></div>
                     <div class="music-author">
-                        <span @click="checkArtist(singer.id)" class="author" :style="{ color: videoIsPlaying ? 'black' : 'rgb(105, 105, 105)' }" v-for="(singer, index) in songList[currentIndex].ar">
-                            {{ singer.name || '' }}{{ index == songList[currentIndex].ar.length - 1 ? '' : ' / ' }}
+                        <span
+                            @click="checkArtist(singer.id)"
+                            class="author"
+                            :style="{ color: videoIsPlaying ? 'black' : 'rgb(105, 105, 105)' }"
+                            v-for="(singer, index) in songList?.[currentIndex]?.ar || []"
+                        >
+                            {{ singer.name || '' }}{{ index == (songList?.[currentIndex]?.ar?.length || 0) - 1 ? '' : ' / ' }}
                         </span>
                     </div>
                 </div>
@@ -584,6 +591,22 @@ onUnmounted(() => {
                         d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-512 128v85.333333H256v-85.333333h85.333333z m341.333334 0v85.333333H384v-85.333333h298.666667z m-341.333334 170.666666v85.333334H256v-85.333334h85.333333z m256 0v85.333334H384v-85.333334h213.333333z"
                     ></path>
                 </svg>
+                <!-- 桌面歌词控制按钮 -->
+                <svg
+                    @click="toggleDesktopLyric"
+                    :class="{ active: isDesktopLyricOpen }"
+                    class="icon desktop-lyric-btn"
+                    viewBox="0 0 1024 1024"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="200"
+                    height="200"
+                >
+                    <path
+                        d="M896 128H128c-70.4 0-128 57.6-128 128v512c0 70.4 57.6 128 128 128h768c70.4 0 128-57.6 128-128V256c0-70.4-57.6-128-128-128zM128 192h768c35.2 0 64 28.8 64 64v85.333333H64V256c0-35.2 28.8-64 64-64z m768 640H128c-35.2 0-64-28.8-64-64V405.333333h896V768c0 35.2-28.8 64-64 64z"
+                        :fill="isDesktopLyricOpen ? '#000000' : '#8a8a8a'"
+                    ></path>
+                    <path d="M256 576h512v64H256z m0 128h384v64H256z" :fill="isDesktopLyricOpen ? '#000000' : '#8a8a8a'"></path>
+                </svg>
             </div>
         </div>
 
@@ -1022,6 +1045,28 @@ onUnmounted(() => {
         &:hover {
             opacity: 0.8;
             transform: scale(1.05);
+        }
+    }
+
+    .desktop-lyric-btn {
+        opacity: 0.6;
+        transition: all 0.2s ease;
+
+        &.active {
+            opacity: 1;
+
+            path {
+                fill: #000000 !important;
+            }
+        }
+
+        &:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+
+        &:active {
+            transform: scale(0.95);
         }
     }
 }

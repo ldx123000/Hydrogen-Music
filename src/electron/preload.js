@@ -168,8 +168,22 @@ contextBridge.exposeInMainWorld('windowApi', {
     setWindowTile,
 })
 
-// 新的API用于处理登录功能
+// 新的API用于处理登录功能和桌面歌词
 contextBridge.exposeInMainWorld('electronAPI', {
     openNeteaseLogin,
-    clearLoginSession
+    clearLoginSession,
+    // 桌面歌词相关API
+    createLyricWindow: () => ipcRenderer.invoke('create-lyric-window'),
+    closeLyricWindow: () => ipcRenderer.invoke('close-lyric-window'),
+    setLyricWindowMovable: (movable) => ipcRenderer.invoke('set-lyric-window-movable', movable),
+    lyricWindowReady: () => ipcRenderer.send('lyric-window-ready'),
+    onLyricUpdate: (callback) => ipcRenderer.on('lyric-update', callback),
+    requestLyricData: () => ipcRenderer.send('request-lyric-data'),
+    updateLyricData: (data) => ipcRenderer.send('update-lyric-data', data),
+    getCurrentLyricData: (callback) => ipcRenderer.on('get-current-lyric-data', callback),
+    sendCurrentLyricData: (data) => ipcRenderer.send('current-lyric-data', data),
+    isLyricWindowVisible: () => ipcRenderer.invoke('is-lyric-window-visible'),
+    resizeWindow: (width, height) => ipcRenderer.invoke('resize-lyric-window', { width, height }),
+    notifyLyricWindowClosed: () => ipcRenderer.send('lyric-window-closed'),
+    onDesktopLyricClosed: (callback) => ipcRenderer.on('desktop-lyric-closed', callback),
 })

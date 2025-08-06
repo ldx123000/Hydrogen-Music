@@ -10,12 +10,18 @@ import ContextMenu from './components/ContextMenu.vue';
 import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
+import { initDesktopLyric } from './utils/desktopLyric';
+import { onMounted } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+
+onMounted(() => {
+    initDesktopLyric();
+});
 
 windowApi.checkUpdate((event, version) => {
     otherStore.toUpdate = true;
