@@ -223,7 +223,7 @@ const createLyricWindow = () => {
 
     lyricWindow = lyricWin
 
-    const lyricHtml = path.join(process.env.DIST, 'desktop-lyric.html')
+    const lyricHtml = path.join(process.env.DIST, 'dist/desktop-lyric.html')
     if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
         lyricWin.loadURL('http://localhost:5173/desktop-lyric.html')
     } else {

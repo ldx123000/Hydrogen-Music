@@ -197,6 +197,7 @@ const sendCurrentLyricData = () => {
                 ? lyricsObjArr.value.map(lyric => ({
                       lyric: String(lyric.lyric || ''),
                       tlyric: String(lyric.tlyric || ''),
+                      rlyric: String(lyric.rlyric || ''), // 添加罗马音歌词数据
                       time: Number(lyric.time || 0),
                   }))
                 : [],

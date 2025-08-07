@@ -88,6 +88,38 @@
             </div>
 
             <div class="menu-content">
+                <!-- 自动选择选项 -->
+                <div class="menu-item" @click="selectLyricType('auto')">
+                    <div class="item-icon">{{ selectedLyricType === 'auto' ? '🔘' : '⚪' }}</div>
+                    <span class="item-text">AUTO SELECT</span>
+                    <div class="item-indicator"></div>
+                </div>
+
+                <!-- 原歌词选项 -->
+                <div class="menu-item" v-if="hasLyricType('original')" @click="selectLyricType('original')">
+                    <div class="item-icon">{{ selectedLyricType === 'original' ? '🔘' : '⚪' }}</div>
+                    <span class="item-text">ORIGINAL</span>
+                    <div class="item-indicator"></div>
+                </div>
+
+                <!-- 翻译歌词选项 -->
+                <div class="menu-item" v-if="hasLyricType('trans')" @click="selectLyricType('trans')">
+                    <div class="item-icon">{{ selectedLyricType === 'trans' ? '🔘' : '⚪' }}</div>
+                    <span class="item-text">TRANSLATION</span>
+                    <div class="item-indicator"></div>
+                </div>
+
+                <!-- 罗马音选项 -->
+                <div class="menu-item" v-if="hasLyricType('roma')" @click="selectLyricType('roma')">
+                    <div class="item-icon">{{ selectedLyricType === 'roma' ? '🔘' : '⚪' }}</div>
+                    <span class="item-text">ROMANIZATION</span>
+                    <div class="item-indicator"></div>
+                </div>
+
+                <div class="menu-separator">
+                    <div class="separator-line"></div>
+                </div>
+
                 <div class="menu-item" @click="toggleLock">
                     <div class="item-icon">🔒</div>
                     <span class="item-text">{{ locked ? 'UNLOCK POSITION' : 'LOCK POSITION' }}</span>
@@ -131,6 +163,9 @@ const progress = ref(0);
 const playing = ref(false);
 const locked = ref(false);
 const lyricFontSize = ref(22);
+
+// 桌面歌词显示类型配置 - 单选模式
+const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
 
 // 同步扫描动画控制
 const scanAnimationRef = ref(null);
@@ -222,11 +257,11 @@ const currentLyricText = computed(() => {
 
     if (currentLyricIndex.value < 0 || currentLyricIndex.value >= lyricsArray.value.length) {
         const firstLyric = lyricsArray.value[0];
-        return firstLyric?.tlyric || firstLyric?.lyric || '♪ 暂无歌词 ♪';
+        return formatLyricText(firstLyric);
     }
 
     const lyric = lyricsArray.value[currentLyricIndex.value];
-    return lyric?.tlyric || lyric?.lyric || '♪';
+    return formatLyricText(lyric);
 });
 
 const nextLyricText = computed(() => {
@@ -234,8 +269,27 @@ const nextLyricText = computed(() => {
         return '';
     }
     const nextLyric = lyricsArray.value[currentLyricIndex.value + 1];
-    return nextLyric?.tlyric || nextLyric?.lyric || '';
+    return formatLyricText(nextLyric);
 });
+
+// 格式化歌词文本（单选模式）
+const formatLyricText = (lyricObj) => {
+    if (!lyricObj) return '♪';
+    
+    // 根据选择的类型返回对应歌词
+    switch (selectedLyricType.value) {
+        case 'original':
+            return lyricObj.lyric || '♪';
+        case 'trans':
+            return lyricObj.tlyric || '♪';
+        case 'roma':
+            return lyricObj.rlyric || '♪';
+        case 'auto':
+        default:
+            // 自动选择：翻译优先，没有翻译则显示原歌词
+            return lyricObj.tlyric || lyricObj.lyric || '♪';
+    }
+};
 
 const currentLyricOpacity = computed(() => {
     return playing.value ? 1 : 0.6;
@@ -269,6 +323,8 @@ const handleLyricUpdate = (event, data) => {
             currentSong.value = data.song;
             lyricsArray.value = data.lyrics || [];
             currentLyricIndex.value = -1;
+            // 当歌曲切换时，调用自动选择逻辑
+            autoSelectLyricType();
         } else if (data.type === 'lyric-progress') {
             currentLyricIndex.value = data.currentIndex;
             progress.value = data.progress;
@@ -283,8 +339,43 @@ const handleLyricUpdate = (event, data) => {
 // 右键菜单相关
 const showContextMenu = event => {
     event.preventDefault();
-    contextMenuX.value = event.clientX;
-    contextMenuY.value = event.clientY;
+    
+    // 获取窗口尺寸
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    
+    // 估算菜单尺寸（基于菜单项数量）
+    const menuItemHeight = 40; // 每个菜单项的高度
+    const menuHeader = 50; // 菜单头部高度
+    const menuSeparators = 20; // 分隔符高度
+    
+    // 计算有多少个菜单项
+    let menuItemCount = 1; // AUTO SELECT
+    if (hasLyricType('original')) menuItemCount++;
+    if (hasLyricType('trans')) menuItemCount++;
+    if (hasLyricType('roma')) menuItemCount++;
+    menuItemCount += 3; // 锁定、增大字体、减小字体
+    menuItemCount += 1; // 关闭歌词
+    
+    const estimatedMenuHeight = menuHeader + (menuItemCount * menuItemHeight) + (2 * menuSeparators);
+    const menuWidth = 200; // 菜单宽度
+    
+    // 智能定位：避免菜单超出屏幕
+    let menuX = event.clientX;
+    let menuY = event.clientY;
+    
+    // 水平定位调整
+    if (menuX + menuWidth > windowWidth) {
+        menuX = Math.max(0, event.clientX - menuWidth);
+    }
+    
+    // 垂直定位调整
+    if (menuY + estimatedMenuHeight > windowHeight) {
+        menuY = Math.max(0, event.clientY - estimatedMenuHeight);
+    }
+    
+    contextMenuX.value = menuX;
+    contextMenuY.value = menuY;
     contextMenuVisible.value = true;
 };
 
@@ -320,6 +411,51 @@ const closeLyric = () => {
         window.electronAPI.closeLyricWindow();
     }
     hideContextMenu();
+};
+
+// 歌词显示模式切换
+const selectLyricType = (type) => {
+    selectedLyricType.value = type;
+    hideContextMenu();
+};
+
+// 自动选择最佳歌词类型（当歌曲切换时调用）
+const autoSelectLyricType = () => {
+    if (selectedLyricType.value !== 'auto') return; // 如果用户手动选择了类型，不自动切换
+    
+    if (!lyricsArray.value || lyricsArray.value.length === 0) return;
+    
+    // 检查第一句歌词来决定默认选择
+    const firstLyric = lyricsArray.value[0];
+    if (!firstLyric) return;
+    
+    // 翻译优先，没有翻译则选原歌词
+    if (firstLyric.tlyric && firstLyric.tlyric.trim()) {
+        // 有翻译，保持auto模式即可
+        return;
+    } else if (firstLyric.lyric && firstLyric.lyric.trim()) {
+        // 没有翻译但有原歌词，保持auto模式即可
+        return;
+    }
+};
+
+// 获取当前歌词对象
+const getCurrentLyricObj = () => {
+    if (!lyricsArray.value || lyricsArray.value.length === 0) return null;
+    if (currentLyricIndex.value < 0 || currentLyricIndex.value >= lyricsArray.value.length) {
+        return lyricsArray.value[0];
+    }
+    return lyricsArray.value[currentLyricIndex.value];
+};
+
+// 检查当前歌曲是否有特定类型的歌词
+const hasLyricType = (type) => {
+    if (!lyricsArray.value || lyricsArray.value.length === 0) return false;
+    
+    const checkField = type === 'original' ? 'lyric' : 
+                      type === 'trans' ? 'tlyric' : 'rlyric';
+    
+    return lyricsArray.value.some(item => item[checkField] && item[checkField].trim() !== '');
 };
 
 // 生命周期
@@ -776,12 +912,26 @@ onUnmounted(() => {
 .arknights-context-menu {
     position: fixed;
     min-width: 200px;
+    max-width: 250px;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(20px);
     border: 2px solid rgba(0, 0, 0, 0.2);
     border-radius: 0; // 直角设计
-    z-index: 10000;
+    z-index: 999999; // 极高层级确保显示在最顶层
     -webkit-app-region: no-drag;
+    
+    // 确保菜单可以超出父容器和窗口边界
+    overflow-x: hidden; // 隐藏水平滚动条
+    overflow-y: auto; // 保持垂直滚动
+    
+    // 最大高度限制，防止菜单过长
+    max-height: 85vh;
+    
+    // 确保菜单内容完整显示
+    box-sizing: border-box;
+    
+    // 防止菜单内容被截断
+    contain: none;
 
     animation: menuSlideIn 0.4s cubic-bezier(0.4, 0, 0.12, 1) forwards;
 
@@ -803,7 +953,14 @@ onUnmounted(() => {
     .menu-header {
         padding: 12px 16px 8px;
         border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-        background: rgba(0, 0, 0, 0.05);
+        // 与桌面歌词一致的明日方舟蓝绿色渐变背景，更浅的色调
+        background: linear-gradient(rgba(176, 209, 217, 0.75) -20%, rgba(176, 209, 217, 0.60) 50%, rgba(176, 209, 217, 0.75) 120%);
+        backdrop-filter: blur(8px); // 添加模糊效果增强遮盖效果
+        flex-shrink: 0; // 防止头部被压缩
+        position: sticky;
+        top: 0;
+        z-index: 10; // 提高z-index确保标题始终在最上层
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); // 添加阴影增强层次感
 
         .menu-title {
             font-family: 'Bender-Bold', monospace;
@@ -823,21 +980,28 @@ onUnmounted(() => {
 
     .menu-content {
         padding: 8px 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0; // 允许内容收缩
     }
 
     .menu-item {
         display: flex;
         align-items: center;
-        padding: 10px 16px;
+        padding: 8px 20px 8px 16px; // 右边多留4px空间给偏移动画
         cursor: pointer;
         transition: all 0.2s ease;
         gap: 12px;
         position: relative;
         -webkit-app-region: no-drag;
+        flex-shrink: 0; // 防止菜单项被压缩
+        min-height: 36px; // 设置最小高度
+        box-sizing: border-box; // 确保padding不会导致溢出
 
         &:hover {
             background: rgba(0, 0, 0, 0.1);
-            transform: translateX(4px);
+            transform: translateX(4px); // 恢复向右偏移动画
+            padding-right: 16px; // hover时减少右padding保持总宽度不变
 
             .item-icon {
                 transform: scale(1.1);
@@ -863,6 +1027,7 @@ onUnmounted(() => {
             width: 16px;
             text-align: center;
             transition: all 0.2s ease;
+            flex-shrink: 0; // 防止图标被压缩
         }
 
         .item-text {
@@ -872,6 +1037,9 @@ onUnmounted(() => {
             color: #000000;
             letter-spacing: 0.5px;
             flex: 1;
+            white-space: nowrap; // 防止文字换行
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .item-indicator {
@@ -891,11 +1059,40 @@ onUnmounted(() => {
     .menu-separator {
         margin: 4px 0;
         padding: 0 16px;
+        flex-shrink: 0; // 防止分隔符被压缩
 
         .separator-line {
             height: 1px;
             background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.3), transparent);
         }
+    }
+
+    // 自定义滚动条样式
+    &::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 0;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.4);
+        border-radius: 0;
+        
+        &:hover {
+            background: rgba(0, 0, 0, 0.6);
+        }
+        
+        &:active {
+            background: rgba(0, 0, 0, 0.8);
+        }
+    }
+
+    // 滚动条角落
+    &::-webkit-scrollbar-corner {
+        background: transparent;
     }
 }
 

@@ -64,6 +64,22 @@ const checkIsLike = computed(() => id => {
     return userStore.likelist.includes(id);
 });
 
+// 智能判断当前歌曲有哪些类型的歌词
+const hasOriginalLyric = computed(() => {
+    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return false;
+    return lyricsObjArr.value.some(item => item.lyric && item.lyric.trim() !== '');
+});
+
+const hasTransLyric = computed(() => {
+    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return false;
+    return lyricsObjArr.value.some(item => item.tlyric && item.tlyric.trim() !== '');
+});
+
+const hasRomaLyric = computed(() => {
+    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return false;
+    return lyricsObjArr.value.some(item => item.rlyric && item.rlyric.trim() !== '');
+});
+
 const toAlbum = () => {
     const currentSong = songList.value?.[currentIndex.value];
     if (currentSong?.type != 'local') {
@@ -278,9 +294,10 @@ const backToVideo = () => {
                         p-id="16256"
                     ></path>
                 </svg>
+                <!-- 罗马音歌词图标 - 只有在当前歌曲有罗马音歌词时才显示 -->
                 <svg
                     t="1673182533775"
-                    v-show="lyricType.indexOf('roma') != -1 && lyricType.indexOf('noRoma') == -1"
+                    v-show="hasRomaLyric && lyricType.indexOf('roma') != -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.splice(lyricType.indexOf('roma'), 1)"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -298,7 +315,7 @@ const backToVideo = () => {
                 </svg>
                 <svg
                     t="1673182533775"
-                    v-show="lyricType.indexOf('roma') == -1 && lyricType.indexOf('noRoma') == -1"
+                    v-show="hasRomaLyric && lyricType.indexOf('roma') == -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.push('roma')"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -314,9 +331,10 @@ const backToVideo = () => {
                         fill="#8a8a8a"
                     ></path>
                 </svg>
+                <!-- 翻译歌词图标 - 只有在当前歌曲有翻译歌词时才显示 -->
                 <svg
                     t="1673182625534"
-                    v-show="lyricType.indexOf('trans') != -1 && lyricType.indexOf('noTrans') == -1"
+                    v-show="hasTransLyric && lyricType.indexOf('trans') != -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.splice(lyricType.indexOf('trans'), 1)"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -334,7 +352,7 @@ const backToVideo = () => {
                 </svg>
                 <svg
                     t="1673182625534"
-                    v-show="lyricType.indexOf('trans') == -1 && lyricType.indexOf('noTrans') == -1"
+                    v-show="hasTransLyric && lyricType.indexOf('trans') == -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.push('trans')"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -350,9 +368,10 @@ const backToVideo = () => {
                         p-id="49287"
                     ></path>
                 </svg>
+                <!-- 原歌词图标 - 只有在当前歌曲有原歌词时才显示 -->
                 <svg
                     t="1673182198291"
-                    v-show="lyricType.indexOf('original') != -1 && lyricType.indexOf('noOriginal') == -1"
+                    v-show="hasOriginalLyric && lyricType.indexOf('original') != -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.splice(lyricType.indexOf('original'), 1)"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -380,7 +399,7 @@ const backToVideo = () => {
                 </svg>
                 <svg
                     t="1673182198291"
-                    v-show="lyricType.indexOf('original') == -1 && lyricType.indexOf('noOriginal') == -1"
+                    v-show="hasOriginalLyric && lyricType.indexOf('original') == -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.push('original')"
                     class="icon"
                     viewBox="0 0 1024 1024"
