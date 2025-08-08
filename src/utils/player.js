@@ -91,7 +91,8 @@ export function play(url, autoplay) {
     })
     currentMusic.value.once('load', () => {
         time.value = Math.floor(currentMusic.value.duration())
-        if(loadLast) {
+        // 仅在非自动播放（恢复会话）时恢复上次进度
+        if(loadLast && !autoplay) {
             currentMusic.value.volume(0)
             currentMusic.value.seek(progress.value)
             loadLast = false
@@ -220,6 +221,8 @@ export function loadMusicVideo(id) {
 }
 
 export function addSong(id, index, autoplay, isLocal) {
+    // 主动切歌：从头开始播放，不恢复上次进度
+    loadLast = false
     progress.value = 0
     if(lyricShow.value) {
         lyricShow.value = false

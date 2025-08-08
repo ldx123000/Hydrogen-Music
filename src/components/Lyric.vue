@@ -86,13 +86,21 @@ const setMaxHeight = change => {
 };
 
 const setDefaultStyle = () => {
-    lycCurrentIndex.value = -1;
+    lycCurrentIndex.value = currentLyricIndex.value >= 0 ? currentLyricIndex.value : -1;
     interludeAnimation.value = false;
     lyricEle.value = document.getElementsByClassName('lyric-line');
     initMax = 0;
     setMaxHeight(false);
     minHeightVal.value = 0;
     lineOffset.value = initOffset;
+    
+    // 如果有当前歌词索引，立即同步位置
+    if (lycCurrentIndex.value >= 0 && size > 0) {
+        setTimeout(() => {
+            syncLyricPosition();
+        }, 50);
+    }
+    
     if (!lyricShow.value && !widgetState.value) {
         const changeTimer = setTimeout(() => {
             lyricShow.value = true;
@@ -114,10 +122,12 @@ watch(
     }
 );
 
+// 增强版的当前歌词索引监听
 const { currentLyricIndex } = storeToRefs(playerStore);
-watch(currentLyricIndex, newIndex => {
+watch(currentLyricIndex, (newIndex) => {
     lycCurrentIndex.value = newIndex;
-    // The rest of the logic for scrolling and animations remains here
+    
+    // 确保DOM元素存在后再进行滚动
     if (lyricEle.value && lyricEle.value[newIndex] && lyricEle.value[newIndex].offsetParent !== null) {
         let offset = 0;
         for (let i = 0; i <= newIndex; i++) {
@@ -126,10 +136,8 @@ watch(currentLyricIndex, newIndex => {
         lineOffset.value = initOffset - offset;
         minHeightVal.value = offset;
         maxHeightVal.value = initMax + offset;
-
-        // ... Interlude logic can also be triggered here if needed
     }
-});
+}, { immediate: true }); // 添加 immediate 选项确保立即执行
 
 const changeProgressLyc = (time, index) => {
     lyricScrollArea.value.style.height = initMax + 'Px';
@@ -146,6 +154,36 @@ const changeProgressLyc = (time, index) => {
     changeProgress(time);
 };
 
+// 同步当前歌词位置的函数
+const syncLyricPosition = () => {
+    if (lycCurrentIndex.value !== null && lycCurrentIndex.value >= 0 && lyricEle.value && lyricEle.value[lycCurrentIndex.value]) {
+        let offset = (lycCurrentIndex.value + 1) * size;
+        lineOffset.value = initOffset - offset;
+        minHeightVal.value = offset;
+        maxHeightVal.value = initMax + offset;
+        // 确保歌词容器高度正确
+        if (lyricScrollArea.value) {
+            lyricScrollArea.value.style.height = initMax + 'Px';
+            heightVal.value = initMax;
+        }
+        // 重置为激活状态
+        isLyricActive.value = true;
+    }
+};
+
+// 监听歌词显示状态变化，当重新显示歌词时同步位置
+watch(
+    () => lyricShow.value,
+    (newVal) => {
+        if (newVal) {
+            // 当歌词重新显示时，延迟同步位置以确保DOM已更新
+            setTimeout(() => {
+                syncLyricPosition();
+            }, 100);
+        }
+    }
+);
+
 onMounted(() => {
     lyricScroll.value.addEventListener('wheel', e => {
         isLyricActive.value = false;
@@ -158,12 +196,22 @@ onMounted(() => {
 
         clearTimeout(pauseActiveTimer.value);
         pauseActiveTimer.value = setTimeout(() => {
-            isLyricActive.value = true;
-            lyricScrollArea.value.style.height = initMax + 'Px';
-            heightVal.value = initMax;
-            clearTimeout(pauseActiveTimer.value);
+            syncLyricPosition();
         }, 3000);
     });
+    
+    // 组件挂载后立即检查并同步歌词位置
+    setTimeout(() => {
+        if (lyricsObjArr.value && lyricsObjArr.value.length > 0) {
+            setDefaultStyle();
+            // 如果有当前歌词索引，确保同步到正确位置
+            if (currentLyricIndex.value >= 0) {
+                setTimeout(() => {
+                    syncLyricPosition();
+                }, 100);
+            }
+        }
+    }, 100);
 });
 </script>
 

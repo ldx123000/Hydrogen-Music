@@ -4,12 +4,34 @@ import Lyric from '../components/Lyric.vue';
 import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
-import { ref } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 const playerStore = usePlayerStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
 const rightPanelMode = ref(0);
+const lyricKey = ref(0);
+
+// 监听面板模式变化，当切换到歌词时刷新歌词组件
+watch(rightPanelMode, (newMode, oldMode) => {
+    if (newMode === 0 && oldMode === 1) {
+        // 从评论区切换到歌词时，强制刷新歌词组件
+        lyricKey.value++;
+        
+        // 确保 lyricShow 状态正确，并触发歌词位置同步
+        nextTick(() => {
+            playerStore.lyricShow = true;
+            // 触发当前歌词索引的重新设置，确保组件能同步到正确位置
+            if (playerStore.currentLyricIndex >= 0) {
+                const currentIndex = playerStore.currentLyricIndex;
+                playerStore.currentLyricIndex = -1;
+                setTimeout(() => {
+                    playerStore.currentLyricIndex = currentIndex;
+                }, 50);
+            }
+        });
+    }
+});
 </script>
 
 <template>
@@ -24,7 +46,7 @@ const rightPanelMode = ref(0);
         <div class="right-panel" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
             <!-- 内容区域 -->
             <Transition name="panel-switch" mode="out-in">
-                <Lyric class="lyric-container" v-if="rightPanelMode === 0" key="lyric"></Lyric>
+                <Lyric class="lyric-container" v-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
                 <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments"></Comments>
             </Transition>
         </div>
