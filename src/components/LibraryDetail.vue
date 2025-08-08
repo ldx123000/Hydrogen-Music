@@ -6,7 +6,7 @@
   import { subPlaylist } from '../api/playlist';
   import { subAlbum } from '../api/album'
   import { subArtist } from '../api/artist';
-  import dayjs from 'dayjs'
+  import { formatTime } from '../utils/time'
   import { playAll } from '../utils/player';
   import LibrarySongList from './LibrarySongList.vue';
   import LibraryAlbumList from './LibraryAlbumList.vue';
@@ -83,7 +83,7 @@
 
   //歌单日期
   const createTime = computed(() => {
-    return dayjs(libraryInfo.value.createTime || libraryInfo.value.publishTime).format("YYYY-MM-DD")
+    return formatTime(libraryInfo.value.createTime || libraryInfo.value.publishTime, "YYYY-MM-DD")
   })
 
   //如果是歌手页面，可以更换下面的类型

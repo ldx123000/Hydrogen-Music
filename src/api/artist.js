@@ -1,120 +1,87 @@
-import request from "../utils/request";
+import { get, getById, getWithPagination, operationRequest } from "./base";
+import { buildTypeParams, buildIdWithTimestamp, buildOperationParams, buildPaginationParams } from "./params";
 
 /**
- * 调用此接口获取排行榜中的歌手榜
- * type : 1:华语 2:欧美 3:韩国 4:日本
- * @param {number} type
- * @returns 
+ * 获取排行榜中的歌手榜
+ * @param {number} type - 1:华语 2:欧美 3:韩国 4:日本
  */
- export function getRecommendedArtists(type) {
-    return request({
-        url: '/top/artists',
-        method: 'get',
-        params: {
-            type: type,
-        }
-    })
+export function getRecommendedArtists(type) {
+    return get('/top/artists', buildTypeParams(type));
 }
 
 /**
- * 收藏的歌手列表
- * 说明 : 调用此接口,可获取收藏的歌手列表
- * @param {*} type 
- * @returns 
+ * 获取收藏的歌手列表
  */
- export function getUserSubArtists() {
-    return request({
-        url: '/artist/sublist',
-        method: 'get',
-        params: {
-            // timestamp: new Date().getTime(),
-        }
-    })
+export function getUserSubArtists() {
+    return get('/artist/sublist', {});
 }
 
 /**
- * 说明 : 调用此接口 , 传入歌手 id, 可获得获取歌手详情
- * @returns 
+ * 获取歌手详情和热门歌曲
+ * @param {string|number} id - 歌手ID
+ * @param {object} extraParams - 额外参数
  */
-//  export function getArtistDetail(params) {
-//     return request({
-//         url: '/artist/detail',
-//         method: 'get',
-//         params,
-//     })
-// }
-
-/**
- * 说明 : 调用此接口 , 传入歌手 id, 可获得歌手部分信息和热门歌曲
- * 必选参数 : id: 歌手 id, 可由搜索接口获得
- * @param {*} params 
- * @returns 
- */
- export function getArtistDetail(params) {
-    return request({
-        url: '/artists',
-        method: 'get',
-        params,
-    })
+export function getArtistDetail(id, extraParams = {}) {
+    // 支持旧的调用方式（传入params对象）
+    if (typeof id === 'object') {
+        return get('/artists', id);
+    }
+    return getById('/artists', id, extraParams, false);
 }
 
 /**
- * 说明 : 调用此接口,可获取歌手热门 50 首歌曲
- * @param {*} params 
- * @returns 
+ * 获取歌手热门50首歌曲
+ * @param {string|number} id - 歌手ID
+ * @param {object} extraParams - 额外参数
  */
-export function getArtistTopSong(params) {
-    return request({
-        url: '/artist/top/song',
-        method: 'get',
-        params,
-    })
+export function getArtistTopSong(id, extraParams = {}) {
+    // 支持旧的调用方式（传入params对象）
+    if (typeof id === 'object') {
+        return get('/artist/top/song', id);
+    }
+    return getById('/artist/top/song', id, extraParams, false);
 }
 
 /**
- * 说明 : 调用此接口 , 传入歌手 id, 可获得歌手专辑内容
- * 必选参数 : id: 歌手 id
- * 可选参数 : limit: 取出数量 , 默认为 30
- * offset: 偏移数量 , 用于分页 , 如 :( 页数 -1)*30, 其中 30 为 limit 的值 , 默认 为 0
- * @param {*} params 
- * @returns 
+ * 获取歌手专辑列表
+ * @param {string|number} id - 歌手ID
+ * @param {object} options - 选项
+ * @param {number} options.limit - 取出数量，默认30
+ * @param {number} options.offset - 偏移数量，默认0
  */
-export function getArtistAlbum(params) {
-    return request({
-        url: '/artist/album',
-        method: 'get',
-        params,
-    })
+export function getArtistAlbum(id, { limit = 30, offset = 0, ...extraParams } = {}) {
+    // 支持旧的调用方式（传入params对象）
+    if (typeof id === 'object') {
+        return get('/artist/album', id);
+    }
+    const paginationParams = buildPaginationParams(
+        offset ? Math.floor(offset / limit) + 1 : 1,
+        limit
+    );
+    return get('/artist/album', { id, ...paginationParams, ...extraParams });
 }
 
 /**
- * 说明 : 调用此接口 , 传入歌手 id, 可获取歌手粉丝数量
- * @param {*} params 
- * @returns 
+ * 获取歌手粉丝数量
+ * @param {string|number} id - 歌手ID
+ * @param {object} extraParams - 额外参数
  */
-export function getArtistFansCount(id) {
-    return request({
-        url: '/artist/follow/count',
-        method: 'get',
-        params: {
-            id: id,
-            timestamp: new Date().getTime(),
-        }
-    })
+export function getArtistFansCount(id, extraParams = {}) {
+    const params = buildIdWithTimestamp(id, extraParams);
+    return get('/artist/follow/count', params);
 }
 
 /**
- * 说明 : 调用此接口,可收藏歌手
- * 必选参数 :
- * id : 歌手 id
- * t:操作,1 为收藏,其他为取消收藏
- * @param {*} params 
- * @returns 
+ * 收藏/取消收藏歌手
+ * @param {string|number} id - 歌手ID
+ * @param {boolean} isSubscribe - true为收藏，false为取消收藏
+ * @param {object} extraParams - 额外参数
  */
-export function subArtist(params) {
-    return request({
-        url: '/artist/sub',
-        method: 'get',
-        params,
-    })
+export function subArtist(id, isSubscribe = true, extraParams = {}) {
+    // 支持旧的调用方式（传入params对象）
+    if (typeof id === 'object') {
+        return get('/artist/sub', id);
+    }
+    const params = buildOperationParams(id, isSubscribe, extraParams);
+    return get('/artist/sub', params);
 }

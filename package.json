@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "axios": "^1.2.0",
-    "dayjs": "^1.11.6",
     "electron-store": "^8.1.0",
     "electron-updater": "^5.3.0",
     "electron-win-state": "^1.1.22",
@@ -29,7 +28,6 @@
     "music-metadata": "^7.13.0",
     "nanoid": "^3.3.4",
     "NeteaseCloudMusicApi": "^4.8.9",
-    "normalize.css": "^8.0.1",
     "pinia": "^2.0.23",
     "pinia-plugin-persistedstate": "^3.0.1",
     "plyr": "^3.7.3",

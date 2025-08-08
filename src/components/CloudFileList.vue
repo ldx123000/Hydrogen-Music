@@ -1,6 +1,6 @@
 <script setup>
   import { ref } from 'vue'
-  import dayjs from 'dayjs';
+  import { formatTime } from '../utils/time';
   import { dialogOpen, noticeOpen } from '../utils/dialog';
   import { deleteCloudSong } from '../api/cloud';
   import { addSong, setShuffledList } from '../utils/player';
@@ -60,7 +60,7 @@
   }
 
   const addTime = (time) => {
-    return dayjs(time).format("YYYY-MM-DD HH:mm:ss")
+    return formatTime(time, "YYYY-MM-DD HH:mm:ss")
   }
   const play = (id, index) => {
     let list = []

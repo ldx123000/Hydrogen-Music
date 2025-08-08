@@ -5,6 +5,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
 import { storeToRefs } from 'pinia';
 import { noticeOpen } from '../utils/dialog';
+import CommentText from './CommentText.vue';
 
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
@@ -150,6 +151,17 @@ const cancelReply = () => {
     newComment.value = '';
 };
 
+// 处理复制成功
+const handleCopySuccess = text => {
+    noticeOpen('评论已复制到剪贴板', 1);
+};
+
+// 处理复制失败
+const handleCopyError = error => {
+    noticeOpen('复制失败，请手动选择文字复制', 2);
+    console.warn('复制评论失败:', error);
+};
+
 // 格式化时间
 const formatTime = timestamp => {
     const now = Date.now();
@@ -212,32 +224,22 @@ onMounted(() => {
         </div>
 
         <!-- 发表评论区域 -->
-        <div class="comment-input-section" v-if="userStore.user && (!replyingTo)">
+        <div class="comment-input-section" v-if="userStore.user && !replyingTo">
             <div class="input-frame">
                 <div class="frame-corner frame-tl"></div>
                 <div class="frame-corner frame-tr"></div>
                 <div class="frame-corner frame-bl"></div>
                 <div class="frame-corner frame-br"></div>
-                
+
                 <div class="input-content">
                     <div class="input-wrapper">
-                        <textarea 
-                            v-model="newComment" 
-                            class="comment-textarea" 
-                            placeholder="INPUT YOUR COMMENT..."
-                            :disabled="submitting" 
-                            @keydown.enter.ctrl="submitComment"
-                        ></textarea>
+                        <textarea v-model="newComment" class="comment-textarea" placeholder="INPUT YOUR COMMENT..." :disabled="submitting" @keydown.enter.ctrl="submitComment"></textarea>
                         <div class="input-border"></div>
                     </div>
-                    
+
                     <div class="input-actions">
                         <span class="shortcut-hint">CTRL+ENTER</span>
-                        <button 
-                            class="submit-button" 
-                            @click="submitComment" 
-                            :disabled="!newComment.trim() || submitting"
-                        >
+                        <button class="submit-button" @click="submitComment" :disabled="!newComment.trim() || submitting">
                             <span>{{ submitting ? 'SENDING...' : 'SEND' }}</span>
                         </button>
                     </div>
@@ -274,7 +276,7 @@ onMounted(() => {
                         <div class="frame-corner frame-bl"></div>
                         <div class="frame-corner frame-br"></div>
                     </div>
-                    
+
                     <div class="card-content">
                         <div class="comment-meta">
                             <div class="user-avatar">
@@ -287,13 +289,15 @@ onMounted(() => {
                             </div>
                         </div>
 
-                        <div class="comment-body">{{ comment.content }}</div>
+                        <CommentText :text="comment.content" :enable-emoji="true" :copyable="true" :show-copy-button="false" @copy-success="handleCopySuccess" @copy-error="handleCopyError" />
 
                         <div class="comment-controls">
                             <div class="control-item like-control" :class="{ active: comment.liked }" @click="toggleLikeComment(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
-                                        <path d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z" />
+                                        <path
+                                            d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z"
+                                        />
                                     </svg>
                                 </div>
                                 <span class="control-text">{{ comment.likedCount > 0 ? comment.likedCount : 'LIKE' }}</span>
@@ -302,13 +306,15 @@ onMounted(() => {
                             <div class="control-item reply-control" @click="toggleReply(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
-                                        <path d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z" />
+                                        <path
+                                            d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z"
+                                        />
                                     </svg>
                                 </div>
                                 <span class="control-text">REPLY</span>
                             </div>
                         </div>
-                        
+
                         <!-- 内联回复框 -->
                         <div class="inline-reply-box" v-if="replyingTo && replyingTo.commentId === comment.commentId">
                             <div class="reply-frame">
@@ -317,38 +323,24 @@ onMounted(() => {
                                 <div class="frame-corner frame-bl"></div>
                                 <div class="frame-corner frame-br"></div>
                             </div>
-                            
+
                             <div class="reply-content">
                                 <div class="reply-header">
                                     <span class="reply-prefix">REPLY TO</span>
                                     <span class="reply-target">{{ comment.user.nickname }}</span>
-                                    <div class="close-reply" @click="cancelReply()">
-                                        ×
-                                    </div>
+                                    <div class="close-reply" @click="cancelReply()">×</div>
                                 </div>
-                                
+
                                 <div class="reply-input-wrapper">
-                                    <textarea 
-                                        v-model="newComment" 
-                                        class="reply-textarea" 
-                                        placeholder="INPUT YOUR REPLY..."
-                                        :disabled="submitting" 
-                                        @keydown.enter.ctrl="submitComment"
-                                    ></textarea>
+                                    <textarea v-model="newComment" class="reply-textarea" placeholder="INPUT YOUR REPLY..." :disabled="submitting" @keydown.enter.ctrl="submitComment"></textarea>
                                     <div class="reply-input-border"></div>
                                 </div>
-                                
+
                                 <div class="reply-actions">
                                     <span class="reply-shortcut-hint">CTRL+ENTER</span>
                                     <div class="reply-buttons">
-                                        <button class="cancel-reply-btn" @click="cancelReply()">
-                                            CANCEL
-                                        </button>
-                                        <button 
-                                            class="send-reply-btn" 
-                                            @click="submitComment" 
-                                            :disabled="!newComment.trim() || submitting"
-                                        >
+                                        <button class="cancel-reply-btn" @click="cancelReply()">CANCEL</button>
+                                        <button class="send-reply-btn" @click="submitComment" :disabled="!newComment.trim() || submitting">
                                             {{ submitting ? 'SENDING...' : 'SEND' }}
                                         </button>
                                     </div>
@@ -378,7 +370,7 @@ onMounted(() => {
                         <div class="frame-corner frame-bl"></div>
                         <div class="frame-corner frame-br"></div>
                     </div>
-                    
+
                     <div class="card-content">
                         <div class="comment-meta">
                             <div class="user-avatar">
@@ -391,13 +383,15 @@ onMounted(() => {
                             </div>
                         </div>
 
-                        <div class="comment-body">{{ comment.content }}</div>
+                        <CommentText :text="comment.content" :enable-emoji="true" :copyable="true" :show-copy-button="false" @copy-success="handleCopySuccess" @copy-error="handleCopyError" />
 
                         <div class="comment-controls">
                             <div class="control-item like-control" :class="{ active: comment.liked }" @click="toggleLikeComment(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
-                                        <path d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z" />
+                                        <path
+                                            d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z"
+                                        />
                                     </svg>
                                 </div>
                                 <span class="control-text">{{ comment.likedCount > 0 ? comment.likedCount : 'LIKE' }}</span>
@@ -406,13 +400,15 @@ onMounted(() => {
                             <div class="control-item reply-control" @click="toggleReply(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
-                                        <path d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z" />
+                                        <path
+                                            d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z"
+                                        />
                                     </svg>
                                 </div>
                                 <span class="control-text">REPLY</span>
                             </div>
                         </div>
-                        
+
                         <!-- 内联回复框 -->
                         <div class="inline-reply-box" v-if="replyingTo && replyingTo.commentId === comment.commentId">
                             <div class="reply-frame">
@@ -421,38 +417,24 @@ onMounted(() => {
                                 <div class="frame-corner frame-bl"></div>
                                 <div class="frame-corner frame-br"></div>
                             </div>
-                            
+
                             <div class="reply-content">
                                 <div class="reply-header">
                                     <span class="reply-prefix">REPLY TO</span>
                                     <span class="reply-target">{{ comment.user.nickname }}</span>
-                                    <div class="close-reply" @click="cancelReply()">
-                                        ×
-                                    </div>
+                                    <div class="close-reply" @click="cancelReply()">×</div>
                                 </div>
-                                
+
                                 <div class="reply-input-wrapper">
-                                    <textarea 
-                                        v-model="newComment" 
-                                        class="reply-textarea" 
-                                        placeholder="INPUT YOUR REPLY..."
-                                        :disabled="submitting" 
-                                        @keydown.enter.ctrl="submitComment"
-                                    ></textarea>
+                                    <textarea v-model="newComment" class="reply-textarea" placeholder="INPUT YOUR REPLY..." :disabled="submitting" @keydown.enter.ctrl="submitComment"></textarea>
                                     <div class="reply-input-border"></div>
                                 </div>
-                                
+
                                 <div class="reply-actions">
                                     <span class="reply-shortcut-hint">CTRL+ENTER</span>
                                     <div class="reply-buttons">
-                                        <button class="cancel-reply-btn" @click="cancelReply()">
-                                            CANCEL
-                                        </button>
-                                        <button 
-                                            class="send-reply-btn" 
-                                            @click="submitComment" 
-                                            :disabled="!newComment.trim() || submitting"
-                                        >
+                                        <button class="cancel-reply-btn" @click="cancelReply()">CANCEL</button>
+                                        <button class="send-reply-btn" @click="submitComment" :disabled="!newComment.trim() || submitting">
                                             {{ submitting ? 'SENDING...' : 'SEND' }}
                                         </button>
                                     </div>
@@ -538,7 +520,7 @@ onMounted(() => {
 
     &::-webkit-scrollbar-thumb {
         background: rgba(0, 0, 0, 0.4);
-        
+
         &:hover {
             background: rgba(0, 0, 0, 0.6);
         }
@@ -551,28 +533,28 @@ onMounted(() => {
     width: 8px;
     height: 8px;
     border: 2px solid #000;
-    
+
     &.frame-tl {
         top: -1px;
         left: -1px;
         border-bottom: none;
         border-right: none;
     }
-    
+
     &.frame-tr {
         top: -1px;
         right: -1px;
         border-bottom: none;
         border-left: none;
     }
-    
+
     &.frame-bl {
         bottom: -1px;
         left: -1px;
         border-top: none;
         border-right: none;
     }
-    
+
     &.frame-br {
         bottom: -1px;
         right: -1px;
@@ -688,7 +670,7 @@ onMounted(() => {
         font-size: 14px;
         color: #000;
         resize: vertical;
-        
+
         &::placeholder {
             color: rgba(0, 0, 0, 0.4);
             font-family: Bender-Bold, monospace;
@@ -698,7 +680,7 @@ onMounted(() => {
 
         &:focus {
             background: rgba(255, 255, 255, 0.8);
-            
+
             + .input-border {
                 border-color: #000;
             }
@@ -844,7 +826,7 @@ onMounted(() => {
 
     &.hot-card {
         background: rgba(255, 248, 225, 0.4);
-        
+
         &:hover {
             background: rgba(255, 248, 225, 0.6);
         }
@@ -915,8 +897,8 @@ onMounted(() => {
     }
 }
 
-// 评论内容
-.comment-body {
+// 评论内容 - 更新为适配CommentText组件
+.comment-text {
     font-family: SourceHanSansCN-Bold;
     font-size: 14px;
     color: rgba(0, 0, 0, 0.85);
@@ -924,6 +906,27 @@ onMounted(() => {
     margin-bottom: 12px;
     word-break: break-word;
     text-align: left;
+    user-select: text;
+    cursor: text;
+
+    // 表情样式优化
+    :deep(.emoji) {
+        font-size: 16px;
+        vertical-align: middle;
+        margin: 0 1px;
+        display: inline-block;
+        animation: none;
+        transition: transform 0.2s ease;
+    }
+
+    :deep(.emoji:hover) {
+        transform: scale(1.1);
+    }
+
+    // 移除悬停时的复制提示
+    &:hover {
+        position: relative;
+    }
 }
 
 // 评论控制按钮
@@ -948,11 +951,11 @@ onMounted(() => {
 
         &.active {
             background: rgba(0, 0, 0, 0.15);
-            
+
             .control-icon svg {
                 fill: #ff4757;
             }
-            
+
             .control-text {
                 color: #ff4757;
             }
@@ -1073,7 +1076,7 @@ onMounted(() => {
     background: rgba(255, 255, 255, 0.15);
     border: 1px solid rgba(0, 0, 0, 0.1);
     position: relative;
-    
+
     .reply-frame {
         position: absolute;
         top: 0;
@@ -1082,12 +1085,12 @@ onMounted(() => {
         bottom: 0;
         pointer-events: none;
     }
-    
+
     .reply-content {
         position: relative;
         padding: 16px;
     }
-    
+
     .reply-header {
         display: flex;
         align-items: center;
@@ -1095,7 +1098,7 @@ onMounted(() => {
         padding: 6px 10px;
         background: rgba(0, 0, 0, 0.05);
         border-left: 2px solid #000;
-        
+
         .reply-prefix {
             font-family: Bender-Bold, monospace;
             font-size: 9px;
@@ -1103,7 +1106,7 @@ onMounted(() => {
             margin-right: 8px;
             letter-spacing: 1px;
         }
-        
+
         .reply-target {
             font-family: SourceHanSansCN-Bold;
             font-size: 11px;
@@ -1111,7 +1114,7 @@ onMounted(() => {
             font-weight: bold;
             flex: 1;
         }
-        
+
         .close-reply {
             width: 18px;
             height: 18px;
@@ -1124,19 +1127,19 @@ onMounted(() => {
             font-size: 14px;
             line-height: 1;
             transition: all 0.2s;
-            
+
             &:hover {
                 background: rgba(0, 0, 0, 0.2);
                 transform: scale(1.1);
             }
         }
     }
-    
+
     .reply-input-wrapper {
         position: relative;
         margin-bottom: 12px;
     }
-    
+
     .reply-textarea {
         width: 100%;
         min-height: 60px;
@@ -1148,23 +1151,23 @@ onMounted(() => {
         font-size: 13px;
         color: #000;
         resize: vertical;
-        
+
         &::placeholder {
             color: rgba(0, 0, 0, 0.4);
             font-family: Bender-Bold, monospace;
             font-size: 11px;
             letter-spacing: 0.5px;
         }
-        
+
         &:focus {
             background: rgba(255, 255, 255, 0.8);
-            
+
             + .reply-input-border {
                 border-color: #000;
             }
         }
     }
-    
+
     .reply-input-border {
         position: absolute;
         top: 0;
@@ -1175,24 +1178,24 @@ onMounted(() => {
         pointer-events: none;
         transition: border-color 0.2s;
     }
-    
+
     .reply-actions {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        
+
         .reply-shortcut-hint {
             font-family: Bender-Bold, monospace;
             font-size: 9px;
             color: rgba(0, 0, 0, 0.5);
             letter-spacing: 0.5px;
         }
-        
+
         .reply-buttons {
             display: flex;
             gap: 8px;
         }
-        
+
         .cancel-reply-btn,
         .send-reply-btn {
             padding: 6px 12px;
@@ -1204,33 +1207,33 @@ onMounted(() => {
             letter-spacing: 0.5px;
             transition: all 0.2s;
             text-transform: uppercase;
-            
+
             &:hover {
                 transform: translateY(-1px);
             }
-            
+
             &:active {
                 transform: translateY(0);
             }
         }
-        
+
         .cancel-reply-btn {
             background: rgba(0, 0, 0, 0.1);
             color: rgba(0, 0, 0, 0.7);
-            
+
             &:hover {
                 background: rgba(0, 0, 0, 0.15);
             }
         }
-        
+
         .send-reply-btn {
             background: #000;
             color: #fff;
-            
+
             &:hover:not(:disabled) {
                 background: rgba(0, 0, 0, 0.8);
             }
-            
+
             &:disabled {
                 background: rgba(0, 0, 0, 0.3);
                 cursor: not-allowed;
@@ -1244,22 +1247,22 @@ onMounted(() => {
     .arknights-comments {
         padding: 16px;
     }
-    
+
     .comment-card .card-content {
         padding: 12px 16px;
     }
-    
+
     .comment-meta .user-avatar {
         img {
             width: 28px;
             height: 28px;
         }
     }
-    
+
     .header-title {
         font-size: 16px;
     }
-    
+
     .section-title {
         font-size: 12px;
     }

@@ -105,12 +105,10 @@ const lyricHandle = (arr, tarr, rarr) => {
 // 处理原始歌词数据，更新 lyricsObjArr
 const processLyricData = () => {
     if (!lyric.value) {
-        // console.log('没有歌词数据，清空 lyricsObjArr');
         playerStore.lyricsObjArr = [];
         return;
     }
 
-    // console.log('处理歌词数据:', lyric.value);
 
     try {
         if (lyric.value.lrc.lyric.indexOf('[') != -1) {
@@ -121,7 +119,6 @@ const processLyricData = () => {
                 lyric.value.romalrc && lyric.value.romalrc.lyric ? lyric.value.romalrc.lyric.split(regNewLine) : null
             );
             playerStore.lyricsObjArr = processedLyrics;
-            // console.log('处理后的歌词数组:', processedLyrics);
         } else {
             // 纯文本歌词
             let lineArr = lyric.value.lrc.lyric.split(regNewLine);
@@ -136,7 +133,6 @@ const processLyricData = () => {
             });
             processedLyrics.push({ lyric: '', time: Math.trunc(songList.value[currentIndex.value].dt / 1000) });
             playerStore.lyricsObjArr = processedLyrics;
-            // console.log('处理后的纯文本歌词:', processedLyrics);
         }
     } catch (error) {
         console.error('处理歌词数据出错:', error);
@@ -173,7 +169,6 @@ const sendCurrentLyricData = () => {
         const currentSong = hasData ? songList.value[currentIndex.value] : null;
 
         // 调试信息（可选，可以删除）
-        // console.log('发送桌面歌词数据:', {
         //     hasData,
         //     currentIndex: currentIndex.value,
         //     songListLength: songList.value ? songList.value.length : 0,
@@ -346,7 +341,6 @@ export const initDesktopLyric = () => {
     });
     
     unwatchCurrentIndex = watch(() => currentIndex.value, (newIndex, oldIndex) => {
-        // console.log('歌曲索引变化:', { oldIndex, newIndex, isDesktopLyricOpen: isDesktopLyricOpen.value });
         
         // 歌曲切换时，重新启动歌词行号计算（无论桌面歌词是否开启）
         if (playing.value) {
@@ -356,7 +350,6 @@ export const initDesktopLyric = () => {
         // 如果桌面歌词开启，发送新歌曲数据
         if (isDesktopLyricOpen.value) {
             setTimeout(() => {
-                // console.log('延迟后发送歌曲数据...');
                 sendCurrentLyricData();
             }, 500); // 增加延迟时间确保歌词数据已更新
             
@@ -396,7 +389,6 @@ export const initDesktopLyric = () => {
 
     // 监听原始歌词数据变化
     unwatchLyric = watch(() => lyric.value, (newLyric) => {
-        // console.log('原始歌词数据变化:', newLyric ? '有数据' : '无数据');
         processLyricData();
         if (isDesktopLyricOpen.value) {
             // 歌词更新后发送新数据

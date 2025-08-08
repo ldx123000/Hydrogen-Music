@@ -1,7 +1,7 @@
 import pinia from '../store/pinia'
 import Plyr from 'plyr'
 import { Howl } from 'howler'
-import dayjs from 'dayjs';
+import { formatDuration } from './time';
 import { noticeOpen } from './dialog'
 import { checkMusic, getMusicUrl, likeMusic, getLyric } from '../api/song'
 import { getLikelist, getUserPlaylist } from '../api/user'
@@ -11,7 +11,6 @@ import { usePlayerStore } from '../store/playerStore'
 import { useLibraryStore } from '../store/libraryStore'
 import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
-import duration from 'dayjs/plugin/duration'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -65,14 +64,14 @@ export function play(url, autoplay) {
                 // FM模式：根据当前播放模式决定行为
                 if(playMode.value == 2) {
                     // 单曲循环模式：重新播放当前歌曲
-                    console.log('FM mode: replaying current song (single loop)')
+                    // FM mode: replaying current song (single loop)
                     const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
                         detail: { action: 'loop' }
                     })
                     window.dispatchEvent(fmPlayModeEvent)
                 } else if(playMode.value == 3) {
                     // 随机播放模式：播放下一首漫游歌曲
-                    console.log('FM mode: playing next song (random/FM mode)')
+                    // FM mode: playing next song (random/FM mode)
                     const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
                         detail: { action: 'next' }
                     })
@@ -337,7 +336,7 @@ export function pauseMusic() {
 export function playLast() {
     // FM模式下的特殊逻辑：触发自定义事件播放上一首FM歌曲
     if(listInfo.value && listInfo.value.type === 'personalfm') {
-        console.log('FM mode: playing previous FM song')
+        // FM模式下的特殊逻辑
         const fmPreviousEvent = new CustomEvent('fmPreviousResponse', {
             detail: { action: 'previous' }
         })
@@ -371,7 +370,7 @@ export function playLast() {
 export function playNext() {
     // FM模式下的特殊逻辑：触发自定义事件播放下一首FM歌曲
     if(listInfo.value && listInfo.value.type === 'personalfm') {
-        console.log('FM mode: playing next FM song')
+        // FM模式下的特殊逻辑
         const fmNextEvent = new CustomEvent('fmNextResponse', {
             detail: { action: 'next' }
         })
@@ -538,7 +537,6 @@ export async function getFavoritePlaylistId() {
             }
         }
     } catch (error) {
-        console.error('获取喜欢音乐播放列表ID失败:', error)
     }
     
     return null
@@ -546,12 +544,10 @@ export async function getFavoritePlaylistId() {
 
 export async function likeSong(like) {
     const songIdValue = songId.value
-    console.log('开始喜欢操作:', { songId: songIdValue, like })
     
     try {
         // 尝试使用播放列表操作的新方法
         const favoritePlaylistId = await getFavoritePlaylistId()
-        console.log('获取到的播放列表ID:', favoritePlaylistId)
         
         if (favoritePlaylistId) {
             const params = {
@@ -561,7 +557,6 @@ export async function likeSong(like) {
                 timestamp: new Date().getTime()
             }
             
-            console.log('播放列表操作参数:', params)
             const result = await updatePlaylist(params)
             
             // 根据实际返回格式判断成功
@@ -714,14 +709,11 @@ export function savePlaylist() {
     windowApi.saveLastPlaylist(JSON.stringify(list))
 }
 export function songTime(dt) {
-    dayjs.extend(duration)
     if(dt) {
-        if ( dt == 0 || dt == "--") return dt;
-        const day = dayjs.duration(dt)
-        let str = "";
-        if (day.minutes() >= 0) str += day.minutes() + ':';
-        str += day.seconds().toString().padStart(2, '0')
-        return str;
+        if (dt == 0 || dt == "--") return dt;
+        // 将毫秒转换为秒
+        const seconds = Math.floor(dt / 1000);
+        return formatDuration(seconds);
     }
 }
 export function songTime2(time) {

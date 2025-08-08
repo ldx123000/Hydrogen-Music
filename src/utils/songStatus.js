@@ -17,13 +17,7 @@ function checkSongPlayable(song, _privilege) {
 
   if (song.fee === 1 || privilege?.fee === 1) {
     status.vipOnly = true
-    // 调试信息：输出用户VIP状态
-    console.log('VIP歌曲检查:', {
-      isLogin: isLogin(),
-      userVipType: user?.vipType,
-      songName: song?.name || 'unknown'
-    })
-
+    
     // 修正VIP判断条件：vipType不等于0就是VIP
     if (!(isLogin() && user?.vipType !== 0)) {
       status.playable = false

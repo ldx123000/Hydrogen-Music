@@ -1,5 +1,5 @@
 <script setup>
-  import { watch, ref } from 'vue'
+  import { watch, ref, onUnmounted } from 'vue'
   import DataCheckAnimaton from './DataCheckAnimaton.vue'
   import QRCode from 'qrcode'
   import { getQRcode, checkQRcodeStatus } from '../api/login'
@@ -17,16 +17,31 @@
   const checkQRInterval = ref(null)
   const emits = defineEmits(['jumpTo'])
 
+  // 清理定时器的统一方法
+  const clearTimer = () => {
+    if (checkQRInterval.value) {
+      clearInterval(checkQRInterval.value)
+      checkQRInterval.value = null
+    }
+  }
+
+  // 路由离开前清理
   onBeforeRouteLeave(() => {
-    clearInterval(checkQRInterval.value)
+    clearTimer()
+  })
+
+  // 组件卸载时清理
+  onUnmounted(() => {
+    clearTimer()
   })
 
   //初次加载页面获取QRcode
   if(firstLoadMode.value == 0) {
     loadData()
   }
+  
   const checkQR = () => {
-    clearInterval(checkQRInterval.value)
+    clearTimer()
     if(firstLoadMode.value == 1) {
         firstLoadMode.value = 0
         loadData()
@@ -35,10 +50,8 @@
         checkQRcode()
     }, 1000);
   }
-  const clearTimer = () => {
-    clearInterval(checkQRInterval.value)
-  }
-  defineExpose({checkQR,clearTimer})
+  
+  defineExpose({checkQR, clearTimer})
 
   watch(() => qrStatus.value, (newVal,oldVal) => {
     if(newVal == 800) {
@@ -92,7 +105,7 @@
             console.log("待确认")
         } else if(result.code === 803) {
             qrStatus.value = 803
-            clearInterval(checkQRInterval.value)
+            clearTimer()
             loginHandle(result, 'qr')
             emits('jumpTo')
             console.log("授权登录成功")

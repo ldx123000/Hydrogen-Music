@@ -1,6 +1,6 @@
 <script setup>
   import { ref, onMounted } from 'vue'
-  import dayjs from 'dayjs';
+  import { formatTime } from '../utils/time';
   import VueSlider from 'vue-slider-component'
   import { noticeOpen } from '../utils/dialog'
   import { getCloudDiskData, uploadCloudSong } from '../api/cloud'
@@ -80,7 +80,7 @@
     })
   }
   const addTime =(time) => {
-    return dayjs(time).format("YYYY-MM-DD HH:mm:ss")
+    return formatTime(time, "YYYY-MM-DD HH:mm:ss")
   }
 </script>
 

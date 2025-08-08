@@ -1,13 +1,13 @@
 <script setup>
   import { ref,computed } from 'vue'
-  import dayjs from 'dayjs'
+  import { formatTime } from '../utils/time'
   import { useOtherStore } from '../store/otherStore'
   const otherStore = useOtherStore()
 
   const props = defineProps(['mvlist'])
   //MV日期
   const publishTime = computed(() => (time) => {
-    return dayjs(time).format("YYYY-MM-DD")
+    return formatTime(time, "YYYY-MM-DD")
   })
   const playMV = (item) => {
     otherStore.getMvData(item.id)
