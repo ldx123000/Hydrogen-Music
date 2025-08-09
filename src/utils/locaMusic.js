@@ -73,7 +73,11 @@ windowApi.localMusicFiles((event, localData) => {
         localMusicClassify.value = classify(localData.locaFilesMetadata)
     }
     if(isRefreshLocalFile.value) {
-        noticeOpen("扫描完毕 共" + localData.count + '首', 3)
+        if(localData.type == 'downloaded') {
+            noticeOpen("下载目录已更新，共" + localData.count + '首音乐', 3)
+        } else {
+            noticeOpen("扫描完毕 共" + localData.count + '首', 3)
+        }
         isRefreshLocalFile.value = false
     }
 })

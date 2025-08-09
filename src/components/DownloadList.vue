@@ -5,59 +5,19 @@
   import { checkMusic, getMusicUrl } from '../api/song'
   import { usePlayerStore } from '../store/playerStore'
   import { useLocalStore } from '../store/localStore'
+  import { initDownloadManager } from '../utils/downloadManager'
   import { storeToRefs } from 'pinia'
+  
   const localStore = useLocalStore()
   const { isFirstDownload, isDownloading, downloadList } = storeToRefs(localStore)
   const playerStore = usePlayerStore()
   const { quality } =storeToRefs(playerStore)
   const progress = ref(0)
   
-  const currentIndex = ref(-1)
-  const download = () => {
-    let id = downloadList.value[currentIndex.value].id
-    checkMusic(id).then(result => {
-      if(result.success == true) {
-        getMusicUrl(id, quality.value).then(songInfo => {
-          let fileObj = {
-            url: songInfo.data[0].url,
-            name: downloadList.value[currentIndex.value].name,
-            type: songInfo.data[0].type
-          }
-          windowApi.download(fileObj)
-        })
-      } else {
-        noticeOpen("该歌曲无法下载！", 2)
-        downloadList.value.splice(currentIndex.value, 1)
-        downNext()
-      }
-    })
-  }
-
-  const downNext = () => {
-    if(downloadList.value.length != 0) {
-      download()
-    } else {
-      isDownloading.value = false
-      currentIndex.value = -1
-      downloadList.value = []
-      isFirstDownload.value = true
-      noticeOpen("全部下载完毕", 2)
-    }
-  }
-
-  windowApi.downloadNext(() => {
-    if(isDownloading.value && downloadList.value.length != 0) {
-      downloadList.value.splice(currentIndex.value, 1)
-      downNext()
-    } else {
-      if(downloadList.value.length != 0) {
-        isDownloading.value = true
-        currentIndex.value = 0
-        download()
-      }
-    }
-  })
-
+  // 确保下载管理器已初始化
+  initDownloadManager()
+  
+  // 只注册进度回调（UI相关）
   windowApi.downloadProgress((event, value) => {
     progress.value = value
   })
@@ -67,9 +27,7 @@
         isDownloading.value = true
         windowApi.downloadResume()
         if(isFirstDownload.value && downloadList.value.length != 0) {
-          isDownloading.value = true
-          currentIndex.value = 0
-          download()
+          windowApi.startDownload()
           isFirstDownload.value = false
         }
       }
@@ -82,14 +40,13 @@
     if(index != 0) downloadList.value.splice(index, 1)
     else {
       if(!isDownloading.value) {
-        downloadList.value.splice(currentIndex.value, 1)
+        downloadList.value.splice(0, 1)
       }
       windowApi.downloadCancel()
     }
   }
   const downloadClear = () => {
     changeState(false)
-    currentIndex.value = -1
     downloadList.value = []
     isFirstDownload.value = true
     windowApi.downloadCancel()

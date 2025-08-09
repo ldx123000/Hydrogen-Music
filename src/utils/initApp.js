@@ -2,6 +2,7 @@ import pinia from '../store/pinia'
 import { isLogin } from '../utils/authority'
 import { loadLastSong } from './player'
 import { scanMusic } from './locaMusic'
+import { initDownloadManager } from './downloadManager'
 import { getUserProfile, getLikelist, getUserPlaylist } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
@@ -11,7 +12,7 @@ import { storeToRefs } from 'pinia'
 const userStore = useUserStore(pinia)
 const playerStore = usePlayerStore()
 const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
-const localSotre = useLocalStore()
+const localStore = useLocalStore()
 const { updateUser } = userStore
 
 export const initSettings = () => {
@@ -21,24 +22,24 @@ export const initSettings = () => {
         tlyricSize.value = settings.music.tlyricSize
         rlyricSize.value = settings.music.rlyricSize
         lyricInterludeTime.value = settings.music.lyricInterlude
-        localSotre.downloadedFolderSettings = settings.local.downloadFolder
-        localSotre.localFolderSettings = settings.local.localFolder
-        localSotre.quitApp = settings.other.quitApp
-        if(localSotre.downloadedFolderSettings && !localSotre.downloadedMusicFolder) {
+        localStore.downloadedFolderSettings = settings.local.downloadFolder
+        localStore.localFolderSettings = settings.local.localFolder
+        localStore.quitApp = settings.other.quitApp
+        if(localStore.downloadedFolderSettings && !localStore.downloadedMusicFolder) {
             scanMusic({type:'downloaded',refresh:false})
         }
-        if(localSotre.localFolderSettings.length != 0 && !localSotre.localMusicFolder) {
+        if(localStore.localFolderSettings.length != 0 && !localStore.localMusicFolder) {
             scanMusic({type:'local',refresh:false})
         }
-        if(!localSotre.downloadedFolderSettings && localSotre.downloadedMusicFolder) {
-            localSotre.downloadedMusicFolder = null
-            localSotre.downloadedFiles = null
+        if(!localStore.downloadedFolderSettings && localStore.downloadedMusicFolder) {
+            localStore.downloadedMusicFolder = null
+            localStore.downloadedFiles = null
             windowApi.clearLocalMusicData('downloaded')
         }
-        if(localSotre.localFolderSettings.length == 0 && localSotre.localMusicFolder) {
-            localSotre.localMusicFolder = null,
-            localSotre.localMusicList = null
-            localSotre.localMusicClassify = null
+        if(localStore.localFolderSettings.length == 0 && localStore.localMusicFolder) {
+            localStore.localMusicFolder = null,
+            localStore.localMusicList = null
+            localStore.localMusicClassify = null
             windowApi.clearLocalMusicData('local')
         }
     })
@@ -100,6 +101,7 @@ export const initFavoritePlaylist = async () => {
 //初始化
 export const init = () => {
     initSettings()
+    initDownloadManager()  // 初始化下载管理器
     
     // 重置FM模式状态 - 应用启动时不应保持FM模式
     if(playerStore.listInfo && playerStore.listInfo.type === 'personalfm') {

@@ -6,13 +6,14 @@ let currentApplicationMenu = null;
 
 // 创建应用菜单的函数
 async function createApplicationMenu(win, app, songInfo) {
-    const settingsStore = new Store({name: 'settings'});
-    const shortcuts =  await settingsStore.get('settings.shortcuts');
-    if(!shortcuts) return
-    else if(!(shortcuts.find(shortcut => shortcut.id == 'processForward') || shortcuts.find(shortcut => shortcut.id == 'processBack'))){
-        shortcuts.push({
-            id: 'processForward',
-            name: '快进(3s)',
+    try {
+        const settingsStore = new Store({name: 'settings'});
+        const shortcuts = await settingsStore.get('settings.shortcuts');
+        if(!shortcuts) return
+        else if(!(shortcuts.find(shortcut => shortcut.id == 'processForward') || shortcuts.find(shortcut => shortcut.id == 'processBack'))){
+            shortcuts.push({
+                id: 'processForward',
+                name: '快进(3s)',
             shortcut: 'CommandOrControl+]',
             globalShortcut: 'CommandOrControl+Alt+]',
         },
@@ -92,8 +93,8 @@ async function createApplicationMenu(win, app, songInfo) {
 
     const menuTemplate = [
         // 在macOS上，第一个菜单项应该是应用名
-        ...(process.platform === 'darwin' ? [{
-            label: app.getName(),
+        ...(process.platform === 'darwin' && app ? [{
+            label: app.getName ? app.getName() : 'Hydrogen Music',
             submenu: [
                 { role: 'about' },
                 // { type: 'separator' },
@@ -150,15 +151,34 @@ async function createApplicationMenu(win, app, songInfo) {
         
     currentApplicationMenu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(currentApplicationMenu);
+    } catch (error) {
+        console.error('创建应用菜单时出错:', error);
+        // 创建一个简单的备用菜单
+        const fallbackTemplate = [
+            {
+                label: '音乐',
+                submenu: [
+                    {
+                        label: '播放/暂停',
+                        accelerator: 'Space',
+                        click: () => { if (win) win.webContents.send('music-playing-control') }
+                    }
+                ]
+            }
+        ];
+        currentApplicationMenu = Menu.buildFromTemplate(fallbackTemplate);
+        Menu.setApplicationMenu(currentApplicationMenu);
+    }
 }
 
 module.exports = async function registerShortcuts(win, app) {
-    // 初始创建应用菜单（不显示歌曲信息）
-    await createApplicationMenu(win, app);
-    
-    const settingsStore = new Store({name: 'settings'});
-    const shortcuts =  await settingsStore.get('settings.shortcuts');
-    if(!shortcuts) return;
+    try {
+        // 初始创建应用菜单（不显示歌曲信息）
+        await createApplicationMenu(win, app);
+        
+        const settingsStore = new Store({name: 'settings'});
+        const shortcuts = await settingsStore.get('settings.shortcuts');
+        if(!shortcuts) return;
     
     globalShortcut.register('CommandOrControl+Shift+F12', () => {
         // 获取当前窗口并打开控制台
@@ -187,6 +207,9 @@ module.exports = async function registerShortcuts(win, app) {
     globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'processBack').globalShortcut, () => {
         win.webContents.send('music-process-control', 'back')
     })
+    } catch (error) {
+        console.error('注册快捷键时出错:', error);
+    }
 }
 
 // 导出更新应用菜单的函数

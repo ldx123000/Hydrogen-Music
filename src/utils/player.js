@@ -49,7 +49,7 @@ export function play(url, autoplay) {
         autoplay: autoplay,
         html5: true,
         preload: true,
-        format: ['mp3', 'flac'],
+        format: ['mp3', 'flac', 'aac', 'm4a', 'wav', 'ogg', 'webm', 'mp4', 'weba', 'oga'],
         loop: (playMode.value == 2),
         volume: volume.value,
         xhr: {
@@ -277,7 +277,11 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         windowApi.getLocalMusicImage(songList.value[currentIndex.value].url).then(base64 => {
             localBase64Img.value = base64
         })
-        play(songList.value[currentIndex.value].url, autoplay)
+        const filePath = songList.value[currentIndex.value].url.replace(/\\/g, '/')
+        const fileUrl = filePath.startsWith('file://') 
+            ? filePath 
+            : 'file://' + filePath
+        play(fileUrl, autoplay)
         lyric.value = null
         lyricsObjArr.value = null
         //获取本地歌词（已禁用）
