@@ -21,7 +21,19 @@
 
 - 重做了登录功能（目前网易云对第三方客户端管理严格，大多数现存播放器已无法登录，复活版尽力兼容）。  
 - 新增 **私人漫游** 功能，可以像原版预期那样探索音乐世界。  
+- 新增评论区，播放器界面可自由切换显示歌词/评论区
+- 桌面歌词：新增独立桌面歌词窗口（置顶、可拖动/锁定、可调整大小），支持显示当前/下一句，右键菜单可切换歌词来源（自动/原文/翻译/罗马音）、锁定位置与字体大小调节。
+- 快捷键系统：支持在设置页自定义应用内与全局快捷键，并可一键恢复默认。默认键位包括：
+  - 播放/暂停：Ctrl/Cmd + P（全局：Ctrl/Cmd + Alt + P）
+  - 上一首/下一首：Ctrl/Cmd + ← / →（全局：Ctrl/Cmd + Alt + ← / →）
+  - 音量调节：Ctrl/Cmd + ↑ / ↓（全局：Ctrl/Cmd + Alt + ↑ / ↓）
+  - 快进/后退 3s：Ctrl/Cmd + ] / [（全局：Ctrl/Cmd + Alt + ] / [）
+- 应用/Dock 菜单集成：
+  - macOS Dock 菜单显示当前曲目「歌名 - 艺术家」，并可直接控制播放/上一首/下一首；
+  - 应用菜单新增「音乐」分组，集中常用控制项，支持空格/F5 快速播放暂停；
+  - 窗口标题动态展示当前曲目信息。
 - 支持了多系统版本的安装包
+
   
 ## 📦️ 安装
 
@@ -70,7 +82,7 @@ npm start
 
 ![home][home-screenshot]
 ![lyric][lyric-screenshot]
-![privateFM][privateFM-screenshot:]
+![privateFM][privateFM-screenshot]
 ![music_video][music_video-screenshot]
 
 <!-- MARKDOWN LINKS & IMAGES -->
@@ -78,5 +90,5 @@ npm start
 
 [home-screenshot]: img/home.png
 [lyric-screenshot]: img/lyric.png
-[privateFM-screenshot:]: img/privateFM.png
+[privateFM-screenshot]: img/privateFM.png
 [music_video-screenshot]: img/music_video.png

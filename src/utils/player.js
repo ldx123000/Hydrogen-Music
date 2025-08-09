@@ -262,7 +262,17 @@ export async function getLocalLyric(filePath) {
     else return false
 }
 export async function getSongUrl(id, index, autoplay, isLocal) {
-    windowApi.setWindowTile(songList.value[index].name + " - " + songList.value[index].ar[0].name)
+    const songName = songList.value[index].name
+    const artistName = songList.value[index].ar[0].name
+    
+    // 更新窗口标题
+    windowApi.setWindowTile(songName + " - " + artistName)
+    
+    // 更新 Dock 菜单（仅在 macOS 上）
+    windowApi.updateDockMenu({
+        name: songName,
+        artist: artistName
+    })
     if(isLocal) {
         windowApi.getLocalMusicImage(songList.value[currentIndex.value].url).then(base64 => {
             localBase64Img.value = base64

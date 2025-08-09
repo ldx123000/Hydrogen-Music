@@ -368,6 +368,12 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.on('set-window-title', (e, title) => {
         win.setTitle(title)
     })
+    
+    // 处理更新 Dock 菜单的事件
+    ipcMain.on('update-dock-menu', (e, songInfo) => {
+        // 通知主进程更新 Dock 菜单
+        win.emit('update-dock-menu', songInfo)
+    })
 
     // 网易云内嵌登录功能
     ipcMain.handle('open-netease-login', async () => {

@@ -1,7 +1,11 @@
 const { Menu, globalShortcut } = require('electron')
 const Store = require('electron-store');
 
-module.exports = async function registerShortcuts(win, app) {
+// 存储当前应用菜单的引用
+let currentApplicationMenu = null;
+
+// 创建应用菜单的函数
+async function createApplicationMenu(win, app, songInfo) {
     const settingsStore = new Store({name: 'settings'});
     const shortcuts =  await settingsStore.get('settings.shortcuts');
     if(!shortcuts) return
@@ -20,6 +24,72 @@ module.exports = async function registerShortcuts(win, app) {
         })
         settingsStore.set('settings.shortcuts', shortcuts);
     }
+    
+    const musicSubmenu = [];
+    
+    // 如果有歌曲信息，添加到音乐菜单顶部
+    if (songInfo && songInfo.name && songInfo.artist) {
+        musicSubmenu.push({
+            label: `♪ ${songInfo.name} - ${songInfo.artist}`,
+            enabled: false // 仅显示信息，不可点击
+        });
+        musicSubmenu.push({ type: 'separator' });
+    }
+    
+    // 添加音乐控制项
+    musicSubmenu.push(
+        {
+            label: '播放/暂停',
+            accelerator: 'Space',
+            click: () => { win.webContents.send('music-playing-control') }
+        },
+        {
+            label: '播放/暂停',
+            accelerator: 'F5',
+            click: () => { win.webContents.send('music-playing-control') }
+        },
+        {
+            label: '播放/暂停',
+            accelerator: shortcuts.find(shortcut => shortcut.id == 'play').shortcut,
+            click: () => { win.webContents.send('music-playing-control') }
+        },
+        {
+            label: '上一首',
+            accelerator: shortcuts.find(shortcut => shortcut.id == 'last').shortcut,
+            click: () => { win.webContents.send('music-song-control', 'last') }
+        },
+        {
+            label: '下一首',
+            accelerator: shortcuts.find(shortcut => shortcut.id == 'next').shortcut,
+            click: () => { win.webContents.send('music-song-control', 'next') }
+        },
+        {
+            label: '音量加',
+            accelerator: shortcuts.find(shortcut => shortcut.id == 'volumeUp').shortcut,
+            click: () => { win.webContents.send('music-volume-up', 'volumeUp') }
+        },
+        {
+            label: '音量减',
+            accelerator: shortcuts.find(shortcut => shortcut.id == 'volumeDown').shortcut,
+            click: () => { win.webContents.send('music-volume-down', 'volumeDown') }
+        },
+        {
+            label: '快进 (3s)',
+            accelerator: shortcuts.find(shortcut => shortcut.id == 'processForward').shortcut,
+            click: () => { win.webContents.send('music-process-control', 'forward') }
+        },
+        {
+            label: '后退 (3s)',
+            accelerator: shortcuts.find(shortcut => shortcut.id == 'processBack').shortcut,
+            click: () => { win.webContents.send('music-process-control', 'back') }
+        },
+        {
+            label: '隐藏播放器',
+            accelerator: 'Escape',
+            click: () => { win.webContents.send('hide-player') }
+        }
+    );
+
     const menuTemplate = [
         // 在macOS上，第一个菜单项应该是应用名
         ...(process.platform === 'darwin' ? [{
@@ -27,7 +97,7 @@ module.exports = async function registerShortcuts(win, app) {
             submenu: [
                 { role: 'about' },
                 // { type: 'separator' },
-                // 移除 services 菜单，因为它会添加“语音”等不需要的选项
+                // 移除 services 菜单，因为它会添加"语音"等不需要的选项
                 // { role: 'services' },
                 // { type: 'separator' },
                 // { role: 'hide' },
@@ -39,58 +109,7 @@ module.exports = async function registerShortcuts(win, app) {
         }] : []),
         {
             label: '音乐',
-            submenu: [
-                {
-                    label: '播放/暂停',
-                    accelerator: 'Space',
-                    click: () => { win.webContents.send('music-playing-control') }
-                },
-                {
-                    label: '播放/暂停',
-                    accelerator: 'F5',
-                    click: () => { win.webContents.send('music-playing-control') }
-                },
-                {
-                    label: '播放/暂停',
-                    accelerator: shortcuts.find(shortcut => shortcut.id == 'play').shortcut,
-                    click: () => { win.webContents.send('music-playing-control') }
-                },
-                {
-                    label: '上一首',
-                    accelerator: shortcuts.find(shortcut => shortcut.id == 'last').shortcut,
-                    click: () => { win.webContents.send('music-song-control', 'last') }
-                },
-                {
-                    label: '下一首',
-                    accelerator: shortcuts.find(shortcut => shortcut.id == 'next').shortcut,
-                    click: () => { win.webContents.send('music-song-control', 'next') }
-                },
-                {
-                    label: '音量加',
-                    accelerator: shortcuts.find(shortcut => shortcut.id == 'volumeUp').shortcut,
-                    click: () => { win.webContents.send('music-volume-up', 'volumeUp') }
-                },
-                {
-                    label: '音量减',
-                    accelerator: shortcuts.find(shortcut => shortcut.id == 'volumeDown').shortcut,
-                    click: () => { win.webContents.send('music-volume-down', 'volumeDown') }
-                },
-                {
-                    label: '快进 (3s)',
-                    accelerator: shortcuts.find(shortcut => shortcut.id == 'processForward').shortcut,
-                    click: () => { win.webContents.send('music-process-control', 'forward') }
-                },
-                {
-                    label: '后退 (3s)',
-                    accelerator: shortcuts.find(shortcut => shortcut.id == 'processBack').shortcut,
-                    click: () => { win.webContents.send('music-process-control', 'back') }
-                },
-                {
-                    label: '隐藏播放器',
-                    accelerator: 'Escape',
-                    click: () => { win.webContents.send('hide-player') }
-                },
-            ]
+            submenu: musicSubmenu
         },
         {
             label: '编辑',
@@ -127,9 +146,19 @@ module.exports = async function registerShortcuts(win, app) {
                 { role: 'front', label: '置顶' }
             ]
         }
-    ]
+    ];
         
-    Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate))
+    currentApplicationMenu = Menu.buildFromTemplate(menuTemplate);
+    Menu.setApplicationMenu(currentApplicationMenu);
+}
+
+module.exports = async function registerShortcuts(win, app) {
+    // 初始创建应用菜单（不显示歌曲信息）
+    await createApplicationMenu(win, app);
+    
+    const settingsStore = new Store({name: 'settings'});
+    const shortcuts =  await settingsStore.get('settings.shortcuts');
+    if(!shortcuts) return;
     
     globalShortcut.register('CommandOrControl+Shift+F12', () => {
         // 获取当前窗口并打开控制台
@@ -159,3 +188,6 @@ module.exports = async function registerShortcuts(win, app) {
         win.webContents.send('music-process-control', 'back')
     })
 }
+
+// 导出更新应用菜单的函数
+module.exports.updateApplicationMenu = createApplicationMenu;

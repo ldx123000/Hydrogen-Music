@@ -4,6 +4,7 @@ const MusicDownload = require('./src/electron/download')
 const LocalFiles = require('./src/electron/localmusic')
 const InitTray = require('./src/electron/tray')
 const registerShortcuts = require('./src/electron/shortcuts')
+const { updateApplicationMenu } = require('./src/electron/shortcuts')
 
 const { app, BrowserWindow, globalShortcut, Menu } = require('electron')
 const Winstate = require('electron-win-state').default
@@ -64,36 +65,59 @@ const createWindow = () => {
     // 设置应用名称（在开发模式下也生效）
     app.setName('Hydrogen Music')
     
-    // 为macOS创建Dock菜单
-    if (process.platform === 'darwin') {
-        const dockMenu = Menu.buildFromTemplate([
-            {
-                label: '播放/暂停',
-                click: () => {
-                    if (myWindow) {
-                        myWindow.webContents.send('music-playing-control');
-                    }
-                }
-            },
-            {
-                label: '上一首',
-                click: () => {
-                    if (myWindow) {
-                        myWindow.webContents.send('music-song-control', 'last');
-                    }
-                }
-            },
-            {
-                label: '下一首',
-                click: () => {
-                    if (myWindow) {
-                        myWindow.webContents.send('music-song-control', 'next');
-                    }
-                }
+    
+    // 用于存储当前Dock菜单的引用
+    let currentDockMenu = null;
+    
+    // 为macOS创建Dock菜单的函数
+    function createDockMenu(songInfo) {
+        if (process.platform === 'darwin') {
+            const menuTemplate = [];
+            
+            // 如果有歌曲信息，添加歌曲信息条目
+            if (songInfo && songInfo.name && songInfo.artist) {
+                menuTemplate.push({
+                    label: `${songInfo.name} - ${songInfo.artist}`,
+                    enabled: false // 仅显示信息，不可点击
+                });
+                menuTemplate.push({ type: 'separator' });
             }
-        ]);
-        app.dock.setMenu(dockMenu);
+            
+            // 添加控制按钮
+            menuTemplate.push(
+                {
+                    label: '播放/暂停',
+                    click: () => {
+                        if (myWindow) {
+                            myWindow.webContents.send('music-playing-control');
+                        }
+                    }
+                },
+                {
+                    label: '上一首',
+                    click: () => {
+                        if (myWindow) {
+                            myWindow.webContents.send('music-song-control', 'last');
+                        }
+                    }
+                },
+                {
+                    label: '下一首',
+                    click: () => {
+                        if (myWindow) {
+                            myWindow.webContents.send('music-song-control', 'next');
+                        }
+                    }
+                }
+            );
+            
+            currentDockMenu = Menu.buildFromTemplate(menuTemplate);
+            app.dock.setMenu(currentDockMenu);
+        }
     }
+    
+    // 初始创建Dock菜单
+    createDockMenu();
     
     process.env.DIST = path.join(__dirname, './')
     const indexHtml = path.join(process.env.DIST, 'dist/index.html')
@@ -119,6 +143,38 @@ const createWindow = () => {
         }
     })
     myWindow = win
+    
+    // 监听来自 ipcMain 的菜单更新事件
+    win.on('update-dock-menu', async (songInfo) => {
+        // 更新 Dock 菜单（仅在 macOS 上）
+        createDockMenu(songInfo);
+        
+        // 更新应用菜单（在所有平台上）
+        try {
+            await updateApplicationMenu(win, app, songInfo);
+        } catch (error) {
+            console.error('更新应用菜单失败:', error);
+        }
+        
+        // 更新窗口标题以显示歌曲信息（作为额外的信息显示方式）
+        if (songInfo && songInfo.name && songInfo.artist) {
+            win.setTitle(`${songInfo.name} - ${songInfo.artist} - Hydrogen Music`);
+        } else {
+            win.setTitle('Hydrogen Music');
+        }
+        
+        // Windows系统：更新任务栏缩略图按钮（如果需要）
+        if (process.platform === 'win32' && songInfo) {
+            // 可以在这里添加Windows特定的任务栏功能
+            // 例如：更新任务栏进度、缩略图工具栏等
+        }
+        
+        // Linux系统：更新桌面通知或系统集成（如果需要）
+        if (process.platform === 'linux' && songInfo) {
+            // 可以在这里添加Linux特定的系统集成功能
+        }
+    });
+    
     if (process.resourcesPath.indexOf(path.join('node_modules')) != -1)
         win.loadURL('http://localhost:5173/')
     else

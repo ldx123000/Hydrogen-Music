@@ -112,6 +112,9 @@ function checkUpdate(callback) {
 function setWindowTile(title) {
     ipcRenderer.send('set-window-title', title)
 }
+function updateDockMenu(songInfo) {
+    ipcRenderer.send('update-dock-menu', songInfo)
+}
 function openNeteaseLogin() {
     return ipcRenderer.invoke('open-netease-login')
 }
@@ -166,6 +169,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     copyTxt,
     checkUpdate,
     setWindowTile,
+    updateDockMenu,
 })
 
 // 新的API用于处理登录功能和桌面歌词
