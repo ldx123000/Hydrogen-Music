@@ -52,7 +52,20 @@
     "directories": {
       "output": "release/${version}"
     },
-    "files": [],
+    "files": [
+      "background.js",
+      "desktop-lyric.html", 
+      "index.html",
+      "dist/**/*",
+      "src/assets/icon/**/*",
+      "src/assets/fonts/**/*",
+      "src/electron/**/*",
+      "!**/.DS_Store",
+      "!**/node_modules",
+      "!release/**/*",
+      "!dist-ssr/**/*",
+      "!img/**/*"
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true

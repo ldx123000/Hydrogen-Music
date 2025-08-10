@@ -1,0 +1,41 @@
+# Development files
+node_modules/
+src/
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Build artifacts
+release/
+dist-ssr/
+*.log
+*.tmp
+*.cache
+
+# System files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Configuration files
+.env*
+.npmrc
+.yarnrc
+
+# Documentation
+README.md
+LICENSE
+img/
+
+# Large assets that should not be packaged
+src/assets/fonts/*.otf
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Development dependencies already excluded by files array
