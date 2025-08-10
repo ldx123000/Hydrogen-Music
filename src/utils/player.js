@@ -36,22 +36,16 @@ export function checkAndLoadVideoForCurrentSong() {
     
     // 检查是否启用了音乐视频功能
     if (!musicVideo.value || !songId.value) {
-        console.log('视频功能未启用或没有歌曲ID，跳过视频检查')
         return
     }
     
     // 检查用户是否主动关闭了该歌曲的视频显示
     if (closedVideoMemory.has(songId.value)) {
-        console.log('用户曾主动关闭该歌曲的视频显示，跳过自动加载 - 歌曲ID:', songId.value)
         return
     }
     
-    console.log('checkAndLoadVideoForCurrentSong - 检查歌曲ID:', songId.value)
-    
     // 立即检查当前歌曲是否有对应的视频文件
     windowApi.musicVideoIsExists({id: songId.value, method: 'verify'}).then(result => {
-        console.log('视频检查结果 - 歌曲ID:', songId.value, '结果:', result)
-        
         // 验证歌曲ID是否仍然匹配（防止快速切歌）
         if (result && result !== '404' && result !== false && result.data && 
             result.data.path && result.data.id === songId.value && 
@@ -59,11 +53,9 @@ export function checkAndLoadVideoForCurrentSong() {
             
             // 再次检查记忆状态（防止异步过程中状态变化）
             if (closedVideoMemory.has(songId.value)) {
-                console.log('异步检查中发现用户已关闭该歌曲视频，取消加载')
                 return
             }
             
-            console.log('找到匹配的视频文件，加载视频:', result.data)
             currentMusicVideo.value = result.data
             
             // 等待音乐开始播放后再启动视频检查
@@ -76,17 +68,11 @@ export function checkAndLoadVideoForCurrentSong() {
                     // 根据歌曲类型启动对应的视频时间检查
                     if (songList.value && songList.value[currentIndex.value] && songList.value[currentIndex.value].type === 'local') {
                         startLocalMusicVideo()
-                        console.log('视频检查已启动(本地音乐) - 歌曲ID:', songId.value)
                     } else {
                         startMusicVideo()
-                        console.log('视频检查已启动(在线音乐) - 歌曲ID:', songId.value)
                     }
-                } else {
-                    console.log('歌曲已切换或被用户关闭，取消视频加载')
                 }
             }, 500)
-        } else {
-            console.log('没有找到匹配的视频文件 - 歌曲ID:', songId.value)
         }
     }).catch(error => {
         console.error('检查视频文件时出错:', error)
@@ -97,31 +83,24 @@ export function checkAndLoadVideoForCurrentSong() {
  * 关闭当前音乐视频显示功能，恢复到原本无视频状态
  */
 export function pauseCurrentMusicVideo() {
-    console.log('pauseCurrentMusicVideo - 关闭当前音乐视频显示，恢复原本状态')
-    
     if (!musicVideo.value) {
-        console.log('音乐视频功能未启用')
         return false
     }
     
     if (!currentMusicVideo.value || !currentMusicVideo.value.id) {
-        console.log('当前没有音乐视频')
         return false
     }
     
     if (currentMusicVideo.value.id !== songId.value) {
-        console.log('视频ID与当前歌曲ID不匹配')
         return false
     }
     
     // 将当前歌曲ID添加到关闭记忆中
     closedVideoMemory.add(songId.value)
-    console.log('已将歌曲ID加入关闭记忆:', songId.value)
     
     // 完全卸载当前音乐视频，恢复到无视频状态
     unloadMusicVideo()
     
-    console.log('当前音乐视频已关闭，恢复到原本播放状态')
     return true
 }
 
@@ -129,29 +108,21 @@ export function pauseCurrentMusicVideo() {
  * 重新打开当前音乐的视频显示
  */
 export function reopenCurrentMusicVideo() {
-    console.log('reopenCurrentMusicVideo - 重新打开当前音乐的视频显示')
-    
     if (!musicVideo.value) {
-        console.log('音乐视频功能未启用')
         return false
     }
     
     if (!songId.value) {
-        console.log('没有当前播放的歌曲')
         return false
     }
     
     // 如果当前已经有视频在播放，不需要重新打开
     if (currentMusicVideo.value && currentMusicVideo.value.id === songId.value) {
-        console.log('当前歌曲的视频已经在播放中')
         return true
     }
     
     // 从关闭记忆中移除当前歌曲ID
     closedVideoMemory.delete(songId.value)
-    console.log('已从关闭记忆中移除歌曲ID:', songId.value)
-    
-    console.log('开始重新加载当前歌曲的视频 - 歌曲ID:', songId.value)
     
     // 调用统一的视频检查和加载函数
     checkAndLoadVideoForCurrentSong()
@@ -186,7 +157,6 @@ export function play(url, autoplay) {
     if(currentMusic.value) currentMusic.value.unload()
     
     // 每次播放新音乐时，检查当前歌曲是否有对应的视频
-    console.log('play() - 开始播放音乐，当前歌曲ID:', songId.value)
     checkAndLoadVideoForCurrentSong()
     
     currentMusic.value = new Howl({
@@ -350,8 +320,6 @@ export function startMusicVideo() {
     }, 200);
 }
 export function unloadMusicVideo() {
-    console.log('unloadMusicVideo called - 彻底清理视频状态')
-    
     // 清理状态变量
     currentMusicVideo.value = null
     videoIsPlaying.value = false
@@ -376,12 +344,8 @@ export function unloadMusicVideo() {
             console.log('清理视频播放器时出错:', error)
         }
     }
-    
-    console.log('视频状态已彻底清理')
 }
 export function loadMusicVideo(id) {
-    console.log('loadMusicVideo called for song ID:', id, 'FM模式:', listInfo.value?.type === 'personalfm')
-    
     // 强制清理任何现有的视频状态
     unloadMusicVideo()
     
@@ -391,12 +355,8 @@ export function loadMusicVideo(id) {
     // 等待一个短暂的时间确保清理完成，然后检查视频
     setTimeout(() => {
         windowApi.musicVideoIsExists({id: id, method: 'verify'}).then(result => {
-            console.log('musicVideoIsExists result for song:', id, result)
-            
             // 严格检查 - 只有明确返回有效结果且文件存在时才加载视频
             if(result && result !== '404' && result !== false && result.data && result.data.path && result.data.id === id) {
-                console.log('找到匹配的视频文件，开始加载视频', result.data)
-                
                 // 再次验证当前歌曲ID是否仍然匹配（防止快速切歌导致的异步问题）
                 if (songId.value === id) {
                     currentMusicVideo.value = result.data
@@ -407,12 +367,8 @@ export function loadMusicVideo(id) {
                     } else {
                         startMusicVideo()
                     }
-                    console.log('视频加载完成 - 歌曲ID:', id)
-                } else {
-                    console.log('歌曲已切换，取消加载视频 - 请求ID:', id, '当前ID:', songId.value)
                 }
             } else {
-                console.log('没有视频或文件不存在，确保视频已卸载 - 歌曲ID:', id)
                 // 确保彻底清理
                 unloadMusicVideo()
             }
@@ -435,7 +391,6 @@ export function addSong(id, index, autoplay, isLocal) {
     setId(id, index)
     
     // 切歌时清理视频状态（新的统一视频检查函数会处理加载）
-    console.log('addSong - 切歌到ID:', id)
     unloadMusicVideo()
 
     if(songList.value[currentIndex.value].type == 'local') isLocal = true
@@ -538,7 +493,6 @@ export function startMusic() {
     
     // 检查是否有视频需要同步播放
     if(currentMusicVideo.value && currentMusicVideo.value.id === songId.value) {
-        console.log('startMusic - 恢复视频播放，歌曲ID:', songId.value)
         if(musicVideoDOM.value) {
             musicVideoDOM.value.play()
         }
@@ -550,7 +504,6 @@ export function startMusic() {
         }
     } else if (musicVideo.value && songId.value) {
         // 如果没有视频但功能开启，检查是否需要加载视频
-        console.log('startMusic - 检查是否需要加载视频，歌曲ID:', songId.value)
         checkAndLoadVideoForCurrentSong()
     }
 }
@@ -970,22 +923,18 @@ export function songTime2(time) {
 export function musicVideoCheck(seek, update) {
     // 多重严格检查
     if (!musicVideo.value) {
-        console.log('音乐视频功能未启用')
         return // 功能未启用
     }
     
     if (!currentMusicVideo.value) {
-        console.log('没有当前音乐视频数据')
         return // 没有视频数据
     }
     
     if (!currentMusicVideo.value.timing || !Array.isArray(currentMusicVideo.value.timing) || currentMusicVideo.value.timing.length === 0) {
-        console.log('没有有效的时间轴数据')
         return // 没有有效的时间轴数据
     }
     
     if (!musicVideoDOM.value) {
-        console.log('视频播放器不存在')
         return // 视频播放器不存在
     }
     
@@ -993,18 +942,12 @@ export function musicVideoCheck(seek, update) {
     const isPersonalFM = listInfo.value && listInfo.value.type === 'personalfm'
     
     if (!songId.value || !currentMusicVideo.value.id) {
-        console.log('歌曲ID或视频ID不存在')
         unloadMusicVideo()
         return
     }
     
     // FM模式和普通模式都需要严格检查ID匹配
     if (songId.value !== currentMusicVideo.value.id) {
-        if (isPersonalFM) {
-            console.log('FM模式 - 歌曲ID不匹配，清理视频状态 - 当前:', songId.value, '视频:', currentMusicVideo.value.id)
-        } else {
-            console.log('歌曲ID严格匹配失败 - 当前songId:', songId.value, '视频ID:', currentMusicVideo.value.id)
-        }
         unloadMusicVideo() // 清理不匹配的视频
         return
     }
@@ -1012,12 +955,9 @@ export function musicVideoCheck(seek, update) {
     // 普通模式下还需要检查歌曲列表中的当前歌曲ID是否也匹配
     if (!isPersonalFM && songList.value && currentIndex.value >= 0 && songList.value[currentIndex.value] && 
         songList.value[currentIndex.value].id !== currentMusicVideo.value.id) {
-        console.log('歌曲列表ID匹配失败 - 列表中歌曲ID:', songList.value[currentIndex.value].id, '视频ID:', currentMusicVideo.value.id)
         unloadMusicVideo() // 清理不匹配的视频
         return
     }
-    
-    console.log('musicVideoCheck - 所有ID匹配通过:', songId.value, '播放时间:', seek)
     
     if(musicVideo.value && currentMusicVideo.value && (!videoIsPlaying.value || update)) {
         let foundValidTiming = false
@@ -1032,7 +972,6 @@ export function musicVideoCheck(seek, update) {
             }
             
             if(seek >= timing.start && seek < timing.end) {
-                console.log('进入视频播放时间段:', timing)
                 foundValidTiming = true
                 
                 if(playing.value && musicVideoDOM.value) {
@@ -1050,7 +989,6 @@ export function musicVideoCheck(seek, update) {
         }
         
         if (!foundValidTiming) {
-            console.log('不在任何视频时间段内')
             videoIsPlaying.value = false
             playerShow.value = true
             if (musicVideoDOM.value) {
@@ -1059,7 +997,6 @@ export function musicVideoCheck(seek, update) {
         }
     } else if(videoIsPlaying.value && currentTiming) {
         if(seek > currentTiming.end) {
-            console.log('超出当前时间段，停止视频播放')
             videoIsPlaying.value = false
             playerShow.value = true
             currentTiming = null

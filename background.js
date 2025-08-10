@@ -322,15 +322,12 @@ const createLyricWindow = () => {
     }
 
     lyricWin.once('ready-to-show', () => {
-        console.log('桌面歌词窗口ready-to-show事件触发')
         lyricWin.show()
-        console.log('桌面歌词窗口显示完成')
     })
     
     // 添加备用显示逻辑，防止ready-to-show事件不触发
     setTimeout(() => {
         if (lyricWin && !lyricWin.isDestroyed() && !lyricWin.isVisible()) {
-            console.log('强制显示桌面歌词窗口')
             lyricWin.show()
         }
     }, 2000)
