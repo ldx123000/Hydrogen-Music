@@ -50,53 +50,136 @@
     }
   }
   const getQRCode = () => {
-    windowApi.getRequestData({url: 'http://passport.bilibili.com/qrcode/getLoginUrl', option: {headers: headers}}).then(result => {
-        qrKey.value = result.data.oauthKey
-        let opts = {
-            errorCorrectionLevel: 'Q',
-            type: "image/png",
-            width: 192,
-            height: 192,
-            color: {
-                dark: "#000000",
-                light: "#FFFFFF"
-            }
-        };
-        QRCode.toDataURL(result.data.url, opts, (err, url) => {
-            if(err) throw err
-            qrcodeImg.value = url
-        })
+    windowApi.getRequestData({url: 'https://passport.bilibili.com/x/passport-login/web/qrcode/generate', option: {headers: headers}}).then(result => {
+        if (result.code === 0) {
+            qrKey.value = result.data.qrcode_key
+            let opts = {
+                errorCorrectionLevel: 'Q',
+                type: "image/png",
+                width: 192,
+                height: 192,
+                color: {
+                    dark: "#000000",
+                    light: "#FFFFFF"
+                }
+            };
+            QRCode.toDataURL(result.data.url, opts, (err, url) => {
+                if(err) throw err
+                qrcodeImg.value = url
+            })
+        } else {
+            console.error('生成二维码失败:', result)
+        }
+    }).catch(error => {
+        console.error('请求二维码失败:', error)
     })
     clearInterval(checkQRTimer.value)
     checkInterval()
   }
   const checkQRCode = async () => {
-    const result = await axios.post('https://passport.bilibili.com/qrcode/getLoginInfo?oauthKey=' + qrKey.value)
-    return result.data.data
+    try {
+        const result = await windowApi.getRequestData({
+            url: 'https://passport.bilibili.com/x/passport-login/web/qrcode/poll',
+            option: {
+                method: 'GET',
+                headers: headers,
+                params: {
+                    qrcode_key: qrKey.value
+                }
+            }
+        })
+        console.log('QR Code Check Result:', result)
+        if (result.code === 0) {
+            return result.data
+        }
+        return null
+    } catch (error) {
+        console.error('检查二维码状态失败:', error)
+        return null
+    }
 }
   const checkInterval = () => {
     checkQRTimer.value = setInterval(() => {
-        checkQRCode().then(code => {
-            if(!code) {getQRCode(); return}
-            if(code == -1) {getQRCode(); return}
-            else if(code == -2) {getQRCode(); return}
-            else if(code == -4) return
-            else if(code == -5) return
-            else loginHandle(code)
+        checkQRCode().then(result => {
+            if(!result) {getQRCode(); return}
+            console.log('Status Code:', result.code, 'Message:', result.message)
+            
+            if(result.code === 86101) {
+                // 未扫码，继续等待
+                return
+            } else if(result.code === 86090) {
+                // 已扫码未确认，继续等待
+                return
+            } else if(result.code === 86038) {
+                // 二维码已失效，重新获取
+                getQRCode()
+                return
+            } else if(result.code === 0) {
+                // 登录成功
+                console.log('Login successful, data:', result)
+                loginHandle(result)
+            } else {
+                // 其他状态码，重新获取二维码
+                console.warn('未知状态码:', result.code)
+                getQRCode()
+            }
         })
-    }, 1000);
+    }, 3000);
   }
   const loginHandle = async (data) => {
     closeLogin()
     if(selectedInfo.value.bvid) {search()}
-    localStorage.setItem('Sessdata', data.url.match(/SESSDATA=(\S*)&bili_jct/)[1])
-    headers.cookie = 'SESSDATA=' + localStorage.getItem('Sessdata')  + ';'
-    const userInfo = await windowApi.getRequestData({url: 'http://api.bilibili.com/nav', option: {headers: headers}})
-    if(userInfo.code == 0) {
-        noticeOpen('登录成功', 2)
-        userStore.biliUser = userInfo.data
-    } else {
-        noticeOpen('登录失败', 2)    
+    try {
+        console.log('登录数据:', data)
+        
+        // 检查是否有登录URL
+        if (!data.url) {
+            noticeOpen('登录失败：未获取到登录信息', 2)
+            loginOrLogout()
+            return
+        }
+        
+        // 解析URL中的cookie信息
+        const url = new URL(data.url)
+        const urlStr = data.url
+        
+        // 提取SESSDATA
+        const sessdataMatch = urlStr.match(/SESSDATA=([^&;]+)/)
+        const biliJctMatch = urlStr.match(/bili_jct=([^&;]+)/)
+        const dedeUserIdMatch = urlStr.match(/DedeUserID=([^&;]+)/)
+        
+        if (!sessdataMatch) {
+            noticeOpen('登录失败：无法获取SESSDATA', 2)
+            loginOrLogout()
+            return
+        }
+        
+        // 构建cookie字符串
+        let cookieStr = `SESSDATA=${sessdataMatch[1]};`
+        if (biliJctMatch) cookieStr += ` bili_jct=${biliJctMatch[1]};`
+        if (dedeUserIdMatch) cookieStr += ` DedeUserID=${dedeUserIdMatch[1]};`
+        
+        localStorage.setItem('Sessdata', sessdataMatch[1])
+        headers.cookie = cookieStr
+        
+        // 使用正确的用户信息API
+        const userInfo = await windowApi.getRequestData({
+            url: 'https://api.bilibili.com/x/web-interface/nav', 
+            option: {headers: headers}
+        })
+        
+        console.log('用户信息响应:', userInfo)
+        
+        if(userInfo.code == 0) {
+            noticeOpen('登录成功', 2)
+            userStore.biliUser = userInfo.data
+        } else {
+            noticeOpen('获取用户信息失败', 2)    
+            loginOrLogout()
+        }
+    } catch (error) {
+        console.error('登录处理失败:', error)
+        noticeOpen('登录失败', 2)
         loginOrLogout()
     }
   }

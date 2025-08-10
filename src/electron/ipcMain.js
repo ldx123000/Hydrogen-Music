@@ -734,4 +734,44 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         // 通知主窗口桌面歌词已关闭
         win.webContents.send('desktop-lyric-closed');
     });
+
+    // 处理应用更新相关的 IPC 事件
+    ipcMain.on('check-for-update', () => {
+        const { autoUpdater } = require("electron-updater");
+        autoUpdater.checkForUpdatesAndNotify()
+            .then(result => {
+                if (result && result.updateInfo) {
+                    console.log('检查更新完成，发现新版本:', result.updateInfo.version);
+                } else {
+                    console.log('检查更新完成，当前已是最新版本');
+                    win.webContents.send('update-not-available');
+                }
+            })
+            .catch(error => {
+                console.error('检查更新失败:', error);
+                win.webContents.send('update-error', error.message);
+            });
+    });
+
+    ipcMain.on('download-update', () => {
+        const { autoUpdater } = require("electron-updater");
+        console.log('开始下载更新...');
+        autoUpdater.downloadUpdate()
+            .catch(error => {
+                console.error('下载更新失败:', error);
+                win.webContents.send('update-error', error.message);
+            });
+    });
+
+    ipcMain.on('install-update', () => {
+        const { autoUpdater } = require("electron-updater");
+        console.log('开始安装更新并重启应用...');
+        autoUpdater.quitAndInstall();
+    });
+
+    ipcMain.on('cancel-update', () => {
+        console.log('用户取消了更新');
+        // 可以在这里添加取消更新的逻辑，例如停止下载等
+        win.setProgressBar(-1); // 隐藏进度条
+    });
 }

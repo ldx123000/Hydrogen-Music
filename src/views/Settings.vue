@@ -9,6 +9,7 @@ import { isLogin } from '../utils/authority';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
+import UpdateDialog from '../components/UpdateDialog.vue';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -62,6 +63,10 @@ const selectedShortcut = ref(null);
 const newShortcut = ref([]);
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
 
+// 更新相关状态
+const showUpdateDialog = ref(false);
+const newVersion = ref('');
+
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
@@ -82,7 +87,18 @@ onActivated(() => {
         globalShortcuts.value = settings.other.globalShortcuts;
         quitApp.value = settings.other.quitApp;
     });
+    
+    // 设置更新事件监听器
+    setupUpdateListeners();
 });
+
+// 设置更新监听器
+const setupUpdateListeners = () => {
+    // 监听更新可用事件
+    windowApi.checkUpdate((version) => {
+        newVersion.value = version;
+    });
+};
 
 const setAppSettings = () => {
     let settings = {
@@ -278,6 +294,33 @@ const save = () => {
 };
 const toGithub = () => {
     windowApi.toRegister('https://github.com/ldx123000/Hydrogen-Music');
+};
+
+// 检查更新功能
+const checkForUpdates = () => {
+    showUpdateDialog.value = true;
+    windowApi.checkForUpdate();
+};
+
+// 更新对话框事件处理
+const handleUpdateDownload = () => {
+    windowApi.downloadUpdate();
+};
+
+const handleUpdateInstall = () => {
+    windowApi.installUpdate();
+};
+
+const handleUpdateCancel = () => {
+    windowApi.cancelUpdate();
+};
+
+const handleUpdateRetry = () => {
+    windowApi.checkForUpdate();
+};
+
+const closeUpdateDialog = () => {
+    showUpdateDialog.value = false;
 };
 </script>
 
@@ -486,9 +529,23 @@ const toGithub = () => {
                     <img src="../assets/icon/icon.ico" alt="" />
                 </div>
                 <div class="version">V0.5.2</div>
+                <div class="update-check">
+                    <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
+                </div>
                 <div class="app-author" @click="toGithub()">Made by ldx123000 | Modified from Hydrogen Music</div>
             </div>
         </div>
+        
+        <!-- 更新对话框 -->
+        <UpdateDialog 
+            :visible="showUpdateDialog"
+            :new-version="newVersion"
+            @close="closeUpdateDialog"
+            @download="handleUpdateDownload"
+            @install="handleUpdateInstall"
+            @cancel="handleUpdateCancel"
+            @retry="handleUpdateRetry"
+        />
     </div>
 </template>
 
@@ -863,6 +920,38 @@ const toGithub = () => {
             .version {
                 font: 14px Geometos;
                 color: black;
+            }
+            .update-check {
+                margin: 8px 0;
+                
+                .check-update-btn {
+                    padding: 5px 15px;
+                    background-color: rgba(255, 255, 255, 0.35);
+                    color: black;
+                    border: none;
+                    border-radius: 0;
+                    outline: none;
+                    font: 13px SourceHanSansCN-Bold;
+                    cursor: pointer;
+                    transition: 0.2s;
+                    
+                    &:hover {
+                        opacity: 0.8;
+                        box-shadow: 0 0 0 1px black;
+                    }
+                    
+                    &:focus {
+                        outline: none;
+                        border-radius: 0;
+                        box-shadow: 0 0 0 1px black;
+                    }
+                    
+                    &:active {
+                        outline: none;
+                        border-radius: 0;
+                        box-shadow: 0 0 0 1px black;
+                    }
+                }
             }
             .app-author {
                 margin-top: 10px;

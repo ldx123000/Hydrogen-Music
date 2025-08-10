@@ -182,10 +182,45 @@ const createWindow = () => {
     win.once('ready-to-show', () => {
         win.show()
         if (process.resourcesPath.indexOf(path.join('node_modules')) == -1) {
+            // 配置自动更新器
             autoUpdater.autoDownload = false
+            autoUpdater.autoInstallOnAppQuit = false
+            
+            // 监听更新可用事件
             autoUpdater.on('update-available', info => {
+                console.log('发现新版本:', info.version)
                 win.webContents.send('check-update', info.version)
-            });
+            })
+            
+            // 监听更新不可用事件
+            autoUpdater.on('update-not-available', info => {
+                console.log('当前版本已是最新:', info.version)
+                win.webContents.send('update-not-available', info.version)
+            })
+            
+            // 监听更新下载进度
+            autoUpdater.on('download-progress', progressObj => {
+                const percent = Math.round(progressObj.percent)
+                console.log(`更新下载进度: ${percent}%`)
+                win.webContents.send('update-download-progress', percent)
+                win.setProgressBar(percent / 100)
+            })
+            
+            // 监听更新下载完成
+            autoUpdater.on('update-downloaded', info => {
+                console.log('更新下载完成:', info.version)
+                win.setProgressBar(-1) // 隐藏进度条
+                win.webContents.send('update-downloaded', info.version)
+            })
+            
+            // 监听更新错误
+            autoUpdater.on('error', error => {
+                console.error('更新错误:', error)
+                win.setProgressBar(-1) // 隐藏进度条
+                win.webContents.send('update-error', error.message)
+            })
+            
+            // 自动检查更新
             autoUpdater.checkForUpdatesAndNotify()
         }
     })

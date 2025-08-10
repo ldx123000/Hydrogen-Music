@@ -109,6 +109,30 @@ function copyTxt(txt) {
 function checkUpdate(callback) {
     ipcRenderer.on('check-update', callback)
 }
+function updateNotAvailable(callback) {
+    ipcRenderer.on('update-not-available', callback)
+}
+function updateDownloadProgress(callback) {
+    ipcRenderer.on('update-download-progress', callback)
+}
+function updateDownloaded(callback) {
+    ipcRenderer.on('update-downloaded', callback)
+}
+function updateError(callback) {
+    ipcRenderer.on('update-error', callback)
+}
+function checkForUpdate() {
+    ipcRenderer.send('check-for-update')
+}
+function downloadUpdate() {
+    ipcRenderer.send('download-update')
+}
+function installUpdate() {
+    ipcRenderer.send('install-update')
+}
+function cancelUpdate() {
+    ipcRenderer.send('cancel-update')
+}
 function setWindowTile(title) {
     ipcRenderer.send('set-window-title', title)
 }
@@ -171,6 +195,14 @@ contextBridge.exposeInMainWorld('windowApi', {
     getLocalMusicLyric: (filePath) => ipcRenderer.invoke('get-local-music-lyric', filePath),
     copyTxt,
     checkUpdate,
+    updateNotAvailable,
+    updateDownloadProgress,
+    updateDownloaded,
+    updateError,
+    checkForUpdate,
+    downloadUpdate,
+    installUpdate,
+    cancelUpdate,
     setWindowTile,
     updatePlaylistStatus,
     updateDockMenu,
