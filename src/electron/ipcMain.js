@@ -282,13 +282,20 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     })
     ipcMain.handle('music-video-isexists', async (e, obj) => {
+        console.log('检查视频是否存在 - 歌曲ID:', obj.id, '方法:', obj.method)
         const result = await searchMusicVideo(obj.id)
+        console.log('searchMusicVideo 结果:', result)
+        
         if(result) {
             if(obj.method == 'get') return result
             const file = await fileIsExists(result.data.path)
+            console.log('文件是否存在:', file, '路径:', result.data.path)
             if(!file) return '404'
             else return result
-        } else return false
+        } else {
+            console.log('没有找到该歌曲的视频数据')
+            return false
+        }
     })
     ipcMain.handle('clear-unused-video', async (e) => {
         const settings = await settingsStore.get('settings')
