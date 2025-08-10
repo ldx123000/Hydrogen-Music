@@ -1,7 +1,7 @@
 {
   "name": "hydrogenmusic",
   "private": true,
-  "version": "0.5.1",
+  "version": "0.5.2",
   "main": "background.js",
   "author": {
     "name": "ldx123000",
@@ -60,8 +60,8 @@
     "mac": {
       "category": "public.app-category.music",
       "icon": "./src/assets/icon/icon.icns",
-      "bundleVersion": "0.5.1",
-      "bundleShortVersion": "0.5.1",
+      "bundleVersion": "0.5.2",
+      "bundleShortVersion": "0.5.2",
       "target": [
         "dmg",
         "zip"

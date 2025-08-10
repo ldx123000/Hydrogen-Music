@@ -504,6 +504,10 @@ onUnmounted(() => {
     font-family: 'SourceHanSansCN-Bold', 'Bender-Bold', monospace;
     user-select: none;
     overflow: hidden;
+    
+    /* Windows透明度优化 */
+    background: transparent !important;
+    -webkit-app-region: no-drag;
 
     // 进入动画 - 改进版本，更流畅
     animation: lyricWindowAppear 0.6s cubic-bezier(0.4, 0, 0.12, 1) forwards;

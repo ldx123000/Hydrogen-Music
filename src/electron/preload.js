@@ -112,6 +112,9 @@ function checkUpdate(callback) {
 function setWindowTile(title) {
     ipcRenderer.send('set-window-title', title)
 }
+function updatePlaylistStatus(status) {
+    ipcRenderer.send('music-playlist-status', status)
+}
 function updateDockMenu(songInfo) {
     ipcRenderer.send('update-dock-menu', songInfo)
 }
@@ -169,6 +172,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     copyTxt,
     checkUpdate,
     setWindowTile,
+    updatePlaylistStatus,
     updateDockMenu,
 })
 
