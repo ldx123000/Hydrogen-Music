@@ -107,19 +107,19 @@ function copyTxt(txt) {
     ipcRenderer.send('copy-txt', txt)
 }
 function checkUpdate(callback) {
-    ipcRenderer.on('check-update', callback)
+    ipcRenderer.on('check-update', (_event, version) => callback?.(version))
 }
 function updateNotAvailable(callback) {
-    ipcRenderer.on('update-not-available', callback)
+    ipcRenderer.on('update-not-available', (_event, infoOrVersion) => callback?.(infoOrVersion))
 }
 function updateDownloadProgress(callback) {
-    ipcRenderer.on('update-download-progress', callback)
+    ipcRenderer.on('update-download-progress', (_event, percent) => callback?.(percent))
 }
 function updateDownloaded(callback) {
-    ipcRenderer.on('update-downloaded', callback)
+    ipcRenderer.on('update-downloaded', (_event, version) => callback?.(version))
 }
 function updateError(callback) {
-    ipcRenderer.on('update-error', callback)
+    ipcRenderer.on('update-error', (_event, message) => callback?.(message))
 }
 function checkForUpdate() {
     ipcRenderer.send('check-for-update')

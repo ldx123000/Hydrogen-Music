@@ -54,7 +54,7 @@
     },
     "files": [
       "background.js",
-      "desktop-lyric.html", 
+      "desktop-lyric.html",
       "index.html",
       "dist/**/*",
       "src/assets/icon/**/*",
@@ -101,7 +101,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "hydrogenmusic",
+        "owner": "ldx123000",
         "repo": "Hydrogen-Music",
         "releaseType": "draft"
       }
