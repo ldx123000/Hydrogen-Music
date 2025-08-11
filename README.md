@@ -19,11 +19,12 @@
 
 ## 🌟 主要特性
 
-- 重做了登录功能（目前网易云对第三方客户端管理严格，大多数现存播放器已无法登录，复活版尽力兼容）。  
-- 新增 **私人漫游** 功能，可以像原版预期那样探索音乐世界。  
-- 新增评论区，播放器界面可自由切换显示歌词/评论区
-- 桌面歌词：新增独立桌面歌词窗口（置顶、可拖动/锁定、可调整大小），支持显示当前/下一句，右键菜单可切换歌词来源（自动/原文/翻译/罗马音）、锁定位置与字体大小调节。
-- 快捷键系统：支持在设置页自定义应用内与全局快捷键，并可一键恢复默认。
+- 重做 **登录** 功能（目前网易云对第三方客户端管理严格，大多数现存播放器已无法登录，复活版尽力兼容）。  
+- 修复 **歌曲下载** 功能。
+- 修复 **音乐视频** 功能，现在支持在线音乐播放视频。
+- 新增 **私人漫游** 功能，可以像原版预期那样探索音乐世界。 
+- 新增 **桌面歌词** 功能，播放器界面可打开独立桌面歌词窗口（可拖动/锁定、可调整大小），支持显示当前/下一句，右键菜单可切换歌词来源（自动/原文/翻译/罗马音）、锁定位置与字体大小调节。
+- 新增 **评论区** 功能，播放器界面可自由切换显示歌词/评论区
 - 支持了多系统版本的安装包
 
   
@@ -74,6 +75,8 @@ npm start
 
 ![home][home-screenshot]
 ![lyric][lyric-screenshot]
+![desktop-lyric][desktop-lyric-screenshot]
+![comment][comment-screenshot]
 ![privateFM][privateFM-screenshot]
 ![music_video][music_video-screenshot]
 
@@ -82,5 +85,7 @@ npm start
 
 [home-screenshot]: img/home.png
 [lyric-screenshot]: img/lyric.png
+[desktop-lyric-screenshot]: img/desktop-lyric.png
+[comment-screenshot]: img/comment.png
 [privateFM-screenshot]: img/privateFM.png
 [music_video-screenshot]: img/music_video.png
