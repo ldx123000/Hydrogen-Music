@@ -1,5 +1,5 @@
 <template>
-    <div class="arknights-desktop-lyric" :class="{ draggable: !locked }" @contextmenu.prevent.stop="showContextMenu" @click="handleClick" @mousedown="onDragStart">
+    <div class="arknights-desktop-lyric" :class="{ draggable: !locked, 'native-drag': isMac && !locked }" @contextmenu.prevent.stop="showContextMenu" @click="handleClick" @mousedown="onDragStart">
         <!-- 背景层 -->
         <div class="background-layers">
             <div class="bg-layer bg-primary"></div>
@@ -9,7 +9,7 @@
         <!-- 内容区域 -->
         <div class="lyric-content">
             <!-- 顶部状态栏（未锁定时整条可拖拽） -->
-            <div class="status-bar" :class="{ 'drag-handle': !locked, dragging: isDragging }">
+            <div class="status-bar" :class="{ 'native-drag': !locked && isMac, 'drag-handle': !locked && !isMac, dragging: isDragging && isWinOrLinux }">
                 <div class="status-indicator" :class="{ active: playing }">
                     <div class="indicator-dot"></div>
                     <span class="status-text">{{ playing ? 'PLAYING' : 'PAUSED' }}</span>
@@ -171,8 +171,10 @@ const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
 const scanAnimationRef = ref(null);
 const lyricElementRef = ref(null);
 
-// 平台检测（Windows/Linux 启用 JS 拖拽，macOS 保持原生逻辑）
-const isWinOrLinux = typeof navigator !== 'undefined' && /(Windows|Linux|X11|Wayland)/i.test(navigator.userAgent);
+// 平台检测：Windows/Linux 走 JS 拖拽，macOS 保持原生 drag
+const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+const isMac = /Macintosh|Mac OS X|MacOS|Darwin/i.test(ua);
+const isWinOrLinux = !isMac && /(Windows|Linux|X11|Wayland)/i.test(ua);
 
 // 拖拽控制（仅 Windows/Linux 启用纯 JS 移动窗口）
 const isDragging = ref(false);
@@ -588,7 +590,13 @@ onUnmounted(() => {
     
     /* Windows透明度优化 */
     background: transparent !important;
-    -webkit-app-region: no-drag; /* Windows: 使用JS拖拽，整个窗口可拖；macOS: 仍由 native-drag 控制 */
+    /* macOS: 根容器启用原生拖拽；Win/Linux: 禁用原生，走JS拖拽 */
+    &.native-drag {
+        -webkit-app-region: drag;
+    }
+    &:not(.native-drag) {
+        -webkit-app-region: no-drag;
+    }
 
     // 进入动画 - 改进版本，更流畅
     animation: lyricWindowAppear 0.6s cubic-bezier(0.4, 0, 0.12, 1) forwards;
@@ -682,13 +690,13 @@ onUnmounted(() => {
     align-items: center;
     height: 24px;
 
-    /* Windows: 关闭原生 drag，使用 JS 拖拽，光标为抓手 */
-    &.drag-handle { /* 仅用于状态栏（Windows下已全局拖拽，这里不改光标） */
+    /* macOS: 使用原生拖拽；Win/Linux: 关闭原生拖拽，走JS拖拽并允许右键 */
+    &.drag-handle { /* Win/Linux 下用于禁止原生拖拽 */
         -webkit-app-region: no-drag;
         user-select: none;
     }
     &.dragging { /* 不强制光标，保持原版 */ }
-    /* 取消 native-drag，避免原生右键；统一走 JS 拖拽 */
+    &.native-drag { -webkit-app-region: drag; user-select: none; }
 
     .status-indicator {
         display: flex;
