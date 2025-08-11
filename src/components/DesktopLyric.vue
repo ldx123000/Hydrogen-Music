@@ -1247,3 +1247,21 @@ onUnmounted(() => {
     }
 }
 </style>
+<style scoped>
+/* macOS: 全窗口原生拖拽（覆盖内部 no-drag），保留菜单可交互 */
+.arknights-desktop-lyric.native-drag,
+.arknights-desktop-lyric.native-drag .lyric-content,
+.arknights-desktop-lyric.native-drag .status-bar,
+.arknights-desktop-lyric.native-drag .song-info-section,
+.arknights-desktop-lyric.native-drag .main-lyric-section,
+.arknights-desktop-lyric.native-drag .current-lyric,
+.arknights-desktop-lyric.native-drag .progress-section {
+  -webkit-app-region: drag;
+}
+
+/* 右键菜单保持可交互 */
+.arknights-desktop-lyric.native-drag .arknights-context-menu,
+.arknights-desktop-lyric.native-drag .arknights-context-menu * {
+  -webkit-app-region: no-drag;
+}
+</style>
