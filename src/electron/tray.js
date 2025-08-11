@@ -4,7 +4,7 @@ const path = require('path')
 module.exports = function InitTray(win, app, iconPath) {
     let tray = null
     let winIsShow = false
-    
+
     // 创建按钮图标，确保图标清晰可见
     const createButtonIcon = (iconName) => {
         const iconPath = path.resolve(__dirname, `../assets/icon/${iconName}.png`)
@@ -12,7 +12,7 @@ module.exports = function InitTray(win, app, iconPath) {
         // 确保图标尺寸合适，Windows推荐16x16
         return icon.resize({ width: 16, height: 16 })
     }
-    
+
     let Buttons = [
         {
             icon: createButtonIcon('last'),
@@ -165,33 +165,33 @@ module.exports = function InitTray(win, app, iconPath) {
                 Buttons[1].flags = ['enabled'] // 播放按钮启用
                 Buttons[2].flags = ['hidden']
             }
-            
+
             // 确保上一首和下一首按钮始终启用
             Buttons[0].flags = ['enabled']
             Buttons[3].flags = ['enabled']
-            
+
             // 更新Windows缩略图按钮
             if (winIsShow && process.platform === 'win32') {
                 win.setThumbarButtons(Buttons)
             }
         })
-        
+
         // 监听播放列表状态，动态启用/禁用按钮
         ipcMain.on('music-playlist-status', (e, { hasNext, hasPrevious, hasCurrentSong }) => {
             // 根据播放列表状态更新按钮
             Buttons[0].flags = hasPrevious ? ['enabled'] : ['disabled'] // 上一首
             Buttons[3].flags = hasNext ? ['enabled'] : ['disabled'] // 下一首
-            
+
             // 如果没有当前歌曲，禁用播放/暂停按钮
             if (!hasCurrentSong) {
                 Buttons[1].flags = ['disabled']
                 Buttons[2].flags = ['disabled']
             }
-            
+
             // 更新上下文菜单的启用状态
             contextMenu.items[2].enabled = hasPrevious // 上一首菜单项
             contextMenu.items[3].enabled = hasNext // 下一首菜单项
-            
+
             // 更新Windows缩略图按钮
             if (winIsShow && process.platform === 'win32') {
                 win.setThumbarButtons(Buttons)

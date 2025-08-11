@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron')
- 
+
 function windowMin() {
     ipcRenderer.send('window-min')
 }
@@ -226,4 +226,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resizeWindow: (width, height) => ipcRenderer.invoke('resize-lyric-window', { width, height }),
     notifyLyricWindowClosed: () => ipcRenderer.send('lyric-window-closed'),
     onDesktopLyricClosed: (callback) => ipcRenderer.on('desktop-lyric-closed', callback),
+    // 拖拽相关：获取与移动桌面歌词窗口
+    getLyricWindowBounds: () => ipcRenderer.invoke('get-lyric-window-bounds'),
+    moveLyricWindow: (x, y) => ipcRenderer.send('move-lyric-window', { x, y }),
+    moveLyricWindowBy: (dx, dy) => ipcRenderer.send('move-lyric-window-by', { dx, dy }),
+    setLyricWindowResizable: (resizable) => ipcRenderer.send('set-lyric-window-resizable', { resizable }),
+    moveLyricWindowTo: (x, y, width, height) => ipcRenderer.send('move-lyric-window-to', { x, y, width, height }),
+    getLyricWindowMinMax: () => ipcRenderer.invoke('get-lyric-window-min-max'),
+    setLyricWindowMinMax: (minWidth, minHeight, maxWidth, maxHeight) => ipcRenderer.send('set-lyric-window-min-max', { minWidth, minHeight, maxWidth, maxHeight }),
+    setLyricWindowAspectRatio: (aspectRatio) => ipcRenderer.send('set-lyric-window-aspect-ratio', { aspectRatio }),
+    getLyricWindowContentBounds: () => ipcRenderer.invoke('get-lyric-window-content-bounds'),
+    moveLyricWindowContentTo: (x, y, width, height) => ipcRenderer.send('move-lyric-window-content-to', { x, y, width, height }),
 })

@@ -1,5 +1,5 @@
 <template>
-    <div class="arknights-desktop-lyric" :class="{ draggable: !locked }" @contextmenu="showContextMenu" @click="handleClick">
+    <div class="arknights-desktop-lyric" :class="{ draggable: !locked }" @contextmenu.prevent.stop="showContextMenu" @click="handleClick" @mousedown="onDragStart">
         <!-- 背景层 -->
         <div class="background-layers">
             <div class="bg-layer bg-primary"></div>
@@ -8,8 +8,8 @@
 
         <!-- 内容区域 -->
         <div class="lyric-content">
-            <!-- 顶部状态栏 -->
-            <div class="status-bar">
+            <!-- 顶部状态栏（未锁定时整条可拖拽） -->
+            <div class="status-bar" :class="{ 'drag-handle': !locked, dragging: isDragging }">
                 <div class="status-indicator" :class="{ active: playing }">
                     <div class="indicator-dot"></div>
                     <span class="status-text">{{ playing ? 'PLAYING' : 'PAUSED' }}</span>
@@ -170,6 +170,87 @@ const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
 // 同步扫描动画控制
 const scanAnimationRef = ref(null);
 const lyricElementRef = ref(null);
+
+// 平台检测（Windows/Linux 启用 JS 拖拽，macOS 保持原生逻辑）
+const isWinOrLinux = typeof navigator !== 'undefined' && /(Windows|Linux|X11|Wayland)/i.test(navigator.userAgent);
+
+// 拖拽控制（仅 Windows/Linux 启用纯 JS 移动窗口）
+const isDragging = ref(false);
+const dragStartScreen = ref({ x: 0, y: 0 });
+const dragStartSize = ref({ width: 0, height: 0 });
+const dragCurrentPos = ref({ x: 0, y: 0 });
+const originalMinMax = ref(null);
+
+const onDragStart = async (e) => {
+    if (!isWinOrLinux || locked.value) return;
+    // 仅响应左键
+    if (e.button !== 0) return;
+    try {
+        e.preventDefault();
+        e.stopPropagation();
+        // 记录起点与初始窗口尺寸/位置
+        const bounds = await window.electronAPI?.getLyricWindowBounds?.();
+        if (!bounds) return;
+        // 使用内容区域尺寸与位置，避免外框差异导致的尺寸漂移
+        const contentBounds = await window.electronAPI?.getLyricWindowContentBounds?.();
+        const useBounds = contentBounds || bounds;
+        dragStartSize.value = { width: useBounds.width, height: useBounds.height };
+        dragCurrentPos.value = { x: useBounds.x, y: useBounds.y };
+        isDragging.value = true;
+        dragStartScreen.value = { x: e.screenX, y: e.screenY };
+        // 懒获取：移动时用 movement 增量
+        // 防止选中文本
+        document.body.style.userSelect = 'none';
+        // 拖拽期间禁用窗口 resize，避免误判为调整大小
+        window.electronAPI?.setLyricWindowResizable?.(false);
+        // 读取并保存原始最小/最大尺寸，然后把 min/max 都锁到初始尺寸，彻底杜绝尺寸变化
+        originalMinMax.value = await window.electronAPI?.getLyricWindowMinMax?.();
+        await window.electronAPI?.setLyricWindowMinMax?.(
+            dragStartSize.value.width,
+            dragStartSize.value.height,
+            dragStartSize.value.width,
+            dragStartSize.value.height
+        );
+        // 监听全局移动/松开，避免移出手柄就终止
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+    } catch (_) {}
+};
+
+const onDragMove = (e) => {
+    if (!isWinOrLinux || !isDragging.value) return;
+    // 使用 movementX/movementY 作为增量，保证平滑
+    const dx = e.movementX ?? (e.screenX - dragStartScreen.value.x);
+    const dy = e.movementY ?? (e.screenY - dragStartScreen.value.y);
+
+    // 更新当前记录位置
+    const newX = Math.round(dragCurrentPos.value.x + dx);
+    const newY = Math.round(dragCurrentPos.value.y + dy);
+    dragCurrentPos.value = { x: newX, y: newY };
+
+    // 兼容无 movementX/Y 的场景，复位起点
+    if (e.movementX == null || e.movementY == null) {
+        dragStartScreen.value = { x: e.screenX, y: e.screenY };
+    }
+
+    // 强制保持初始尺寸
+    // 用内容区域移动，进一步隔离外框差异
+    window.electronAPI?.moveLyricWindowContentTo?.(newX, newY, dragStartSize.value.width, dragStartSize.value.height);
+};
+
+const onDragEnd = () => {
+    if (!isWinOrLinux || !isDragging.value) return;
+    isDragging.value = false;
+    document.body.style.userSelect = '';
+    // 恢复窗口 min/max 限制与可调整大小
+    if (originalMinMax.value) {
+        const { minWidth, minHeight, maxWidth, maxHeight } = originalMinMax.value;
+        window.electronAPI?.setLyricWindowMinMax?.(minWidth, minHeight, maxWidth, maxHeight);
+    }
+    window.electronAPI?.setLyricWindowResizable?.(true);
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+};
 
 // 启动同步扫描动画
 const startScanAnimation = () => {
@@ -471,7 +552,7 @@ onMounted(() => {
 
     document.addEventListener('click', hideContextMenu);
     document.addEventListener('contextmenu', e => {
-        if (!e.target.closest('.desktop-lyric')) {
+        if (!e.target.closest('.arknights-desktop-lyric')) {
             e.preventDefault();
         }
     });
@@ -507,7 +588,7 @@ onUnmounted(() => {
     
     /* Windows透明度优化 */
     background: transparent !important;
-    -webkit-app-region: no-drag;
+    -webkit-app-region: no-drag; /* Windows: 使用JS拖拽，整个窗口可拖；macOS: 仍由 native-drag 控制 */
 
     // 进入动画 - 改进版本，更流畅
     animation: lyricWindowAppear 0.6s cubic-bezier(0.4, 0, 0.12, 1) forwards;
@@ -544,8 +625,7 @@ onUnmounted(() => {
     }
 
     &.draggable {
-        -webkit-app-region: drag;
-        cursor: move;
+        /* 由特定手柄控制拖拽，根容器不再强制拖拽与光标样式 */
     }
 }
 
@@ -595,10 +675,20 @@ onUnmounted(() => {
 
 // 顶部状态栏
 .status-bar {
+    position: relative;
+    
     display: flex;
     justify-content: space-between;
     align-items: center;
     height: 24px;
+
+    /* Windows: 关闭原生 drag，使用 JS 拖拽，光标为抓手 */
+    &.drag-handle { /* 仅用于状态栏（Windows下已全局拖拽，这里不改光标） */
+        -webkit-app-region: no-drag;
+        user-select: none;
+    }
+    &.dragging { /* 不强制光标，保持原版 */ }
+    /* 取消 native-drag，避免原生右键；统一走 JS 拖拽 */
 
     .status-indicator {
         display: flex;
@@ -663,6 +753,7 @@ onUnmounted(() => {
     border: 1px solid rgba(0, 0, 0, 0.1);
     padding: 8px 12px;
     flex-shrink: 0;
+    -webkit-app-region: no-drag;
 
     .song-meta {
         position: relative;
@@ -709,6 +800,7 @@ onUnmounted(() => {
     background: rgba(255, 255, 255, 0.15);
     border: 2px solid rgba(0, 0, 0, 0.2);
     min-height: 120px;
+    -webkit-app-region: no-drag;
 
     display: flex;
     flex-direction: column;
@@ -742,6 +834,7 @@ onUnmounted(() => {
             min-height: 60px;
             position: relative;
             overflow: hidden;
+            -webkit-app-region: no-drag;
 
             // 使用JavaScript控制的同步进度条扫描效果
             background: rgba(255, 255, 255, 0.1);
@@ -838,6 +931,7 @@ onUnmounted(() => {
     padding: 8px 12px;
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 0; // 直角设计
+    -webkit-app-region: no-drag;
 
     .progress-label {
         font-family: 'Bender-Bold', monospace;

@@ -1,4 +1,4 @@
-const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, session } =  require('electron')
+const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, session } = require('electron')
 const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
@@ -10,14 +10,14 @@ const CancelToken = axios.CancelToken
 let cancel = null
 
 module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
-    const settingsStore = new Store({name: 'settings'})
-    const lastPlaylistStore = new Store({name: 'lastPlaylist'})
-    const musicVideoStore = new Store({name: 'musicVideo'})
-    
+    const settingsStore = new Store({ name: 'settings' })
+    const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
+    const musicVideoStore = new Store({ name: 'musicVideo' })
+
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
     // win.on('restore', () => {
-        // win.webContents.send('lyric-control')
+    // win.webContents.send('lyric-control')
     // })
     ipcMain.on('window-min', () => {
         win.minimize()
@@ -25,7 +25,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 保存窗口的原始状态
     let savedBounds = null
     let isWindowMaximized = false
-    
+
     ipcMain.on('window-max', () => {
         if (isWindowMaximized) {
             // macOS 上 restore() 可能不可靠，手动设置窗口大小和位置
@@ -48,28 +48,28 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             isWindowMaximized = true
         }
     })
-    
+
     // 监听窗口状态变化事件
     win.on('maximize', () => {
         if (!isWindowMaximized) {
             isWindowMaximized = true
         }
     })
-    
+
     win.on('unmaximize', () => {
         if (isWindowMaximized) {
             isWindowMaximized = false
         }
     })
-    
+
     win.on('restore', () => {
         isWindowMaximized = false
     })
     ipcMain.on('window-close', async () => {
         const settings = await settingsStore.get('settings')
-        if(settings.other.quitApp == 'minimize') {
+        if (settings.other.quitApp == 'minimize') {
             win.hide()
-        } else if(settings.other.quitApp == 'quit') {
+        } else if (settings.other.quitApp == 'quit') {
             win.close()
         }
     })
@@ -81,7 +81,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     ipcMain.handle('get-image-base64', async (e, filePath) => {
         const data = await parseFile(filePath)
-        if(data.common.picture) 
+        if (data.common.picture)
             return `data:${data.common.picture[0].format};base64,${data.common.picture[0].data.toString('base64')}`
         else
             return null
@@ -91,8 +91,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         registerShortcuts(win)
     })
     ipcMain.handle('get-settings', async () => {
-        const settings =  await settingsStore.get('settings')
-        if(settings) return settings
+        const settings = await settingsStore.get('settings')
+        if (settings) return settings
         else {
             let initSettings = {
                 music: {
@@ -153,7 +153,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 ],
                 other: {
                     globalShortcuts: true,
-                    quitApp:'minimize'
+                    quitApp: 'minimize'
                 }
             }
             settingsStore.set('settings', initSettings)
@@ -162,7 +162,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     })
     ipcMain.handle('dialog:openFile', async () => {
-        const { canceled, filePaths } = await dialog.showOpenDialog({properties: ['openDirectory']})
+        const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] })
         if (canceled) {
             return null
         } else {
@@ -184,8 +184,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         app.exit()
     })
     ipcMain.handle('get-last-playlist', async () => {
-        const lastPlaylist =  await lastPlaylistStore.get('playlist')
-        if(lastPlaylist) return lastPlaylist
+        const lastPlaylist = await lastPlaylistStore.get('playlist')
+        if (lastPlaylist) return lastPlaylist
         else return null
     })
     ipcMain.on('open-local-folder', (e, path) => {
@@ -196,19 +196,19 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         return result.data
     })
     async function searchMusicVideo(id) {
-        if(musicVideoStore.has('musicVideo')) {
+        if (musicVideoStore.has('musicVideo')) {
             const result = await musicVideoStore.get('musicVideo')
             const index = (result || []).findIndex((music) => music.id == id)
-            if(index != -1) {
-                return {data: result[index], index: index}
+            if (index != -1) {
+                return { data: result[index], index: index }
             } else return false
         } else return false
     }
     async function saveMusicVideo(data) {
-        if(musicVideoStore.has('musicVideo')) {
+        if (musicVideoStore.has('musicVideo')) {
             const musicVideo = await musicVideoStore.get('musicVideo')
             searchMusicVideo(data.id).then(result => {
-                if(result) musicVideo.splice(result.index, 1)
+                if (result) musicVideo.splice(result.index, 1)
                 musicVideo.push(data)
                 musicVideoStore.set('musicVideo', musicVideo)
             })
@@ -216,7 +216,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             musicVideoStore.set('musicVideo', [data])
         }
     }
-    function fileIsExists(path) { 
+    function fileIsExists(path) {
         return new Promise((resolve, reject) => {
             fs.access(path, fs.constants.F_OK, (err) => {
                 if (!err) resolve(true)
@@ -226,25 +226,25 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     }
     ipcMain.handle('get-bili-video', async (e, request) => {
         const settings = await settingsStore.get('settings')
-        if(!settings.local.videoFolder) return 'noSavePath'
-        const videoPath = path.join(settings.local.videoFolder, request.option.params.cid + '_'+ request.option.params.quality.substring(3) + '.mp4')
+        if (!settings.local.videoFolder) return 'noSavePath'
+        const videoPath = path.join(settings.local.videoFolder, request.option.params.cid + '_' + request.option.params.quality.substring(3) + '.mp4')
         let returnCode = 'success'
-        if(await fileIsExists(videoPath)) {
+        if (await fileIsExists(videoPath)) {
             request.option.params.timing = JSON.parse(request.option.params.timing)
             request.option.params.path = videoPath
             saveMusicVideo(request.option.params)
             return returnCode
         } else {
-            if(cancel != null) cancel()
+            if (cancel != null) cancel()
             const result = await axios({
                 url: request.url,
                 method: 'get',
                 headers: request.option.headers,
                 responseType: 'stream',
-                onDownloadProgress:(progressEvent)=>{
-                    let progress = Math.round( progressEvent.loaded / progressEvent.total*100)
+                onDownloadProgress: (progressEvent) => {
+                    let progress = Math.round(progressEvent.loaded / progressEvent.total * 100)
                     win.webContents.send('download-video-progress', progress)
-                    if(returnCode == 'cancel') win.setProgressBar(-1)
+                    if (returnCode == 'cancel') win.setProgressBar(-1)
                     else win.setProgressBar(progress / 100)
                 },
                 cancelToken: new CancelToken(function executor(c) {
@@ -265,7 +265,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return new Promise((resolve, reject) => {
                 writer.on("finish", () => {
                     win.setProgressBar(-1)
-                    if(returnCode == 'cancel') {
+                    if (returnCode == 'cancel') {
                         resolve(returnCode)
                         return returnCode
                     }
@@ -285,12 +285,12 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         console.log('检查视频是否存在 - 歌曲ID:', obj.id, '方法:', obj.method)
         const result = await searchMusicVideo(obj.id)
         console.log('searchMusicVideo 结果:', result)
-        
-        if(result) {
-            if(obj.method == 'get') return result
+
+        if (result) {
+            if (obj.method == 'get') return result
             const file = await fileIsExists(result.data.path)
             console.log('文件是否存在:', file, '路径:', result.data.path)
-            if(!file) return '404'
+            if (!file) return '404'
             else return result
         } else {
             console.log('没有找到该歌曲的视频数据')
@@ -300,12 +300,12 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.handle('clear-unused-video', async (e) => {
         const settings = await settingsStore.get('settings')
         const folderPath = settings.local.videoFolder
-        if(!folderPath) return 'noSavePath'
+        if (!folderPath) return 'noSavePath'
         const musicVideo = await musicVideoStore.get('musicVideo')
         const files = fs.readdirSync(folderPath)
         files.forEach(filename => {
             const filePath = path.join(folderPath, filename)
-            if(!musicVideo.some(video => video.path == filePath)) {
+            if (!musicVideo.some(video => video.path == filePath)) {
                 fs.unlinkSync(filePath)
             }
         })
@@ -315,7 +315,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         const musicVideo = await musicVideoStore.get('musicVideo')
         return new Promise((resolve, reject) => {
             searchMusicVideo(id).then(result => {
-                if(result) {
+                if (result) {
                     musicVideo.splice(result.index, 1)
                     musicVideoStore.set('musicVideo', musicVideo)
                     resolve(true)
@@ -352,21 +352,21 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             const lines = data.split(/\r?\n/)
             let lyricArr = ''
             lines.forEach((line) => {
-                if(line) lyricArr += line + '\n'
+                if (line) lyricArr += line + '\n'
             })
             return lyricArr
         }
-        if(await fileIsExists(path.join(folderPath, fileName + '.lrc'))) {
+        if (await fileIsExists(path.join(folderPath, fileName + '.lrc'))) {
             const res = await readLyric(path.join(folderPath, fileName + '.lrc'))
-            if(res) return lyricHandle(res)
+            if (res) return lyricHandle(res)
         }
-        if(await fileIsExists(path.join(folderPath, fileName + '.txt'))) {
+        if (await fileIsExists(path.join(folderPath, fileName + '.txt'))) {
             const res = await readLyric(path.join(folderPath, fileName + '.txt'))
-            if(res) return lyricHandle(res)
+            if (res) return lyricHandle(res)
         }
         const metedata = await parseFile(filePath)
-        if(metedata.common.lyrics) return metedata.common.lyrics[0]
-        
+        if (metedata.common.lyrics) return metedata.common.lyrics[0]
+
         return false
     })
     ipcMain.on('copy-txt', (e, txt) => {
@@ -375,7 +375,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.on('set-window-title', (e, title) => {
         win.setTitle(title)
     })
-    
+
     // 处理更新 Dock 菜单的事件
     ipcMain.on('update-dock-menu', (e, songInfo) => {
         // 通知主进程更新 Dock 菜单
@@ -419,16 +419,16 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                     const cookies = await loginSession.cookies.get({
                         domain: '.music.163.com'
                     })
-                    
+
                     // 检查是否包含登录必需的cookie
                     const musicUCookie = cookies.find(cookie => cookie.name === 'MUSIC_U')
-                    
+
                     if (musicUCookie && musicUCookie.value && musicUCookie.value.length > 10) {
                         // 将cookies转换为字符串格式
-                        const cookieString = cookies.map(cookie => 
+                        const cookieString = cookies.map(cookie =>
                             `${cookie.name}=${cookie.value}`
                         ).join('; ')
-                        
+
                         loginWindow.close()
                         resolve({
                             success: true,
@@ -439,7 +439,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                     }
                     return false
                 } catch (error) {
-                    
+
                     return false
                 }
             }
@@ -447,10 +447,10 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             // 强制加载登录页面的函数
             const forceLoadLoginPage = async () => {
                 try {
-                    
+
                     // 加载登录页面并注入脚本确保显示登录界面
                     await loginWindow.loadURL('https://music.163.com/#/login')
-                    
+
                     // 延迟一下确保页面加载完成
                     setTimeout(async () => {
                         try {
@@ -485,31 +485,31 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                                 }, 1000);
                             `)
                         } catch (error) {
-                            
+
                         }
                     }, 2000)
                 } catch (error) {
-                    
+
                 }
             }
 
             // 初始加载完成后，开始加载登录页面
             loginWindow.webContents.once('did-finish-load', () => {
-                
+
                 forceLoadLoginPage()
             })
 
             // 监听页面加载完成
             loginWindow.webContents.on('did-finish-load', async () => {
                 const currentURL = loginWindow.webContents.getURL()
-                
-                
+
+
                 // 如果不是登录页面，强制跳转
                 if (currentURL.includes('music.163.com') && !currentURL.includes('/login')) {
-                    
+
                     setTimeout(() => forceLoadLoginPage(), 1000)
                 }
-                
+
                 // 延迟检查登录状态
                 setTimeout(async () => {
                     await checkLoginStatus()
@@ -518,8 +518,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
             // 监听URL变化
             loginWindow.webContents.on('did-navigate', async (event, navigationUrl) => {
-                
-                
+
+
                 // 延迟检查登录状态
                 setTimeout(async () => {
                     await checkLoginStatus()
@@ -528,19 +528,19 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
             // 监听页面内导航（适用于SPA应用）
             loginWindow.webContents.on('did-navigate-in-page', async (event, navigationUrl) => {
-                
-                
+
+
                 // 检查是否跳转到了登录后的页面
-                if (navigationUrl.includes('music.163.com') && 
-                    (navigationUrl.includes('#/my') || 
-                     navigationUrl.includes('#/discover') || 
-                     navigationUrl.includes('#/friend'))) {
-                    
+                if (navigationUrl.includes('music.163.com') &&
+                    (navigationUrl.includes('#/my') ||
+                        navigationUrl.includes('#/discover') ||
+                        navigationUrl.includes('#/friend'))) {
+
                     // 延迟检查，确保cookie已设置
                     setTimeout(async () => {
                         const success = await checkLoginStatus()
                         if (!success) {
-                            
+
                         }
                     }, 3000)
                 }
@@ -554,17 +554,17 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                     clearInterval(forceRefreshInterval)
                     return
                 }
-                
+
                 try {
                     const currentURL = loginWindow.webContents.getURL()
-                    
-                    
+
+
                     if (currentURL.includes('music.163.com') && !currentURL.includes('/login')) {
-                        
+
                         forceLoadLoginPage()
                     }
                 } catch (error) {
-                    
+
                 }
             }, 5000)
 
@@ -592,7 +592,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
             // 处理登录错误
             loginWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-                
+
                 clearInterval(loginCheckInterval)
                 clearInterval(forceRefreshInterval)
                 // 清理session
@@ -615,23 +615,23 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 quotas: ['temporary', 'persistent', 'syncable'],
                 origin: 'https://music.163.com'
             })
-            
+
             // 清理网易云相关的cookies
             const cookies = await session.defaultSession.cookies.get({
                 domain: '.music.163.com'
             })
-            
+
             for (const cookie of cookies) {
                 await session.defaultSession.cookies.remove(
-                    `https://${cookie.domain}${cookie.path}`, 
+                    `https://${cookie.domain}${cookie.path}`,
                     cookie.name
                 )
             }
-            
-            
+
+
             return { success: true, message: '登录session已清理' }
         } catch (error) {
-            
+
             return { success: false, message: '清理失败' }
         }
     })
@@ -645,13 +645,13 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 const lyricWin = createLyricWindow()
                 if (lyricWin) {
                     globalLyricWindow = lyricWin
-                    
+
                     // 监听窗口关闭事件
                     lyricWin.on('closed', () => {
                         globalLyricWindow = null
                     })
-                    
-                    
+
+
                     return { success: true, message: '桌面歌词窗口已创建' }
                 } else {
                     return { success: false, message: '创建窗口失败' }
@@ -659,7 +659,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             }
             return { success: false, message: '桌面歌词功能不可用' }
         } catch (error) {
-            
+
             return { success: false, message: '创建失败' }
         }
     })
@@ -672,7 +672,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             }
             return { success: false, message: '桌面歌词功能不可用' }
         } catch (error) {
-            
+
             return { success: false, message: '关闭失败' }
         }
     })
@@ -685,13 +685,13 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             }
             return { success: false, message: '桌面歌词功能不可用' }
         } catch (error) {
-            
+
             return { success: false, message: '设置失败' }
         }
     })
 
     ipcMain.on('lyric-window-ready', () => {
-        
+
     })
 
     ipcMain.on('update-lyric-data', (event, data) => {
@@ -699,7 +699,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         if (!lyricWindow && getLyricWindow) {
             lyricWindow = getLyricWindow()
         }
-        
+
         if (lyricWindow && !lyricWindow.isDestroyed()) {
             lyricWindow.webContents.send('lyric-update', data)
         }
@@ -729,11 +729,161 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 lyricWindow.setSize(width, height);
                 return { success: true };
             } catch (error) {
-                
+
                 return { success: false, error: error.message };
             }
         }
         return { success: false, error: '窗口不存在' };
+    });
+
+    // 获取桌面歌词窗口位置与尺寸
+    ipcMain.handle('get-lyric-window-bounds', () => {
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            try {
+                return lyricWindow.getBounds();
+            } catch (error) {
+                return null;
+            }
+        }
+        return null;
+    });
+
+    // 移动桌面歌词窗口到指定坐标（基于屏幕坐标）
+    ipcMain.on('move-lyric-window', (event, { x, y }) => {
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed() && typeof x === 'number' && typeof y === 'number') {
+            try {
+                lyricWindow.setPosition(Math.round(x), Math.round(y));
+            } catch (error) {
+                // 忽略移动错误
+            }
+        }
+    });
+
+    // 按增量移动桌面歌词窗口（无需预先获取窗口位置）
+    ipcMain.on('move-lyric-window-by', (event, { dx, dy }) => {
+        if (process.platform === 'darwin') return; // macOS 保持原生
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed() && typeof dx === 'number' && typeof dy === 'number') {
+            try {
+                const { x, y } = lyricWindow.getBounds();
+                lyricWindow.setPosition(Math.round(x + dx), Math.round(y + dy));
+            } catch (error) {
+                // 忽略移动错误
+            }
+        }
+    });
+
+    // 将窗口移动到指定位置，并强制保持给定宽高
+    ipcMain.on('move-lyric-window-to', (event, { x, y, width, height }) => {
+        if (process.platform === 'darwin') return; // macOS 保持原生
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (
+            lyricWindow &&
+            !lyricWindow.isDestroyed() &&
+            typeof x === 'number' && typeof y === 'number' &&
+            typeof width === 'number' && typeof height === 'number'
+        ) {
+            try {
+                lyricWindow.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) });
+            } catch (error) {
+                // 忽略移动错误
+            }
+        }
+    });
+
+    // 读取窗口最小/最大尺寸（Windows专用）
+    ipcMain.handle('get-lyric-window-min-max', () => {
+        if (process.platform === 'darwin') return null;
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            try {
+                const [minWidth, minHeight] = lyricWindow.getMinimumSize();
+                const [maxWidth, maxHeight] = lyricWindow.getMaximumSize();
+                return { minWidth, minHeight, maxWidth, maxHeight };
+            } catch (error) {
+                return null;
+            }
+        }
+        return null;
+    });
+
+    // 设置窗口最小/最大尺寸（Windows专用）
+    ipcMain.on('set-lyric-window-min-max', (event, { minWidth, minHeight, maxWidth, maxHeight }) => {
+        if (process.platform === 'darwin') return;
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            try {
+                if (typeof minWidth === 'number' && typeof minHeight === 'number') {
+                    lyricWindow.setMinimumSize(Math.max(0, Math.round(minWidth)), Math.max(0, Math.round(minHeight)));
+                }
+                if (typeof maxWidth === 'number' && typeof maxHeight === 'number') {
+                    lyricWindow.setMaximumSize(Math.max(0, Math.round(maxWidth)), Math.max(0, Math.round(maxHeight)));
+                }
+            } catch (error) {
+                // 忽略错误
+            }
+        }
+    });
+
+    // 设置窗口宽高比（Windows专用）
+    ipcMain.on('set-lyric-window-aspect-ratio', (event, { aspectRatio }) => {
+        if (process.platform === 'darwin') return;
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            try {
+                const ratio = typeof aspectRatio === 'number' ? aspectRatio : 0;
+                lyricWindow.setAspectRatio(ratio > 0 ? ratio : 0);
+            } catch (error) {
+                // 忽略错误
+            }
+        }
+    });
+
+    // 读取内容区域的bounds（Windows专用）
+    ipcMain.handle('get-lyric-window-content-bounds', () => {
+        if (process.platform === 'darwin') return null;
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            try {
+                return lyricWindow.getContentBounds();
+            } catch (error) {
+                return null;
+            }
+        }
+        return null;
+    });
+
+    // 设置内容区域的bounds（Windows专用）
+    ipcMain.on('move-lyric-window-content-to', (event, { x, y, width, height }) => {
+        if (process.platform === 'darwin') return;
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (
+            lyricWindow &&
+            !lyricWindow.isDestroyed() &&
+            typeof x === 'number' && typeof y === 'number' &&
+            typeof width === 'number' && typeof height === 'number'
+        ) {
+            try {
+                lyricWindow.setContentBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) });
+            } catch (error) {
+                // 忽略错误
+            }
+        }
+    });
+
+    // 设置桌面歌词窗口的可调整大小状态（用于拖拽期间临时禁用）
+    ipcMain.on('set-lyric-window-resizable', (event, { resizable }) => {
+        if (process.platform !== 'win32') return; // 仅Windows需要
+        const lyricWindow = getLyricWindow && getLyricWindow();
+        if (lyricWindow && !lyricWindow.isDestroyed()) {
+            try {
+                lyricWindow.setResizable(!!resizable);
+            } catch (error) {
+                // 忽略错误
+            }
+        }
     });
 
     // 处理桌面歌词窗口关闭通知
