@@ -289,12 +289,24 @@ const likeSong = async () => {
         // 使用计算属性来判断当前的操作是“喜欢”还是“取消喜欢”
         const isLiked = !isCurrentSongLiked.value;
         console.log('PersonalFM开始喜欢操作:', { songId: currentSong.value.id, like: isLiked });
-        
-        // 尝试使用播放列表操作的新方法
+
+        // 1) 优先使用官方 /like 接口
+        try {
+            const result = await likeMusic(currentSong.value.id, isLiked);
+            if (result && result.code === 200) {
+                const res = await getLikelist(userStore.user.userId);
+                userStore.updateLikelist(res.ids);
+                await updateFavoritePlaylistIfViewing();
+                return;
+            }
+            throw new Error('likeMusic 返回异常');
+        } catch (apiErr) {
+            console.warn('PersonalFM likeMusic 失败，尝试使用歌单 tracks:', apiErr.message);
+        }
+
+        // 2) 降级：使用“我喜欢的音乐”歌单 tracks
         try {
             const favoritePlaylistId = await getFavoritePlaylistId();
-            console.log('PersonalFM获取到的播放列表ID:', favoritePlaylistId);
-            
             if (favoritePlaylistId) {
                 const params = {
                     op: isLiked ? 'add' : 'del',
@@ -302,58 +314,23 @@ const likeSong = async () => {
                     tracks: currentSong.value.id,
                     timestamp: new Date().getTime()
                 };
-                
-                console.log('PersonalFM播放列表操作参数:', params);
                 const result = await updatePlaylist(params);
-                console.log('PersonalFM播放列表操作结果:', result);
-                
-                // 根据实际返回格式判断成功
                 const isSuccess = result && (
                     (result.status === 200 && result.body && result.body.code === 200) ||
                     result.code === 200 ||
                     result.status === 200
                 );
-                
-                console.log('PersonalFM播放列表操作是否成功:', isSuccess);
-                
                 if (isSuccess) {
-                    // 成功后更新喜欢列表
-                    try {
-                        const res = await getLikelist(userStore.user.userId);
-                        userStore.updateLikelist(res.ids);
-                        
-                        // 如果当前正在查看"我喜欢的音乐"歌单，实时更新歌单内容
-                        await updateFavoritePlaylistIfViewing();
-                    } catch (error) {
-                        console.error('PersonalFM更新喜欢列表失败:', error);
-                    }
-                    console.log('PersonalFM播放列表操作成功');
+                    const res = await getLikelist(userStore.user.userId);
+                    userStore.updateLikelist(res.ids);
+                    await updateFavoritePlaylistIfViewing();
                     return;
                 }
             }
+            throw new Error('歌单 tracks 返回异常');
         } catch (playlistError) {
-            console.warn('PersonalFM播放列表操作失败，回退到原API:', playlistError.message);
+            console.error('PersonalFM 歌单 tracks 也失败:', playlistError);
         }
-        
-        // 回退到原API
-        await likeMusic(currentSong.value.id, isLiked);
-
-        // 为了提供即时反馈，可以手动更新本地的likelist
-        if (isLiked) {
-            userStore.likelist.push(currentSong.value.id);
-        } else {
-            const index = userStore.likelist.indexOf(currentSong.value.id);
-            if (index > -1) {
-                userStore.likelist.splice(index, 1);
-            }
-        }
-
-        // 异步获取最新的喜欢列表以确保数据最终一致
-        getLikelist(userStore.user.userId).then(async res => {
-            userStore.updateLikelist(res.ids);
-            // 也要更新歌单界面
-            await updateFavoritePlaylistIfViewing();
-        });
     } catch (error) {
         console.error('Failed to like song:', error);
     }

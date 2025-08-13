@@ -31,8 +31,17 @@ request.interceptors.request.use(function (config) {
 request.interceptors.response.use(function (response) {
     return response.data
   }, function (error) {
-    noticeOpen("请求错误", 2)
+    const url = error?.config?.url || ''
+    const status = error?.response?.status
+    const msg = error?.response?.data?.message || error?.response?.data?.msg
+    // 对 /like 与 /playlist/tracks 的错误不进行全局提示，这些操作由调用方负责降级与提示
+    const suppressGlobalNotice = url === '/like' || url === '/playlist/tracks'
+    if (!suppressGlobalNotice) {
+      if (msg) noticeOpen(`请求错误：${msg}`, 2)
+      else if (status) noticeOpen(`请求错误 (${status})`, 2)
+      else noticeOpen('请求错误', 2)
+    }
     return error;
-});
+  });
 
 export default request;
