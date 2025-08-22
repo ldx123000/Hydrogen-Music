@@ -591,17 +591,35 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             })
 
             // 处理登录错误
+            let failedLoadCount = 0
+            const maxFailedLoads = 5
             loginWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-
-                clearInterval(loginCheckInterval)
-                clearInterval(forceRefreshInterval)
-                // 清理session
-                loginSession.clearCache()
-                loginSession.clearStorageData()
-                reject({
-                    success: false,
-                    message: `页面加载失败: ${errorDescription}`
-                })
+                failedLoadCount++
+                console.log(`登录页面加载失败 (${failedLoadCount}/${maxFailedLoads}):`, errorDescription)
+                
+                // 只有在连续失败多次后才真正失败
+                if (failedLoadCount >= maxFailedLoads) {
+                    console.error('登录页面多次加载失败，终止登录流程')
+                    clearInterval(loginCheckInterval)
+                    clearInterval(forceRefreshInterval)
+                    // 清理session
+                    loginSession.clearCache()
+                    loginSession.clearStorageData()
+                    reject({
+                        success: false,
+                        message: `页面加载失败: ${errorDescription}`
+                    })
+                } else {
+                    // 尝试重新加载登录页面
+                    console.log('尝试重新加载登录页面...')
+                    setTimeout(() => {
+                        try {
+                            forceLoadLoginPage()
+                        } catch (retryError) {
+                            console.error('重试加载登录页面失败:', retryError)
+                        }
+                    }, 2000)
+                }
             })
         })
     })

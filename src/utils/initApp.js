@@ -111,14 +111,47 @@ export const init = () => {
         playerStore.songId = null
     }
     
-    loadLastSong()
     if(isLogin()) {
+        // 先加载用户信息，再恢复播放状态，确保喜欢列表已加载
         getUserProfile().then(result => {
             updateUser(result.profile)
-            getUserLikelist()
+            // 加载用户喜欢列表
+            return getUserLikelist()
+        }).then(() => {
+            // 初始化喜欢音乐播放列表
             initFavoritePlaylist()
+            // 用户数据加载完成后，再恢复上次播放状态
+            loadLastSong()
+        }).catch(error => {
+            console.error('用户信息加载失败:', error)
+            // 即使用户信息加载失败，也要恢复播放状态
+            loadLastSong()
         })
     } else {
+        // 未登录状态直接恢复播放状态
+        loadLastSong()
+        
+        // 未登录时，需要保留播放相关的本地数据，只清理用户相关数据
+        const keysToKeep = []
+        
+        // 保留pinia持久化的数据（播放器状态）和其他重要数据
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('cookie:') || 
+                key.startsWith('playerStore') || 
+                key.startsWith('localStore') ||
+                key === 'lastPlaylist') {
+                keysToKeep.push({key, value: localStorage.getItem(key)})
+            }
+        })
+        
+        // 清空localStorage
         window.localStorage.clear()
+        
+        // 恢复需要保留的数据
+        keysToKeep.forEach(item => {
+            localStorage.setItem(item.key, item.value)
+        })
+        
+        console.log('清理用户数据，保留播放和cookie数据')
     }
 }

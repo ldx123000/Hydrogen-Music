@@ -17,6 +17,7 @@
     "dist-mac": "vite build && electron-builder --mac"
   },
   "dependencies": {
+    "@neteaseapireborn/api": "^4.28.25",
     "axios": "^1.2.0",
     "electron-store": "^8.1.0",
     "electron-updater": "^5.3.0",

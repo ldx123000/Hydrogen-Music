@@ -36,9 +36,15 @@ export function setCookies(data, type) {
   }
 }
 
-//获取Cookie
+//获取Cookie - 优先从localStorage读取，确保在Electron中的可靠性
 export function getCookie(key) {
-  return Cookies.get(key) ?? localStorage.getItem('cookie:' + key)
+  // 直接从localStorage读取，这是更可靠的方式
+  const localStorageValue = localStorage.getItem('cookie:' + key)
+  if (localStorageValue) {
+    return localStorageValue
+  }
+  // 作为备用，尝试从document.cookie读取
+  return Cookies.get(key)
 }
 
 //判断是否登录

@@ -5,7 +5,6 @@ import { formatDuration } from './time';
 import { noticeOpen } from './dialog'
 import { checkMusic, getMusicUrl, likeMusic, getLyric } from '../api/song'
 import { getLikelist, getUserPlaylist } from '../api/user'
-import { updatePlaylist } from '../api/playlist'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLibraryStore } from '../store/libraryStore'
@@ -145,6 +144,9 @@ export function loadLastSong() {
                 shuffledList.value = list.shuffledList
             }
             if(songList.value) {
+                // 恢复播放状态时，需要先设置歌曲ID
+                setId(songList.value[currentIndex.value].id, currentIndex.value)
+                
                 if(songList.value[currentIndex.value].type == 'local') getSongUrl(songList.value[currentIndex.value].id, currentIndex.value, false, true)
                 else getSongUrl(songList.value[currentIndex.value].id, currentIndex.value, false, false)
                 if(musicVideo.value) loadMusicVideo(songList.value[currentIndex.value].id)
@@ -735,12 +737,32 @@ export async function getFavoritePlaylistId() {
 export async function likeSong(like) {
     const songIdValue = songId.value
     
+    // 检查前置条件
+    if (!songIdValue) {
+        console.error('likeSong失败: 没有当前歌曲ID')
+        noticeOpen("操作失败：没有选中的歌曲", 2)
+        return
+    }
+    
+    if (!userStore.user || !userStore.user.userId) {
+        console.error('likeSong失败: 用户信息未加载')
+        noticeOpen("操作失败：用户信息未加载，请稍后重试", 2)
+        return
+    }
+    
+    if (!userStore.likelist) {
+        console.error('likeSong失败: 喜欢列表未加载')
+        noticeOpen("操作失败：喜欢列表未加载，请稍后重试", 2)
+        return
+    }
+    
     try {
-        // 1) 优先使用官方 /like 接口，确保服务端红心状态一致
-        console.log('开始调用 likeMusic API')
-        const likeResult = await likeMusic(songIdValue, like)
-        console.log('likeMusic 返回结果:', likeResult)
-        if (likeResult && likeResult.code == 200) {
+        console.log('调用官方 /like API, songId:', songIdValue, 'like:', like, 'userId:', userStore.user.userId)
+        const result = await likeMusic(songIdValue, like)
+        console.log('likeMusic 返回结果:', result)
+        
+        if (result && result.code == 200) {
+            console.log('官方 /like API 成功')
             await updateLikelistAfterSuccess()
             otherStore.addPlaylistShow = false
             libraryStore.needTimestamp.push('/playlist/detail')
@@ -766,65 +788,15 @@ export async function likeSong(like) {
             } catch (e) {
                 console.error('点击myPlaylist失败，忽略:', e)
             }
-            return
+        } else {
+            console.error('官方 /like API 失败:', result)
+            const errorMsg = result?.message || result?.msg || '未知错误'
+            noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
         }
-
-        // 2) 如果 /like 失败，降级到修改“我喜欢的音乐”歌单 tracks
-        throw new Error('likeMusic API 返回异常，尝试使用歌单 tracks 方案')
-
     } catch (error) {
-        console.warn('likeMusic 失败，尝试使用歌单 tracks:', error.message)
-        try {
-            const favoritePlaylistId = await getFavoritePlaylistId()
-            if (favoritePlaylistId) {
-                const params = {
-                    op: like ? 'add' : 'del',
-                    pid: favoritePlaylistId,
-                    tracks: songIdValue,
-                    timestamp: new Date().getTime()
-                }
-                const result = await updatePlaylist(params)
-                const isSuccess = result && (
-                    (result.status === 200 && result.body && result.body.code === 200) ||
-                    result.code === 200 ||
-                    result.status === 200
-                )
-                if (isSuccess) {
-                    try {
-                        await updateLikelistAfterSuccess()
-                    } catch (updateError) {
-                        console.error('更新喜欢列表失败，但不影响主逻辑:', updateError)
-                    }
-                    otherStore.addPlaylistShow = false
-                    libraryStore.needTimestamp.push('/playlist/detail')
-                    libraryStore.needTimestamp.push('/playlist/track/all')
-                    let noCacheTimer = null
-                    if (noCacheTimer) clearTimeout(noCacheTimer)
-                    noCacheTimer = setTimeout(() => {
-                        const detailIndex = libraryStore.needTimestamp.indexOf('/playlist/detail')
-                        const trackIndex = libraryStore.needTimestamp.indexOf('/playlist/track/all')
-                        if (detailIndex !== -1) libraryStore.needTimestamp.splice(detailIndex, 1)
-                        if (trackIndex !== -1) libraryStore.needTimestamp.splice(trackIndex, 1)
-                        clearTimeout(noCacheTimer)
-                    }, 130000)
-                    try {
-                        if (libraryStore.listType1 == 0 && libraryStore.listType2 == 0) {
-                            const myPlaylistElement = document.getElementById('myPlaylist')
-                            if (myPlaylistElement) {
-                                myPlaylistElement.click()
-                            }
-                        }
-                    } catch (e) {
-                        console.error('点击myPlaylist失败，忽略:', e)
-                    }
-                    return
-                }
-            }
-            noticeOpen("喜欢/取消喜欢 音乐失败！", 2)
-        } catch (fallbackError) {
-            console.error('歌单 tracks 方案也失败:', fallbackError)
-            noticeOpen("喜欢/取消喜欢 音乐失败！", 2)
-        }
+        console.error('调用 /like API 异常:', error)
+        const errorMsg = error?.response?.data?.message || error?.message || '网络错误'
+        noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
     }
 }
 

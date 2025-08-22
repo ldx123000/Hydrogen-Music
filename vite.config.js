@@ -8,7 +8,7 @@ export default defineConfig({
   base: './',
   manifest: true,
   build: {
-    target: 'es2015',
+    target: 'es2018', // 更新到ES2018以支持async generator functions
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
