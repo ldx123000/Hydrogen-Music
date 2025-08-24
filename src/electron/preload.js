@@ -109,6 +109,9 @@ function copyTxt(txt) {
 function checkUpdate(callback) {
     ipcRenderer.on('check-update', (_event, version) => callback?.(version))
 }
+function manualUpdateAvailable(callback) {
+    ipcRenderer.on('manual-update-available', (_event, version) => callback?.(version))
+}
 function updateNotAvailable(callback) {
     ipcRenderer.on('update-not-available', (_event, infoOrVersion) => callback?.(infoOrVersion))
 }
@@ -195,6 +198,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     getLocalMusicLyric: (filePath) => ipcRenderer.invoke('get-local-music-lyric', filePath),
     copyTxt,
     checkUpdate,
+    manualUpdateAvailable,
     updateNotAvailable,
     updateDownloadProgress,
     updateDownloaded,

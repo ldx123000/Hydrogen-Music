@@ -94,9 +94,10 @@ onActivated(() => {
 
 // 设置更新监听器
 const setupUpdateListeners = () => {
-    // 监听更新可用事件
-    windowApi.checkUpdate((version) => {
+    // 监听手动更新检查结果（不显示大窗弹出）
+    windowApi.manualUpdateAvailable((version) => {
         newVersion.value = version;
+        // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
     });
 };
 

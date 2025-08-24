@@ -69,7 +69,8 @@
     ],
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}.Setup.${version}.${ext}"
     },
     "mac": {
       "category": "public.app-category.music",
@@ -79,7 +80,8 @@
       "target": [
         "dmg",
         "zip"
-      ]
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "win": {
       "icon": "./src/assets/icon/icon.ico",
@@ -88,16 +90,27 @@
         "portable",
         "zip"
       ],
-      "verifyUpdateCodeSignature": false
+      "verifyUpdateCodeSignature": false,
+      "artifactName": "${productName}.${version}.${ext}"
     },
     "linux": {
       "category": "Audio",
       "icon": "./src/assets/icon/icon.png",
       "target": [
-        "AppImage",
-        "deb",
-        "rpm"
-      ]
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        },
+        {
+          "target": "rpm",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "${productName}-${version}.${ext}"
     },
     "publish": [
       {

@@ -916,14 +916,16 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         autoUpdater.checkForUpdatesAndNotify()
             .then(result => {
                 if (result && result.updateInfo) {
-                    console.log('检查更新完成，发现新版本:', result.updateInfo.version);
+                    console.log('手动检查更新完成，发现新版本:', result.updateInfo.version);
+                    // 手动检查时发送专门的事件，不触发大窗弹出
+                    win.webContents.send('manual-update-available', result.updateInfo.version);
                 } else {
-                    console.log('检查更新完成，当前已是最新版本');
+                    console.log('手动检查更新完成，当前已是最新版本');
                     win.webContents.send('update-not-available');
                 }
             })
             .catch(error => {
-                console.error('检查更新失败:', error);
+                console.error('手动检查更新失败:', error);
                 win.webContents.send('update-error', error.message);
             });
     });

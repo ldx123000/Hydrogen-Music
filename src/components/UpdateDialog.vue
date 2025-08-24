@@ -149,8 +149,8 @@ const retryUpdate = () => {
 // 监听更新事件
 const setupUpdateListeners = () => {
     if (typeof windowApi !== 'undefined') {
-        // 更新可用
-        windowApi.checkUpdate((version) => {
+        // 手动更新检查结果（用于设置页面的手动检查）
+        windowApi.manualUpdateAvailable((version) => {
             updateStatus.value = 'available'
         })
         
