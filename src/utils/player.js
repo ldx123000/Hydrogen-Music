@@ -426,6 +426,73 @@ export async function getLocalLyric(filePath) {
     if(lyric) return lyric
     else return false
 }
+
+// 处理本地歌词数据，支持滚动播放
+function processLocalLyricData() {
+    if (!lyric.value || !lyric.value.lrc || !lyric.value.lrc.lyric) {
+        lyricsObjArr.value = []
+        return
+    }
+
+    try {
+        const regNewLine = /\n/
+        const regTime = /\[((\d{1,2}):(\d{1,2})(\.(\d{1,3}))?)|((\d{1,2}):(\d{1,2}):(\d{1,2})(\.(\d{1,3}))?)\]/g
+        
+        // 时间解析函数
+        const parseTime = (timeStr) => {
+            const match = timeStr.match(/\[(\d{1,2}):(\d{1,2})\.?(\d{0,3})\]/)
+            if (!match) return 0
+            const min = parseInt(match[1])
+            const sec = parseInt(match[2]) 
+            const ms = match[3] ? parseInt(match[3].padEnd(3, '0')) : 0
+            return min * 60 + sec + ms / 1000
+        }
+
+        if (lyric.value.lrc.lyric.indexOf('[') !== -1) {
+            // 有时间标签的LRC歌词
+            const lines = lyric.value.lrc.lyric.split(regNewLine)
+            const processedLyrics = []
+            
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i] === '') continue
+                const timeMatches = lines[i].match(regTime)
+                if (!timeMatches) continue
+                
+                const lyricText = lines[i].split(']').pop().trim()
+                if (!lyricText) continue
+                
+                timeMatches.forEach(timeMatch => {
+                    const time = parseTime(timeMatch)
+                    processedLyrics.push({
+                        lyric: lyricText,
+                        time: time,
+                        active: true
+                    })
+                })
+            }
+            
+            lyricsObjArr.value = processedLyrics.sort((a, b) => a.time - b.time)
+        } else {
+            // 纯文本歌词
+            const lines = lyric.value.lrc.lyric.split(regNewLine)
+            const processedLyrics = []
+            
+            lines.forEach(line => {
+                if (line.trim() === '') return
+                processedLyrics.push({
+                    lyric: line.trim(),
+                    time: 0,
+                    active: true
+                })
+            })
+            
+            lyricsObjArr.value = processedLyrics
+        }
+    } catch (error) {
+        console.error('处理本地歌词数据出错:', error)
+        lyricsObjArr.value = []
+    }
+}
 export async function getSongUrl(id, index, autoplay, isLocal) {
     const songName = songList.value[index].name
     const artistName = songList.value[index].ar[0].name
@@ -449,11 +516,13 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         play(fileUrl, autoplay)
         lyric.value = null
         lyricsObjArr.value = null
-        //获取本地歌词（已禁用）
-        // const localLyric = await getLocalLyric(songList.value[currentIndex.value].url)
-        // if(localLyric) {
-        //     lyric.value = {lrc:{lyric:localLyric}}
-        // }
+        //获取本地歌词
+        const localLyric = await getLocalLyric(songList.value[currentIndex.value].url)
+        if(localLyric) {
+            lyric.value = {lrc:{lyric:localLyric}}
+            // 处理歌词数据，支持滚动播放
+            processLocalLyricData()
+        }
         if(!lyricShow.value && !widgetState.value) {
             lyricShow.value = true
             playerChangeSong.value = false
