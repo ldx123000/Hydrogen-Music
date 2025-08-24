@@ -2,6 +2,7 @@
   "name": "hydrogenmusic",
   "private": true,
   "version": "0.5.3",
+  "description": "A modern music player built with Electron and Vue.js",
   "main": "background.js",
   "author": {
     "name": "ldx123000",

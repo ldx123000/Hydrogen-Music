@@ -913,19 +913,39 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 处理应用更新相关的 IPC 事件
     ipcMain.on('check-for-update', () => {
         const { autoUpdater } = require("electron-updater");
-        autoUpdater.checkForUpdatesAndNotify()
-            .then(result => {
-                if (result && result.updateInfo) {
-                    console.log('手动检查更新完成，发现新版本:', result.updateInfo.version);
-                    // 手动检查时发送专门的事件，不触发大窗弹出
-                    win.webContents.send('manual-update-available', result.updateInfo.version);
-                } else {
-                    console.log('手动检查更新完成，当前已是最新版本');
-                    win.webContents.send('update-not-available');
-                }
-            })
+        
+        // 为手动检查设置一次性事件监听器
+        const handleUpdateAvailable = (info) => {
+            console.log('手动检查更新完成，发现新版本:', info.version);
+            win.webContents.send('manual-update-available', info.version);
+            autoUpdater.removeListener('update-available', handleUpdateAvailable);
+            autoUpdater.removeListener('update-not-available', handleUpdateNotAvailable);
+            autoUpdater.removeListener('error', handleUpdateError);
+        };
+        
+        const handleUpdateNotAvailable = () => {
+            console.log('手动检查更新完成，当前已是最新版本');
+            win.webContents.send('update-not-available');
+            autoUpdater.removeListener('update-available', handleUpdateAvailable);
+            autoUpdater.removeListener('update-not-available', handleUpdateNotAvailable);
+            autoUpdater.removeListener('error', handleUpdateError);
+        };
+        
+        const handleUpdateError = (error) => {
+            console.error('手动检查更新失败:', error);
+            win.webContents.send('update-error', error.message);
+            autoUpdater.removeListener('update-available', handleUpdateAvailable);
+            autoUpdater.removeListener('update-not-available', handleUpdateNotAvailable);
+            autoUpdater.removeListener('error', handleUpdateError);
+        };
+        
+        autoUpdater.once('update-available', handleUpdateAvailable);
+        autoUpdater.once('update-not-available', handleUpdateNotAvailable);
+        autoUpdater.once('error', handleUpdateError);
+        
+        autoUpdater.checkForUpdates()
             .catch(error => {
-                console.error('手动检查更新失败:', error);
+                console.error('检查更新失败:', error);
                 win.webContents.send('update-error', error.message);
             });
     });
