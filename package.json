@@ -70,7 +70,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName}.Setup.${version}.${ext}"
+      "artifactName": "Hydrogen.Music.Setup.${version}.${ext}"
     },
     "mac": {
       "category": "public.app-category.music",
@@ -81,7 +81,7 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "Hydrogen.Music-${version}-${arch}.${ext}"
     },
     "win": {
       "icon": "./src/assets/icon/icon.ico",
@@ -91,7 +91,7 @@
         "zip"
       ],
       "verifyUpdateCodeSignature": false,
-      "artifactName": "${productName}.${version}.${ext}"
+      "artifactName": "Hydrogen.Music.${version}.${ext}"
     },
     "linux": {
       "category": "Audio",
@@ -99,18 +99,24 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "rpm",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "artifactName": "${productName}-${version}.${ext}"
+      "artifactName": "Hydrogen.Music-${version}.${ext}"
     },
     "publish": [
       {
