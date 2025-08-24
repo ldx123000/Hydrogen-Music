@@ -528,7 +528,7 @@ const closeUpdateDialog = () => {
                 <div class="app-icon">
                     <img src="../assets/icon/icon.ico" alt="" />
                 </div>
-                <div class="version">V0.5.2</div>
+                <div class="version">V0.5.3</div>
                 <div class="update-check">
                     <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
                 </div>
