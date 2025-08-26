@@ -132,7 +132,7 @@ const backToVideo = () => {
         <div class="player">
             <div class="player-cover">
                 <div class="cover" :class="{ 'cover-change': playerChangeSong, 'back-Video': videoIsPlaying }" @click="backToVideo()">
-                    <img v-if="songList?.[currentIndex]?.type != 'local'" :src="songList?.[currentIndex]?.al?.picUrl + '?param=600y600'" alt="" />
+                    <img v-if="songList?.[currentIndex]?.type != 'local'" :src="songList?.[currentIndex]?.al?.picUrl" alt="" />
                     <img v-else v-show="localBase64Img" :src="localBase64Img" alt="" />
                     <img v-if="songList?.[currentIndex]?.type == 'local' && !localBase64Img" src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="" />
                 </div>
