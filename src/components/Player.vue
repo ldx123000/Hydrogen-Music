@@ -8,6 +8,7 @@ import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayM
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
+import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
 
@@ -30,6 +31,7 @@ const router = useRouter();
 const userStore = useUserStore();
 const localStore = useLocalStore();
 const playerStore = usePlayerStore();
+const otherStore = useOtherStore();
 const {
     playing,
     progress,
@@ -124,6 +126,14 @@ const toAddMusicVideo = () => {
 };
 const backToVideo = () => {
     if (videoIsPlaying.value) playerShow.value = false;
+};
+
+const addToPlaylist = () => {
+    const currentSong = songList.value?.[currentIndex.value];
+    if (currentSong && currentSong.type !== 'local') {
+        otherStore.selectedItem = currentSong;
+        otherStore.addPlaylistShow = true;
+    }
 };
 </script>
 
@@ -466,6 +476,9 @@ const backToVideo = () => {
                 <svg t="1669445939818" @click="download()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5311" width="200" height="200">
                     <path d="M545.472 32v837.504L947.2 467.712l44.544 46.144-478.08 478.144L32.128 510.4l44.48-44.544 405.248 403.712V32h63.616z" p-id="5312"></path>
                 </svg>
+                <svg @click="addToPlaylist()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+                    <path d="M512 85.333333c235.648 0 426.666667 191.018667 426.666667 426.666667s-191.018667 426.666667-426.666667 426.666667S85.333333 747.648 85.333333 512 276.352 85.333333 512 85.333333z m0 85.333334a341.333333 341.333333 0 1 0 0 682.666666 341.333333 341.333333 0 0 0 0-682.666666z m0 128a42.666667 42.666667 0 0 1 42.666667 42.666666v128H682.666667a42.666667 42.666667 0 0 1 0 85.333334H554.666667v128a42.666667 42.666667 0 0 1-85.333334 0V554.666667H341.333333a42.666667 42.666667 0 0 1 0-85.333334h128V341.333333a42.666667 42.666667 0 0 1 42.666667-42.666666z" fill="#000000"></path>
+                </svg>
                 <svg t="1668785761323" @click="toAlbum()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1173" width="200" height="200">
                     <path
                         d="M459.838061 502.318545c0-30.657939 24.948364-55.606303 55.606303-55.606303s55.544242 24.948364 55.544242 55.606303-24.886303 55.606303-55.544242 55.606303a55.668364 55.668364 0 0 1-55.606303-55.606303m173.242181 0c0-64.884364-52.751515-117.666909-117.635878-117.666909a117.79103 117.79103 0 0 0-117.666909 117.666909 117.79103 117.79103 0 0 0 117.666909 117.66691 117.76 117.76 0 0 0 117.604848-117.66691"
@@ -501,11 +514,11 @@ const backToVideo = () => {
                         p-id="3090"
                     ></path>
                 </svg>
-                <!-- 非FM模式：显示普通的列表循环图标 -->
+                
                 <svg
                     t="1668787163705"
                     @click="changePlayMode()"
-                    v-show="!isInFMMode && playMode == 1"
+                    v-show="playMode == 1"
                     class="icon"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -519,11 +532,11 @@ const backToVideo = () => {
                         p-id="2181"
                     ></path>
                 </svg>
-                <!-- FM模式：显示单曲循环图标 -->
+                
                 <svg
                     t="1668787191526"
                     @click="changePlayMode()"
-                    v-show="isInFMMode && playMode == 2"
+                    v-show="playMode == 2"
                     class="icon"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -538,48 +551,11 @@ const backToVideo = () => {
                     ></path>
                     <path d="M544 672V352h-48L416 409.6l16 41.6 60.8-41.6V672z" p-id="2502"></path>
                 </svg>
-                <!-- 非FM模式：显示单曲循环图标 -->
-                <svg
-                    t="1668787191526"
-                    @click="changePlayMode()"
-                    v-show="!isInFMMode && playMode == 2"
-                    class="icon"
-                    viewBox="0 0 1024 1024"
-                    version="1.1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    p-id="2500"
-                    width="200"
-                    height="200"
-                >
-                    <path
-                        d="M928 476.8c-19.2 0-32 12.8-32 32v86.4c0 108.8-86.4 198.4-198.4 198.4H201.6l41.6-38.4c6.4-6.4 12.8-16 12.8-25.6 0-19.2-16-35.2-35.2-35.2-9.6 0-22.4 3.2-28.8 9.6l-108.8 99.2c-16 12.8-12.8 35.2 0 48l108.8 96c6.4 6.4 19.2 12.8 28.8 12.8 19.2 0 35.2-12.8 38.4-32 0-12.8-6.4-22.4-16-28.8l-48-44.8h499.2c147.2 0 265.6-118.4 265.6-259.2v-86.4c0-19.2-12.8-32-32-32zM96 556.8c19.2 0 32-12.8 32-32v-89.6c0-112 89.6-201.6 198.4-204.8h496l-41.6 38.4c-6.4 6.4-12.8 16-12.8 25.6 0 19.2 16 35.2 35.2 35.2 9.6 0 22.4-3.2 28.8-9.6l105.6-99.2c16-12.8 12.8-35.2 0-48l-108.8-96c-6.4-6.4-19.2-12.8-28.8-12.8-19.2 0-35.2 12.8-38.4 32 0 12.8 6.4 22.4 16 28.8l48 44.8H329.6C182.4 169.6 64 288 64 438.4v86.4c0 19.2 12.8 32 32 32z"
-                        p-id="2501"
-                    ></path>
-                    <path d="M544 672V352h-48L416 409.6l16 41.6 60.8-41.6V672z" p-id="2502"></path>
-                </svg>
-                <!-- FM模式：显示随机播放图标 -->
+
                 <svg
                     t="1668787213634"
                     @click="changePlayMode()"
-                    v-show="isInFMMode && playMode == 3"
-                    class="icon"
-                    viewBox="0 0 1024 1024"
-                    version="1.1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    p-id="2661"
-                    width="200"
-                    height="200"
-                >
-                    <path
-                        d="M844.8 665.6c-6.4-6.4-16-12.8-25.6-9.6-19.2 0-35.2 16-35.2 35.2 0 9.6 6.4 19.2 12.8 25.6l41.6 41.6c-44.8-6.4-86.4-22.4-121.6-51.2-3.2 0-3.2-3.2-6.4-6.4L332.8 304C268.8 233.6 192 195.2 99.2 195.2c-19.2 0-35.2 16-35.2 35.2s16 32 35.2 32c73.6 0 134.4 32 182.4 86.4l384 400 6.4 6.4c48 38.4 108.8 64 172.8 70.4l-48 44.8c-9.6 6.4-16 19.2-16 28.8 0 19.2 19.2 35.2 38.4 32 9.6 0 19.2-6.4 25.6-12.8l99.2-92.8c16-16 16-41.6 0-57.6l-99.2-102.4z m-3.2-556.8c-12.8-16-32-19.2-48-6.4-9.6 6.4-12.8 16-12.8 25.6 0 12.8 3.2 22.4 16 28.8l41.6 41.6c-73.6 9.6-140.8 38.4-192 89.6l-115.2 118.4c-12.8 12.8-12.8 32 0 44.8 6.4 6.4 16 9.6 25.6 9.6s19.2-3.2 25.6-9.6l112-118.4c41.6-38.4 92.8-64 147.2-70.4l-44.8 44.8c-6.4 6.4-12.8 16-12.8 25.6 0 19.2 16 35.2 32 35.2 9.6 0 19.2-3.2 28.8-9.6L950.4 256c12.8-12.8 12.8-35.2 0-48l-108.8-99.2m-438.4 448c-9.6 0-19.2 3.2-25.6 9.6l-118.4 121.6c-48 44.8-96 67.2-160 67.2H96c-19.2 0-35.2 16-35.2 35.2s16 32 35.2 32h3.2c83.2 0 147.2-32 211.2-86.4l121.6-124.8c6.4-6.4 9.6-12.8 9.6-22.4 0-9.6-3.2-16-9.6-22.4-9.6-6.4-19.2-9.6-28.8-9.6z"
-                        p-id="2662"
-                    ></path>
-                </svg>
-                <!-- 非FM模式：显示随机播放图标 -->
-                <svg
-                    t="1668787213634"
-                    @click="changePlayMode()"
-                    v-show="!isInFMMode && playMode == 3"
+                    v-show="playMode == 3"
                     class="icon"
                     viewBox="0 0 1024 1024"
                     version="1.1"

@@ -350,6 +350,7 @@
       left: 0;
       background-color: rgba(0, 0, 0, 0.05);
       overflow: hidden;
+      z-index: 9999;
       .playlist-container{
         width: 0;
         height: 0;

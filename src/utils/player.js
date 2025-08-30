@@ -186,9 +186,9 @@ export function play(url, autoplay) {
                         detail: { action: 'loop' }
                     })
                     window.dispatchEvent(fmPlayModeEvent)
-                } else if(playMode.value == 3) {
-                    // 随机播放模式：播放下一首漫游歌曲
-                    // FM mode: playing next song (random/FM mode)
+                } else {
+                    // 其他模式（顺序播放、列表循环、随机播放）：播放下一首漫游歌曲
+                    // FM mode: playing next song for all other modes
                     const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
                         detail: { action: 'next' }
                     })
