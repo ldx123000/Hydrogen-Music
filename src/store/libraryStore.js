@@ -3,6 +3,7 @@ import { getPlaylistDetail, getPlaylistAll, getRecommendSongs, playlistDynamic }
 import { getAlbumDetail, albumDynamic } from '../api/album'
 import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum } from '../api/artist'
 import { getArtistMV } from '../api/mv'
+import { getSongDetail } from '../api/song'
 import { mapSongsPlayableStatus } from "../utils/songStatus";
 
 export const useLibraryStore = defineStore('libraryStore', {
@@ -30,7 +31,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.libraryChangeAnimation = true
         },
         changeLibraryList(type) {
-            if(type == 0) this.libraryList = this.playlistUserCreated
+            if (type == 0) this.libraryList = this.playlistUserCreated
             else if (type == 1) this.libraryList = this.playlistUserSub
         },
         updateLibrary(libraryData) {
@@ -45,9 +46,9 @@ export const useLibraryStore = defineStore('libraryStore', {
         },
         async updateLibraryDetail(id, routerName) {
             this.changeAnimation()
-            if(routerName == 'playlist') await this.updatePlaylistDetail(id)
-            if(routerName == 'album') await this.updateAlbumDetail(id)
-            if(routerName == 'artist') await this.updateArtistDetail(id)
+            if (routerName == 'playlist') await this.updatePlaylistDetail(id)
+            if (routerName == 'album') await this.updateAlbumDetail(id)
+            if (routerName == 'artist') await this.updateArtistDetail(id)
             this.artistPageType = 0
             this.libraryAlbum = null
             this.libraryMV = null
@@ -63,7 +64,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 this.libraryInfo = results[0].playlist
                 this.librarySongs = results[1].songs
                 this.librarySongs = mapSongsPlayableStatus(results[1].songs, results[1].privileges)
-                if(results[0].playlist.trackIds.length > 1000) {
+                if (results[0].playlist.trackIds.length > 1000) {
                     for (let i = 1; i < (results[0].playlist.trackIds.length / 1000); i++) {
                         const params = {
                             id: id,
@@ -96,11 +97,17 @@ export const useLibraryStore = defineStore('libraryStore', {
                 id: id,
                 // timestamp: new Date().getTime()
             }
-            await Promise.all([getArtistDetail(params), getArtistFansCount(id)]).then(results => {
+            await Promise.all([getArtistDetail(params), getArtistFansCount(id)]).then(async results => {
                 results[0].artist.follow = results[1].data
                 results[0].artist.followed = results[1].data.follow
                 this.libraryInfo = results[0].artist
-                this.librarySongs = mapSongsPlayableStatus(results[0].hotSongs)
+                
+                // 获取热门歌曲的完整详情（包括封面）
+                const songIds = results[0].hotSongs.map(song => song.id)
+                const songDetailResult = await getSongDetail(songIds)
+                
+                // 使用详情API返回的完整歌曲数据
+                this.librarySongs = mapSongsPlayableStatus(songDetailResult.songs)
                 this.libraryChangeAnimation = false
             })
         },
@@ -110,8 +117,15 @@ export const useLibraryStore = defineStore('libraryStore', {
                 id: id,
                 // timestamp: new Date().getTime()
             }
-            await getArtistTopSong(params).then(result => {
-                this.librarySongs = mapSongsPlayableStatus(result.songs)
+            await getArtistTopSong(params).then(async result => {
+                // 获取所有歌曲ID
+                const songIds = result.songs.map(song => song.id)
+                
+                // 使用歌曲详情API获取完整信息（包括正确的封面）
+                const songDetailResult = await getSongDetail(songIds)
+                
+                // 使用详情API返回的完整歌曲数据
+                this.librarySongs = mapSongsPlayableStatus(songDetailResult.songs)
             })
         },
         //获取歌手专辑，并更新Store数据

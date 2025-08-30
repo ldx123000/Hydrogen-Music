@@ -10,6 +10,15 @@ export function getNewestSong(limit = 10) {
 }
 
 /**
+ * 获取歌曲详情
+ * @param {string|array} ids - 歌曲ID，可以是单个ID或ID数组
+ */
+export function getSongDetail(ids) {
+    const idsParam = Array.isArray(ids) ? ids.join(',') : ids;
+    return get('/song/detail', { ids: idsParam });
+}
+
+/**
  * 检查音乐是否可用
  * @param {string|number} id - 音乐ID
  */
