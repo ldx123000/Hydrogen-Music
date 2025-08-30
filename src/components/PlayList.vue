@@ -204,28 +204,34 @@
         .item-info{
           width: 240Px;
           text-align: left;
+          display: flex;
+          align-items: center;
+          white-space: nowrap;
           overflow: hidden;
-          display: -webkit-box;
-          -webkit-box-orient: vertical;
-          -webkit-line-clamp: 1;
-          word-break: break-all;
+          gap: 6Px;
           svg{
             margin-right: 6Px;
             width: 14Px;
             height: 14Px;
+            flex-shrink: 0;
           }
           .item-name{
             font: 14Px SourceHanSansCN-Bold;
             color: black;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
           .item-separator{
             font: 12Px SourceHanSansCN-Bold;
             color: rgb(169, 169, 169);
+            flex-shrink: 0;
           }
           .item-author{
             font: 12Px SourceHanSansCN-Bold;
             color: rgb(169, 169, 169);
             transition: 0.2s;
+            overflow: hidden;
+            text-overflow: ellipsis;
             &:hover{
               cursor: pointer;
               color: black;

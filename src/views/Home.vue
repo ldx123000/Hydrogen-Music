@@ -1,5 +1,5 @@
 <script setup>
-  import { ref } from 'vue';
+  import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
   import { useRouter } from 'vue-router';
   import { logout } from '../api/user'
   import { noticeOpen } from "../utils/dialog";
@@ -9,6 +9,13 @@
   const router  =useRouter()
   const userStore = useUserStore()
   const isActive = ref(false)
+  const routerContainer = ref(null)
+  const homeLink = ref(null)
+  const cloudLink = ref(null)
+  const fmLink = ref(null)
+  const musicLink = ref(null)
+  const trackerLeft = ref(0)
+  const trackerVisible = ref(false)
   const toSettings = () => {
       router.push('/settings')
   }
@@ -34,18 +41,68 @@
   }
   const onAfterEnter = () => isActive.value = true
   const onAfterLeave = () => isActive.value = false
+
+  const toDom = (maybeComp) => {
+    if (!maybeComp) return null
+    return maybeComp.$el ? maybeComp.$el : maybeComp
+  }
+
+  const resolveActiveEl = () => {
+    const name = router.currentRoute.value.name
+    // Determine active link element by current route
+    if (name === 'homepage' && userStore.homePage && homeLink.value) return toDom(homeLink.value)
+    if (name === 'clouddisk' && userStore.cloudDiskPage && cloudLink.value) return toDom(cloudLink.value)
+    if (name === 'personalfm' && userStore.personalFMPage && fmLink.value) return toDom(fmLink.value)
+    // My music or login pages map to My Music tab
+    const firstSeg = router.currentRoute.value.fullPath.split('/')[1]
+    if ((name === 'mymusic' || firstSeg === 'mymusic' || firstSeg === 'login') && musicLink.value) return toDom(musicLink.value)
+    // Fallback to first visible tab
+    const firstRef = toDom(homeLink.value) || toDom(cloudLink.value) || toDom(fmLink.value) || toDom(musicLink.value)
+    if (firstRef) return firstRef
+    // As last resort, find first anchor inside header-router
+    const anchors = routerContainer.value?.querySelectorAll('a')
+    return anchors && anchors[0] ? anchors[0] : null
+  }
+
+  const updateTracker = () => {
+    nextTick(() => {
+      try {
+        const el = resolveActiveEl()
+        const container = routerContainer.value
+        if (!el || !container) { trackerVisible.value = false; return }
+        const elRect = el.getBoundingClientRect()
+        const cRect = container.getBoundingClientRect()
+        const trackWidth = 14
+        const left = (elRect.left - cRect.left) + (elRect.width - trackWidth) / 2
+        trackerLeft.value = Math.max(0, left)
+        trackerVisible.value = true
+      } catch (_) { trackerVisible.value = false }
+    })
+  }
+
+  onMounted(() => {
+    updateTracker()
+    window.addEventListener('resize', updateTracker)
+  })
+
+  onBeforeUnmount(() => {
+    window.removeEventListener('resize', updateTracker)
+  })
+
+  watch(() => router.currentRoute.value.fullPath, () => updateTracker())
+  watch(() => [userStore.homePage, userStore.cloudDiskPage, userStore.personalFMPage], () => updateTracker(), { deep: true })
 </script>
 
 <template>
   <div>
     <main>
       <div class="home-header">
-        <div class="header-router" :class="{'router-closed': !userStore.homePage && !userStore.cloudDiskPage}">
+        <div class="header-router" :class="{'router-closed': !userStore.homePage && !userStore.cloudDiskPage}" ref="routerContainer">
           <!-- <div class="logout" @click="userLogout()">退出登录</div> -->
-          <router-link class="button-home" :style="{color: router.currentRoute.value.name == 'homepage' ? 'black' : '#353535'}" to="/" v-if="userStore.homePage">首页</router-link>
-          <router-link class="button-cloud" :style="{color: router.currentRoute.value.name == 'clouddisk' ? 'black' : '#353535'}" to="/cloud" v-if="userStore.cloudDiskPage">云盘</router-link>
-          <router-link class="button-fm" :style="{color: router.currentRoute.value.name == 'personalfm' ? 'black' : '#353535'}" to="/personalfm">私人漫游</router-link>
-          <router-link class="button-music" :style="{color: router.currentRoute.value.name == 'mymusic' ? 'black' : '#353535'}" to="/mymusic" v-if="userStore.homePage || userStore.cloudDiskPage">我的音乐</router-link>
+          <router-link ref="homeLink" class="button-home" :style="{color: router.currentRoute.value.name == 'homepage' ? 'black' : '#353535'}" to="/" v-if="userStore.homePage">首页</router-link>
+          <router-link ref="cloudLink" class="button-cloud" :style="{color: router.currentRoute.value.name == 'clouddisk' ? 'black' : '#353535'}" to="/cloud" v-if="userStore.cloudDiskPage">云盘</router-link>
+          <router-link ref="fmLink" class="button-fm" :style="{color: router.currentRoute.value.name == 'personalfm' ? 'black' : '#353535'}" to="/personalfm" v-if="userStore.personalFMPage">私人漫游</router-link>
+          <router-link ref="musicLink" class="button-music" :style="{color: router.currentRoute.value.name == 'mymusic' ? 'black' : '#353535'}" to="/mymusic">我的音乐</router-link>
           <div class="user">
             <div class="user-container">
               <div class="user-head" @click="userStore.appOptionShow = true">
@@ -66,7 +123,10 @@
               </transition>
             </div>
           </div>
-          <div v-if="userStore.homePage && userStore.cloudDiskPage || isLogin()" v-show="router.currentRoute.value.name != 'search' && router.currentRoute.value.name != 'settings'" :class="{'router-tracker': true, 'router-tracker0': router.currentRoute.value.name == 'homepage', 'router-tracker1': router.currentRoute.value.name == 'clouddisk', 'router-tracker2': router.currentRoute.value.name == 'personalfm', 'router-tracker3': router.currentRoute.value.fullPath.split('/')[1] == 'mymusic' || router.currentRoute.value.fullPath.split('/')[1] == 'login'}">
+          <div v-if="userStore.homePage || userStore.cloudDiskPage || userStore.personalFMPage || isLogin()"
+               v-show="router.currentRoute.value.name != 'search' && router.currentRoute.value.name != 'settings' && trackerVisible"
+               class="router-tracker"
+               :style="{ left: trackerLeft + 'px' }">
           </div>
         </div>
       </div>
@@ -114,20 +174,11 @@
         height: 2px;
         background-color: black;
         position: absolute;
-        transition: 0.3s;
+        bottom: 0;
+        z-index: 2;
+        transition: left 0.3s ease;
       }
-      .router-tracker0{
-        transform: translateX(11px);
-      }
-      .router-tracker1{
-        transform: translateX(87px);
-      }
-      .router-tracker2{
-        transform: translateX(181px);
-      }
-      .router-tracker3{
-        transform: translateX(293px);
-      }
+      /* removed fixed transforms; left is computed dynamically */
       .user{
         position: absolute;
         top: 50%;

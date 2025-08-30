@@ -654,7 +654,7 @@ onUnmounted(() => {
         bottom: 0;
 
         &.bg-primary {
-            // 与主播放器一致的蓝绿色渐变背景
+            // 原浅色风格：蓝绿色渐变 + 模糊
             background: linear-gradient(rgba(176, 209, 217, 0.95) -20%, rgba(176, 209, 217, 0.7) 50%, rgba(176, 209, 217, 0.95) 120%);
             backdrop-filter: blur(20px);
         }
@@ -706,8 +706,8 @@ onUnmounted(() => {
         .indicator-dot {
             width: 8px;
             height: 8px;
-            border: 1px solid rgba(0, 0, 0, 0.5);
-            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            background: var(--layer);
             transition: all 0.3s ease;
         }
 
@@ -715,21 +715,19 @@ onUnmounted(() => {
             font-family: 'Bender-Bold', monospace;
             font-size: 9px;
             font-weight: bold;
-            color: rgba(0, 0, 0, 0.6);
+            color: var(--muted-text);
             letter-spacing: 1px;
         }
 
         &.active {
             .indicator-dot {
-                background: #000000;
-                border-color: #000000;
-                box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+                background: var(--text);
+                border-color: var(--text);
+                box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
                 animation: statusPulse 2s ease-in-out infinite;
             }
 
-            .status-text {
-                color: #000000;
-            }
+            .status-text { color: var(--text); }
         }
     }
 
@@ -844,12 +842,12 @@ onUnmounted(() => {
             overflow: hidden;
             -webkit-app-region: no-drag;
 
-            // 使用JavaScript控制的同步进度条扫描效果
-            background: rgba(255, 255, 255, 0.1);
+            // 使用JavaScript控制的同步进度条扫描效果（去除默认灰色底框）
+            background: transparent !important;
             position: relative;
             overflow: hidden;
 
-            // 黑色进度条层
+            // 进度条层（随主题反转）
             &::after {
                 content: '';
                 position: absolute;
@@ -857,7 +855,8 @@ onUnmounted(() => {
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0, 0, 0, 0.95);
+                /* Use theme variable so: light=black bar, dark=white bar */
+                background: var(--lyric-hilight-bg);
                 transform: translateX(var(--scan-progress, -100%));
                 transition: none;
                 z-index: 1;
@@ -865,7 +864,7 @@ onUnmounted(() => {
 
             padding: 12px 16px;
             border-radius: 0; // 直角设计
-            color: #000000;
+            color: var(--lyric-scan-outside-text) !important;
 
             // 白色文字遮罩层 - 使用JavaScript控制实现完美同步
             &::before {
@@ -875,7 +874,7 @@ onUnmounted(() => {
                 left: 16px;
                 right: 16px;
                 bottom: 12px;
-                color: #ffffff;
+                color: var(--lyric-scan-inside-text) !important;
                 font-weight: bold;
                 line-height: 1.4;
                 word-wrap: break-word;
@@ -1059,9 +1058,8 @@ onUnmounted(() => {
     .menu-header {
         padding: 12px 16px 8px;
         border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-        // 与桌面歌词一致的明日方舟蓝绿色渐变背景，更浅的色调
         background: linear-gradient(rgba(176, 209, 217, 0.75) -20%, rgba(176, 209, 217, 0.60) 50%, rgba(176, 209, 217, 0.75) 120%);
-        backdrop-filter: blur(8px); // 添加模糊效果增强遮盖效果
+        backdrop-filter: blur(8px);
         flex-shrink: 0; // 防止头部被压缩
         position: sticky;
         top: 0;
@@ -1248,6 +1246,25 @@ onUnmounted(() => {
 }
 </style>
 <style scoped>
+/* Dark overrides for Desktop Lyric to match app theme, preserving original light-mode visuals */
+.dark .arknights-desktop-lyric .background-layers .bg-primary { background: var(--panel) !important; backdrop-filter: blur(16px); }
+.dark .arknights-desktop-lyric .background-layers .bg-secondary { background: var(--layer) !important; border: 1px solid var(--border) !important; }
+.dark .arknights-desktop-lyric .song-info-section { background: var(--layer) !important; border-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .main-lyric-section { background: var(--layer) !important; border-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .next-lyric-preview { border-top-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .progress-section { background: var(--layer) !important; border-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .progress-section .progress-label { color: var(--muted-text) !important; }
+.dark .arknights-desktop-lyric .progress-section .progress-bar { background: rgba(255,255,255,0.08) !important; border-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .progress-section .progress-bar .progress-fill { background: var(--text) !important; }
+.dark .arknights-desktop-lyric .progress-section .progress-indicator { background: var(--text) !important; border-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .status-indicator .status-text { color: var(--muted-text) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu { background: var(--panel) !important; border-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-header { background: var(--layer) !important; border-bottom-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item:hover { background: rgba(255,255,255,0.08) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-title, 
+.dark .arknights-desktop-lyric .arknights-context-menu .title-underline,
+.dark .arknights-desktop-lyric .arknights-context-menu .item-text,
+.dark .arknights-desktop-lyric .arknights-context-menu .item-indicator { color: var(--text) !important; background: var(--text) !important; }
 /* macOS: 全窗口原生拖拽（覆盖内部 no-drag），保留菜单可交互 */
 .arknights-desktop-lyric.native-drag,
 .arknights-desktop-lyric.native-drag .lyric-content,

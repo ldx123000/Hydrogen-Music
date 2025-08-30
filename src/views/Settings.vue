@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onActivated } from 'vue';
+import { ref, onActivated, watch } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
@@ -10,6 +10,7 @@ import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
+import { setTheme, getSavedTheme } from '../utils/theme';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -55,6 +56,12 @@ const quitAppOptions = ref([
         value: 'quit',
     },
 ]);
+const theme = ref('system');
+const themeOptions = ref([
+    { label: '跟随系统', value: 'system' },
+    { label: '浅色', value: 'light' },
+    { label: '深色', value: 'dark' },
+]);
 const downloadFolder = ref(null);
 const videoFolder = ref(null);
 const localFolder = ref([]);
@@ -87,6 +94,13 @@ onActivated(() => {
         globalShortcuts.value = settings.other.globalShortcuts;
         quitApp.value = settings.other.quitApp;
     });
+
+    // Initialize theme selection
+    try {
+        theme.value = getSavedTheme();
+    } catch (_) {
+        theme.value = 'system';
+    }
     
     // 设置更新事件监听器
     setupUpdateListeners();
@@ -123,6 +137,9 @@ const setAppSettings = () => {
     };
     windowApi.setSettings(JSON.stringify(settings));
 };
+
+// apply theme immediately when user changes
+watch(theme, (val) => setTheme(val));
 
 onBeforeRouteLeave((to, from, next) => {
     setAppSettings();
@@ -495,6 +512,12 @@ const closeUpdateDialog = () => {
                     <div class="line"></div>
                     <div class="item-options">
                         <div class="option">
+                            <div class="option-name">主题</div>
+                            <div class="option-operation">
+                                <Selector v-model="theme" :options="themeOptions"></Selector>
+                            </div>
+                        </div>
+                        <div class="option">
                             <div class="option-name">开启首页页面</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="userStore.homePage = !userStore.homePage">
@@ -512,6 +535,17 @@ const closeUpdateDialog = () => {
                                     <div class="toggle-off" :class="{ 'toggle-on-in': userStore.cloudDiskPage }">{{ userStore.cloudDiskPage ? '已开启' : '已关闭' }}</div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="userStore.cloudDiskPage"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">开启私人漫游页面</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="userStore.personalFMPage = !userStore.personalFMPage">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.personalFMPage }">{{ userStore.personalFMPage ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="userStore.personalFMPage"></div>
                                     </Transition>
                                 </div>
                             </div>
@@ -701,7 +735,7 @@ const closeUpdateDialog = () => {
                             width: 200px;
                             height: 34px;
                             padding: 5px 1px;
-                            background-color: rgba(255, 255, 255, 0.35);
+                            background-color: transparent;
                             color: black;
                             border: none;
                             outline: none;
@@ -712,7 +746,7 @@ const closeUpdateDialog = () => {
                             &:hover {
                                 cursor: pointer;
                                 opacity: 0.8;
-                                box-shadow: 0 0 0 1px black;
+                                box-shadow: none;
                             }
                         }
                         select {

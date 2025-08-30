@@ -8,9 +8,13 @@ import './style.css'
 import './assets/css/reset.css'
 import './assets/css/common.css'
 import './assets/css/fonts.css'
+import './assets/css/theme.css'
+import { initTheme } from './utils/theme'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
 app.directive('lazy', lazy)
+// Initialize theme before app renders
+initTheme()
 app.mount('#app')
 init()

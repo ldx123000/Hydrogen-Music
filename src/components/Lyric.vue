@@ -225,7 +225,11 @@ onMounted(() => {
                         <span class="roma" :style="{ 'font-size': rlyricSize + 'px' }" v-if="item.rlyric && lyricType.indexOf('roma') != -1">{{ item.rlyric }}</span>
                         <span class="original" :style="{ 'font-size': lyricSize + 'px' }" v-if="lyricType.indexOf('original') != -1">{{ item.lyric }}</span>
                         <span class="trans" :style="{ 'font-size': tlyricSize + 'px' }" v-if="item.tlyric && lyricType.indexOf('trans') != -1">{{ item.tlyric }}</span>
-                        <div class="hilight" :class="{ 'hilight-active': index == lycCurrentIndex }" :style="{ backgroundColor: videoIsPlaying ? 'rgba(0, 0, 0, 0.8)' : 'black' }"></div>
+                        <div
+                            class="hilight"
+                            :class="{ 'hilight-active': index == lycCurrentIndex }"
+                            :style="{ backgroundColor: videoIsPlaying ? 'var(--lyric-hilight-bg-dim)' : 'var(--lyric-hilight-bg)' }"
+                        ></div>
                     </div>
                     <div v-if="lycCurrentIndex != -1 && interludeIndex == index" class="music-interlude" :class="{ 'music-interlude-in': interludeAnimation }">
                         <div class="interlude-left">
