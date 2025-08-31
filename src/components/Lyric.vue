@@ -53,7 +53,8 @@ const clearLycAnimation = flag => {
     if (flag) isLyricDelay.value = false;
     for (let i = 0; i < lyricEle.value.length; i++) {
         lyricEle.value[i].style.transitionDelay = 0 + 's';
-        if (lyricBlur.value) lyricEle.value[i].firstChild.style.setProperty('filter', 'blur(0px)');
+        // 当启用歌词模糊时，移除内联 filter 以便使用样式表控制
+        if (lyricBlur.value) lyricEle.value[i].firstChild.style.removeProperty('filter');
     }
     if (flag) {
         const forbidDelayTimer = setTimeout(() => {
@@ -216,7 +217,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="lyric-container">
+    <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
         <Transition name="fade">
             <div v-show="lyricsObjArr && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
@@ -567,6 +568,19 @@ onMounted(() => {
                 opacity: 1;
                 transform: scale(1);
                 transition: 0.8s cubic-bezier(0.3, 0, 0.12, 1);
+            }
+        }
+    }
+
+    /* 开启歌词模糊后的样式：默认行模糊，当前高亮行清晰 */
+    &.blur-enabled {
+        .lyric-line {
+            .line {
+                filter: blur(2px) !important;
+                transition: filter 0.25s ease;
+            }
+            .line.line-highlight {
+                filter: none !important;
             }
         }
     }

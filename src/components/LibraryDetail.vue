@@ -422,13 +422,13 @@
         }
         .introduce-2{
           margin-top: 6Px;
-          background-color: white;
+          background-color: black;
           font: 10Px SourceHanSansCN-Bold;
-          color: black;
+          color: white;
           transition: 0.2s;
           &:hover{
             cursor: pointer;
-            background-color: rgb(236, 236, 236);
+            background-color: rgb(40, 40, 40);
           }
         }
       }

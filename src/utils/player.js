@@ -666,7 +666,8 @@ const clearLycAnimation = () => {
     isLyricDelay.value = false
     for (let i = 0; i < lyricEle.value.length; i++) {
       lyricEle.value[i].style.transitionDelay = 0 + 's'
-      if(lyricBlur.value) lyricEle.value[i].firstChild.style.setProperty("filter", "blur(0)");
+      // 若启用歌词模糊，移除内联样式，交由样式表控制
+      if(lyricBlur.value) lyricEle.value[i].firstChild.style.removeProperty("filter");
     }
     const forbidDelayTimer =  setTimeout(() => {
         isLyricDelay.value = true

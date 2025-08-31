@@ -23,12 +23,12 @@ html, body {
 .dark {
   color-scheme: dark;
   /* Arknights-like slate grey palette */
-  --bg: #1a1f24;
+  --bg: #21262b; /* slightly lighter slate */
   --text: #f1f3f5;
-  --muted-text: #c6c9cf;
-  --panel: rgba(35, 40, 46, 0.92);
-  --layer: rgba(255, 255, 255, 0.12);
-  --border: rgba(255, 255, 255, 0.18);
+  --muted-text: #c9ccd2;
+  --panel: rgba(44, 50, 58, 0.92);
+  --layer: rgba(255, 255, 255, 0.14);
+  --border: rgba(255, 255, 255, 0.22);
   --shadow: 0 0 24px rgba(0, 0, 0, 0.55);
   --lyric-hilight-bg: #ffffff;
   --lyric-hilight-bg-dim: rgba(255, 255, 255, 0.82);
@@ -79,6 +79,10 @@ html, body {
   box-shadow: 0 0 0 1px var(--text) !important;
 }
 
+/* Settings toggles: enabled state should be white bg with black text in dark mode */
+.dark .settings-page .toggle .toggle-on { background-color: rgba(255, 255, 255, 0.86) !important; }
+.dark .settings-page .toggle .toggle-on-in { color: #000000 !important; background-color: transparent !important; }
+
 /* Drop-down and overlays */
 .dark .selector-option {
   background: #21262d !important;
@@ -90,9 +94,9 @@ html, body {
   /* Subtle multi-layer gradients to avoid visible banding */
   background-color: var(--bg) !important;
   background-image:
-    radial-gradient(70% 90% at 18% 14%, rgba(255,255,255,0.045), rgba(255,255,255,0) 60%),
-    radial-gradient(60% 80% at 82% 86%, rgba(255,255,255,0.035), rgba(255,255,255,0) 60%),
-    linear-gradient(180deg, rgba(34,38,44,1) 0%, rgba(26,31,36,1) 100%);
+    radial-gradient(70% 90% at 18% 14%, rgba(255,255,255,0.05), rgba(255,255,255,0) 60%),
+    radial-gradient(60% 80% at 82% 86%, rgba(255,255,255,0.04), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, rgba(48,54,62,1) 0%, rgba(36,42,50,1) 100%);
   background-blend-mode: soft-light, soft-light, normal;
   box-shadow: none;
 }
@@ -136,6 +140,75 @@ html, body {
 }
 .dark .playlist-widget .playing-icon path { fill: var(--text) !important; stroke: var(--text) !important; }
 
+/* Scrollbars (dark) */
+/* Playlist widget scroller */
+.dark .playlist-widget .playlist-widget-item { scrollbar-color: rgba(255,255,255,0.24) transparent; }
+.dark .playlist-widget .playlist-widget-item::-webkit-scrollbar { width: 6px; height: 10px; background: transparent !important; }
+.dark .playlist-widget .playlist-widget-item::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14) !important; border-radius: 8px; }
+.dark .playlist-widget .playlist-widget-item:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.24) !important; }
+.dark .playlist-widget .playlist-widget-item::-webkit-scrollbar-track { background: rgba(255,255,255,0.06) !important; }
+
+/* Library song list scroller (playlist detail) */
+.dark .library-song-list { scrollbar-color: rgba(255,255,255,0.24) transparent; }
+.dark .library-song-list::-webkit-scrollbar { width: 6px; height: 10px; background: transparent !important; }
+.dark .library-song-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14) !important; border-radius: 8px; }
+.dark .library-song-list:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.24) !important; }
+.dark .library-song-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.06) !important; }
+
+/* Comments panel scroller */
+.dark .arknights-comments { scrollbar-color: rgba(255,255,255,0.24) transparent; }
+.dark .arknights-comments::-webkit-scrollbar { width: 4px; height: 10px; background: transparent !important; }
+.dark .arknights-comments::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18) !important; border-radius: 8px; }
+.dark .arknights-comments:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28) !important; }
+.dark .arknights-comments::-webkit-scrollbar-track { background: rgba(255,255,255,0.06) !important; }
+
+/* My Music left lists */
+.dark .my-music .library-list::-webkit-scrollbar,
+.dark .my-music .download-list::-webkit-scrollbar,
+.dark .my-music .local-list::-webkit-scrollbar { width: 6px; height: 10px; background: transparent !important; }
+.dark .my-music .library-list::-webkit-scrollbar-thumb,
+.dark .my-music .download-list::-webkit-scrollbar-thumb,
+.dark .my-music .local-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14) !important; border-radius: 8px; }
+.dark .my-music .library-list:hover::-webkit-scrollbar-thumb,
+.dark .my-music .download-list:hover::-webkit-scrollbar-thumb,
+.dark .my-music .local-list:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.24) !important; }
+.dark .my-music .library-list::-webkit-scrollbar-track,
+.dark .my-music .download-list::-webkit-scrollbar-track,
+.dark .my-music .local-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.06) !important; }
+
+/* Local music detail list */
+.dark .local-music-list { scrollbar-color: rgba(255,255,255,0.24) transparent; }
+.dark .local-music-list::-webkit-scrollbar { width: 6px; height: 10px; background: transparent !important; }
+.dark .local-music-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14) !important; border-radius: 8px; }
+.dark .local-music-list:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.24) !important; }
+.dark .local-music-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.06) !important; }
+
+/* Local classify list */
+.dark .classify-list { scrollbar-color: rgba(255,255,255,0.24) transparent; }
+.dark .classify-list::-webkit-scrollbar { width: 6px; height: 10px; background: transparent !important; }
+.dark .classify-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14) !important; border-radius: 8px; }
+.dark .classify-list:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.24) !important; }
+.dark .classify-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.06) !important; }
+
+/* Selector dropdown scroller */
+.dark .selector-option::-webkit-scrollbar { width: 6px; height: 10px; background: transparent !important; }
+.dark .selector-option::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18) !important; border-radius: 8px; }
+.dark .selector-option::-webkit-scrollbar-track { background: rgba(255,255,255,0.08) !important; }
+
+/* Hover translucent overlays (masks) */
+.dark .home-header .user .user-container .user-head .img-mask { background-color: rgba(255,255,255,0.18) !important; }
+.dark .library-list .list-item::after { background-color: rgba(255,255,255,0.06) !important; }
+.dark .classify-list .list-item::after { background-color: rgba(255,255,255,0.06) !important; }
+.dark .local-music-list .list-item:hover { background-color: rgba(255,255,255,0.06) !important; }
+.dark .library-song-list .list-item:hover { background-color: rgba(255,255,255,0.06) !important; }
+.dark .library-song-list .list-item-playing { background-color: rgba(255,255,255,0.06) !important; }
+.dark .download-list .item:hover { background-color: rgba(255,255,255,0.06) !important; }
+
+/* Image hover accents in search results */
+.dark .result-list .item .item-img img:hover {
+  box-shadow: 0 0 10px 1px rgba(255,255,255,0.12) !important;
+  border-color: rgba(255,255,255,0.16) !important;
+}
 /* Player page accents */
 .dark .player-container .border {
   background-color: var(--text) !important;
@@ -178,11 +251,12 @@ html, body {
 
 /* Main Player page (layout wrapper) */
 .dark .music-player {
+  /* Match main window background to keep consistency with other pages */
   background-color: var(--bg) !important;
   background-image:
-    radial-gradient(70% 90% at 18% 14%, rgba(255,255,255,0.045), rgba(255,255,255,0) 60%),
-    radial-gradient(60% 80% at 82% 86%, rgba(255,255,255,0.035), rgba(255,255,255,0) 60%),
-    linear-gradient(180deg, rgba(34,38,44,1) 0%, rgba(26,31,36,1) 100%);
+    radial-gradient(70% 90% at 18% 14%, rgba(255,255,255,0.05), rgba(255,255,255,0) 60%),
+    radial-gradient(60% 80% at 82% 86%, rgba(255,255,255,0.04), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, rgba(48,54,62,1) 0%, rgba(36,42,50,1) 100%);
   background-blend-mode: soft-light, soft-light, normal;
 }
 .dark .music-player .player-container {
@@ -339,6 +413,19 @@ html, body {
 .dark .library-type .type-one .option-tracker .tracker-line { background-color: var(--border) !important; }
 .dark .library-type .type-one .option-tracker .tracker { background-color: var(--text) !important; }
 
+/* My Music: NONE placeholder diagonals + corners */
+.dark .library-view .library-container .library-nodata .line1,
+.dark .library-view .library-container .library-nodata .line2 {
+  background: linear-gradient(to bottom right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0) calc(50% - 0.5px),
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(255, 255, 255, 0) calc(50% + 0.5px),
+    rgba(255, 255, 255, 0) 100%) !important;
+}
+.dark .library-view .library-container .library-nodata .tip { color: var(--text) !important; }
+.dark .library-view .library-container .border { border-color: var(--text) !important; }
+
 /* My Music: Local/Downloaded folder lists (dark) */
 .dark .local-music-list .list-folder .list-item-open { background-color: rgba(255,255,255,0.04) !important; }
 .dark .local-music-list .list-folder .list-item:hover { background-color: rgba(255,255,255,0.04) !important; }
@@ -410,6 +497,25 @@ html, body {
   border-color: var(--border) !important;
 }
 
+/* Login screens */
+.dark .login-page .mode-type { background-color: var(--layer) !important; }
+.dark .login-page .mode-type::before,
+.dark .login-page .mode-type::after { border-color: var(--text) !important; }
+.dark .login-content .login-other .login-method span { color: var(--muted-text) !important; }
+.dark .login-content .login-other .login-method span:hover { color: var(--text) !important; }
+.dark .cookie-container .cookie .cookie-input-area .cookie-input,
+.dark .account-container .account .account-adress .account-input,
+.dark .account-container .account .mail-password .password-input { color: var(--text) !important; }
+.dark .cookie-tips .tips-content { background: rgba(255,255,255,0.08) !important; }
+.dark .embedded-login .login-description .sub-text { color: var(--muted-text) !important; }
+.dark .embedded-login .login-status .status-text { color: #8ec8ff !important; background: rgba(142,200,255,0.12) !important; }
+.dark .password-line { background-color: var(--text) !important; }
+.dark .login-button { border-color: var(--text) !important; color: var(--text) !important; }
+.dark .login-button:hover:not(.loading) { background-color: var(--text) !important; color: #000000 !important; }
+.dark .login-button.loading { background-color: rgba(255,255,255,0.08) !important; color: var(--muted-text) !important; border-color: var(--border) !important; }
+.dark .login-button::before,
+.dark .login-button::after { background: var(--text) !important; }
+
 /* vue-slider dark tweaks */
 .dark .vue-slider-rail {
   background-color: rgba(255,255,255,0.12) !important;
@@ -480,3 +586,10 @@ html, body {
   border-color: var(--text) !important;
 }
 .dark .search-border-2 { background-color: var(--text) !important; }
+
+/* MyMusic view tweaks */
+.dark .my-music .no-folder { background-color: var(--layer) !important; color: var(--text) !important; }
+.dark .my-music .library-container .library-nodata .line1,
+.dark .my-music .library-container .library-nodata .line2 {
+  background: linear-gradient(to bottom right, rgba(255,255,255,0) 0%, rgba(255,255,255,0) calc(50% - 0.5px), rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) calc(50% + 0.5px), rgba(255,255,255,0) 100%) !important;
+}

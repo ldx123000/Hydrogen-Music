@@ -115,13 +115,18 @@
           background-color: rgba(0, 0, 0, 0.05);
           position: absolute;
           top: 0;
-          left: -100%;
-          transition: 0.15s ease-out;
+          left: 0;
+          transform: translateX(-100%);
+          will-change: transform, opacity;
+          transition: transform 1s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 1s ease;
+          transition-delay: 0s;
+          pointer-events: none;
         }
         &:hover{
           cursor: pointer;
           &::after{
-            left: 0;
+            transition-delay: 0.2s;
+            transform: translateX(0);
           }
         }
         .item-img{
@@ -176,7 +181,7 @@
       }
     .list-item-selected{
       &::after{
-        left: 0;
+        transform: translateX(0);
       }
     }
   }

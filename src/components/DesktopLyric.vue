@@ -1258,13 +1258,22 @@ onUnmounted(() => {
 .dark .arknights-desktop-lyric .progress-section .progress-bar .progress-fill { background: var(--text) !important; }
 .dark .arknights-desktop-lyric .progress-section .progress-indicator { background: var(--text) !important; border-color: var(--border) !important; }
 .dark .arknights-desktop-lyric .status-indicator .status-text { color: var(--muted-text) !important; }
-.dark .arknights-desktop-lyric .arknights-context-menu { background: var(--panel) !important; border-color: var(--border) !important; }
+
+/* Context menu dark theme */
+.dark .arknights-desktop-lyric .arknights-context-menu { background: var(--panel) !important; border-color: var(--border) !important; color: var(--text) !important; }
 .dark .arknights-desktop-lyric .arknights-context-menu .menu-header { background: var(--layer) !important; border-bottom-color: var(--border) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-title { color: var(--text) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .title-underline { background: var(--text) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item { color: var(--text) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item .item-text { color: var(--text) !important; background: transparent !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item .item-icon { color: var(--text) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item .item-indicator { background: var(--text) !important; }
 .dark .arknights-desktop-lyric .arknights-context-menu .menu-item:hover { background: rgba(255,255,255,0.08) !important; }
-.dark .arknights-desktop-lyric .arknights-context-menu .menu-title, 
-.dark .arknights-desktop-lyric .arknights-context-menu .title-underline,
-.dark .arknights-desktop-lyric .arknights-context-menu .item-text,
-.dark .arknights-desktop-lyric .arknights-context-menu .item-indicator { color: var(--text) !important; background: var(--text) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-separator .separator-line { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu::-webkit-scrollbar-track { background: rgba(255,255,255,0.08) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.35) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item.danger:hover { color: #ff453a !important; }
+
 /* macOS: 全窗口原生拖拽（覆盖内部 no-drag），保留菜单可交互 */
 .arknights-desktop-lyric.native-drag,
 .arknights-desktop-lyric.native-drag .lyric-content,
