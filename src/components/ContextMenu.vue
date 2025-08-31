@@ -1,5 +1,5 @@
 <script setup>
-  import { ref } from 'vue'
+  import { ref, watch } from 'vue'
   import { createPlaylist, updatePlaylist, deletePlaylist } from '../api/playlist'
   import { addToNext, addToNextLocal } from '../utils/player'
   import { noticeOpen } from '../utils/dialog';
@@ -8,6 +8,7 @@
   import { useOtherStore } from '../store/otherStore';
   import { useUserStore } from '../store/userStore';
   import { getLikelist } from '../api/user';
+  import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
   import { storeToRefs } from 'pinia';
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()
@@ -19,6 +20,39 @@
   const createActive = ref(false)
   const justNewPlaylist = ref(false)
   const newPlaylistTitle = ref(null)
+
+  // 确保在打开“添加到歌单”弹窗时，已加载用户歌单列表
+  const ensureUserPlaylistsLoaded = async () => {
+    try {
+      // 仅在已登录且还未加载过时拉取
+      if (!userStore.user || !userStore.user.userId) return
+      if (Array.isArray(libraryStore.playlistUserCreated) && libraryStore.playlistUserCreated.length > 0) return
+
+      const count = await getUserPlaylistCount()
+      libraryStore.updateUserPlaylistCount(count)
+
+      const params = {
+        uid: userStore.user.userId,
+        limit: 500,
+        offset: 0,
+        timestamp: new Date().getTime(),
+      }
+      const list = await getUserPlaylist(params)
+      if (list && Array.isArray(list.playlist)) {
+        libraryStore.updateUserPlaylist(list.playlist)
+      }
+    } catch (e) {
+      // 静默失败，弹窗仍可显示，后续可再次尝试
+      console.error('加载用户歌单失败:', e)
+    }
+  }
+
+  watch(
+    () => otherStore.addPlaylistShow,
+    async (show) => {
+      if (show) await ensureUserPlaylistsLoaded()
+    }
+  )
 
   const addToPlaylist = () => {
     otherStore.addPlaylistShow = true
