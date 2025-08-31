@@ -1270,8 +1270,9 @@ onUnmounted(() => {
 .dark .arknights-desktop-lyric .arknights-context-menu .menu-item .item-indicator { background: var(--text) !important; }
 .dark .arknights-desktop-lyric .arknights-context-menu .menu-item:hover { background: rgba(255,255,255,0.08) !important; }
 .dark .arknights-desktop-lyric .arknights-context-menu .menu-separator .separator-line { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent) !important; }
-.dark .arknights-desktop-lyric .arknights-context-menu::-webkit-scrollbar-track { background: rgba(255,255,255,0.08) !important; }
-.dark .arknights-desktop-lyric .arknights-context-menu::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.35) !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu::-webkit-scrollbar-track { background: transparent !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu::-webkit-scrollbar-thumb { background: transparent !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.35) !important; }
 .dark .arknights-desktop-lyric .arknights-context-menu .menu-item.danger:hover { color: #ff453a !important; }
 
 /* macOS: 全窗口原生拖拽（覆盖内部 no-drag），保留菜单可交互 */

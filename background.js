@@ -6,7 +6,7 @@ const InitTray = require('./src/electron/tray')
 const registerShortcuts = require('./src/electron/shortcuts')
 const { updateApplicationMenu } = require('./src/electron/shortcuts')
 
-const { app, BrowserWindow, globalShortcut, Menu } = require('electron')
+const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron')
 const Winstate = require('electron-win-state').default
 const { autoUpdater } = require("electron-updater");
 const path = require('path')
@@ -16,6 +16,8 @@ const settingsStore = new Store({ name: 'settings' });
 let myWindow = null
 let lyricWindow = null
 let forceQuit = false;
+// 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
+let manualUpdateCheckInProgress = false;
 
 //electron单例
 const gotTheLock = app.requestSingleInstanceLock()
@@ -46,6 +48,12 @@ if (!gotTheLock) {
                 myWindow.focus();
             }
         })
+    })
+
+    // 监听渲染进程触发的手动检查更新事件
+    // 与 src/electron/ipcMain.js 中的处理并存，仅用于设置标记
+    ipcMain.on('check-for-update', () => {
+        manualUpdateCheckInProgress = true
     })
 
     app.on('window-all-closed', () => {
@@ -189,12 +197,22 @@ const createWindow = () => {
             // 监听更新可用事件
             autoUpdater.on('update-available', info => {
                 console.log('发现新版本:', info.version)
+                // 若是设置页手动检查的结果，则不弹出大窗，仅交由手动流程处理
+                if (manualUpdateCheckInProgress) {
+                    manualUpdateCheckInProgress = false
+                    return
+                }
                 win.webContents.send('check-update', info.version)
             })
 
             // 监听更新不可用事件
             autoUpdater.on('update-not-available', info => {
                 console.log('当前版本已是最新:', info.version)
+                // 手动检查时，由手动流程通知渲染层，这里避免重复发送
+                if (manualUpdateCheckInProgress) {
+                    manualUpdateCheckInProgress = false
+                    return
+                }
                 win.webContents.send('update-not-available', info.version)
             })
 
@@ -217,7 +235,12 @@ const createWindow = () => {
             autoUpdater.on('error', error => {
                 console.error('更新错误:', error)
                 win.setProgressBar(-1) // 隐藏进度条
-                win.webContents.send('update-error', error.message)
+                // 手动检查阶段的错误由手动流程通知，这里避免重复
+                if (manualUpdateCheckInProgress) {
+                    manualUpdateCheckInProgress = false
+                } else {
+                    win.webContents.send('update-error', error.message)
+                }
             })
 
             // 自动检查更新
