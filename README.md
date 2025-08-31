@@ -25,6 +25,7 @@
 - 新增 **私人漫游** 功能，可以像原版预期那样探索音乐世界。 
 - 新增 **桌面歌词** 功能，播放器界面可打开独立桌面歌词窗口（可拖动/锁定、可调整大小），支持显示当前/下一句，右键菜单可切换歌词来源（自动/原文/翻译/罗马音）、锁定位置与字体大小调节。
 - 新增 **评论区** 功能，播放器界面可自由切换显示歌词/评论区
+- 新增 **深色模式**功能，可在设置中自行调节浅色/深色模式
 - 支持了多系统版本的安装包
 
   
@@ -78,6 +79,7 @@ npm start
 ![desktop-lyric][desktop-lyric-screenshot]
 ![comment][comment-screenshot]
 ![privateFM][privateFM-screenshot]
+![dark_mode][dark_mode-screenshot]
 ![music_video][music_video-screenshot]
 
 <!-- MARKDOWN LINKS & IMAGES -->
@@ -88,4 +90,5 @@ npm start
 [desktop-lyric-screenshot]: img/desktop-lyric.png
 [comment-screenshot]: img/comment.png
 [privateFM-screenshot]: img/privateFM.png
+[dark_mode-screenshot]: img/dark_mode.png
 [music_video-screenshot]: img/music_video.png
