@@ -51,3 +51,24 @@ export function getCookie(key) {
 export function isLogin() {
   return (getCookie('MUSIC_U') != undefined)
 }
+
+// 清理登录相关Cookie与本地存储（不影响其他设置）
+export function clearLoginCookies() {
+  try {
+    const keys = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+    keys.forEach((k) => {
+      // 移除 localStorage 中持久化的 cookie 值
+      try { localStorage.removeItem('cookie:' + k) } catch (_) {}
+      // 通过设置过期来移除浏览器 cookie
+      try {
+        document.cookie = `${k}=; Max-Age=0; path=/`;
+        // 兼容可能的 domain/path 组合
+        const hostParts = location.hostname.split('.')
+        if (hostParts.length > 1) {
+          const rootDomain = `.${hostParts.slice(-2).join('.')}`
+          document.cookie = `${k}=; Max-Age=0; path=/; domain=${rootDomain}`
+        }
+      } catch (_) {}
+    })
+  } catch (_) {}
+}

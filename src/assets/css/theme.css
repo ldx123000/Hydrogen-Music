@@ -110,9 +110,9 @@ body {
   background-image:
     radial-gradient(70% 90% at 18% 14%, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 60%),
     radial-gradient(60% 80% at 82% 86%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg, rgba(48, 54, 62, 1) 0%, rgba(36, 42, 50, 1) 100%);
-  background-blend-mode: soft-light, soft-light, normal;
-  box-shadow: none;
+    linear-gradient(180deg, rgba(48, 54, 62, 1) 0%, rgba(36, 42, 50, 1) 100%) !important;
+  background-blend-mode: soft-light, soft-light, normal !important;
+  box-shadow: none !important;
 }
 
 /* Common containers */
@@ -463,8 +463,8 @@ body {
   background-image:
     radial-gradient(70% 90% at 18% 14%, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 60%),
     radial-gradient(60% 80% at 82% 86%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg, rgba(48, 54, 62, 1) 0%, rgba(36, 42, 50, 1) 100%);
-  background-blend-mode: soft-light, soft-light, normal;
+    linear-gradient(180deg, rgba(48, 54, 62, 1) 0%, rgba(36, 42, 50, 1) 100%) !important;
+  background-blend-mode: soft-light, soft-light, normal !important;
 }
 
 .dark .music-player .player-container {
