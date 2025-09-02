@@ -79,8 +79,7 @@
       "bundleVersion": "0.5.3",
       "bundleShortVersion": "0.5.3",
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "artifactName": "Hydrogen.Music-${version}-${arch}.${ext}"
     },
