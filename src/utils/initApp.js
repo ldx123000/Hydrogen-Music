@@ -1,5 +1,5 @@
 import pinia from '../store/pinia'
-import { isLogin } from '../utils/authority'
+import { isLogin, clearLoginCookies } from '../utils/authority'
 import { loadLastSong } from './player'
 import { scanMusic } from './locaMusic'
 import { initDownloadManager } from './downloadManager'
@@ -124,7 +124,16 @@ export const init = () => {
             loadLastSong()
         }).catch(error => {
             console.error('用户信息加载失败:', error)
-            // 即使用户信息加载失败，也要恢复播放状态
+            // 登录状态异常，清理登录信息并自动退出
+            clearLoginCookies()
+            userStore.user = null
+            userStore.likelist = null
+            userStore.favoritePlaylistId = null
+            // 清除Electron中的登录状态
+            if(window.electronAPI?.clearNeteaseSession) {
+                window.electronAPI.clearNeteaseSession()
+            }
+            // 即使登录失效，也要恢复播放状态
             loadLastSong()
         })
     } else {
