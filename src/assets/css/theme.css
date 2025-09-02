@@ -449,6 +449,7 @@ body {
 .dark .player .control svg path,
 .dark .music-widget .music-control svg path {
   stroke: var(--text) !important;
+  fill: var(--text) !important;
 }
 
 .dark .player .song-control .icon path {
@@ -659,13 +660,16 @@ body {
   fill: rgba(255, 255, 255, 0.5) !important;
 }
 
-.dark .player-container .comment-icon-active path,
-.dark .player-container .desktop-lyric-btn.active path {
+.dark .player-container .comment-icon-active path {
   fill: var(--text) !important;
 }
 
 .dark .player-container .desktop-lyric-btn path {
   fill: var(--muted-text) !important;
+}
+
+.dark .player-container .desktop-lyric-btn.active path {
+  fill: var(--text) !important;
 }
 
 /* Home header router tracker */

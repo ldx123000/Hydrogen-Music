@@ -76,8 +76,8 @@
     "mac": {
       "category": "public.app-category.music",
       "icon": "./src/assets/icon/icon.icns",
-      "bundleVersion": "0.5.3",
-      "bundleShortVersion": "0.5.3",
+      "bundleVersion": "0.5.4",
+      "bundleShortVersion": "0.5.4",
       "target": [
         "dmg"
       ],

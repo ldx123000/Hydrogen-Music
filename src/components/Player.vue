@@ -200,7 +200,7 @@ const addToPlaylist = () => {
                                 <path id="arrow" style="fill: #cccccc" transform="translate(35.21963688171376 44.356081611360985)  rotate(-90 66.78036311828623 52.999999999999986)" opacity="0" d="" />
                                 <path
                                     id="arrow"
-                                    style="stroke: #000000; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
                                     transform="translate(35.21963688171376 44.356081611360985)  rotate(-90 66.78036311828623 52.999999999999986)"
                                     d="M133.56,105.98L66.78,0L0,106 "
                                 />
@@ -224,12 +224,12 @@ const addToPlaylist = () => {
                                 <path id="line2" style="fill: #000000" transform="translate(152 24)  rotate(0 0.0005 76)" opacity="1" d="" />
                                 <path
                                     id="line2"
-                                    style="stroke: #000000; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
                                     transform="translate(152 24)  rotate(0 0.0005 76)"
                                     d="M0,0L0,152 "
                                 />
                                 <path id="line1" style="fill: #000000" transform="translate(48 24)  rotate(0 0.0005 76)" opacity="1" d="" />
-                                <path id="line1" style="stroke: #000000; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0" transform="translate(48 24)  rotate(0 0.0005 76)" d="M0,0L0,152 " />
+                                <path id="line1" style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0" transform="translate(48 24)  rotate(0 0.0005 76)" d="M0,0L0,152 " />
                             </g>
                         </g>
                     </svg>
@@ -250,7 +250,7 @@ const addToPlaylist = () => {
                                 <path id="三角形 1" fill-rule="evenodd" style="fill: #cccccc" transform="translate(0 12)  rotate(90 88 88)" opacity="0" d="M11.79,132L164.21,132L88,0L11.79,132Z " />
                                 <path
                                     id="三角形 1"
-                                    style="stroke: #000000; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
                                     transform="translate(0 12)  rotate(90 88 88)"
                                     d="M11.79,132L164.21,132L88,0L11.79,132Z "
                                 />
@@ -265,7 +265,7 @@ const addToPlaylist = () => {
                                 <path id="arrow" style="fill: #cccccc" transform="translate(35.21963688171376 44.356081611360985)  rotate(90 66.78036311828623 52.999999999999986)" opacity="0" d="" />
                                 <path
                                     id="arrow"
-                                    style="stroke: #000000; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
                                     transform="translate(35.21963688171376 44.356081611360985)  rotate(90 66.78036311828623 52.999999999999986)"
                                     d="M133.56,105.98L66.78,0L0,106 "
                                 />
@@ -598,9 +598,8 @@ const addToPlaylist = () => {
                 >
                     <path
                         d="M896 128H128c-70.4 0-128 57.6-128 128v512c0 70.4 57.6 128 128 128h768c70.4 0 128-57.6 128-128V256c0-70.4-57.6-128-128-128zM128 192h768c35.2 0 64 28.8 64 64v85.333333H64V256c0-35.2 28.8-64 64-64z m768 640H128c-35.2 0-64-28.8-64-64V405.333333h896V768c0 35.2-28.8 64-64 64z"
-                        :fill="isDesktopLyricOpen ? '#000000' : '#8a8a8a'"
                     ></path>
-                    <path d="M256 576h512v64H256z m0 128h384v64H256z" :fill="isDesktopLyricOpen ? '#000000' : '#8a8a8a'"></path>
+                    <path d="M256 576h512v64H256z m0 128h384v64H256z"></path>
                 </svg>
             </div>
         </div>
@@ -1020,20 +1019,18 @@ const addToPlaylist = () => {
         transition: all 0.3s ease;
 
         &.comment-icon-inactive {
-            fill: rgba(0, 0, 0, 0.3) !important;
             opacity: 0.5;
 
             path {
-                fill: rgba(0, 0, 0, 0.3) !important;
+                fill: rgba(0, 0, 0, 0.3);
             }
         }
 
         &.comment-icon-active {
-            fill: #000000 !important;
             opacity: 1;
 
             path {
-                fill: #000000 !important;
+                fill: #000000;
             }
         }
 
@@ -1047,11 +1044,15 @@ const addToPlaylist = () => {
         opacity: 0.6;
         transition: all 0.2s ease;
 
+        path {
+            fill: #8a8a8a;
+        }
+
         &.active {
             opacity: 1;
 
             path {
-                fill: #000000 !important;
+                fill: #000000;
             }
         }
 
