@@ -2,7 +2,7 @@
   import { ref } from 'vue'
   import { formatTime } from '../utils/time';
   import { dialogOpen, noticeOpen } from '../utils/dialog';
-  import { deleteCloudSong } from '../api/cloud';
+  import { deleteCloudSong, getCloudDiskData } from '../api/cloud';
   import { addSong, setShuffledList } from '../utils/player';
   import { useCloudStore } from '../store/cloudStore';
   import { usePlayerStore } from '../store/playerStore';
@@ -11,7 +11,7 @@
   import { storeToRefs } from 'pinia';
 
   const cloudStore = useCloudStore()
-  const { cloudSongs } = storeToRefs(cloudStore)
+  const { cloudSongs, count, size, maxSize } = storeToRefs(cloudStore)
   const playerStore = usePlayerStore()
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()
@@ -45,10 +45,22 @@
         }
         deleteCloudSong(params).then(result => {
             if(result.code == 200) {
+                // 先本地移除已选项
                 selectedSongs.value.forEach(item => {
                     cloudSongs.value.splice((cloudSongs.value || []).findIndex((song) => song.simpleSong.id == item.id), 1)
                 });
                 selectedSongs.value = []
+
+                // 拉取云盘统计，刷新容量与数量（并同步列表，确保一致）
+                const params2 = { limit: 500, offset: 0, timestamp: new Date().getTime() }
+                getCloudDiskData(params2).then(res => {
+                    if (res && res.count != null && res.size != null) {
+                        count.value = res.count
+                        size.value = Number((res.size / 1024 / 1024 / 1024).toFixed(1))
+                        maxSize.value = Number(res.maxSize / 1024 / 1024 / 1024)
+                        if (Array.isArray(res.data)) cloudSongs.value = res.data
+                    }
+                })
             } else {
                 noticeOpen("删除失败", 2)
             }

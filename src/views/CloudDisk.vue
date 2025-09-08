@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, onMounted } from 'vue'
+  import { ref, onMounted, onUnmounted, computed } from 'vue'
   import { formatTime } from '../utils/time';
   import VueSlider from 'vue-slider-component'
   import { noticeOpen } from '../utils/dialog'
@@ -13,20 +13,33 @@
   const { count, size, maxSize, cloudSongs } = storeToRefs(cloudStore)
 
   const isUploading = ref(false)
+  const isDragOver = ref(false)
+  const dragHasFiles = ref(false)
+  const dragHasSupported = ref(false)
+  const dragDetermined = ref(false)
   const uploadCloudDiskFile = ref()
-  const fileUpdateTime = {}
-  let fileLength = 0
+  let changeHandler = null
 
   onMounted(() => {
     typeChange(1)
-    uploadCloudDiskFile.value.addEventListener('change', function (e) {
-      let currentIndx = 0
-      fileLength = this.files.length
-      for (const item of this.files) {
-        currentIndx += 1
-        upload(item, currentIndx)
-      }
-    })
+    changeHandler = async (e) => {
+      const input = uploadCloudDiskFile.value
+      if (!input) return
+      const files = Array.from(input.files || [])
+      if (!files.length) return
+      await uploadFilesSequentially(files)
+      // 清理 input 的值，释放文件引用并允许选择相同文件再次上传
+      try { input.value = '' } catch (_) {}
+      // 上传完成后刷新云盘信息
+      typeChange(1)
+    }
+    uploadCloudDiskFile.value.addEventListener('change', changeHandler)
+  })
+
+  onUnmounted(() => {
+    if (uploadCloudDiskFile.value && changeHandler) {
+      try { uploadCloudDiskFile.value.removeEventListener('change', changeHandler) } catch (_) {}
+    }
   })
 
   const typeSelect = ref(1)
@@ -41,8 +54,9 @@
       }
       getCloudDiskData(params).then(result => {
         count.value = result.count
-        size.value = (result.size / 1024 / 1024 / 1024).toFixed(1)
-        maxSize.value = result.maxSize / 1024 / 1024 / 1024
+        // 确保为数字，避免字符串进入 v-model
+        size.value = Number((result.size / 1024 / 1024 / 1024).toFixed(1))
+        maxSize.value = Number(result.maxSize / 1024 / 1024 / 1024)
         cloudSongs.value = result.data
       })
     }
@@ -50,34 +64,131 @@
   const uploadFile = () => {
     uploadCloudDiskFile.value.click()
   }
-  function upload(file, currentIndx) {
-    var formData = new FormData()
-    formData.append('songFile', file)
-    isUploading.value = true
-    uploadCloudSong(formData).then(res => {
-      if(res.code == 200) {
-        noticeOpen(`${file.name} 上传成功`, 2)
-        if (currentIndx >= fileLength) { 
-          noticeOpen('上传完毕', 2)
-          formData = null
-          this.files = null
+  const supportedExt = new Set(['mp3','aac','wma','wav','ogg','m4a','ape','flac','cue'])
+  const extractExt = (name) => (name?.split('.').pop() || '').toLowerCase()
+  const analyzeDragItems = (dt) => {
+    const types = Array.from(dt?.types || [])
+    const isFiles = types.includes('Files')
+    dragHasFiles.value = isFiles
+    let hasKnownSupported = false
+    let hasKnownUnsupported = false
+    let sawUnknown = false
+    if (isFiles) {
+      const items = Array.from(dt?.items || [])
+      if (items.length) {
+        for (const it of items) {
+          if (it.kind !== 'file') continue
+          const mime = it.type || ''
+          if (mime) {
+            if (mime.startsWith('audio/')) { hasKnownSupported = true; continue }
+            // 若提供了类型且非音频，视为已知不支持
+            hasKnownUnsupported = true
+            continue
+          }
+          try {
+            const f = it.getAsFile?.()
+            if (f && f.name) {
+              const ext = extractExt(f.name)
+              if (supportedExt.has(ext)) hasKnownSupported = true
+              else hasKnownUnsupported = true
+            } else {
+              sawUnknown = true
+            }
+          } catch (_) {
+            sawUnknown = true
+          }
         }
       } else {
-        console.log(fileUpdateTime)
-        fileUpdateTime[file.name] ? fileUpdateTime[file.name] += 1 : fileUpdateTime[file.name] = 1
-        if (fileUpdateTime[file.name] >= 4) {
-          noticeOpen(`上传失败：${file.name}`, 3)
-          return
-        } else {
-          noticeOpen(`${file.name} 失败 ${fileUpdateTime[file.name]} 次`, 3)
-        }
-        upload(file, currentIndx)
+        // 无法获取 items 时保持未知，避免误判
+        sawUnknown = true
       }
-      
-      console.log(res)
-    }).finally(() => {
+    }
+    if (hasKnownSupported) {
+      dragHasSupported.value = true
+      dragDetermined.value = true
+    } else if (hasKnownUnsupported && !sawUnknown) {
+      dragHasSupported.value = false
+      dragDetermined.value = true
+    } else {
+      dragHasSupported.value = true // 未知时偏向正向提示
+      dragDetermined.value = false
+    }
+  }
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    analyzeDragItems(e.dataTransfer)
+    isDragOver.value = dragHasFiles.value && !isUploading.value
+  }
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    analyzeDragItems(e.dataTransfer)
+    isDragOver.value = dragHasFiles.value && !isUploading.value
+    try { if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy' } catch (_) {}
+  }
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDragOver.value = false
+  }
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDragOver.value = false
+    if (isUploading.value) {
+      noticeOpen('正在上传，请稍后再试', 2)
+      return
+    }
+    const list = Array.from(e.dataTransfer?.files || [])
+    const files = list.filter(f => supportedExt.has(extractExt(f.name)))
+    if (!files.length) {
+      noticeOpen('未检测到支持的音频文件', 2)
+      return
+    }
+    await uploadFilesSequentially(files)
+    // 上传完成后刷新云盘信息
+    typeChange(1)
+  }
+  const dropOverlayTitle = computed(() => (dragDetermined.value && !dragHasSupported.value) ? 'UNSUPPORTED' : 'DROP TO UPLOAD')
+  const dropOverlaySub = computed(() => (dragDetermined.value && !dragHasSupported.value) ? '不支持的文件类型' : '释放文件开始上传')
+  async function uploadSingle(file) {
+    const formData = new FormData()
+    formData.append('songFile', file)
+    const res = await uploadCloudSong(formData)
+    if (res && res.code === 200) return res
+    // axios拦截器会在错误时返回对象而非抛出异常，这里统一当做失败处理
+    throw new Error(res?.msg || res?.message || '上传失败')
+  }
+
+  async function uploadFilesSequentially(files) {
+    isUploading.value = true
+    try {
+      const maxRetries = 3
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        let attempt = 0
+        while (attempt < maxRetries) {
+          try {
+            await uploadSingle(file)
+            noticeOpen(`${file.name} 上传成功`, 2)
+            break
+          } catch (err) {
+            attempt += 1
+            if (attempt >= maxRetries) {
+              noticeOpen(`上传失败：${file.name}`, 3)
+            } else {
+              noticeOpen(`${file.name} 失败 ${attempt} 次，重试中...`, 3)
+              // 线性退避，避免请求风暴
+              await new Promise(r => setTimeout(r, 800 * attempt))
+            }
+          }
+        }
+      }
+      noticeOpen('上传完毕', 2)
+    } finally {
       isUploading.value = false
-    })
+    }
   }
   const addTime =(time) => {
     return formatTime(time, "YYYY-MM-DD HH:mm:ss")
@@ -148,7 +259,7 @@
                 <div class="item-lable">云盘容量</div>
                 <div class="disk-capacity">
                   <div class="capacity">
-                    <vue-slider id="widget-progress" class="cloud-capacity"  v-model="size" :min="0" :max="maxSize" :interval="0.1" :duration="0.5" tooltip="none" :clickable="false"></vue-slider>
+                    <vue-slider id="widget-progress" class="cloud-capacity"  v-model="size" :min="0" :max="maxSize" :interval="0.1" :duration="0.5" tooltip="none" :clickable="false" :disabled="true"></vue-slider>
                   </div>
                   <div class="capacity-num">{{ size }}G / {{ maxSize }}G</div>
                 </div>
@@ -172,7 +283,14 @@
         <svg class="tab-back1" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2927" width="200" height="200"><path d="M513.024 65.536q93.184 0 175.616 35.84t143.872 97.28 97.28 143.872 35.84 175.616q0 94.208-35.84 176.64t-97.28 143.872-143.872 97.28-175.616 35.84q-94.208 0-176.64-35.84t-143.872-97.28-97.28-143.872-35.84-176.64q0-93.184 35.84-175.616t97.28-143.872 143.872-97.28 176.64-35.84zM513.024 909.312q80.896 0 152.064-30.72t124.416-83.968 83.968-124.416 30.72-152.064-30.72-152.064-83.968-124.416-124.416-83.968-152.064-30.72q-81.92 0-153.088 30.72t-124.416 83.968-83.968 124.416-30.72 152.064 30.72 152.064 83.968 124.416 124.416 83.968 153.088 30.72zM513.024 190.464q66.56 0 124.928 25.088t102.4 69.12 69.12 102.4 25.088 124.928-25.088 125.44-69.12 102.912-102.4 69.12-124.928 25.088-125.44-25.088-102.912-69.12-69.12-102.912-25.088-125.44 25.088-124.928 69.12-102.4 102.912-69.12 125.44-25.088z" p-id="2928" fill="#ffffff"></path></svg>
         <div class="tab-back2">INFO</div>
       </div>
-      <div class="disk-upload">
+      <div
+        class="disk-upload"
+        :class="{ dragover: isDragOver }"
+        @dragenter="handleDragEnter"
+        @dragover="handleDragOver"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop"
+      >
         <Transition name="upload-fade">
           <div class="upload" @click.stop="uploadFile()" v-show="!isUploading">
             <div class="upload-icon">
@@ -190,6 +308,13 @@
             <div class="animation"></div>
           </div>
         </Transition>
+        <!-- Drag-and-drop overlay -->
+        <div class="drop-overlay" :class="{ unsupported: dragDetermined && !dragHasSupported }" v-show="isDragOver">
+          <div class="overlay-inner">
+            <div class="overlay-title">{{ dropOverlayTitle }}</div>
+            <div class="overlay-sub">{{ dropOverlaySub }}</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -326,6 +451,7 @@
                     .cloud-capacity{
                       height: 7Px !important;
                       box-shadow: 0 0 0 0.5Px black !important;
+                      pointer-events: none;
                     }
                   }
                   .capacity-num{
@@ -378,6 +504,12 @@
         &:hover{
           cursor: pointer;
           background-color: rgba(255, 255, 255, 0.50);
+        }
+        &.dragover{
+          background-color: rgba(255, 255, 255, 0.55);
+          outline: 1Px dashed black;
+          outline-offset: -6Px;
+          .upload{ opacity: 0; }
         }
         &:active{
           background-color: rgba(255, 255, 255, 0.30);
@@ -465,6 +597,50 @@
               85%{width: 60%;}
               100%{width: 0%;left: 120%;}
             }
+          }
+        }
+        .drop-overlay{
+          position: absolute;
+          inset: 0;
+          z-index: 3;
+          pointer-events: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, #0000 25%, rgba(255,255,255,0.12) 0, rgba(255,255,255,0.12) 50%, #0000 0, #0000 75%, rgba(255,255,255,0.12) 0);
+          background-size: 14px 14px;
+          animation: drop-overlay-bg 12s linear infinite;
+          @keyframes drop-overlay-bg {
+            0%{background-position: 0%}
+            100%{background-position: 100%}
+          }
+          .overlay-inner{
+            text-align: center;
+            transform: translateY(-2px);
+          }
+          .overlay-icon{
+            width: 44Px;
+            height: 44Px;
+            margin: 0 auto 8Px auto;
+            position: relative;
+            .ring{ width: 100%; height: 100%; opacity: .6; }
+            .arrow{ position: absolute; top: 14%; left: 14%; width: 72%; height: 72%; }
+          }
+          .overlay-title{
+            font: 18Px SourceHanSansCN-Bold;
+            letter-spacing: 1Px;
+            color: black;
+          }
+          .overlay-sub{
+            margin-top: 2Px;
+            font: 11Px SourceHanSansCN-Bold;
+            color: rgba(0,0,0,.75);
+          }
+          &.unsupported{
+            outline: 1Px dashed black;
+            outline-offset: -6Px;
+            .overlay-title{ color: #9a2a2a; }
+            .overlay-sub{ color: #9a2a2a; opacity: 0.85; }
           }
         }
       }

@@ -18,3 +18,11 @@ app.directive('lazy', lazy)
 initTheme()
 app.mount('#app')
 init()
+
+// Prevent default browser file open on drag/drop globally
+window.addEventListener('dragover', (e) => {
+  e.preventDefault()
+})
+window.addEventListener('drop', (e) => {
+  e.preventDefault()
+})
