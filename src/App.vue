@@ -224,7 +224,7 @@ const handleTitleBarDoubleClick = () => {
 
 .player-enter-from,
 .player-leave-to {
-    top: 100%;
+    transform: translateY(100%);
 }
 .video-enter-active,
 .video-leave-active {

@@ -55,6 +55,7 @@ const {
     lyricsObjArr,
     currentLyricIndex, // 添加当前歌词索引
     isDesktopLyricOpen,
+    coverBlur,
 } = storeToRefs(playerStore);
 
 // 检查是否在FM模式
@@ -157,12 +158,12 @@ const addToPlaylist = () => {
                     <span class="music-name" :class="{ 'music-name-in': playerChangeSong }">{{ songList?.[currentIndex]?.name || songList?.[currentIndex]?.localName || '加载中...' }}</span>
                 </div>
                 <div class="info-music">
-                    <div class="music-author-lable" :class="{ 'music-author-lable-video': videoIsPlaying }"></div>
+                    <div class="music-author-lable" :class="{ 'music-author-lable-video': videoIsPlaying || coverBlur }"></div>
                     <div class="music-author">
                         <span
                             @click="checkArtist(singer.id)"
                             class="author"
-                            :style="{ color: videoIsPlaying ? 'black' : 'rgb(105, 105, 105)' }"
+                            :style="{ color: videoIsPlaying || coverBlur ? 'black' : 'rgb(105, 105, 105)' }"
                             v-for="(singer, index) in songList?.[currentIndex]?.ar || []"
                         >
                             {{ singer.name || '' }}{{ index == (songList?.[currentIndex]?.ar?.length || 0) - 1 ? '' : ' / ' }}
@@ -200,7 +201,7 @@ const addToPlaylist = () => {
                                 <path id="arrow" style="fill: #cccccc" transform="translate(35.21963688171376 44.356081611360985)  rotate(-90 66.78036311828623 52.999999999999986)" opacity="0" d="" />
                                 <path
                                     id="arrow"
-                                    style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    style="stroke: currentColor; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
                                     transform="translate(35.21963688171376 44.356081611360985)  rotate(-90 66.78036311828623 52.999999999999986)"
                                     d="M133.56,105.98L66.78,0L0,106 "
                                 />
@@ -224,12 +225,12 @@ const addToPlaylist = () => {
                                 <path id="line2" style="fill: #000000" transform="translate(152 24)  rotate(0 0.0005 76)" opacity="1" d="" />
                                 <path
                                     id="line2"
-                                    style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    style="stroke: currentColor; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
                                     transform="translate(152 24)  rotate(0 0.0005 76)"
                                     d="M0,0L0,152 "
                                 />
                                 <path id="line1" style="fill: #000000" transform="translate(48 24)  rotate(0 0.0005 76)" opacity="1" d="" />
-                                <path id="line1" style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0" transform="translate(48 24)  rotate(0 0.0005 76)" d="M0,0L0,152 " />
+                                <path id="line1" style="stroke: currentColor; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0" transform="translate(48 24)  rotate(0 0.0005 76)" d="M0,0L0,152 " />
                             </g>
                         </g>
                     </svg>
@@ -250,7 +251,7 @@ const addToPlaylist = () => {
                                 <path id="三角形 1" fill-rule="evenodd" style="fill: #cccccc" transform="translate(0 12)  rotate(90 88 88)" opacity="0" d="M11.79,132L164.21,132L88,0L11.79,132Z " />
                                 <path
                                     id="三角形 1"
-                                    style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    style="stroke: currentColor; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
                                     transform="translate(0 12)  rotate(90 88 88)"
                                     d="M11.79,132L164.21,132L88,0L11.79,132Z "
                                 />
@@ -265,7 +266,7 @@ const addToPlaylist = () => {
                                 <path id="arrow" style="fill: #cccccc" transform="translate(35.21963688171376 44.356081611360985)  rotate(90 66.78036311828623 52.999999999999986)" opacity="0" d="" />
                                 <path
                                     id="arrow"
-                                    style="stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    style="stroke: currentColor; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
                                     transform="translate(35.21963688171376 44.356081611360985)  rotate(90 66.78036311828623 52.999999999999986)"
                                     d="M133.56,105.98L66.78,0L0,106 "
                                 />

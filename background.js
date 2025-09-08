@@ -152,34 +152,24 @@ const createWindow = () => {
     })
     myWindow = win
 
-    // 监听来自 ipcMain 的菜单更新事件
+    // 监听来自 ipcMain 的菜单更新事件（仅 macOS 生效，并加强负载校验）
     win.on('update-dock-menu', async (songInfo) => {
+        if (process.platform !== 'darwin') return;
+
         // 更新 Dock 菜单（仅在 macOS 上）
         createDockMenu(songInfo);
 
-        // 更新应用菜单（在所有平台上）
+        // 更新应用菜单（macOS上仍然显示歌曲信息；songInfo 可为空）
         try {
             await updateApplicationMenu(win, app, songInfo);
         } catch (error) {
             console.error('更新应用菜单失败:', error);
         }
 
-        // 更新窗口标题以显示歌曲信息（作为额外的信息显示方式）
-        if (songInfo && songInfo.name && songInfo.artist) {
-            win.setTitle(`${songInfo.name} - ${songInfo.artist} - Hydrogen Music`);
-        } else {
-            win.setTitle('Hydrogen Music');
-        }
-
-        // Windows系统：更新任务栏缩略图按钮（如果需要）
-        if (process.platform === 'win32' && songInfo) {
-            // 可以在这里添加Windows特定的任务栏功能
-            // 例如：更新任务栏进度、缩略图工具栏等
-        }
-
-        // Linux系统：更新桌面通知或系统集成（如果需要）
-        if (process.platform === 'linux' && songInfo) {
-            // 可以在这里添加Linux特定的系统集成功能
+        // 仅在负载有效时更新窗口标题，避免无效负载导致标题回退
+        if (songInfo && typeof songInfo === 'object' && songInfo.name) {
+            const title = songInfo.artist ? `${songInfo.name} - ${songInfo.artist} - Hydrogen Music` : `${songInfo.name} - Hydrogen Music`;
+            win.setTitle(title);
         }
     });
 

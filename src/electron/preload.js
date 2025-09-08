@@ -143,7 +143,13 @@ function updatePlaylistStatus(status) {
     ipcRenderer.send('music-playlist-status', status)
 }
 function updateDockMenu(songInfo) {
-    ipcRenderer.send('update-dock-menu', songInfo)
+    try {
+        // 仅在 macOS 下转发，其他平台直接忽略，避免误触发
+        if (process.platform !== 'darwin') return
+        ipcRenderer.send('update-dock-menu', songInfo)
+    } catch (e) {
+        // ignore
+    }
 }
 function openNeteaseLogin() {
     return ipcRenderer.invoke('open-netease-login')

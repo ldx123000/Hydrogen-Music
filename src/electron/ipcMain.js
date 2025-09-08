@@ -376,9 +376,15 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         win.setTitle(title)
     })
 
-    // 处理更新 Dock 菜单的事件
+    // 处理更新 Dock 菜单的事件（仅限 macOS，有效负载保护）
     ipcMain.on('update-dock-menu', (e, songInfo) => {
-        // 通知主进程更新 Dock 菜单
+        // 非 macOS 直接忽略，防止误调用引发标题回退等副作用
+        if (process.platform !== 'darwin') return
+
+        // 基本负载校验：需要包含 name 与 artist 字段
+        if (!songInfo || typeof songInfo !== 'object' || !songInfo.name) return
+
+        // 通知主进程窗口处理 Dock 菜单与菜单栏
         win.emit('update-dock-menu', songInfo)
     })
 

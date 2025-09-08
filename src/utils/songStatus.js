@@ -1,7 +1,8 @@
+import pinia from '../store/pinia'
 import { useUserStore } from "../store/userStore"
 import { isLogin } from "./authority"
 
-const { user } = useUserStore()
+const userStore = useUserStore(pinia)
 function checkSongPlayable(song, _privilege) {
   let privilege = _privilege;
   if (privilege === undefined) {
@@ -17,9 +18,9 @@ function checkSongPlayable(song, _privilege) {
 
   if (song.fee === 1 || privilege?.fee === 1) {
     status.vipOnly = true
-    
+
     // 修正VIP判断条件：vipType不等于0就是VIP
-    if (!(isLogin() && user?.vipType !== 0)) {
+    if (!(isLogin() && userStore.vipType !== 0)) {
       status.playable = false
       status.reason = '仅限 VIP 会员'
     }

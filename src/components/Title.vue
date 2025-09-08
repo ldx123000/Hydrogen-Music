@@ -63,6 +63,7 @@
       transition: 0.5s cubic-bezier(.3,.79,.55,.99);
       visibility: hidden;
       overflow: hidden;
+      transform: translateX(-21px);
       .player-content{
         height: 100%;
         padding: 4px 1.2vh;
