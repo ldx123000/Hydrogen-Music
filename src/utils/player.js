@@ -21,6 +21,8 @@ let isProgress = false
 let musicProgress = null
 let loadLast = true
 let playModeOne = false //为true代表顺序播放已全部结束
+let refreshingStream = false
+let lastRefreshAttempt = 0
 
 // 统一更新窗口标题和（macOS）Dock菜单
 function updateWindowTitleDock() {
@@ -181,7 +183,58 @@ export function loadLastSong() {
     }
 }
 
-export function play(url, autoplay) {
+function getSafeCurrentSeek() {
+    try {
+        if (currentMusic.value && typeof currentMusic.value.seek === 'function') {
+            const seekValue = currentMusic.value.seek()
+            if (typeof seekValue === 'number' && !Number.isNaN(seekValue)) return seekValue
+        }
+    } catch (error) {
+        console.warn('获取播放进度失败:', error)
+    }
+    return typeof progress.value === 'number' && !Number.isNaN(progress.value) ? progress.value : 0
+}
+
+async function refreshStreamAndResume(eventType, error) {
+    const now = Date.now()
+    if (refreshingStream || now - lastRefreshAttempt < 500) return
+    const currentSong = songList.value && songList.value[currentIndex.value]
+    if (!currentSong || currentSong.type === 'local') return
+    if (!songId.value) return
+
+    refreshingStream = true
+    lastRefreshAttempt = now
+
+    const resumePosition = getSafeCurrentSeek()
+
+    try {
+        const preferredQuality = quality.value || currentSong.quality || 'standard'
+        const songInfo = await getMusicUrl(songId.value, preferredQuality)
+        const trackInfo = songInfo && songInfo.data && songInfo.data[0]
+
+        if (!trackInfo || !trackInfo.url) {
+            console.error('刷新歌曲播放地址失败：未返回url', songInfo)
+            noticeOpen('当前歌曲链接已失效，请尝试切换下一首', 2)
+            return
+        }
+
+        try {
+            setSongLevel(trackInfo.level)
+        } catch (err) {
+            console.warn('更新歌曲音质信息失败:', err)
+        }
+
+        progress.value = resumePosition
+        play(trackInfo.url, true, resumePosition)
+    } catch (fetchError) {
+        console.error('刷新歌曲播放地址失败:', fetchError)
+        noticeOpen('刷新播放地址失败，请尝试切换歌曲', 2)
+    } finally {
+        refreshingStream = false
+    }
+}
+
+export function play(url, autoplay, resumeSeek = null) {
     if (currentMusic.value) {
         currentMusic.value.unload()
         Howler.unload()
@@ -189,6 +242,8 @@ export function play(url, autoplay) {
 
     // 每次播放新音乐时，检查当前歌曲是否有对应的视频
     checkAndLoadVideoForCurrentSong()
+
+    const normalizedSeek = typeof resumeSeek === 'number' && !Number.isNaN(resumeSeek) ? Math.max(resumeSeek, 0) : null
 
     currentMusic.value = new Howl({
         src: url,
@@ -201,6 +256,14 @@ export function play(url, autoplay) {
         xhr: {
             method: 'GET',
             withCredentials: true,
+        },
+        onplayerror: function (_id, err) {
+            console.warn('检测到播放错误，尝试刷新播放地址', err)
+            refreshStreamAndResume('playerror', err)
+        },
+        onloaderror: function (_id, err) {
+            console.warn('加载音频失败，尝试刷新播放地址', err)
+            refreshStreamAndResume('loaderror', err)
         },
         onend: function () {
             clearInterval(musicProgress)
@@ -236,11 +299,20 @@ export function play(url, autoplay) {
     })
     currentMusic.value.once('load', () => {
         time.value = Math.floor(currentMusic.value.duration())
-        // 仅在非自动播放（恢复会话）时恢复上次进度
-        if (loadLast && !autoplay) {
-            currentMusic.value.volume(0)
-            currentMusic.value.seek(progress.value)
+        let targetSeek = null
+
+        if (normalizedSeek !== null) {
+            targetSeek = Math.min(normalizedSeek, currentMusic.value.duration() || normalizedSeek)
             loadLast = false
+        } else if (loadLast && !autoplay) {
+            targetSeek = Math.min(progress.value || 0, currentMusic.value.duration() || 0)
+            loadLast = false
+        }
+
+        if (targetSeek !== null && !Number.isNaN(targetSeek)) {
+            currentMusic.value.volume(0)
+            currentMusic.value.seek(targetSeek)
+            progress.value = targetSeek
         }
         playerChangeSong.value = false
     })
