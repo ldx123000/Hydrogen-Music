@@ -123,6 +123,19 @@ watch(
     }
 );
 
+// 根据显示配置（翻译/原文/罗马音、字号）动态调整高度与位置
+const recalcLyricLayout = () => {
+    if (!lyricsObjArr.value || !lyricsObjArr.value.length) return;
+    // 重新计算容器高度并保持当前行居中
+    setTimeout(() => {
+        setMaxHeight(true);
+        syncLyricPosition();
+    }, 0);
+};
+
+watch(lyricType, recalcLyricLayout, { deep: true });
+watch([lyricSize, tlyricSize, rlyricSize], recalcLyricLayout);
+
 // 增强版的当前歌词索引监听
 const { currentLyricIndex } = storeToRefs(playerStore);
 watch(currentLyricIndex, (newIndex) => {
