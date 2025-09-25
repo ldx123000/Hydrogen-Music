@@ -86,8 +86,18 @@ export const useLibraryStore = defineStore('libraryStore', {
                 // timestamp: new Date().getTime()
             }
             await Promise.all([getAlbumDetail(params), albumDynamic(id)]).then(results => {
-                this.libraryInfo = results[0].album
-                this.librarySongs = mapSongsPlayableStatus(results[0].songs)
+                const albumDetail = results[0]
+                this.libraryInfo = albumDetail.album
+
+                const playableSongs = mapSongsPlayableStatus(albumDetail.songs) || []
+                const albumCover = this.libraryInfo?.picUrl || this.libraryInfo?.blurPicUrl || null
+
+                this.librarySongs = playableSongs.map((song = {}) => {
+                    // 确保播放器在专辑场景下总能拿到封面
+                    if (!song.al) song.al = {}
+                    if (!song.al.picUrl && albumCover) song.al.picUrl = albumCover
+                    return song
+                })
                 this.libraryInfo.followed = results[1].isSub
                 this.libraryChangeAnimation = false
             })
