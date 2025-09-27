@@ -144,6 +144,10 @@ body {
   border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
+.dark .music-widget .music-progress-container .music-time {
+  color: var(--lyric-scan-inside-text) !important;
+}
+
 /* Playlist widget */
 .dark .playlist-widget {
   background-color: var(--panel) !important;

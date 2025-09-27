@@ -1,7 +1,7 @@
 <script setup>
   import { useRouter } from 'vue-router'
   import VueSlider from 'vue-slider-component'
-  import { songTime2, changeProgress } from '../utils/player';
+  import { songTime2, changeProgress, changeProgressByDragStart, changeProgressByDragEnd } from '../utils/player';
   import { usePlayerStore } from '../store/playerStore';
   import { storeToRefs } from 'pinia';
   const router = useRouter()
@@ -34,7 +34,11 @@
         <div class="music-info">
           <span class="music-name">{{songList[currentIndex].name || songList[currentIndex].localName}}</span>
           <div class="music-time">
-            <vue-slider id='widget-progress' class="music-progress" @click.stop="changeProgress(progress)"  v-model="progress" :min="0" :max="time" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
+            <vue-slider id='widget-progress' class="music-progress"
+                        @click.stop="changeProgress(progress)"
+                        @drag-start="changeProgressByDragStart()"
+                        @drag-end="changeProgressByDragEnd($event)"
+                        v-model="progress" :min="0" :max="time" :interval="1" :duration="0.5" :lazy="true" tooltip="none"></vue-slider>
             <span class="remaining-time">{{songTime2(time - progress)}}</span>
           </div>
         </div>
