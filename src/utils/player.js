@@ -15,7 +15,7 @@ const userStore = useUserStore()
 const libraryStore = useLibraryStore(pinia)
 const playerStore = usePlayerStore(pinia)
 const { libraryInfo } = storeToRefs(libraryStore)
-const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur } = storeToRefs(playerStore)
+const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex } = storeToRefs(playerStore)
 
 let isProgress = false
 let musicProgress = null
@@ -782,10 +782,52 @@ const clearLycAnimation = () => {
         clearTimeout(forbidDelayTimer)
     }, 600);
 }
+// 同步歌词索引到指定时间点（用于拖动/跳转时的即时更新）
+function updateLyricIndexForSeek(seekSeconds) {
+    try {
+        if (!Array.isArray(lyricsObjArr.value) || lyricsObjArr.value.length === 0) return
+        const s = Number(seekSeconds)
+        if (!Number.isFinite(s)) return
+
+        const arr = lyricsObjArr.value
+        // 容差与桌面歌词逻辑保持一致，避免边界闪烁
+        const t = s + 0.2
+
+        // 二分查找，找到最后一个 time <= t 的索引
+        let l = 0
+        let r = arr.length - 1
+        let ans = -1
+        while (l <= r) {
+            const m = (l + r) >> 1
+            const mt = Number(arr[m]?.time || 0)
+            if (mt <= t) {
+                ans = m
+                l = m + 1
+            } else {
+                r = m - 1
+            }
+        }
+
+        // 保底处理：若未找到，置为0；若超过最后一行，置为最后一行
+        if (ans < 0) ans = 0
+        if (ans > arr.length - 1) ans = arr.length - 1
+
+        if (currentLyricIndex && currentLyricIndex.value !== ans) {
+            currentLyricIndex.value = ans
+        }
+    } catch (e) {
+        // 安全兜底：任何异常不影响主流程
+    }
+}
 export function changeProgress(toTime) {
     if (!widgetState.value && lyricShow.value && lyricEle.value) clearLycAnimation()
     if (videoIsPlaying.value) {
         musicVideoCheck(toTime, true)
+    }
+    // 先更新进度与歌词索引，再执行实际 seek，确保 UI 与索引同步
+    if (typeof toTime === 'number' && Number.isFinite(toTime)) {
+        progress.value = toTime
+        updateLyricIndexForSeek(toTime)
     }
     currentMusic.value.seek(toTime)
 }
@@ -1208,7 +1250,8 @@ windowApi.musicProcessControl((event, mode) => {
         if (progress.value - 3 > 0) progress.value -= 3
         else progress.value = 0
     }
-    currentMusic.value.seek(progress.value)
+    // 统一使用 changeProgress，确保歌词、视频等状态同步
+    changeProgress(progress.value)
 })
 windowApi.playOrPauseMusicCheck(playing.value)
 windowApi.changeTrayMusicPlaymode(playMode.value)

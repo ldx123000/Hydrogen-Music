@@ -66,12 +66,20 @@ const clearLycAnimation = flag => {
 
 const setMaxHeight = change => {
     if (!lyricsObjArr.value) return;
-    size =
-        (parseInt(lyricType.value.indexOf('noOriginal') == -1 && lyricType.value.indexOf('original') != -1 ? lyricSize.value : 0) +
-            parseInt(lyricType.value.indexOf('noTrans') == -1 && lyricType.value.indexOf('trans') != -1 ? tlyricSize.value : 0) +
-            parseInt(lyricType.value.indexOf('noRoma') == -1 && lyricType.value.indexOf('roma') != -1 ? rlyricSize.value : 0)) *
-            1.5 +
-        30;
+
+    // 判断本首歌实际是否存在翻译/罗马音，避免没有对应内容时仍按照勾选项计算高度
+    const hasAnyTrans = Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.some(item => !!(item.tlyric && item.tlyric.trim()))
+    const hasAnyRoma = Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.some(item => !!(item.rlyric && item.rlyric.trim()))
+
+    const showOriginal = lyricType.value.indexOf('noOriginal') == -1 && lyricType.value.indexOf('original') != -1
+    const showTrans = (lyricType.value.indexOf('noTrans') == -1 && lyricType.value.indexOf('trans') != -1) && hasAnyTrans
+    const showRoma = (lyricType.value.indexOf('noRoma') == -1 && lyricType.value.indexOf('roma') != -1) && hasAnyRoma
+
+    size = (
+        parseInt(showOriginal ? lyricSize.value : 0) +
+        parseInt(showTrans ? tlyricSize.value : 0) +
+        parseInt(showRoma ? rlyricSize.value : 0)
+    ) * 1.5 + 30;
     initMax = lyricsObjArr.value.length * size;
     heightVal.value = initMax;
     initOffset = -(initMax - 260);
