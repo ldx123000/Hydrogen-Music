@@ -198,6 +198,23 @@ watch(
     }
 );
 
+// 检测大幅进度跳转（拖动进度条）时立即恢复歌词同步
+watch(
+    () => progress.value,
+    (newVal, oldVal) => {
+        if (typeof oldVal !== 'number') return;
+        if (Math.abs(newVal - oldVal) <= 1.2) return;
+
+        if (pauseActiveTimer.value) {
+            clearTimeout(pauseActiveTimer.value);
+            pauseActiveTimer.value = null;
+        }
+
+        isLyricActive.value = true;
+        syncLyricPosition();
+    }
+);
+
 onMounted(() => {
     lyricScroll.value.addEventListener('wheel', e => {
         isLyricActive.value = false;

@@ -47,7 +47,6 @@ export const usePlayerStore = defineStore('playerStore', {
     },
     persist: {
         storage: localStorage,
-        // 性能优化：不要持久化 progress，避免频繁拖动/播放进度时在 Windows 上大量写入 localStorage 导致卡顿
-        paths: ['volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur']
+        paths: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur']
     },
 })

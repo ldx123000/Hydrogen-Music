@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
-import { startMusic, pauseMusic, playLast, playNext, changeProgress, changeProgressByDragStart, changeProgressByDragEnd, changePlayMode, likeSong } from '../utils/player';
+import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
@@ -182,14 +182,11 @@ const addToPlaylist = () => {
                             id="widget-progress"
                             class="music-progress"
                             @click="changeProgress(progress)"
-                            @drag-start="changeProgressByDragStart()"
-                            @drag-end="changeProgressByDragEnd($event)"
                             v-model="progress"
                             :min="0"
                             :max="time"
                             :interval="1"
                             :duration="0.5"
-                            :lazy="true"
                             tooltip="none"
                         ></vue-slider>
                     </div>
