@@ -46,7 +46,7 @@
                     <template v-if="updateStatus === 'available'">
                         <div class="option-cancel" @click="closeDialog">稍后提醒</div>
                         <div class="option-confirm" @click="startDownload" :class="{ disabled: isDownloading }">
-                            {{ isDownloading ? '下载中...' : '立即更新' }}
+                            {{ isDownloading ? '下载中...' : (manualDownloadUrl ? '前往下载' : '立即更新') }}
                         </div>
                     </template>
                     
@@ -100,6 +100,8 @@ const emit = defineEmits(['close', 'download', 'install', 'cancel', 'retry'])
 const updateStatus = ref('checking') // checking, available, downloading, ready, latest, error
 const downloadProgress = ref(0)
 const isDownloading = ref(false)
+// 若为 mac 手动更新流程，这里存 GitHub Release 页链接
+const manualDownloadUrl = ref('')
 const errorMessage = ref('')
 const isActive = ref(false)
 
@@ -124,6 +126,12 @@ const closeDialog = () => {
 }
 
 const startDownload = () => {
+    // mac 手动更新：跳转到下载页
+    if (manualDownloadUrl.value) {
+        try { windowApi?.toRegister?.(manualDownloadUrl.value) } catch (_) {}
+        emit('close')
+        return
+    }
     updateStatus.value = 'downloading'
     isDownloading.value = true
     emit('download')
@@ -150,8 +158,9 @@ const retryUpdate = () => {
 const setupUpdateListeners = () => {
     if (typeof windowApi !== 'undefined') {
         // 手动更新检查结果（用于设置页面的手动检查）
-        windowApi.manualUpdateAvailable((version) => {
+        windowApi.manualUpdateAvailable((version, url) => {
             updateStatus.value = 'available'
+            if (url) manualDownloadUrl.value = url
         })
         
         // 更新不可用

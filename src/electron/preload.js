@@ -110,7 +110,7 @@ function checkUpdate(callback) {
     ipcRenderer.on('check-update', (_event, version) => callback?.(version))
 }
 function manualUpdateAvailable(callback) {
-    ipcRenderer.on('manual-update-available', (_event, version) => callback?.(version))
+    ipcRenderer.on('manual-update-available', (_event, version, url) => callback?.(version, url))
 }
 function updateNotAvailable(callback) {
     ipcRenderer.on('update-not-available', (_event, infoOrVersion) => callback?.(infoOrVersion))

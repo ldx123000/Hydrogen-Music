@@ -180,6 +180,10 @@ const createWindow = () => {
     win.once('ready-to-show', () => {
         win.show()
         if (process.resourcesPath.indexOf(path.join('node_modules')) == -1) {
+            // macOS: 禁用内置自动更新，改为手动检查（GitHub API）
+            if (process.platform === 'darwin') {
+                return
+            }
             // 配置自动更新器
             autoUpdater.autoDownload = false
             autoUpdater.autoInstallOnAppQuit = false
@@ -233,7 +237,7 @@ const createWindow = () => {
                 }
             })
 
-            // 自动检查更新
+            // 自动检查更新（非 macOS）
             autoUpdater.checkForUpdatesAndNotify()
         }
     })

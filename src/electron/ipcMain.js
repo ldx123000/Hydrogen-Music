@@ -917,9 +917,44 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     });
 
     // 处理应用更新相关的 IPC 事件
-    ipcMain.on('check-for-update', () => {
+    ipcMain.on('check-for-update', async () => {
+        // 在 macOS 上，改为使用 GitHub API 手动检查
+        if (process.platform === 'darwin') {
+            try {
+                const current = app.getVersion();
+                const api = 'https://api.github.com/repos/ldx123000/Hydrogen-Music/releases/latest';
+                const { data } = await axios.get(api, { headers: { 'User-Agent': 'HydrogenMusic-Updater' } });
+                let latest = data.tag_name || data.name || '';
+                if (typeof latest === 'string' && latest.startsWith('v')) latest = latest.slice(1);
+
+                const isNewer = (a, b) => {
+                    const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+                    const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+                    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+                        const da = pa[i] || 0, db = pb[i] || 0;
+                        if (da > db) return true;
+                        if (da < db) return false;
+                    }
+                    return false;
+                };
+
+                if (latest && isNewer(latest, current)) {
+                    const pageUrl = data.html_url || `https://github.com/ldx123000/Hydrogen-Music/releases/tag/v${latest}`;
+                    console.log('手动检查更新完成（macOS），发现新版本:', latest, pageUrl);
+                    win.webContents.send('manual-update-available', latest, pageUrl);
+                } else {
+                    console.log('手动检查更新完成（macOS），当前已是最新版本');
+                    win.webContents.send('update-not-available');
+                }
+            } catch (error) {
+                console.error('手动检查更新失败（macOS）:', error);
+                win.webContents.send('update-error', error.message || '检查更新失败');
+            }
+            return;
+        }
+
+        // 其他平台走 electron-updater
         const { autoUpdater } = require("electron-updater");
-        
         // 为手动检查设置一次性事件监听器
         const handleUpdateAvailable = (info) => {
             console.log('手动检查更新完成，发现新版本:', info.version);
@@ -928,7 +963,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             autoUpdater.removeListener('update-not-available', handleUpdateNotAvailable);
             autoUpdater.removeListener('error', handleUpdateError);
         };
-        
         const handleUpdateNotAvailable = () => {
             console.log('手动检查更新完成，当前已是最新版本');
             win.webContents.send('update-not-available');
@@ -936,7 +970,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             autoUpdater.removeListener('update-not-available', handleUpdateNotAvailable);
             autoUpdater.removeListener('error', handleUpdateError);
         };
-        
         const handleUpdateError = (error) => {
             console.error('手动检查更新失败:', error);
             win.webContents.send('update-error', error.message);
@@ -944,16 +977,13 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             autoUpdater.removeListener('update-not-available', handleUpdateNotAvailable);
             autoUpdater.removeListener('error', handleUpdateError);
         };
-        
         autoUpdater.once('update-available', handleUpdateAvailable);
         autoUpdater.once('update-not-available', handleUpdateNotAvailable);
         autoUpdater.once('error', handleUpdateError);
-        
-        autoUpdater.checkForUpdates()
-            .catch(error => {
-                console.error('检查更新失败:', error);
-                win.webContents.send('update-error', error.message);
-            });
+        autoUpdater.checkForUpdates().catch(error => {
+            console.error('检查更新失败:', error);
+            win.webContents.send('update-error', error.message);
+        });
     });
 
     ipcMain.on('download-update', () => {
