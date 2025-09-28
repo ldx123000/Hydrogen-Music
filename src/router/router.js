@@ -12,6 +12,7 @@ import RecommendSongs from '../components/RecommendSongs.vue'
 import LocalMusicDetail from '../components/LocalMusicDetail.vue'
 import SearchResult from '../views/SearchResult.vue'
 import Settings from '../views/Settings.vue'
+import RadioDetail from '../components/RadioDetail.vue'
 
 import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
@@ -99,6 +100,11 @@ const routes = [
                         next({name: 'login'})
                     }
                 }
+            },
+            {
+                path: '/mymusic/dj/:id',
+                name: 'dj',
+                component: RadioDetail,
             },
             {
                 path: '/mymusic/local/files',

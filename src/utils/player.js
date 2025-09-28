@@ -358,8 +358,30 @@ export function addToList(listType, songlist) {
     //     ...
     // }
 
+    let listId = 'none'
+    if (listType === 'rec') {
+        listId = 'rec'
+    } else if (listType === 'dj') {
+        try {
+            const hash = (typeof window !== 'undefined' && window.location && window.location.hash) ? window.location.hash : ''
+            // 期望路径形如：#/mymusic/dj/:id
+            const parts = hash.split('?')[0].split('/')
+            // ['', 'mymusic', 'dj', ':id']
+            if (parts.length >= 4 && parts[2] === 'dj' && parts[3]) {
+                listId = parts[3]
+            } else if (listInfo.value && listInfo.value.type === 'dj' && listInfo.value.id) {
+                // 回退到当前播放器内已有的电台信息
+                listId = listInfo.value.id
+            }
+        } catch (_) {
+            // 忽略解析失败，使用默认值
+        }
+    } else if (libraryInfo.value) {
+        listId = libraryInfo.value.id
+    }
+
     listInfo.value = {
-        id: (listType == 'rec' ? 'rec' : (libraryInfo.value ? libraryInfo.value.id : 'none')),
+        id: listId,
         type: listType
     }
     songList.value = songlist.slice(0, songlist.length + 1)

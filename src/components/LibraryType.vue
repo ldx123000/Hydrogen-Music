@@ -6,6 +6,7 @@
   import { getUserSubArtists } from '../api/artist'
   import { getUserSubMV } from '../api/mv'
   import { useUserStore } from '../store/userStore'
+  import { getDjSubList } from '../api/dj'
   import { useLibraryStore } from '../store/libraryStore'
   import { useLocalStore } from '../store/localStore'
   import { storeToRefs } from 'pinia'
@@ -75,6 +76,13 @@
             });
             libraryList.value = result.data
             listType2.value = 2
+        })
+    } else if (option.value == 1 && typeTwo.value == 3) { // 电台
+        const params = { limit: 50, offset: 0 }
+        getDjSubList(params).then(result => {
+            const list = result?.djRadios || result?.data || result?.radios || []
+            libraryList.value = list
+            listType2.value = 3
         })
     } else if (option.value == 2 && typeThree.value == 0) {//正在下载
         listType2.value = 0
@@ -147,6 +155,7 @@
                 <span v-show="option == 1" class="option" :class="{'option-selected': typeTwo == 0}" @click="changeType(0)">专辑</span>
                 <span v-show="option == 1" class="option" :class="{'option-selected': typeTwo == 1}" @click="changeType(1)">歌手</span>
                 <span v-show="option == 1" class="option" :class="{'option-selected': typeTwo == 2}" @click="changeType(2)">MV</span>
+                <span v-show="option == 1" class="option" :class="{'option-selected': typeTwo == 3}" @click="changeType(3)">电台</span>
                 <span v-show="option == 2" class="option" :class="{'option-selected': typeThree == 0}" @click="changeType(0)">正在下载</span>
                 <span v-show="option == 2" class="option" :class="{'option-selected': typeThree == 1}" @click="changeType(1)">下载完成</span>
                 <span v-show="option == 3" class="option" :class="{'option-selected': typeFour == 0}" @click="changeType(0)">全部</span>

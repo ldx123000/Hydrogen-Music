@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { getMusicComments, postMusicComment, likeMusicComment } from '../api/song';
+import { getDjProgramComments, postDjProgramComment, likeDjProgramComment } from '../api/dj';
 import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
 import { storeToRefs } from 'pinia';
@@ -9,7 +10,12 @@ import CommentText from './CommentText.vue';
 
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
-const { songId, songList, currentIndex } = storeToRefs(playerStore);
+const { songId, songList, currentIndex, listInfo } = storeToRefs(playerStore);
+const isDj = computed(() => listInfo.value && listInfo.value.type === 'dj');
+const programId = computed(() => {
+    const cur = songList.value && songList.value[currentIndex.value];
+    return cur && (cur.programId || cur.programID || cur.programid);
+});
 
 const comments = ref([]);
 const hotComments = ref([]);
@@ -30,12 +36,16 @@ const fetchComments = async (reset = false) => {
 
     try {
         const params = {
-            id: songId.value,
             limit: limit.value,
             offset: reset ? 0 : offset.value,
         };
 
-        const response = await getMusicComments(params);
+        let response = null;
+        if (isDj.value && programId.value) {
+            response = await getDjProgramComments(programId.value, params);
+        } else {
+            response = await getMusicComments({ id: songId.value, ...params });
+        }
 
         if (response && response.code === 200) {
             if (reset) {
@@ -70,16 +80,17 @@ const submitComment = async () => {
     submitting.value = true;
 
     try {
-        const params = {
-            id: songId.value,
-            content: newComment.value.trim(),
-        };
-
-        if (replyingTo.value) {
-            params.commentId = replyingTo.value.commentId;
+        let response = null;
+        if (isDj.value && programId.value) {
+            response = await postDjProgramComment(programId.value, newComment.value.trim(), replyingTo.value ? replyingTo.value.commentId : null);
+        } else {
+            const params = {
+                id: songId.value,
+                content: newComment.value.trim(),
+            };
+            if (replyingTo.value) params.commentId = replyingTo.value.commentId;
+            response = await postMusicComment(params);
         }
-
-        const response = await postMusicComment(params);
 
         if (response && response.code === 200) {
             noticeOpen('评论发送成功', 2);
@@ -106,13 +117,12 @@ const toggleLikeComment = async comment => {
     }
 
     try {
-        const params = {
-            id: songId.value,
-            cid: comment.commentId,
-            t: comment.liked ? 0 : 1,
-        };
-
-        const response = await likeMusicComment(params);
+        let response = null;
+        if (isDj.value && programId.value) {
+            response = await likeDjProgramComment(programId.value, comment.commentId, !comment.liked);
+        } else {
+            response = await likeMusicComment({ id: songId.value, cid: comment.commentId, t: comment.liked ? 0 : 1 });
+        }
 
         if (response && response.code === 200) {
             comment.liked = !comment.liked;
@@ -189,21 +199,15 @@ const formatTime = timestamp => {
 };
 
 // 监听歌曲变化
-watch(
-    songId,
-    newSongId => {
-        if (newSongId) {
-            fetchComments(true);
-        }
-    },
-    { immediate: true }
-);
-
-onMounted(() => {
-    // 组件挂载时获取评论
-    if (songId.value) {
+watch([songId, programId, isDj], () => {
+    // 只要目标变了就刷新
+    if ((isDj.value && programId.value) || (!isDj.value && songId.value)) {
         fetchComments(true);
     }
+}, { immediate: true });
+
+onMounted(() => {
+    if ((isDj.value && programId.value) || (!isDj.value && songId.value)) fetchComments(true);
 });
 </script>
 

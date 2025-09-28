@@ -1,10 +1,11 @@
 <script setup>
 import Player from '../components/Player.vue';
 import Lyric from '../components/Lyric.vue';
+import ProgramIntro from '../components/ProgramIntro.vue';
 import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 const playerStore = usePlayerStore();
 
@@ -32,6 +33,9 @@ watch(rightPanelMode, (newMode, oldMode) => {
         });
     }
 });
+
+// 当播放电台节目时，右侧显示电台简介而非歌词
+const isDj = computed(() => playerStore.listInfo && playerStore.listInfo.type === 'dj');
 </script>
 
 <template>
@@ -46,7 +50,8 @@ watch(rightPanelMode, (newMode, oldMode) => {
         <div class="right-panel" :class="{ 'panel-hide': playerStore.videoIsPlaying && !playerStore.playerShow }">
             <!-- 内容区域 -->
             <Transition name="panel-switch" mode="out-in">
-                <Lyric class="lyric-container" v-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
+                <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
+                <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
                 <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments"></Comments>
             </Transition>
         </div>

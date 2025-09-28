@@ -27,7 +27,7 @@
     <div class="title-player" :class="{'title-player-in': videoIsPlaying && !playerShow}" v-if="musicVideo && songList" @click="playerShow = true">
       <div class="player-content" :class="{'player-content-in': videoIsPlaying && !playerShow}">
         <div class="cover">
-          <img v-if="songList[currentIndex].type != 'local'" :src="songList[currentIndex].al.picUrl + '?param=100y100'" alt="">
+          <img v-if="songList[currentIndex].type != 'local'" :src="(songList[currentIndex].coverUrl || songList[currentIndex].al.picUrl) + '?param=100y100'" alt="">
           <img v-else v-show="localBase64Img" :src="localBase64Img" alt="">
           <img v-if="songList[currentIndex].type == 'local' && !localBase64Img" src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="">
         </div>

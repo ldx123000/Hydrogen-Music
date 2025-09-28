@@ -16,12 +16,17 @@
   const currentSelected = ref(null)
   const lastRouter = ref(null)
   const router = useRouter()
-  const showDetail = (selectedId, item) => {
+  const showDetail = async (selectedId, item) => {
     if(listType1.value == 0) router.push('/mymusic/playlist/' + item.id)
     if(listType1.value == 1 && listType2.value == 0) router.push('/mymusic/album/' + item.id)
     if(listType1.value == 1 && listType2.value == 1) router.push('/mymusic/artist/' + item.id)
     if(listType1.value == 1 && listType2.value == 2) {
       otherStore.getMvData(item.vid)
+    }
+    if(listType1.value == 1 && listType2.value == 3) {
+      // 收藏-电台：优先使用 rid（API 使用 rid 作为电台ID）
+      const djId = item?.rid || item?.id
+      if (djId) router.push('/mymusic/dj/' + djId)
     }
     currentSelected.value = selectedId
   }
@@ -91,7 +96,11 @@
               <div class="item-artist" v-if="listType1 == 1 && listType2 == 2">
                 <span class="artist"  v-for="(creator, index) in item.creator">{{creator.userName}}{{index == item.creator.length -1 ? '' : '/'}}</span>
               </div>
-              <span class="item-size" v-if="!(listType1 == 1 && listType2 == 1) && !(listType1 == 1 && listType2 == 2)">{{(item.trackCount ?? item.size)}}首</span>
+              <div class="item-artist" v-if="listType1 == 1 && listType2 == 3">
+                <span class="artist">{{ item.dj?.nickname }}</span>
+              </div>
+              <span class="item-size" v-if="listType1 == 1 && listType2 == 3">{{ item.programCount || 0 }}期</span>
+              <span class="item-size" v-if="!(listType1 == 1 && listType2 == 1) && !(listType1 == 1 && listType2 == 2) && !(listType1 == 1 && listType2 == 3)">{{(item.trackCount ?? item.size)}}首</span>
             </div>
         </div>
     </div>

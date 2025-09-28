@@ -699,6 +699,17 @@ body {
   stroke: var(--text) !important;
 }
 
+/* My Radio page */
+.dark .my-radio .radio-header .title-tip { background-color: var(--text) !important; }
+.dark .my-radio .radio-card { background-color: rgba(255,255,255,0.12) !important; }
+.dark .my-radio .radio-card .cover { border-color: rgba(255,255,255,0.18) !important; }
+.dark .my-radio .radio-card .border { border-color: var(--text) !important; }
+
+/* Radio intro (right panel) */
+.dark .radio-intro .intro-header .cover { border-color: rgba(255,255,255,0.18) !important; }
+.dark .radio-intro .intro-content { background: var(--layer) !important; }
+.dark .radio-intro .border { border-color: var(--text) !important; }
+
 /* Home: BREAKING NEWS (Banner) */
 .dark .banner .banner-header .banner-title {
   background-color: var(--text) !important;
