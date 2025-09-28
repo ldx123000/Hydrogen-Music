@@ -461,6 +461,46 @@ body {
   stroke: var(--text) !important;
 }
 
+/* Keep liked heart red in dark mode */
+.dark .player .song-control .like-icon.liked path {
+  fill: #E5404F !important;
+  stroke: #E5404F !important;
+}
+
+/* Make comment toggle clearly dimmer when closed (override generic icon rule) */
+.dark .player .song-control .comment-icon.comment-icon-inactive {
+  opacity: 1 !important; /* darker than default 0.5 */
+}
+
+.dark .player .song-control .comment-icon.comment-icon-inactive path {
+  fill: rgba(255, 255, 255, 0.2) !important;
+  stroke: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* In dark mode, dim lyric controls when turned off */
+.dark .player .song-control .lyric-toggle.inactive {
+  opacity: 0.5 !important;
+}
+
+.dark .player .song-control .lyric-toggle.inactive path {
+  fill: rgba(255, 255, 255, 0.45) !important;
+  stroke: rgba(255, 255, 255, 0.45) !important;
+}
+
+.dark .player .song-control .lyric-toggle.active path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+.dark .player .song-control .desktop-lyric-btn:not(.active) {
+  opacity: 0.5 !important;
+}
+
+.dark .player .song-control .desktop-lyric-btn:not(.active) path {
+  fill: rgba(255, 255, 255, 0.45) !important;
+  stroke: rgba(255, 255, 255, 0.45) !important;
+}
+
 /* Main Player page (layout wrapper) */
 .dark .music-player {
   /* Match main window background to keep consistency with other pages */
@@ -661,15 +701,18 @@ body {
 }
 
 .dark .player-container .comment-icon-inactive path {
-  fill: rgba(255, 255, 255, 0.5) !important;
+  /* Dimmer closed comment icon in dark mode */
+  fill: rgba(255, 255, 255, 0.1) !important;
 }
 
 .dark .player-container .comment-icon-active path {
   fill: var(--text) !important;
 }
 
-.dark .player-container .desktop-lyric-btn path {
-  fill: var(--muted-text) !important;
+.dark .player-container .desktop-lyric-btn:not(.active) { opacity: 0.5 !important; }
+.dark .player-container .desktop-lyric-btn:not(.active) path {
+  fill: rgba(255, 255, 255, 0.45) !important;
+  stroke: rgba(255, 255, 255, 0.45) !important;
 }
 
 .dark .player-container .desktop-lyric-btn.active path {

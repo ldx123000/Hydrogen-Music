@@ -191,9 +191,26 @@ const toggleDjSub = async (isSubscribe) => {
         <div class="player">
             <div class="player-cover">
                 <div class="cover" :class="{ 'cover-change': playerChangeSong, 'back-Video': videoIsPlaying }" @click="backToVideo()">
-                    <img v-if="songList?.[currentIndex]?.type != 'local'" :src="songList?.[currentIndex]?.coverUrl || songList?.[currentIndex]?.al?.picUrl" alt="" />
-                    <img v-else v-show="localBase64Img" :src="localBase64Img" alt="" />
-                    <img v-if="songList?.[currentIndex]?.type == 'local' && !localBase64Img" src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="" />
+                    <!-- Force re-create <img> when song changes so old cover doesn't persist -->
+                    <img
+                        v-if="songList?.[currentIndex]?.type != 'local'"
+                        :key="'remote-'+(songId || songList?.[currentIndex]?.id)"
+                        :src="songList?.[currentIndex]?.coverUrl || songList?.[currentIndex]?.al?.picUrl"
+                        alt=""
+                    />
+                    <img
+                        v-else
+                        v-show="localBase64Img"
+                        :key="'local-'+(songId || songList?.[currentIndex]?.id)"
+                        :src="localBase64Img"
+                        alt=""
+                    />
+                    <img
+                        v-if="songList?.[currentIndex]?.type == 'local' && !localBase64Img"
+                        :key="'local-default-'+(songId || songList?.[currentIndex]?.id)"
+                        src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140"
+                        alt=""
+                    />
                 </div>
                 <div class="c-border c-border1"></div>
                 <div class="c-border c-border2"></div>
@@ -358,7 +375,7 @@ const toggleDjSub = async (isSubscribe) => {
                     t="1673182533775"
                     v-show="hasRomaLyric && lyricType.indexOf('roma') != -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.splice(lyricType.indexOf('roma'), 1)"
-                    class="icon"
+                    class="icon lyric-toggle active"
                     viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -376,7 +393,7 @@ const toggleDjSub = async (isSubscribe) => {
                     t="1673182533775"
                     v-show="hasRomaLyric && lyricType.indexOf('roma') == -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.push('roma')"
-                    class="icon"
+                    class="icon lyric-toggle inactive"
                     viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -395,7 +412,7 @@ const toggleDjSub = async (isSubscribe) => {
                     t="1673182625534"
                     v-show="hasTransLyric && lyricType.indexOf('trans') != -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.splice(lyricType.indexOf('trans'), 1)"
-                    class="icon"
+                    class="icon lyric-toggle active"
                     viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -413,7 +430,7 @@ const toggleDjSub = async (isSubscribe) => {
                     t="1673182625534"
                     v-show="hasTransLyric && lyricType.indexOf('trans') == -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.push('trans')"
-                    class="icon"
+                    class="icon lyric-toggle inactive"
                     viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -432,7 +449,7 @@ const toggleDjSub = async (isSubscribe) => {
                     t="1673182198291"
                     v-show="hasOriginalLyric && lyricType.indexOf('original') != -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.splice(lyricType.indexOf('original'), 1)"
-                    class="icon"
+                    class="icon lyric-toggle active"
                     viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -460,7 +477,7 @@ const toggleDjSub = async (isSubscribe) => {
                     t="1673182198291"
                     v-show="hasOriginalLyric && lyricType.indexOf('original') == -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.push('original')"
-                    class="icon"
+                    class="icon lyric-toggle inactive"
                     viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -492,7 +509,7 @@ const toggleDjSub = async (isSubscribe) => {
                         v-if="userStore.likelist"
                         @click="likeSong(true)"
                         v-show="!checkIsLike(songId)"
-                        class="icon"
+                        class="icon like-icon"
                         viewBox="0 0 1024 1024"
                         version="1.1"
                         xmlns="http://www.w3.org/2000/svg"
@@ -510,7 +527,7 @@ const toggleDjSub = async (isSubscribe) => {
                         v-if="userStore.likelist"
                         @click="likeSong(false)"
                         v-show="checkIsLike(songId)"
-                        class="icon"
+                        class="icon like-icon liked"
                         viewBox="0 0 1025 1024"
                         version="1.1"
                         xmlns="http://www.w3.org/2000/svg"
@@ -532,7 +549,7 @@ const toggleDjSub = async (isSubscribe) => {
                         v-if="userStore.likelist"
                         @click="toggleDjSub(true)"
                         v-show="!djSubed"
-                        class="icon"
+                        class="icon like-icon"
                         viewBox="0 0 1024 1024"
                         version="1.1"
                         xmlns="http://www.w3.org/2000/svg"
@@ -550,7 +567,7 @@ const toggleDjSub = async (isSubscribe) => {
                         v-if="userStore.likelist"
                         @click="toggleDjSub(false)"
                         v-show="djSubed"
-                        class="icon"
+                        class="icon like-icon liked"
                         viewBox="0 0 1025 1024"
                         version="1.1"
                         xmlns="http://www.w3.org/2000/svg"
@@ -780,8 +797,8 @@ const toggleDjSub = async (isSubscribe) => {
                     object-fit: cover;
                     vertical-align: bottom;
                     box-shadow: 0 0 8px 0 rgba(0, 0, 0, 0.05);
-                    transform: scale(1.03);
-                    animation: cover-in 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+                    // transform: scale(1.03);
+                    // animation: cover-in 0.3s 0.65s cubic-bezier(0.4, 0, 0.12, 1) forwards;
                     @keyframes cover-in {
                         0% {
                             transform: scale(1.03);
@@ -1136,7 +1153,7 @@ const toggleDjSub = async (isSubscribe) => {
     }
 
     .desktop-lyric-btn {
-        opacity: 0.6;
+        opacity: 0.5;
         transition: all 0.2s ease;
 
         path {
