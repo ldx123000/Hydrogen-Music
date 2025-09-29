@@ -49,6 +49,32 @@ let size = null;
 
 let lyricLastPosition = null;
 
+// 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
+function computeCumulativeOffset(index) {
+    if (!lyricEle.value || !lyricEle.value.length) {
+        return (index + 1) * (size || 0)
+    }
+    let offset = 0
+    for (let i = 0; i <= index && i < lyricEle.value.length; i++) {
+        const el = lyricEle.value[i]
+        if (el && el.offsetParent !== null) offset += el.clientHeight + 10
+        else offset += (size || 0)
+    }
+    return offset
+}
+
+// 计算整份歌词的总高度（用于边界与容器高度），优先DOM，回退估算
+function computeTotalHeight() {
+    if (!lyricEle.value || !lyricEle.value.length) return initMax || 0
+    let total = 0
+    for (let i = 0; i < lyricEle.value.length; i++) {
+        const el = lyricEle.value[i]
+        if (el && el.offsetParent !== null) total += el.clientHeight + 10
+        else total += (size || 0)
+    }
+    return total
+}
+
 const clearLycAnimation = flag => {
     if (flag) isLyricDelay.value = false;
     for (let i = 0; i < lyricEle.value.length; i++) {
@@ -83,13 +109,21 @@ const setMaxHeight = change => {
     initMax = lyricsObjArr.value.length * size;
     heightVal.value = initMax;
     initOffset = -(initMax - 260);
-    let offset = (lycCurrentIndex.value + 1) * size;
+    // 使用DOM实际高度计算偏移，回退到均匀估算
+    let offset = computeCumulativeOffset(lycCurrentIndex.value)
     if (change) {
-        lineOffset.value = initOffset - offset;
-        minHeightVal.value = offset;
-        maxHeightVal.value = initMax + offset;
+        // 同步容器总高度并重算基础偏移
+        const total = computeTotalHeight()
+        initMax = total || initMax
+        initOffset = -(initMax - 260)
+        lineOffset.value = initOffset - offset
+        minHeightVal.value = offset
+        maxHeightVal.value = initMax + offset
     } else {
-        maxHeightVal.value = initMax;
+        const total = computeTotalHeight()
+        initMax = total || initMax
+        initOffset = -(initMax - 260)
+        maxHeightVal.value = initMax
     }
     if (lyricScrollArea.value) lyricScrollArea.value.style.height = initMax + 'Px';
 };
@@ -151,13 +185,13 @@ watch(currentLyricIndex, (newIndex) => {
     
     // 确保DOM元素存在后再进行滚动
     if (lyricEle.value && lyricEle.value[newIndex] && lyricEle.value[newIndex].offsetParent !== null) {
-        let offset = 0;
-        for (let i = 0; i <= newIndex; i++) {
-            if (lyricEle.value[i]) offset += lyricEle.value[i].clientHeight + 10;
-        }
-        lineOffset.value = initOffset - offset;
-        minHeightVal.value = offset;
-        maxHeightVal.value = initMax + offset;
+        const offset = computeCumulativeOffset(newIndex)
+        const total = computeTotalHeight()
+        initMax = total || initMax
+        initOffset = -(initMax - 260)
+        lineOffset.value = initOffset - offset
+        minHeightVal.value = offset
+        maxHeightVal.value = initMax + offset
     }
 }, { immediate: true }); // 添加 immediate 选项确保立即执行
 
@@ -167,10 +201,13 @@ const changeProgressLyc = (time, index) => {
     playerStore.currentLyricIndex = index;
 
     if (!playing.value) {
-        let offset = (lycCurrentIndex.value + 1) * size;
-        lineOffset.value = initOffset - offset;
-        minHeightVal.value = offset;
-        maxHeightVal.value = initMax + offset;
+        const offset = computeCumulativeOffset(lycCurrentIndex.value)
+        const total = computeTotalHeight()
+        initMax = total || initMax
+        initOffset = -(initMax - 260)
+        lineOffset.value = initOffset - offset
+        minHeightVal.value = offset
+        maxHeightVal.value = initMax + offset
     }
     progress.value = time;
     changeProgress(time);
@@ -179,10 +216,13 @@ const changeProgressLyc = (time, index) => {
 // 同步当前歌词位置的函数
 const syncLyricPosition = () => {
     if (lycCurrentIndex.value !== null && lycCurrentIndex.value >= 0 && lyricEle.value && lyricEle.value[lycCurrentIndex.value]) {
-        let offset = (lycCurrentIndex.value + 1) * size;
-        lineOffset.value = initOffset - offset;
-        minHeightVal.value = offset;
-        maxHeightVal.value = initMax + offset;
+        const offset = computeCumulativeOffset(lycCurrentIndex.value)
+        const total = computeTotalHeight()
+        initMax = total || initMax
+        initOffset = -(initMax - 260)
+        lineOffset.value = initOffset - offset
+        minHeightVal.value = offset
+        maxHeightVal.value = initMax + offset
         // 确保歌词容器高度正确
         if (lyricScrollArea.value) {
             lyricScrollArea.value.style.height = initMax + 'Px';
