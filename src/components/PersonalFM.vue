@@ -103,7 +103,51 @@ const isCurrentSongLiked = computed(() => {
 });
 
 const fmSongs = ref([]);
-const playedSongs = ref([]); // 已播放的歌曲历史
+const playedSongs = ref([]); // 已播放的歌曲历史（用于前后切换浏览）
+// 去重与“近期不重复”控制
+const fmPoolIds = new Set(); // 当前候选池中的歌曲ID，避免同一池内重复
+const recentPlayedSet = new Set(); // 近期播放过的歌曲集合（窗口集合）
+const recentPlayedQueue = []; // 维护顺序的队列，配合 recentPlayedSet 形成滑动窗口
+const RECENT_WINDOW = 100; // 近期去重窗口大小，避免短期内重复
+
+function rememberRecent(id) {
+    if (!id) return;
+    recentPlayedQueue.push(id);
+    recentPlayedSet.add(id);
+    // 控制窗口大小，超过阈值就移除最早的一首
+    if (recentPlayedQueue.length > RECENT_WINDOW) {
+        const old = recentPlayedQueue.shift();
+        recentPlayedSet.delete(old);
+    }
+}
+
+function addToFmPoolUnique(songs) {
+    if (!Array.isArray(songs) || songs.length === 0) return;
+    const before = fmSongs.value.length;
+    const deduped = [];
+    for (const s of songs) {
+        const id = s && (s.id || s.songId || s.trackId);
+        if (!id) continue;
+        // 过滤：近期播放过的不再加入；池中已有的不再加入
+        if (recentPlayedSet.has(id) || fmPoolIds.has(id)) continue;
+        fmPoolIds.add(id);
+        deduped.push(s);
+    }
+    if (deduped.length) fmSongs.value.push(...deduped);
+    console.log('FM池新增歌曲:', deduped.length, '（池总数从', before, '到', fmSongs.value.length, '）');
+}
+
+function takeNextFromPool() {
+    while (fmSongs.value.length > 0) {
+        const s = fmSongs.value.shift();
+        const id = s && s.id;
+        if (id) fmPoolIds.delete(id);
+        // 若近期播放过，则跳过，继续取下一首
+        if (id && recentPlayedSet.has(id)) continue;
+        return s || null;
+    }
+    return null;
+}
 const currentIndex = ref(0);
 const loading = ref(false);
 
@@ -215,26 +259,35 @@ const nextSong = async () => {
     }
 
     // 从未播放的歌曲中取下一首
-    const nextSongFromPool = fmSongs.value.shift();
+    let nextSongFromPool = takeNextFromPool();
     if (nextSongFromPool) {
-        // 添加到播放历史
+        // 添加到播放历史并记录近期去重
         playedSongs.value.push(nextSongFromPool);
+        rememberRecent(nextSongFromPool.id);
         currentIndex.value = playedSongs.value.length - 1;
 
         console.log('Playing new FM song:', nextSongFromPool.name);
         await togglePlay();
+        // 低水位预取，保持池内始终有歌可播
+        if (fmSongs.value.length < 2) {
+            refreshFM();
+        }
     } else {
         console.log('No more FM songs available');
         // 如果歌曲池为空，尝试再次刷新
         if (fmSongs.value.length === 0) {
             await refreshFM();
             // 再次尝试获取歌曲
-            const retryNextSong = fmSongs.value.shift();
-            if (retryNextSong) {
-                playedSongs.value.push(retryNextSong);
+            nextSongFromPool = takeNextFromPool();
+            if (nextSongFromPool) {
+                playedSongs.value.push(nextSongFromPool);
+                rememberRecent(nextSongFromPool.id);
                 currentIndex.value = playedSongs.value.length - 1;
-                console.log('Playing retry FM song:', retryNextSong.name);
+                console.log('Playing retry FM song:', nextSongFromPool.name);
                 await togglePlay();
+                if (fmSongs.value.length < 2) {
+                    refreshFM();
+                }
             }
         }
     }
@@ -347,16 +400,18 @@ const refreshFM = async () => {
             console.log('Personal FM response:', response);
 
             if (response && response.data && response.data.length > 0) {
-                // 追加到歌曲池，而不是替换
-                fmSongs.value.push(...response.data);
-                console.log('Added FM songs to pool:', response.data.length);
+                // 去重追加到歌曲池
+                addToFmPoolUnique(response.data);
 
                 // 如果当前没有歌曲在播放历史中，从池中取第一首歌开始播放
                 if (playedSongs.value.length === 0 && fmSongs.value.length > 0) {
-                    const firstSong = fmSongs.value.shift();
-                    playedSongs.value.push(firstSong);
-                    currentIndex.value = 0;
-                    console.log('Started with first FM song:', firstSong.name);
+                    const firstSong = takeNextFromPool();
+                    if (firstSong) {
+                        playedSongs.value.push(firstSong);
+                        rememberRecent(firstSong.id);
+                        currentIndex.value = 0;
+                        console.log('Started with first FM song:', firstSong.name);
+                    }
                 }
                 return;
             }
@@ -373,16 +428,19 @@ const refreshFM = async () => {
                 const songs = mapSongsPlayableStatus(recResponse.data.dailySongs);
                 // 随机打乱歌曲顺序，模拟FM效果
                 const shuffledSongs = songs.sort(() => Math.random() - 0.5);
-                // 追加到歌曲池
-                fmSongs.value.push(...shuffledSongs);
-                console.log('Added daily recommendation songs to FM pool:', shuffledSongs.length);
+                // 去重后追加到歌曲池
+                addToFmPoolUnique(shuffledSongs);
+                console.log('Added daily recommendation songs to FM pool (deduped):', fmSongs.value.length);
 
                 // 如果当前没有歌曲在播放历史中，从池中取第一首歌开始播放
                 if (playedSongs.value.length === 0 && fmSongs.value.length > 0) {
-                    const firstSong = fmSongs.value.shift();
-                    playedSongs.value.push(firstSong);
-                    currentIndex.value = 0;
-                    console.log('Started with first recommendation song:', firstSong.name);
+                    const firstSong = takeNextFromPool();
+                    if (firstSong) {
+                        playedSongs.value.push(firstSong);
+                        rememberRecent(firstSong.id);
+                        currentIndex.value = 0;
+                        console.log('Started with first recommendation song:', firstSong.name);
+                    }
                 }
                 return;
             }

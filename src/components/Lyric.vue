@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, nextTick } from 'vue';
 import { changeProgress, musicVideoCheck, songTime } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
@@ -48,6 +48,8 @@ let initOffset = null;
 let size = null;
 
 let lyricLastPosition = null;
+// 切回歌词时抑制首帧闪烁（先隐藏，定位完成后再显示）
+const suppressLyricFlash = ref(true);
 
 // 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
 function computeCumulativeOffset(index) {
@@ -128,7 +130,7 @@ const setMaxHeight = change => {
     if (lyricScrollArea.value) lyricScrollArea.value.style.height = initMax + 'Px';
 };
 
-const setDefaultStyle = () => {
+const setDefaultStyle = async () => {
     lycCurrentIndex.value = currentLyricIndex.value >= 0 ? currentLyricIndex.value : -1;
     interludeAnimation.value = false;
     lyricEle.value = document.getElementsByClassName('lyric-line');
@@ -136,14 +138,16 @@ const setDefaultStyle = () => {
     setMaxHeight(false);
     minHeightVal.value = 0;
     lineOffset.value = initOffset;
-    
-    // 如果有当前歌词索引，立即同步位置
+
+    // 隐藏首帧，等待DOM稳定后同步到正确位置
+    suppressLyricFlash.value = true;
+    await nextTick();
     if (lycCurrentIndex.value >= 0 && size > 0) {
-        setTimeout(() => {
-            syncLyricPosition();
-        }, 50);
+        syncLyricPosition();
     }
-    
+    await nextTick();
+    suppressLyricFlash.value = false;
+
     if (!lyricShow.value && !widgetState.value) {
         const changeTimer = setTimeout(() => {
             lyricShow.value = true;
@@ -156,11 +160,9 @@ const setDefaultStyle = () => {
 // 监听歌词数组变化，重新设置样式
 watch(
     () => lyricsObjArr.value,
-    newLyrics => {
+    async newLyrics => {
         if (newLyrics && newLyrics.length > 0) {
-            setTimeout(() => {
-                setDefaultStyle();
-            }, 50);
+            await setDefaultStyle();
         }
     }
 );
@@ -236,12 +238,14 @@ const syncLyricPosition = () => {
 // 监听歌词显示状态变化，当重新显示歌词时同步位置
 watch(
     () => lyricShow.value,
-    (newVal) => {
+    async (newVal) => {
         if (newVal) {
-            // 当歌词重新显示时，延迟同步位置以确保DOM已更新
-            setTimeout(() => {
-                syncLyricPosition();
-            }, 100);
+            // 当歌词重新显示时，先隐藏，再同步位置，避免看到跳变
+            suppressLyricFlash.value = true;
+            await nextTick();
+            syncLyricPosition();
+            await nextTick();
+            suppressLyricFlash.value = false;
         }
     }
 );
@@ -279,16 +283,18 @@ onMounted(() => {
         }, 3000);
     });
     
-    // 组件挂载后立即检查并同步歌词位置
-    setTimeout(() => {
+    // 组件挂载后立即检查并同步歌词位置（先隐藏，定位完成后再显示，避免闪烁）
+    setTimeout(async () => {
         if (lyricsObjArr.value && lyricsObjArr.value.length > 0) {
+            suppressLyricFlash.value = true;
+            await nextTick();
             setDefaultStyle();
             // 如果有当前歌词索引，确保同步到正确位置
             if (currentLyricIndex.value >= 0) {
-                setTimeout(() => {
-                    syncLyricPosition();
-                }, 100);
+                syncLyricPosition();
             }
+            await nextTick();
+            suppressLyricFlash.value = false;
         }
     }, 100);
 });
@@ -297,7 +303,7 @@ onMounted(() => {
 <template>
     <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
         <Transition name="fade">
-            <div v-show="lyricsObjArr && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" ref="lyricScroll">
+            <div v-show="lyricsObjArr && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash }" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
                 <div class="lyric-line" :style="{ transform: 'translateY(' + lineOffset + 'Px)' }" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
                     <div class="line" @click="changeProgressLyc(item.time, index)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active }">
@@ -476,6 +482,12 @@ onMounted(() => {
         height: calc(100% - 3vh);
         overflow: hidden;
         transition: 0.3s cubic-bezier(0.3, 0, 0.12, 1);
+        &.no-flash {
+            opacity: 0;
+        }
+        &.no-flash, &.no-flash * {
+            transition: none !important;
+        }
         .lyric-scroll-area {
             width: 100%;
             transition: 0.3s;
