@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, nextTick } from 'vue';
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
 import { changeProgress, musicVideoCheck, songTime } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
@@ -35,7 +35,6 @@ const maxHeightVal = ref(null);
 const lineOffset = ref(0);
 const isLyricActive = ref(true);
 const pauseActiveTimer = ref(null);
-const lyricInterval = ref(null);
 const lycCurrentIndex = ref(null);
 const interludeIndex = ref(null);
 const interludeAnimation = ref(false);
@@ -50,6 +49,23 @@ let size = null;
 let lyricLastPosition = null;
 // 切回歌词时抑制首帧闪烁（先隐藏，定位完成后再显示）
 const suppressLyricFlash = ref(true);
+
+// 在高频同步中避免并发测量
+const syncingLayout = ref(false);
+
+const waitForNextFrame = () =>
+    new Promise(resolve => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => resolve());
+        } else {
+            setTimeout(resolve, 16);
+        }
+    });
+
+const waitForLayoutCommit = async () => {
+    await nextTick();
+    await waitForNextFrame();
+};
 
 // 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
 function computeCumulativeOffset(index) {
@@ -168,34 +184,101 @@ watch(
 );
 
 // 根据显示配置（翻译/原文/罗马音、字号）动态调整高度与位置
-const recalcLyricLayout = () => {
+const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
     if (!lyricsObjArr.value || !lyricsObjArr.value.length) return;
-    // 重新计算容器高度并保持当前行居中
-    setTimeout(() => {
+    if (syncingLayout.value) return;
+    syncingLayout.value = true;
+    try {
+        await waitForLayoutCommit();
+        lyricEle.value = document.getElementsByClassName('lyric-line');
         setMaxHeight(true);
         syncLyricPosition();
-    }, 0);
+        if (waitForPaint) {
+            await waitForLayoutCommit();
+        }
+    } finally {
+        syncingLayout.value = false;
+    }
 };
 
-watch(lyricType, recalcLyricLayout, { deep: true });
-watch([lyricSize, tlyricSize, rlyricSize], recalcLyricLayout);
+const recalcLyricLayout = async () => {
+    await applyLyricLayout();
+};
 
-// 增强版的当前歌词索引监听
+// 过渡完成后再同步，避免在缩放/透明过渡中测量
+const onLyricAreaAfterEnter = async () => {
+    suppressLyricFlash.value = true;
+    await applyLyricLayout({ waitForPaint: true });
+    suppressLyricFlash.value = false;
+};
+
+// Resize 触发同步：容器尺寸改变后重新测量与同步
+let lyricResizeObserver = null;
+let resizeRaf = 0;
+const scheduleLayout = () => {
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(async () => {
+        await applyLyricLayout();
+    });
+};
+
+// 仅在类型变化时做常规重算（显示/隐藏由可见性观察处理）
+watch(
+    lyricType,
+    async () => {
+        await recalcLyricLayout();
+    },
+    { deep: true, flush: 'post' }
+);
+
+// 观察歌词区域的真实可见性（包含 lyrics 存在、显示开关和原文开关）
+const lyricAreaVisible = computed(() => {
+    return !!(lyricsObjArr.value && lyricsObjArr.value.length && lyricShow.value && lyricType.value && lyricType.value.indexOf('original') !== -1);
+});
+
+// 在切换为“显示原文”和“显示歌词”之前，先同步开启 no-flash，避免用户看到首帧
+const showOriginal = computed(() => !!(lyricType.value && lyricType.value.indexOf('original') !== -1));
+watch(
+    showOriginal,
+    show => {
+        if (show) suppressLyricFlash.value = true;
+    },
+    { flush: 'sync' }
+);
+watch(
+    () => lyricShow.value,
+    show => {
+        if (show) suppressLyricFlash.value = true;
+    },
+    { flush: 'sync' }
+);
+
+// 当区域从隐藏 -> 显示时，隐藏首帧并等待布局稳定后再同步，避免位置错乱
+watch(
+    lyricAreaVisible,
+    async (visible) => {
+        if (visible) {
+            suppressLyricFlash.value = true;
+            // 具体的布局同步放在过渡 after-enter 回调中完成
+        }
+    },
+    { flush: 'post' }
+);
+
+watch([lyricSize, tlyricSize, rlyricSize], recalcLyricLayout, { flush: 'post' });
+
+// 增强版的当前歌词索引监听（统一复用 syncLyricPosition，避免重复逻辑导致状态不一致）
 const { currentLyricIndex } = storeToRefs(playerStore);
-watch(currentLyricIndex, (newIndex) => {
-    lycCurrentIndex.value = newIndex;
-    
-    // 确保DOM元素存在后再进行滚动
-    if (lyricEle.value && lyricEle.value[newIndex] && lyricEle.value[newIndex].offsetParent !== null) {
-        const offset = computeCumulativeOffset(newIndex)
-        const total = computeTotalHeight()
-        initMax = total || initMax
-        initOffset = -(initMax - 260)
-        lineOffset.value = initOffset - offset
-        minHeightVal.value = offset
-        maxHeightVal.value = initMax + offset
-    }
-}, { immediate: true }); // 添加 immediate 选项确保立即执行
+watch(
+    currentLyricIndex,
+    async (newIndex) => {
+        lycCurrentIndex.value = newIndex;
+        // 等待DOM稳定后，统一调用同步函数，确保 scroll-area 高度与偏移一并更新
+        await nextTick();
+        syncLyricPosition();
+    },
+    { immediate: true, flush: 'post' }
+); // 添加 immediate 选项确保立即执行
 
 const changeProgressLyc = (time, index) => {
     lyricScrollArea.value.style.height = initMax + 'Px';
@@ -242,10 +325,7 @@ watch(
         if (newVal) {
             // 当歌词重新显示时，先隐藏，再同步位置，避免看到跳变
             suppressLyricFlash.value = true;
-            await nextTick();
-            syncLyricPosition();
-            await nextTick();
-            suppressLyricFlash.value = false;
+            // 具体的布局同步放在过渡 after-enter 回调中完成
         }
     }
 );
@@ -297,12 +377,28 @@ onMounted(() => {
             suppressLyricFlash.value = false;
         }
     }, 100);
+    // 监听容器尺寸变化，变化后重新同步（例如窗口尺寸变化、父容器变化、字体替换等）
+    if (typeof ResizeObserver !== 'undefined') {
+        lyricResizeObserver = new ResizeObserver(() => scheduleLayout());
+        if (lyricScroll.value) lyricResizeObserver.observe(lyricScroll.value);
+    } else {
+        window.addEventListener('resize', scheduleLayout);
+    }
+});
+
+onUnmounted(() => {
+    if (lyricResizeObserver) {
+        lyricResizeObserver.disconnect();
+        lyricResizeObserver = null;
+    } else {
+        window.removeEventListener('resize', scheduleLayout);
+    }
 });
 </script>
 
 <template>
     <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
-        <Transition name="fade">
+        <Transition name="fade" @after-enter="onLyricAreaAfterEnter">
             <div v-show="lyricsObjArr && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash }" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
                 <div class="lyric-line" :style="{ transform: 'translateY(' + lineOffset + 'Px)' }" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
@@ -484,6 +580,8 @@ onMounted(() => {
         transition: 0.3s cubic-bezier(0.3, 0, 0.12, 1);
         &.no-flash {
             opacity: 0;
+            /* 取消进入过渡的缩放，以免影响布局测量/视觉位置 */
+            transform: none !important;
         }
         &.no-flash, &.no-flash * {
             transition: none !important;
