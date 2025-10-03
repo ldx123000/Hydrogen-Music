@@ -318,6 +318,7 @@ const createLyricWindow = () => {
         minimizable: false,
         maximizable: false,
         closable: true,
+        // 保持可交互，但避免全屏干扰
         focusable: true,
         show: false,
         backgroundColor: 'transparent',
@@ -338,8 +339,24 @@ const createLyricWindow = () => {
         lyricWin.loadFile(lyricHtml)
     }
 
+    // Windows/UWP: 提升置顶效果的工具方法（无需管理员权限）
+    const bumpTopMost = () => {
+        try {
+            // 再次声明置顶，提高 Z 序
+            lyricWin.setAlwaysOnTop(true)
+            // 若可用，进一步将窗口移至最上层（Windows 支持）
+            if (typeof lyricWin.moveTop === 'function') {
+                lyricWin.moveTop()
+            }
+        } catch (_) { }
+    }
+
     lyricWin.once('ready-to-show', () => {
         lyricWin.show()
+        // macOS: 提高层级，覆盖全屏和 Space（忽略异常以兼容跨平台）
+        try { lyricWin.setAlwaysOnTop(true, 'screen-saver') } catch (_) { }
+        // 可见后小延时再次顶置，规避某些 UWP 抢焦点导致的抢占
+        setTimeout(() => bumpTopMost(), 50)
     })
 
     // 添加备用显示逻辑，防止ready-to-show事件不触发
@@ -347,6 +364,8 @@ const createLyricWindow = () => {
         if (lyricWin && !lyricWin.isDestroyed() && !lyricWin.isVisible()) {
             lyricWin.show()
         }
+        // 再次顶置，确保在慢速环境中仍能覆盖
+        bumpTopMost()
     }, 2000)
 
     lyricWin.on('closed', () => {
@@ -354,6 +373,20 @@ const createLyricWindow = () => {
     })
 
     lyricWin.setMenu(null)
+
+    // 监听关键事件并在 Windows 上重新顶置
+    if (process.platform === 'win32') {
+        const reboundEvents = ['show', 'focus', 'blur', 'resize', 'move', 'restore']
+        reboundEvents.forEach(evt => {
+            lyricWin.on(evt, () => bumpTopMost())
+        })
+        // 当主窗口获得/失去焦点时也尝试顶置一次（减少被 UWP 挤压的概率）
+        if (myWindow) {
+            myWindow.on('focus', () => bumpTopMost())
+            myWindow.on('blur', () => bumpTopMost())
+        }
+    }
+
     return lyricWin
 }
 

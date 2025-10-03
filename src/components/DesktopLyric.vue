@@ -44,6 +44,7 @@
                         :style="{
                             fontSize: lyricFontSize + 'px',
                             opacity: currentLyricOpacity,
+                            height: currentLyricBoxHeight > 0 ? (currentLyricBoxHeight + 'px') : undefined,
                         }"
                     >
                         {{ currentLyricText }}
@@ -51,10 +52,12 @@
                 </div>
 
                 <!-- 下一句歌词预览 -->
-                <div class="next-lyric-preview" v-if="nextLyricText">
+                <div class="next-lyric-preview" v-if="nextLyricText"
+                     :style="{ height: nextLyricRowHeight > 0 ? (nextLyricRowHeight + 'px') : undefined }">
                     <div class="preview-indicator">NEXT</div>
                     <div
                         class="next-lyric"
+                        ref="nextLyricElementRef"
                         :style="{
                             fontSize: lyricFontSize * 0.75 + 'px',
                             opacity: nextLyricOpacity,
@@ -91,28 +94,40 @@
                 <!-- 自动选择选项 -->
                 <div class="menu-item" @click="selectLyricType('auto')">
                     <div class="item-icon">{{ selectedLyricType === 'auto' ? '🔘' : '⚪' }}</div>
-                    <span class="item-text">AUTO SELECT</span>
+                    <span class="item-text">
+                        <span class="text-zh">自动选择</span>
+                        <span class="text-en">AUTO SELECT</span>
+                    </span>
                     <div class="item-indicator"></div>
                 </div>
 
                 <!-- 原歌词选项 -->
                 <div class="menu-item" v-if="hasLyricType('original')" @click="selectLyricType('original')">
                     <div class="item-icon">{{ selectedLyricType === 'original' ? '🔘' : '⚪' }}</div>
-                    <span class="item-text">ORIGINAL</span>
+                    <span class="item-text">
+                        <span class="text-zh">原文</span>
+                        <span class="text-en">ORIGINAL</span>
+                    </span>
                     <div class="item-indicator"></div>
                 </div>
 
                 <!-- 翻译歌词选项 -->
                 <div class="menu-item" v-if="hasLyricType('trans')" @click="selectLyricType('trans')">
                     <div class="item-icon">{{ selectedLyricType === 'trans' ? '🔘' : '⚪' }}</div>
-                    <span class="item-text">TRANSLATION</span>
+                    <span class="item-text">
+                        <span class="text-zh">翻译</span>
+                        <span class="text-en">TRANSLATION</span>
+                    </span>
                     <div class="item-indicator"></div>
                 </div>
 
                 <!-- 罗马音选项 -->
                 <div class="menu-item" v-if="hasLyricType('roma')" @click="selectLyricType('roma')">
                     <div class="item-icon">{{ selectedLyricType === 'roma' ? '🔘' : '⚪' }}</div>
-                    <span class="item-text">ROMANIZATION</span>
+                    <span class="item-text">
+                        <span class="text-zh">罗马音</span>
+                        <span class="text-en">ROMANIZATION</span>
+                    </span>
                     <div class="item-indicator"></div>
                 </div>
 
@@ -122,19 +137,36 @@
 
                 <div class="menu-item" @click="toggleLock">
                     <div class="item-icon">🔒</div>
-                    <span class="item-text">{{ locked ? 'UNLOCK POSITION' : 'LOCK POSITION' }}</span>
+                    <span class="item-text">
+                        <span class="text-zh">{{ zhLockText }}</span>
+                        <span class="text-en">{{ enLockText }}</span>
+                    </span>
                     <div class="item-indicator"></div>
                 </div>
 
                 <div class="menu-item" @click="adjustFontSize(2)">
-                    <div class="item-icon">➕</div>
-                    <span class="item-text">INCREASE FONT</span>
+                    <div class="item-icon" aria-hidden="true">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M3 6h6M6 3v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <span class="item-text">
+                        <span class="text-zh">增大字体</span>
+                        <span class="text-en">INCREASE FONT</span>
+                    </span>
                     <div class="item-indicator"></div>
                 </div>
 
                 <div class="menu-item" @click="adjustFontSize(-2)">
-                    <div class="item-icon">➖</div>
-                    <span class="item-text">DECREASE FONT</span>
+                    <div class="item-icon" aria-hidden="true">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M3 6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <span class="item-text">
+                        <span class="text-zh">减小字体</span>
+                        <span class="text-en">DECREASE FONT</span>
+                    </span>
                     <div class="item-indicator"></div>
                 </div>
 
@@ -144,7 +176,10 @@
 
                 <div class="menu-item danger" @click="closeLyric">
                     <div class="item-icon">✕</div>
-                    <span class="item-text">CLOSE LYRIC</span>
+                    <span class="item-text">
+                        <span class="text-zh">关闭歌词</span>
+                        <span class="text-en">CLOSE LYRIC</span>
+                    </span>
                     <div class="item-indicator"></div>
                 </div>
             </div>
@@ -153,7 +188,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watchEffect } from 'vue';
 
 // 响应式数据
 const currentSong = ref(null);
@@ -167,9 +202,136 @@ const lyricFontSize = ref(22);
 // 桌面歌词显示类型配置 - 单选模式
 const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
 
+// 右键菜单文案（默认中文，悬停显示英文）
+const enLockText = computed(() => (locked.value ? 'UNLOCK POSITION' : 'LOCK POSITION'));
+const zhLockText = computed(() => (locked.value ? '解锁位置' : '锁定位置'));
+
 // 同步扫描动画控制
 const scanAnimationRef = ref(null);
 const lyricElementRef = ref(null);
+const nextLyricElementRef = ref(null);
+// 动态两行扩展：当前歌词盒子目标高度（px）
+const currentLyricBoxHeight = ref(0);
+// 下一句预览行（含上下内边距）的目标高度（px）
+const nextLyricRowHeight = ref(0);
+let lyricResizeObserver = null;
+let rafAdjust = 0;
+let baselineWindowWidth = 0;
+let baselineWindowHeightOneLine = 0; // 以“单行歌词高度”为基准的窗口外部高度
+let lastAppliedHeight = 0;
+
+const lineHeightPx = () => Math.round(lyricFontSize.value * 1.4);
+const singleLineBoxHeight = () => Math.max(60, 24 + lineHeightPx()); // 12px 顶/底 padding 合计 24
+const doubleLineBoxHeight = () => 24 + lineHeightPx() * 2;
+
+// 隐藏测量元素：用于计算自然高度（不受当前height影响）
+let measureEl = null;
+const ensureMeasureEl = () => {
+    if (measureEl) return measureEl;
+    const el = document.createElement('div');
+    el.style.position = 'absolute';
+    el.style.left = '-99999px';
+    el.style.top = '-99999px';
+    el.style.visibility = 'hidden';
+    el.style.pointerEvents = 'none';
+    el.style.whiteSpace = 'normal';
+    el.style.wordWrap = 'break-word';
+    el.style.overflowWrap = 'break-word';
+    el.style.padding = '12px 16px';
+    el.style.boxSizing = 'border-box';
+    el.style.fontFamily = "SourceHanSansCN-Bold, 'Bender-Bold', monospace";
+    document.body.appendChild(el);
+    measureEl = el;
+    return el;
+};
+
+const scheduleAdjustLyricLayout = () => {
+    if (rafAdjust) cancelAnimationFrame(rafAdjust);
+    rafAdjust = requestAnimationFrame(() => {
+        applyLyricAutoExpand();
+    });
+};
+
+const applyLyricAutoExpand = async () => {
+    try {
+        await nextTick();
+        const el = lyricElementRef.value;
+        if (!el) return;
+
+        // 计算单行/双行目标高度
+        const oneLine = singleLineBoxHeight();
+        const twoLines = doubleLineBoxHeight();
+
+        // 使用隐藏测量元素按“当前可用宽度 + 当前字体”测自然高度
+        const m = ensureMeasureEl();
+        const availableWidth = Math.max(120, Math.round(el.clientWidth || 400));
+        m.style.width = availableWidth + 'px';
+        m.style.fontSize = lyricFontSize.value + 'px';
+        m.textContent = currentLyricText.value || '';
+        const natural = Math.max(0, Math.round(m.scrollHeight));
+
+        // 判断是否需要显示两行（超过单行阈值则两行）
+        const needTwo = natural > (oneLine + 2);
+        const target = needTwo ? twoLines : oneLine;
+
+        // 计算 NEXT 预览的目标高度（最多两行）
+        // NEXT 行字体与行高
+        const nextFontPx = Math.round(lyricFontSize.value * 0.75);
+        const nextLinePx = Math.max(1, Math.round(nextFontPx * 1.3));
+        const nextOneLine = 16 + nextLinePx; // 上下 padding: 6 + 10 = 16
+        const nextTwoLines = 16 + nextLinePx * 2;
+        let nextActiveOne = 0;
+        let nextActiveTarget = 0;
+        if ((nextLyricText?.value || '').trim()) {
+            nextActiveOne = nextOneLine;
+            // 用 next 宽度测量（优先使用元素宽度）
+            const m2 = ensureMeasureEl();
+            const nextEl = nextLyricElementRef.value;
+            const nextWidth = Math.max(120, Math.round(nextEl?.clientWidth || (el.clientWidth - 60) || 300));
+            m2.style.width = nextWidth + 'px';
+            m2.style.fontSize = nextFontPx + 'px';
+            m2.style.lineHeight = '1.3';
+            m2.textContent = nextLyricText.value;
+            const nextNaturalTextHeight = Math.max(0, Math.round(m2.scrollHeight));
+            const needTwoNext = nextNaturalTextHeight > (nextLinePx + 2);
+            nextActiveTarget = needTwoNext ? nextTwoLines : nextOneLine;
+        }
+
+        // 首次初始化：记录“若为单行时的窗口外部高度”与当前窗口宽度
+        if (!baselineWindowHeightOneLine || !baselineWindowWidth) {
+            try {
+                const bounds = await window.electronAPI?.getLyricWindowBounds?.();
+                if (bounds && typeof bounds.width === 'number' && typeof bounds.height === 'number') {
+                    baselineWindowWidth = bounds.width;
+                    // 计算“单行基线外部高度”：扣除当前与NEXT的增量
+                    const currentBox = target;
+                    const nextBox = nextActiveTarget;
+                    baselineWindowHeightOneLine = Math.max(
+                        100,
+                        Math.round(bounds.height - (currentBox - oneLine) - (nextBox - nextActiveOne))
+                    );
+                }
+            } catch (_) {}
+        }
+
+        // 盒子高度平滑过渡
+        if (currentLyricBoxHeight.value !== target) currentLyricBoxHeight.value = target;
+        if (nextLyricRowHeight.value !== nextActiveTarget) nextLyricRowHeight.value = nextActiveTarget;
+
+        // 根据两行/单行差值，平滑调整窗口高度：其余模块自然顺推
+        if (baselineWindowHeightOneLine && baselineWindowWidth) {
+            const desiredWindowHeight = Math.max(
+                120,
+                baselineWindowHeightOneLine + (target - oneLine) + (nextActiveTarget - nextActiveOne)
+            );
+            if (Math.abs(desiredWindowHeight - lastAppliedHeight) >= 2) {
+                lastAppliedHeight = desiredWindowHeight;
+                // 仅调整高度，宽度保持不变
+                window.electronAPI?.resizeWindow?.(baselineWindowWidth, desiredWindowHeight);
+            }
+        }
+    } catch (_) {}
+};
 
 // 平台检测：Windows/Linux 走 JS 拖拽，macOS 保持原生 drag
 const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -390,6 +552,13 @@ const progressPercentage = computed(() => {
     return ((currentLyricIndex.value + 1) / lyricsArray.value.length) * 100;
 });
 
+// 当歌词文本或字体大小变化后，重新评估是否需要两行
+watchEffect(() => {
+    // 依赖当前与下一句歌词、字号
+    const _ = currentLyricText.value + '|' + (nextLyricText.value || '') + '|' + lyricFontSize.value;
+    scheduleAdjustLyricLayout();
+});
+
 // 辅助函数
 const getArtistNames = song => {
     if (!song) return '';
@@ -561,6 +730,19 @@ onMounted(() => {
 
     // 启动同步扫描动画
     startScanAnimation();
+
+    // 监听当前歌词盒子尺寸变化，实时自适应 1-2 行
+    try {
+        if (window.ResizeObserver) {
+            lyricResizeObserver = new ResizeObserver(() => scheduleAdjustLyricLayout());
+            if (lyricElementRef.value) lyricResizeObserver.observe(lyricElementRef.value);
+        } else {
+            window.addEventListener('resize', scheduleAdjustLyricLayout);
+        }
+    } catch (_) {}
+
+    // 初始执行一次
+    scheduleAdjustLyricLayout();
 });
 
 onUnmounted(() => {
@@ -569,6 +751,13 @@ onUnmounted(() => {
     // 清理动画
     if (scanAnimationRef.value) {
         cancelAnimationFrame(scanAnimationRef.value);
+    }
+
+    if (lyricResizeObserver) {
+        try { lyricResizeObserver.disconnect(); } catch (_) {}
+        lyricResizeObserver = null;
+    } else {
+        window.removeEventListener('resize', scheduleAdjustLyricLayout);
     }
 });
 </script>
@@ -841,6 +1030,7 @@ onUnmounted(() => {
             position: relative;
             overflow: hidden;
             -webkit-app-region: no-drag;
+            transition: height 0.22s cubic-bezier(0.3, 0, 0.12, 1);
 
             // 使用JavaScript控制的同步进度条扫描效果（去除默认灰色底框）
             background: transparent !important;
@@ -898,6 +1088,7 @@ onUnmounted(() => {
         padding: 6px 20px 10px;
         gap: 10px;
         border-top: 1px solid rgba(0, 0, 0, 0.1);
+        transition: height 0.22s cubic-bezier(0.3, 0, 0.12, 1);
 
         .preview-indicator {
             font-family: 'Bender-Bold', monospace;
@@ -1132,6 +1323,12 @@ onUnmounted(() => {
             text-align: center;
             transition: all 0.2s ease;
             flex-shrink: 0; // 防止图标被压缩
+            color: #000000; // 明亮模式下使用黑色，暗色在主题覆盖
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+
+            svg { width: 12px; height: 12px; display: block; }
         }
 
         .item-text {
@@ -1144,6 +1341,35 @@ onUnmounted(() => {
             white-space: nowrap; // 防止文字换行
             overflow: hidden;
             text-overflow: ellipsis;
+            position: relative; // 承载双语堆叠
+            height: 1.2em; // 固定高度，避免切换时跳动
+            line-height: 1.2em;
+
+            .text-zh,
+            .text-en {
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: 0;
+                bottom: 0;
+                display: block;
+                transition: transform 0.22s cubic-bezier(0.4, 0, 0.12, 1), opacity 0.22s ease;
+            }
+
+            /* 中文稍大、去字距并使用中文字体族 */
+            .text-zh {
+                opacity: 1;
+                transform: translateY(0);
+                font-size: 11px; /* 比英文略大一号 */
+                letter-spacing: 0; /* 中文通常无需额外字距 */
+                font-family: 'SourceHanSansCN-Bold', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', 'Noto Sans CJK SC', sans-serif;
+            }
+            .text-en { opacity: 0; transform: translateY(6px); }
+        }
+
+        &:hover .item-text {
+            .text-zh { opacity: 0; transform: translateY(-6px); }
+            .text-en { opacity: 1; transform: translateY(0); }
         }
 
         .item-indicator {

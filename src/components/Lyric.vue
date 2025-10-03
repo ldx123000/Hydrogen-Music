@@ -67,6 +67,13 @@ const waitForLayoutCommit = async () => {
     await waitForNextFrame();
 };
 
+// 是否存在歌词列表与有效原文内容
+const hasLyricsList = computed(() => Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.length > 0);
+const hasAnyLyricContent = computed(() => {
+    if (!Array.isArray(lyricsObjArr.value)) return false;
+    return lyricsObjArr.value.some(item => !!(item && item.lyric && String(item.lyric).trim()))
+});
+
 // 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
 function computeCumulativeOffset(index) {
     if (!lyricEle.value || !lyricEle.value.length) {
@@ -231,9 +238,9 @@ watch(
     { deep: true, flush: 'post' }
 );
 
-// 观察歌词区域的真实可见性（包含 lyrics 存在、显示开关和原文开关）
+// 观察歌词区域的真实可见性（包含 lyrics 存在、显示开关和原文开关，并且有可显示的原文内容）
 const lyricAreaVisible = computed(() => {
-    return !!(lyricsObjArr.value && lyricsObjArr.value.length && lyricShow.value && lyricType.value && lyricType.value.indexOf('original') !== -1);
+    return !!(hasLyricsList.value && hasAnyLyricContent.value && lyricShow.value && lyricType.value && lyricType.value.indexOf('original') !== -1);
 });
 
 // 在切换为“显示原文”和“显示歌词”之前，先同步开启 no-flash，避免用户看到首帧
@@ -399,7 +406,7 @@ onUnmounted(() => {
 <template>
     <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
         <Transition name="fade" @after-enter="onLyricAreaAfterEnter">
-            <div v-show="lyricsObjArr && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash }" ref="lyricScroll">
+            <div v-show="hasLyricsList && hasAnyLyricContent && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash }" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
                 <div class="lyric-line" :style="{ transform: 'translateY(' + lineOffset + 'Px)' }" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
                     <div class="line" @click="changeProgressLyc(item.time, index)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active }">
@@ -546,7 +553,7 @@ onUnmounted(() => {
             </div>
         </Transition>
         <Transition name="fade">
-            <div v-show="!lyricsObjArr || lyricType.indexOf('original') == -1" class="lyric-nodata">
+            <div v-show="!hasLyricsList || lyricType.indexOf('original') == -1 || !hasAnyLyricContent" class="lyric-nodata">
                 <div class="line1"></div>
                 <span class="tip">Lyric-Area</span>
                 <div class="line2"></div>

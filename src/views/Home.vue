@@ -64,25 +64,42 @@
     return anchors && anchors[0] ? anchors[0] : null
   }
 
-  const updateTracker = () => {
-    nextTick(() => {
-      try {
-        const el = resolveActiveEl()
-        const container = routerContainer.value
-        if (!el || !container) { trackerVisible.value = false; return }
+  const computeTrackerLeft = () => {
+    try {
+      const el = resolveActiveEl()
+      const container = routerContainer.value
+      if (!el || !container) { trackerVisible.value = false; return }
+      const trackWidth = 14
+      // 优先使用 offset 以获得更稳定的定位（避免子像素与变换影响）
+      let left
+      if (el.offsetParent === container || el.offsetParent === container.offsetParent) {
+        left = el.offsetLeft + (el.offsetWidth - trackWidth) / 2
+      } else {
+        // 回退：使用 rect 差值
         const elRect = el.getBoundingClientRect()
         const cRect = container.getBoundingClientRect()
-        const trackWidth = 14
-        const left = (elRect.left - cRect.left) + (elRect.width - trackWidth) / 2
-        trackerLeft.value = Math.max(0, left)
-        trackerVisible.value = true
-      } catch (_) { trackerVisible.value = false }
+        left = (elRect.left - cRect.left) + (elRect.width - trackWidth) / 2
+      }
+      trackerLeft.value = Math.max(0, Math.round(left))
+      trackerVisible.value = true
+    } catch (_) { trackerVisible.value = false }
+  }
+
+  const updateTracker = () => {
+    nextTick(() => {
+      computeTrackerLeft()
+      // 在下一帧再次校准，避免字体加载/过渡导致的轻微偏移
+      requestAnimationFrame(() => computeTrackerLeft())
     })
   }
 
   onMounted(() => {
     updateTracker()
     window.addEventListener('resize', updateTracker)
+    // 字体加载完成后再次校准，避免字体替换引起的偏移
+    try { document.fonts?.ready?.then(() => updateTracker()) } catch (_) {}
+    // 轻微延迟再对齐一遍，覆盖过渡后的微小偏移
+    setTimeout(() => updateTracker(), 120)
   })
 
   onBeforeUnmount(() => {
@@ -102,7 +119,7 @@
           <router-link ref="homeLink" class="button-home" :style="{color: router.currentRoute.value.name == 'homepage' ? 'black' : '#353535'}" to="/" v-if="userStore.homePage">首页</router-link>
           <router-link ref="cloudLink" class="button-cloud" :style="{color: router.currentRoute.value.name == 'clouddisk' ? 'black' : '#353535'}" to="/cloud" v-if="userStore.cloudDiskPage">云盘</router-link>
           <router-link ref="fmLink" class="button-fm" :style="{color: router.currentRoute.value.name == 'personalfm' ? 'black' : '#353535'}" to="/personalfm" v-if="userStore.personalFMPage">私人漫游</router-link>
-          <router-link ref="musicLink" class="button-music" :style="{color: router.currentRoute.value.name == 'mymusic' ? 'black' : '#353535'}" to="/mymusic">我的音乐</router-link>
+          <router-link ref="musicLink" class="button-music" :style="{color: (router.currentRoute.value.name === 'mymusic' || router.currentRoute.value.fullPath.startsWith('/mymusic')) ? 'black' : '#353535'}" to="/mymusic">我的音乐</router-link>
           <div class="user">
             <div class="user-container">
               <div class="user-head" @click="userStore.appOptionShow = true">
