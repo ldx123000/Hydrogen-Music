@@ -80,11 +80,41 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         win.webContents.send('download-next')
     })
     ipcMain.handle('get-image-base64', async (e, filePath) => {
-        const data = await parseFile(filePath)
-        if (data.common.picture)
-            return `data:${data.common.picture[0].format};base64,${data.common.picture[0].data.toString('base64')}`
-        else
-            return null
+        try {
+            const data = await parseFile(filePath)
+            if (data.common.picture)
+                return `data:${data.common.picture[0].format};base64,${data.common.picture[0].data.toString('base64')}`
+
+            // 若无内嵌封面，尝试同名图片或常见封面文件
+            const parsed = path.parse(filePath)
+            const candidates = [
+                path.join(parsed.dir, parsed.name + '.jpg'),
+                path.join(parsed.dir, parsed.name + '.jpeg'),
+                path.join(parsed.dir, parsed.name + '.png'),
+                path.join(parsed.dir, parsed.name + '.webp'),
+                path.join(parsed.dir, 'cover.jpg'),
+                path.join(parsed.dir, 'folder.jpg'),
+                path.join(parsed.dir, 'cover.png'),
+                path.join(parsed.dir, 'folder.png'),
+            ]
+            const mapMime = (p) => {
+                const ext = (p.split('.').pop() || '').toLowerCase()
+                if (ext === 'png') return 'image/png'
+                if (ext === 'webp') return 'image/webp'
+                return 'image/jpeg'
+            }
+            for (const p of candidates) {
+                try {
+                    if (fs.existsSync(p)) {
+                        const b64 = fs.readFileSync(p).toString('base64')
+                        return `data:${mapMime(p)};base64,${b64}`
+                    }
+                } catch (_) { /* ignore */ }
+            }
+        } catch (e) {
+            // ignore
+        }
+        return null
     })
     ipcMain.on('set-settings', (e, settings) => {
         settingsStore.set('settings', JSON.parse(settings))

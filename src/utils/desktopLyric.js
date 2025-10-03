@@ -26,11 +26,77 @@ const {
     lyric, // 新增：原始歌词数据
 } = storeToRefs(playerStore);
 
-// 歌词处理相关函数（从 Lyric.vue 移植）
-const regTime = /\[\d{2}:\d{2}.\d{2,3}\]/;
+// 统一的多轨歌词解析：支持
+// - lrc/tlyric/romalrc 三种来源按时间对齐
+// - 单个 LRC 中同一时间多行（原/译/罗马）自动合并
 const regNewLine = /\n/;
+const timeTag = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
 
-const formatLyricTime = time => {
+function parseTimeTag(tag) {
+    const m = tag.match(/\[(\d{1,2}):(\d{2})\.?(\d{0,3})?\]/);
+    if (!m) return 0;
+    const mm = parseInt(m[1] || '0', 10);
+    const ss = parseInt(m[2] || '0', 10);
+    const ms = m[3] ? parseInt((m[3] + '00').slice(0, 3), 10) : 0;
+    return mm * 60 + ss + ms / 1000;
+}
+
+function buildMultiTrack(olrc, tlrc, rlrc) {
+    const byTime = new Map(); // key: time(3位小数) -> { time, lyric, tlyric, rlyric, active }
+
+    const feed = (text, fieldOrder = ['lyric', 'tlyric', 'rlyric'], directField = null) => {
+        if (!text || typeof text !== 'string') return;
+        const lines = text.split(/\r?\n/);
+        for (const raw of lines) {
+            if (!raw) continue;
+            const tags = Array.from(raw.matchAll(timeTag));
+            if (!tags || tags.length === 0) continue;
+            const lyricText = raw.split(']').pop().trim();
+            if (!lyricText) continue;
+
+            for (const t of tags) {
+                const sec = parseTimeTag(t[0]);
+                const key = sec.toFixed(3);
+                if (!byTime.has(key)) byTime.set(key, { time: sec, lyric: '', tlyric: '', rlyric: '', active: true });
+                const obj = byTime.get(key);
+                if (directField) {
+                    // 明确指定来源（tlyric/romalrc）
+                    if (!obj[directField]) obj[directField] = lyricText;
+                } else {
+                    // 未指定：按顺序填入第一个空位（用于同一 LRC 内的多行）
+                    for (const f of fieldOrder) {
+                        if (!obj[f]) { obj[f] = lyricText; break; }
+                    }
+                }
+            }
+        }
+    };
+
+    // 优先用独立的翻译/罗马音来源填充
+    feed(tlrc, ['tlyric', 'lyric', 'rlyric'], 'tlyric');
+    feed(rlrc, ['rlyric', 'lyric', 'tlyric'], 'rlyric');
+    // 最后用原始 LRC（可能包含同一时间多行）补齐
+    feed(olrc, ['lyric', 'tlyric', 'rlyric'], null);
+
+    // 纯音乐检测（任何轨迹含有提示时）
+    let isPureMusic = false;
+    for (const obj of byTime.values()) {
+        if (obj.lyric && obj.lyric.includes('纯音乐')) { isPureMusic = true; break; }
+        if (obj.tlyric && obj.tlyric.includes('纯音乐')) { isPureMusic = true; break; }
+    }
+    if (isPureMusic) {
+        return [
+            { lyric: '纯音乐，请欣赏', tlyric: '', rlyric: '', time: 0, active: true },
+            { lyric: '', tlyric: '', rlyric: '', time: Math.trunc((songList.value[currentIndex.value]?.dt || 0) / 1000), active: true },
+        ];
+    }
+
+    return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+}
+
+// 与原先在线歌词一致的处理逻辑（仅用于“在线”）
+const regTimeOriginal = /\[\d{2}:\d{2}.\d{2,3}\]/;
+const formatLyricTimeOriginal = (time) => {
     const regMin = /.*:/;
     const regSec = /:.*\./;
     const regMs = /\./;
@@ -39,18 +105,16 @@ const formatLyricTime = time => {
     const min = parseInt(time.match(regMin)[0].slice(0, 2));
     let sec = parseInt(time.match(regSec)[0].slice(1, 3));
     const ms = time.slice(time.match(regMs).index + 1, time.match(regMs).index + 3);
-    if (min !== 0) {
-        sec += min * 60;
-    }
+    if (min !== 0) sec += min * 60;
     return Number(sec + '.' + ms);
 };
 
-const lyricHandle = (arr, tarr, rarr) => {
+function lyricHandleOriginal(arr, tarr, rarr) {
     let lyricArr = [];
     for (let i = 0; i < arr.length; i++) {
         if (arr[i] == '') continue;
         const obj = {};
-        const lyctime = arr[i].match(regTime);
+        const lyctime = arr[i].match(regTimeOriginal);
         if (!lyctime) continue;
         obj.lyric = arr[i].split(']')[1].trim() === '' ? '' : arr[i].split(']')[1].trim();
         if (!obj.lyric) continue;
@@ -91,48 +155,48 @@ const lyricHandle = (arr, tarr, rarr) => {
                 }
             }
         }
-        obj.time = lyctime ? formatLyricTime(lyctime[0].slice(1, lyctime[0].length - 1)) : 0;
+        obj.time = lyctime ? formatLyricTimeOriginal(lyctime[0].slice(1, lyctime[0].length - 1)) : 0;
         if (!(obj.lyric === '')) lyricArr.push(obj);
     }
     function sortBy(field) {
-        return (x, y) => {
-            return x[field] - y[field];
-        };
+        return (x, y) => x[field] - y[field];
     }
     return lyricArr.sort(sortBy('time'));
-};
+}
 
-// 处理原始歌词数据，更新 lyricsObjArr
+// 处理原始歌词数据，更新 lyricsObjArr（在线：原逻辑；本地：多轨合并）
 const processLyricData = () => {
     if (!lyric.value) {
         playerStore.lyricsObjArr = [];
         return;
     }
 
-
     try {
-        if (lyric.value.lrc.lyric.indexOf('[') != -1) {
-            // 有时间标签的歌词
-            const processedLyrics = lyricHandle(
-                lyric.value.lrc.lyric.split(regNewLine),
-                lyric.value.tlyric && lyric.value.tlyric.lyric ? lyric.value.tlyric.lyric.split(regNewLine) : null,
-                lyric.value.romalrc && lyric.value.romalrc.lyric ? lyric.value.romalrc.lyric.split(regNewLine) : null
-            );
-            playerStore.lyricsObjArr = processedLyrics;
+        const hasTimeTag = lyric.value.lrc && typeof lyric.value.lrc.lyric === 'string' && lyric.value.lrc.lyric.indexOf('[') !== -1;
+        const curSong = songList.value && songList.value[currentIndex.value];
+        const isLocal = !!(curSong && curSong.type === 'local');
+        if (hasTimeTag) {
+            const olrc = lyric.value.lrc?.lyric || '';
+            const tlrc = lyric.value.tlyric && lyric.value.tlyric.lyric ? lyric.value.tlyric.lyric : '';
+            const rlrc = lyric.value.romalrc && lyric.value.romalrc.lyric ? lyric.value.romalrc.lyric : '';
+            const processed = isLocal
+                ? buildMultiTrack(olrc, tlrc, rlrc)
+                : lyricHandleOriginal(
+                    olrc.split(regNewLine),
+                    tlrc ? tlrc.split(regNewLine) : null,
+                    rlrc ? rlrc.split(regNewLine) : null
+                  );
+            playerStore.lyricsObjArr = processed;
         } else {
             // 纯文本歌词
-            let lineArr = lyric.value.lrc.lyric.split(regNewLine);
-            let processedLyrics = [];
-            lineArr.forEach((item, index) => {
-                if (item === '') return;
-                const obj = {};
-                obj.active = true;
-                obj.lyric = item;
-                obj.time = 0;
-                if (!(obj.lyric === '')) processedLyrics.push(obj);
-            });
-            processedLyrics.push({ lyric: '', time: Math.trunc(songList.value[currentIndex.value].dt / 1000) });
-            playerStore.lyricsObjArr = processedLyrics;
+            const lines = (lyric.value.lrc?.lyric || '').split(regNewLine);
+            const processed = [];
+            for (const line of lines) {
+                if (!line || line.trim() === '') continue;
+                processed.push({ lyric: line.trim(), tlyric: '', rlyric: '', time: 0, active: true });
+            }
+            processed.push({ lyric: '', tlyric: '', rlyric: '', time: Math.trunc((songList.value[currentIndex.value]?.dt || 0) / 1000), active: true });
+            playerStore.lyricsObjArr = processed;
         }
     } catch (error) {
         console.error('处理歌词数据出错:', error);

@@ -102,6 +102,49 @@ module.exports = async function getDirTree(baseDir, type, win) {
                 
                 try {
                     const result = await parseFile(tempDir)
+                    // 如果音频标签缺少关键信息，尝试读取同名 JSON 侧车文件补全
+                    try {
+                        const parsedPath = path.parse(tempDir)
+                        const metaPath = path.join(parsedPath.dir, parsedPath.name + '.json')
+                        if (fs.existsSync(metaPath)) {
+                            const metaRaw = fs.readFileSync(metaPath, 'utf8')
+                            const meta = JSON.parse(metaRaw)
+                            if ((!result.common.title || result.common.title.trim() === '') && meta && meta.name) {
+                                result.common.title = meta.name
+                            }
+                            if ((!result.common.artists || result.common.artists.length === 0) && meta && Array.isArray(meta.artists)) {
+                                result.common.artists = meta.artists
+                            }
+                            if ((!result.common.album || result.common.album.trim() === '') && meta && meta.album) {
+                                result.common.album = meta.album
+                            }
+                        }
+                        // 继续尝试从同名 LRC 标签中读取 [ar:]/[ti:]/[al:]
+                        const lrcPath = path.join(parsedPath.dir, parsedPath.name + '.lrc')
+                        if (fs.existsSync(lrcPath)) {
+                            try {
+                                const lrcText = fs.readFileSync(lrcPath, 'utf8')
+                                const lines = lrcText.split(/\r?\n/)
+                                for (let i = 0; i < Math.min(lines.length, 50); i++) {
+                                    const line = lines[i]
+                                    const m = line.match(/^\[(ar|ti|al):([^\]]*)\]/i)
+                                    if (m) {
+                                        const key = m[1].toLowerCase()
+                                        const val = (m[2] || '').trim()
+                                        if (key === 'ar' && (!result.common.artists || result.common.artists.length === 0)) {
+                                            // 支持以逗号/斜杠分隔的多位歌手
+                                            const arr = val.split(/[，,\/|]/).map(s => s.trim()).filter(Boolean)
+                                            if (arr.length) result.common.artists = arr
+                                        } else if (key === 'ti' && (!result.common.title || result.common.title.trim() === '')) {
+                                            result.common.title = val
+                                        } else if (key === 'al' && (!result.common.album || result.common.album.trim() === '')) {
+                                            result.common.album = val
+                                        }
+                                    }
+                                }
+                            } catch (_) { /* ignore */ }
+                        }
+                    } catch (_) { /* ignore */ }
                     obj.id = nanoid()
                     obj.common = {
                         localTitle: path.basename(tempDir, path.extname(tempDir)),

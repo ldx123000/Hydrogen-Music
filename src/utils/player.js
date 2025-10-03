@@ -561,42 +561,47 @@ function processLocalLyricData() {
 
     try {
         const regNewLine = /\n/
-        const regTime = /\[((\d{1,2}):(\d{1,2})(\.(\d{1,3}))?)|((\d{1,2}):(\d{1,2}):(\d{1,2})(\.(\d{1,3}))?)\]/g
+        const regTime = /\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\]/g
 
-        // 时间解析函数
+        // 时间解析函数（返回秒，保留毫秒）
         const parseTime = (timeStr) => {
-            const match = timeStr.match(/\[(\d{1,2}):(\d{1,2})\.?(\d{0,3})\]/)
-            if (!match) return 0
-            const min = parseInt(match[1])
-            const sec = parseInt(match[2])
-            const ms = match[3] ? parseInt(match[3].padEnd(3, '0')) : 0
+            const m = timeStr.match(/\[(\d{1,2}):(\d{1,2})\.?(\d{0,3})\]/)
+            if (!m) return 0
+            const min = parseInt(m[1]) || 0
+            const sec = parseInt(m[2]) || 0
+            const ms = m[3] ? parseInt(m[3].padEnd(3, '0')) : 0
             return min * 60 + sec + ms / 1000
         }
 
         if (lyric.value.lrc.lyric.indexOf('[') !== -1) {
-            // 有时间标签的LRC歌词
+            // 有时间标签的LRC歌词，支持同一时间多行（原文/翻译/罗马音）
             const lines = lyric.value.lrc.lyric.split(regNewLine)
-            const processedLyrics = []
+            const byTime = new Map() // key: time(固定3位小数字符串) -> { time, lyric, tlyric, rlyric, active }
 
             for (let i = 0; i < lines.length; i++) {
-                if (lines[i] === '') continue
-                const timeMatches = lines[i].match(regTime)
-                if (!timeMatches) continue
+                const line = lines[i]
+                if (!line || line.trim() === '') continue
+                const tags = Array.from(line.matchAll(regTime))
+                if (!tags || tags.length === 0) continue
+                const text = line.split(']').pop().trim()
+                if (!text) continue
 
-                const lyricText = lines[i].split(']').pop().trim()
-                if (!lyricText) continue
-
-                timeMatches.forEach(timeMatch => {
-                    const time = parseTime(timeMatch)
-                    processedLyrics.push({
-                        lyric: lyricText,
-                        time: time,
-                        active: true
-                    })
-                })
+                for (const tag of tags) {
+                    const t = parseTime(tag[0])
+                    const key = t.toFixed(3)
+                    if (!byTime.has(key)) {
+                        byTime.set(key, { time: t, lyric: '', tlyric: '', rlyric: '', active: true })
+                    }
+                    const obj = byTime.get(key)
+                    if (!obj.lyric) obj.lyric = text
+                    else if (!obj.tlyric) obj.tlyric = text
+                    else if (!obj.rlyric) obj.rlyric = text
+                    // 若超过三行，后续行忽略（保持三轨）
+                }
             }
 
-            lyricsObjArr.value = processedLyrics.sort((a, b) => a.time - b.time)
+            const processed = Array.from(byTime.values()).sort((a, b) => a.time - b.time)
+            lyricsObjArr.value = processed
         } else {
             // 纯文本歌词
             const lines = lyric.value.lrc.lyric.split(regNewLine)
