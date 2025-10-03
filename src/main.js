@@ -10,6 +10,7 @@ import './assets/css/common.css'
 import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
+import { initMediaSession } from './utils/mediaSession'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
@@ -18,6 +19,8 @@ app.directive('lazy', lazy)
 initTheme()
 app.mount('#app')
 init()
+// Initialize System Media Transport Controls (Windows SMTC / macOS Now Playing)
+try { initMediaSession() } catch (_) {}
 
 // Prevent default browser file open on drag/drop globally
 window.addEventListener('dragover', (e) => {

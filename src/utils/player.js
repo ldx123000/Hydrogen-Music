@@ -315,6 +315,12 @@ export function play(url, autoplay, resumeSeek = null) {
             progress.value = targetSeek
         }
         playerChangeSong.value = false
+        // 通知 Media Session：新曲目加载完成，刷新一次系统时长/进度（静态策略）
+        try {
+            window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
+                detail: { duration: Math.floor(currentMusic.value.duration() || 0), toTime: progress.value || 0 }
+            }))
+        } catch (_) {}
     })
     currentMusic.value.on('play', () => {
         currentMusic.value.fade(0, volume.value, 200)
@@ -857,6 +863,12 @@ export function changeProgress(toTime) {
         updateLyricIndexForSeek(toTime)
     }
     currentMusic.value.seek(toTime)
+    // 静态策略下，仅在显式 seek 时通知一次系统进度
+    try {
+        window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
+            detail: { duration: Math.floor(time.value || 0), toTime }
+        }))
+    } catch (_) {}
 }
 //控制拖拽进度条
 export function changeProgressByDragStart() {
