@@ -154,5 +154,10 @@ export function initMediaSession() {
       const position = typeof detail.toTime === 'number' ? detail.toTime : Number(progress.value) || 0
       updatePosition({ override: { duration, position } })
     })
+    // 本地音乐封面异步到达后，补一次 metadata（仅当当前曲目未切换）
+    window.addEventListener('mediaSession:updateArtwork', () => {
+      // 仅刷新 metadata，不动 position，避免产生闪烁；macOS 下只更新一次 artwork
+      updateMetadata()
+    })
   } catch (_) {}
 }

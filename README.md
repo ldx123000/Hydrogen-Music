@@ -43,11 +43,6 @@
 npm run dist
 ```
 
-```shell
-# mac版打包
-npm run dist-mac
-```
-
 ## :computer: 配置开发环境
 
 运行本项目

@@ -103,6 +103,21 @@ body {
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5) !important;
 }
 
+/* Selector options highlight (dark) */
+.dark .selector-option-item {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.18)) !important;
+}
+
+.dark .selector-option-item:hover {
+  background-position: 0 0 !important;
+  color: var(--text) !important;
+}
+
+.dark .selector-option-item-selected {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  color: var(--text) !important;
+}
+
 /* App background gradient override */
 .dark .mainWindow {
   /* Subtle multi-layer gradients to avoid visible banding */
@@ -608,6 +623,48 @@ body {
   fill: var(--text) !important;
   stroke: var(--text) !important;
 }
+
+/* Local/Downloaded song list playing icon */
+.dark .local-music-list .item-title svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Animated playing equalizer (shared) */
+.playing-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 14px;
+  height: 14px;
+  gap: 2px;
+}
+
+.playing-eq .bar {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background-color: currentColor;
+  transform-origin: bottom;
+  animation: eqBar 1s ease-in-out infinite;
+}
+
+/* Pause animation when player paused */
+.playing-eq.is-paused .bar {
+  animation-play-state: paused;
+}
+
+@keyframes eqBar {
+  0% { transform: scaleY(0.28); }
+  35% { transform: scaleY(1); }
+  70% { transform: scaleY(0.45); }
+  100% { transform: scaleY(0.28); }
+}
+
+.playing-eq .bar:nth-child(1) { animation-duration: 0.9s;  animation-delay: 0.05s; }
+.playing-eq .bar:nth-child(2) { animation-duration: 1.15s; animation-delay: 0.12s; }
+.playing-eq .bar:nth-child(3) { animation-duration: 0.95s; animation-delay: 0s; }
+.playing-eq .bar:nth-child(4) { animation-duration: 1.25s; animation-delay: 0.18s; }
 
 /* Comments (right panel) minimal dark styles */
 .dark .arknights-comments .section-title {

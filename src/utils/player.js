@@ -517,6 +517,8 @@ export function addSong(id, index, autoplay, isLocal) {
     // 主动切歌：从头开始播放，不恢复上次进度
     loadLast = false
     progress.value = 0
+    // 清空上首的本地封面，避免下一首短暂使用上一首封面
+    try { localBase64Img.value = null } catch (_) {}
     // 立即通知 SMTC/Media Session 将进度归零，避免保留上一首的时间轴
     try {
         window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
@@ -655,6 +657,8 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
     if (isLocal) {
         windowApi.getLocalMusicImage(songList.value[currentIndex.value].url).then(base64 => {
             localBase64Img.value = base64
+            // 本地封面到达后，提示 Media Session 刷新一次元数据（以载入封面）
+            try { window.dispatchEvent(new CustomEvent('mediaSession:updateArtwork')) } catch (_) {}
         })
         const filePath = songList.value[currentIndex.value].url.replace(/\\/g, '/')
         const fileUrl = filePath.startsWith('file://')

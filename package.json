@@ -14,8 +14,7 @@
     "preview": "vite preview",
     "start": "nodemon --exec electron . --watch ./ --ext .html",
     "_dist": "如果想要发布到github中去：vite build && electron-builder -p always",
-    "dist": "vite build && electron-builder",
-    "dist-mac": "vite build && electron-builder --mac"
+    "dist": "vite build && node scripts/build.js"
   },
   "dependencies": {
     "@neteaseapireborn/api": "^4.28.25",
