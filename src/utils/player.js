@@ -517,6 +517,12 @@ export function addSong(id, index, autoplay, isLocal) {
     // 主动切歌：从头开始播放，不恢复上次进度
     loadLast = false
     progress.value = 0
+    // 立即通知 SMTC/Media Session 将进度归零，避免保留上一首的时间轴
+    try {
+        window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
+            detail: { duration: 0, toTime: 0 }
+        }))
+    } catch (_) {}
     if (lyricShow.value) {
         lyricShow.value = false
         playerChangeSong.value = true

@@ -35,11 +35,17 @@ export function initMediaSession() {
   // 平台与节流参数（封面仅换曲更新；进度略动态且限流）
   const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
   const isMac = /Mac/i.test(platform)
-  const POS_MIN_INTERVAL = isMac ? 1200 : 1000 // macOS 更保守，Windows/其他约 1s
+  const POS_MIN_INTERVAL = 1000 // macOS 更保守，Windows/其他约 1s
   const POS_MIN_DELTA = 0.8 // 小于 ~0.8s 的微小变化不推送
+  // 切歌后短时间内更积极同步（爆发窗口）
+  const BURST_WINDOW_MS = 2000
+  const POS_MIN_INTERVAL_BURST = 450
+  const POS_MIN_DELTA_BURST = 0.2
   let lastPos = -1
   let lastDur = -1
   let lastTs = 0
+  let burstUntil = 0
+  const inBurst = () => Date.now() < burstUntil
 
   const updatePlaybackState = () => {
     try {
@@ -71,13 +77,15 @@ export function initMediaSession() {
   const updatePositionThrottled = (opts = {}) => {
     const { force = false } = opts || {}
     try {
-      // macOS: avoid periodic position pushes to prevent Now Playing artwork flicker
-      if (isMac && !force) return
+      // macOS: 仅在爆发窗口或显式强制时做周期更新，避免封面闪烁
+      if (isMac && !force && !inBurst()) return
       const dur = Number(time.value) || 0
       const pos = Number(progress.value) || 0
       const now = Date.now()
-      const tooSoon = (now - lastTs) < POS_MIN_INTERVAL
-      const smallMove = Math.abs(pos - lastPos) < POS_MIN_DELTA
+      const minInterval = inBurst() ? POS_MIN_INTERVAL_BURST : POS_MIN_INTERVAL
+      const minDelta = inBurst() ? POS_MIN_DELTA_BURST : POS_MIN_DELTA
+      const tooSoon = (now - lastTs) < minInterval
+      const smallMove = Math.abs(pos - lastPos) < minDelta
       if (!force && (tooSoon || smallMove)) return
       updatePosition({ override: { duration: dur, position: pos } })
     } catch (_) {}
@@ -97,6 +105,8 @@ export function initMediaSession() {
     updatePlaybackState()
     // 换曲瞬间：强制把位置归零，避免系统控件保留上一首进度
     updatePosition({ forceZero: true })
+    // 开启爆发窗口：接下来几秒内更积极同步进度
+    burstUntil = Date.now() + BURST_WINDOW_MS
   }
 
   // Initial registration of action handlers (SMTC hooks)
@@ -132,10 +142,9 @@ export function initMediaSession() {
   // 2) 仅在播放状态切换时刷新一次位置（不走每秒更新）
   watch(playing, () => { updatePlaybackState(); updatePositionThrottled({ force: true }) }, { immediate: true })
 
-  // 2.5) 轻量动态：仅非 macOS 才做进度限流更新；macOS 下仅在显式事件中刷新
-  if (!isMac) {
-    watch([progress, time], () => updatePositionThrottled(), { immediate: true })
-  }
+  // 2.5) 轻量动态：进度限流更新
+  // macOS：仅在爆发窗口内生效；Windows/其他：常规节流
+  watch([progress, time], () => updatePositionThrottled(), { immediate: true })
 
   // 3) 监听渲染层的显式 seek/加载完成事件，以便精准刷新一次
   try {

@@ -74,7 +74,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { getPersonalFM, fmTrash } from '../api/song';
 import { getRecommendSongs } from '../api/playlist';
 import { usePlayerStore } from '../store/playerStore';
@@ -105,10 +105,46 @@ const isCurrentSongLiked = computed(() => {
 const fmSongs = ref([]);
 const playedSongs = ref([]); // 已播放的歌曲历史（用于前后切换浏览）
 // 去重与“近期不重复”控制
-const fmPoolIds = new Set(); // 当前候选池中的歌曲ID，避免同一池内重复
+const fmPoolIds = new Set(); // 当前候选池中的歌曲ID，避免同一池内重复（仅内存，用于本次池）
 const recentPlayedSet = new Set(); // 近期播放过的歌曲集合（窗口集合）
 const recentPlayedQueue = []; // 维护顺序的队列，配合 recentPlayedSet 形成滑动窗口
 const RECENT_WINDOW = 100; // 近期去重窗口大小，避免短期内重复
+
+// 仅持久化“近期去重队列”（按账号隔离）
+function getRecentQueueKey() {
+    const uid = userStore?.user?.userId || 'guest';
+    return `hm.fm.recentPlayedQueue:${uid}`;
+}
+
+function safeParseArray(raw) {
+    try {
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function loadPersistentRecent() {
+    // 清空并加载“近期播放队列”（按账号隔离）
+    recentPlayedQueue.length = 0;
+    recentPlayedSet.clear();
+    const recentArr = safeParseArray(localStorage.getItem(getRecentQueueKey()));
+    for (const id of recentArr) {
+        if (!id) continue;
+        recentPlayedQueue.push(id);
+        recentPlayedSet.add(id);
+    }
+}
+
+function persistRecent() {
+    // 将近期播放队列持久化（用于跨会话恢复“近期不重复”）
+    try {
+        localStorage.setItem(getRecentQueueKey(), JSON.stringify(recentPlayedQueue));
+    } catch (e) {
+        console.warn('Persist recent FM queue failed:', e);
+    }
+}
 
 function rememberRecent(id) {
     if (!id) return;
@@ -119,6 +155,8 @@ function rememberRecent(id) {
         const old = recentPlayedQueue.shift();
         recentPlayedSet.delete(old);
     }
+    // 持久化近期队列（账号隔离）
+    persistRecent();
 }
 
 function addToFmPoolUnique(songs) {
@@ -128,7 +166,7 @@ function addToFmPoolUnique(songs) {
     for (const s of songs) {
         const id = s && (s.id || s.songId || s.trackId);
         if (!id) continue;
-        // 过滤：近期播放过的不再加入；池中已有的不再加入
+        // 过滤：近期播放过、池中已有 → 不再加入
         if (recentPlayedSet.has(id) || fmPoolIds.has(id)) continue;
         fmPoolIds.add(id);
         deduped.push(s);
@@ -458,6 +496,8 @@ const refreshFM = async () => {
 };
 
 onMounted(() => {
+    // 恢复持久化的“近期去重队列”（按账号隔离）
+    loadPersistentRecent();
     // 只有在FM列表为空时才加载新歌
     if (playedSongs.value.length === 0) {
         refreshFM();
@@ -472,6 +512,7 @@ onMounted(() => {
     window.addEventListener('fmPlayModeResponse', handleFMPlayModeResponse);
     window.addEventListener('fmPreviousResponse', handleFMPreviousResponse);
     window.addEventListener('fmNextResponse', handleFMNextResponse);
+    window.addEventListener('fmClearRecent', handleFmClearRecent);
 });
 
 onUnmounted(() => {
@@ -479,7 +520,16 @@ onUnmounted(() => {
     window.removeEventListener('fmPlayModeResponse', handleFMPlayModeResponse);
     window.removeEventListener('fmPreviousResponse', handleFMPreviousResponse);
     window.removeEventListener('fmNextResponse', handleFMNextResponse);
+    window.removeEventListener('fmClearRecent', handleFmClearRecent);
 });
+
+// 监听账号切换：按账号隔离“近期去重队列”
+watch(
+    () => userStore?.user?.userId,
+    () => {
+        loadPersistentRecent();
+    }
+);
 
 // 处理播放模式响应
 const handleFMPlayModeResponse = async event => {
@@ -517,6 +567,12 @@ const handleFMNextResponse = async event => {
         console.log('Playing next FM song from player controls');
         await nextSong();
     }
+};
+
+// 处理设置页触发的清空漫游缓存事件
+const handleFmClearRecent = () => {
+    console.log('Received fmClearRecent event from Settings, reloading recent queue');
+    loadPersistentRecent();
 };
 </script>
 

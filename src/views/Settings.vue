@@ -340,6 +340,23 @@ const handleUpdateRetry = () => {
 const closeUpdateDialog = () => {
     showUpdateDialog.value = false;
 };
+
+// 清空当前账号的“私人漫游”近期去重队列
+const getFmRecentKey = () => {
+    const uid = userStore?.user?.userId || 'guest';
+    return `hm.fm.recentPlayedQueue:${uid}`;
+};
+const clearFmRecent = () => {
+    try {
+        localStorage.removeItem(getFmRecentKey());
+        // 通知个人FM组件刷新其内存中的近期队列
+        window.dispatchEvent(new CustomEvent('fmClearRecent', { detail: { userId: userStore?.user?.userId || 'guest' } }));
+        noticeOpen('已清空当前账号的私人漫游缓存', 2);
+    } catch (e) {
+        console.error('清空私人漫游缓存失败:', e);
+        noticeOpen('清空失败', 2);
+    }
+};
 </script>
 
 <template>
@@ -548,6 +565,12 @@ const closeUpdateDialog = () => {
                                         <div class="toggle-on" v-show="userStore.personalFMPage"></div>
                                     </Transition>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="userStore.personalFMPage">
+                            <div class="option-name">清空漫游缓存</div>
+                            <div class="option-operation">
+                                <div class="button" @click="clearFmRecent">清空</div>
                             </div>
                         </div>
                         <div class="option">
