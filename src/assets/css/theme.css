@@ -38,6 +38,9 @@ body {
   --lyric-hilight-bg-dim: rgba(255, 255, 255, 0.82);
   --lyric-scan-inside-text: #000000;
   --lyric-scan-outside-text: var(--text);
+  --btn-minimize: #ffffff;
+  --btn-maximize: #ffffff;
+  --btn-close: #ffffff;
 }
 
 /* Keep it simple: default everything to readable text on dark */
