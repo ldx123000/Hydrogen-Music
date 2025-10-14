@@ -41,6 +41,7 @@ const interludeAnimation = ref(false);
 const interludeRemainingTime = ref(null);
 let interludeInTimer = null;
 let interludeOutTimer = null;
+let interludeProgressInterval = null;
 
 let initMax = null;
 let initOffset = null;
@@ -219,6 +220,90 @@ const onLyricAreaAfterEnter = async () => {
     suppressLyricFlash.value = false;
 };
 
+// —— 间奏等待动画——
+function clearInterludeTimers() {
+    try { if (interludeInTimer) clearTimeout(interludeInTimer) } catch (_) {}
+    try { if (interludeOutTimer) clearTimeout(interludeOutTimer) } catch (_) {}
+    interludeInTimer = null;
+    interludeOutTimer = null;
+}
+
+function getSafeSeek() {
+    try {
+        if (currentMusic.value && typeof currentMusic.value.seek === 'function') {
+            const s = currentMusic.value.seek();
+            if (typeof s === 'number' && !Number.isNaN(s)) return s;
+        }
+    } catch (_) {}
+    return typeof progress.value === 'number' ? progress.value : 0;
+}
+
+// 当当前歌词行号变化时，根据阈值决定是否展示/收起间奏
+function handleInterludeOnIndexChange(newIdx) {
+    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return;
+    if (typeof newIdx !== 'number') return;
+    const last = lyricsObjArr.value.length - 1;
+    if (newIdx < 0 || newIdx >= last) {
+        interludeAnimation.value = false;
+        clearInterludeTimers();
+        interludeIndex.value = null;
+        interludeRemainingTime.value = null;
+        return;
+    }
+
+    const currentSeek = getSafeSeek();
+    const nextLineTime = Number(lyricsObjArr.value[newIdx + 1]?.time ?? NaN);
+    if (!Number.isFinite(nextLineTime)) return;
+
+    const gap = nextLineTime - currentSeek; // 秒
+    const threshold = Number(lyricInterludeTime.value || 0);
+
+    if (gap >= threshold) {
+        // 满足阈值：将间奏绑定到“当前行”，并在 1s 后进入动画
+        interludeIndex.value = newIdx;
+        interludeAnimation.value = false;
+        clearInterludeTimers();
+        interludeInTimer = setTimeout(() => {
+            interludeAnimation.value = true;
+            interludeInTimer = null;
+        }, 1000);
+    } else {
+        // 不满足阈值：立即开始收起，无论之前间奏属于哪一行
+        interludeAnimation.value = false;
+        clearInterludeTimers();
+        interludeOutTimer = setTimeout(() => {
+            interludeIndex.value = null;
+            interludeOutTimer = null;
+        }, 900);
+        interludeRemainingTime.value = null;
+    }
+}
+
+// 在进度变化时，仅更新倒计时与“<1s 收起”的判断（不做阈值判断，避免提前收起）
+function handleInterludeOnProgress() {
+    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return;
+    if (!playing.value || !lyricShow.value) return;
+    const idx = typeof lycCurrentIndex.value === 'number' ? lycCurrentIndex.value : -1;
+    if (idx < 0 || !interludeAnimation.value) return;
+
+    const currentSeek = getSafeSeek();
+    const nextLineTime = Number(lyricsObjArr.value[idx + 1]?.time ?? NaN);
+    if (!Number.isFinite(nextLineTime)) return;
+    const gap = nextLineTime - currentSeek;
+
+    if (gap < 1) {
+        interludeAnimation.value = false;
+        clearInterludeTimers();
+        interludeOutTimer = setTimeout(() => {
+            interludeIndex.value = null;
+            interludeOutTimer = null;
+        }, 900);
+        interludeRemainingTime.value = null;
+    } else {
+        interludeRemainingTime.value = Math.trunc(gap - 1);
+    }
+}
+
 // Resize 触发同步：容器尺寸改变后重新测量与同步
 let lyricResizeObserver = null;
 let resizeRaf = 0;
@@ -283,6 +368,8 @@ watch(
         // 等待DOM稳定后，统一调用同步函数，确保 scroll-area 高度与偏移一并更新
         await nextTick();
         syncLyricPosition();
+        // 仅在索引变化时做阈值判断，是否展示/收起间奏
+        handleInterludeOnIndexChange(newIndex);
     },
     { immediate: true, flush: 'post' }
 ); // 添加 immediate 选项确保立即执行
@@ -341,6 +428,8 @@ watch(
 watch(
     () => progress.value,
     (newVal, oldVal) => {
+        // 仅更新倒计时与 <1s 收起，不做阈值判断
+        handleInterludeOnProgress();
         if (typeof oldVal !== 'number') return;
         if (Math.abs(newVal - oldVal) <= 1.2) return;
 
@@ -394,11 +483,29 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    clearInterludeTimers();
+    if (interludeProgressInterval) { clearInterval(interludeProgressInterval); interludeProgressInterval = null; }
     if (lyricResizeObserver) {
         lyricResizeObserver.disconnect();
         lyricResizeObserver = null;
     } else {
         window.removeEventListener('resize', scheduleLayout);
+    }
+});
+
+// 启动/停止 200ms 的进度轮询
+watch([playing, lyricShow], ([p, show]) => {
+    if (p && show) {
+        if (!interludeProgressInterval) {
+            interludeProgressInterval = setInterval(() => {
+                handleInterludeOnProgress();
+            }, 200);
+        }
+    } else {
+        if (interludeProgressInterval) {
+            clearInterval(interludeProgressInterval);
+            interludeProgressInterval = null;
+        }
     }
 });
 </script>

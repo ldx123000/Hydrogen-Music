@@ -596,7 +596,32 @@ body {
   border-color: var(--text) !important;
 }
 
-.dark .lyric-container .music-interlude .opacity {
+.dark .lyric-container .music-interlude .diamond .diamond-inner {
+  background-color: var(--text) !important;
+}
+
+.dark .lyric-container .music-interlude .triangle {
+  border-top-color: var(--text) !important;
+}
+
+.dark .lyric-container .music-interlude .remaining {
+  color: var(--muted-text) !important;
+}
+
+.dark .lyric-container .music-interlude .interlude-title {
+  background-color: var(--text) !important;
+}
+
+.dark .lyric-container .music-interlude .interlude-title .title {
+  color: #000000 !important;
+}
+
+.dark .lyric-container .music-interlude .interlude-title .title-style svg path {
+  stroke: #000000 !important;
+  fill: #000000 !important;
+}
+
+.dark .lyric-container .music-interlude .interlude-progress {
   background-color: var(--text) !important;
 }
 
