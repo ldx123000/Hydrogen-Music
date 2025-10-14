@@ -1,7 +1,7 @@
 {
   "name": "hydrogenmusic",
   "private": true,
-  "version": "0.5.5",
+  "version": "0.5.6",
   "description": "A modern music player built with Electron and Vue.js",
   "main": "background.js",
   "author": {
@@ -75,8 +75,8 @@
     "mac": {
       "category": "public.app-category.music",
       "icon": "./src/assets/icon/icon.icns",
-      "bundleVersion": "0.5.5",
-      "bundleShortVersion": "0.5.5",
+      "bundleVersion": "0.5.6",
+      "bundleShortVersion": "0.5.6",
       "target": [
         "dmg"
       ],
