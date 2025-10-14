@@ -16,32 +16,8 @@ function windowControl(option) {
 </script>
 
 <template>
-    <!-- macOS 风格的窗口控制按钮 -->
-    <div v-if="isMacOS" class="window-control macos">
-        <!-- 关闭按钮（红色） -->
-        <div @click="windowControl(0)" class="close-button macos-button">
-            <svg viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-            </svg>
-        </div>
-        <!-- 最小化按钮（黄色） -->
-        <div @click="windowControl(1)" class="minimize-button macos-button">
-            <svg viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 6H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-            </svg>
-        </div>
-        <!-- 缩放按钮（绿色） -->
-        <div @click="windowControl(2)" class="maximize-button macos-button">
-            <svg viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg">
-                <g stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none">
-                    <!-- 左上角箭头 -->
-                    <path d="M3 3L4.5 1.5M4.5 1.5H3M4.5 1.5V3" />
-                    <!-- 右下角箭头 -->
-                    <path d="M9 9L7.5 10.5M7.5 10.5H9M7.5 10.5V9" />
-                </g>
-            </svg>
-        </div>
-    </div>
+    <!-- macOS 使用原生交通灯，不在渲染层自绘 -->
+    <template v-if="isMacOS"></template>
 
     <!-- Windows/Linux 风格的窗口控制按钮 -->
     <div v-else class="window-control windows">
@@ -70,59 +46,6 @@ function windowControl(option) {
 </template>
 
 <style scoped lang="scss">
-// macOS 风格的窗口控制按钮
-.window-control.macos {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-    width: auto;
-
-    .macos-button {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        position: relative;
-
-        svg {
-            width: 6px;
-            height: 6px;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-            color: rgba(0, 0, 0, 0.7);
-        }
-
-        &:hover svg {
-            opacity: 1;
-        }
-    }
-
-    .close-button {
-        background-color: #ff5f57;
-        &:hover {
-            background-color: #ff4033;
-        }
-    }
-
-    .minimize-button {
-        background-color: #ffbd2e;
-        &:hover {
-            background-color: #ffaa00;
-        }
-    }
-
-    .maximize-button {
-        background-color: #28ca42;
-        &:hover {
-            background-color: #1aad34;
-        }
-    }
-}
 
 // Windows/Linux 风格的窗口控制按钮
 .window-control.windows {

@@ -134,10 +134,14 @@ const createWindow = () => {
         defaultWidth: 1024,
         defaultHeight: 672,
     })
+    const isMac = process.platform === 'darwin'
     const win = new BrowserWindow({
         minWidth: 1024,
         minHeight: 672,
-        frame: false,
+        // macOS 使用原生交通灯；其他平台仍用自定义无边框
+        frame: isMac ? true : false,
+        titleBarStyle: isMac ? 'hiddenInset' : undefined,
+        titleBarOverlay: isMac ? { color: '#00000000', symbolColor: '#000000', height: 35 } : undefined,
         title: "Hydrogen Music",
         icon: path.resolve(__dirname, './src/assets/icon/' + (process.platform === 'win32' ? 'icon.ico' : 'icon.png')),
         backgroundColor: '#fff',
@@ -173,12 +177,23 @@ const createWindow = () => {
         }
     });
 
-    if (process.resourcesPath.indexOf(path.join('node_modules')) != -1)
+    if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
         win.loadURL('http://localhost:5173/')
-    else
+        win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+            console.warn('Dev server not available, fallback to dist:', errorCode, errorDescription)
+            try { win.loadFile(indexHtml) } catch (e) { console.error('Fallback loadFile failed:', e) }
+        })
+    } else {
         win.loadFile(indexHtml)
+    }
     win.once('ready-to-show', () => {
         win.show()
+        // 微调 macOS 交通灯位置以匹配自定义布局高度
+        try {
+            if (isMac && typeof win.setTrafficLightPosition === 'function') {
+                win.setTrafficLightPosition({ x: 12, y: 10 })
+            }
+        } catch (_) {}
         if (process.resourcesPath.indexOf(path.join('node_modules')) == -1) {
             // macOS: 禁用内置自动更新，改为手动检查（GitHub API）
             if (process.platform === 'darwin') {
@@ -335,6 +350,10 @@ const createLyricWindow = () => {
     const lyricHtml = path.join(process.env.DIST, 'dist/desktop-lyric.html')
     if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
         lyricWin.loadURL('http://localhost:5173/desktop-lyric.html')
+        lyricWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+            console.warn('Dev server not available (desktop lyric), fallback to dist:', errorCode, errorDescription)
+            try { lyricWin.loadFile(lyricHtml) } catch (e) { console.error('Fallback lyric loadFile failed:', e) }
+        })
     } else {
         lyricWin.loadFile(lyricHtml)
     }
