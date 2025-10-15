@@ -1,6 +1,6 @@
 const { ipcMain }= require('electron')
 const getDirTree = require('./dirTree')
-const Store = require('electron-store');
+const Store = require('electron-store').default;
 
 
 module.exports = function LocalFiles(win, app) {
