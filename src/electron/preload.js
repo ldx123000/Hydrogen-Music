@@ -157,6 +157,15 @@ function openNeteaseLogin() {
 function clearLoginSession() {
     return ipcRenderer.invoke('clear-login-session')
 }
+function sendMetaData(metadata) {
+  ipcRenderer.send('metadata', metadata);
+}
+
+function sendPlayerCurrentTrackTime(t) {
+  ipcRenderer.send("playerCurrentTrackTime", t)
+}
+
+
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
     windowMax,
@@ -247,4 +256,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setLyricWindowAspectRatio: (aspectRatio) => ipcRenderer.send('set-lyric-window-aspect-ratio', { aspectRatio }),
     getLyricWindowContentBounds: () => ipcRenderer.invoke('get-lyric-window-content-bounds'),
     moveLyricWindowContentTo: (x, y, width, height) => ipcRenderer.send('move-lyric-window-content-to', { x, y, width, height }),
+})
+
+contextBridge.exposeInMainWorld('playerApi', {
+  // 切换循环模式
+  switchRepeatMode: (mode) => ipcRenderer.send('switchRepeatMode', mode), // mode: 'off' | 'one' | 'on'
+
+  // 切换随机播放
+  switchShuffle: (shuffle) => ipcRenderer.send('switchShuffle', shuffle), // shuffle: true/false
+  sendMetaData,
+  sendPlayerCurrentTrackTime,
+  onSetPosition: (callback) => {
+    ipcRenderer.on('setPosition', (_, positionUs) => {
+      callback(positionUs)
+    })
+  },
+  onNext: (callback) => ipcRenderer.on('next', callback),
+  onPrevious: (callback) => ipcRenderer.on('previous', callback),
+  onPlayM: (callback) => ipcRenderer.on('play', callback),
+  onPlayPause: (callback) => ipcRenderer.on('playpause', callback),
+  onPauseM: (callback) => ipcRenderer.on('pause', callback),
+  onRepeat: (callback) => ipcRenderer.on('repeat', callback),
+  onShuffle: (callback) => ipcRenderer.on('shuffle', callback),
+  setVolume: (volume) => ipcRenderer.send('setVolume', volume),
+  onVolumeChanged: (callback) => ipcRenderer.on('volume_changed', (_, volume) => {
+    callback(volume)
+  }),
+});
+
+// 这里安全地暴露必要的接口
+contextBridge.exposeInMainWorld('process', {
+  platform: process.platform,
 })
