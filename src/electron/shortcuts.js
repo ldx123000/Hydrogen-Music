@@ -1,5 +1,5 @@
 const { Menu, globalShortcut } = require('electron')
-const Store = require('electron-store');
+const Store = require('electron-store').default;
 
 // 存储当前应用菜单的引用
 let currentApplicationMenu = null;
