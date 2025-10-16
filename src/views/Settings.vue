@@ -1,16 +1,16 @@
 <script setup>
 import { ref, onActivated, watch } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
-import { logout } from '../api/user';
-import { noticeOpen, dialogOpen } from '../utils/dialog';
-import { initSettings } from '../utils/initApp';
-import { getVipInfo } from '../api/user';
-import { isLogin } from '../utils/authority';
-import { useUserStore } from '../store/userStore';
-import { usePlayerStore } from '../store/playerStore';
+import { logout } from '@/api/user';
+import { noticeOpen, dialogOpen } from '@/utils/dialog';
+import { initSettings } from '@/utils/initApp';
+import { getVipInfo } from '@/api/user';
+import { isLogin } from '@/utils/authority';
+import { useUserStore } from '@/store/userStore';
+import { usePlayerStore } from '@/store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
-import { setTheme, getSavedTheme } from '../utils/theme';
+import { setTheme, getSavedTheme } from '@/utils/theme';
 
 const router = useRouter();
 const userStore = useUserStore();

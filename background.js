@@ -5,12 +5,15 @@ const LocalFiles = require('./src/electron/localmusic')
 const InitTray = require('./src/electron/tray')
 const registerShortcuts = require('./src/electron/shortcuts')
 const { updateApplicationMenu } = require('./src/electron/shortcuts')
+const {isCreateMpris} = require('./src/utils/platform');
+const {createMpris} = require('./src/electron/mpris');
+
 
 const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron')
 const Winstate = require('electron-win-state').default
 const { autoUpdater } = require("electron-updater");
 const path = require('path')
-const Store = require('electron-store');
+const Store = require('electron-store').default;
 const settingsStore = new Store({ name: 'settings' });
 
 let myWindow = null
@@ -33,22 +36,44 @@ if (!gotTheLock) {
         }
     })
 
-    app.whenReady().then(() => {
-        createWindow()
-        app.on('activate', () => {
-            // 在macOS上，当点击dock图标并且没有其他窗口打开时，
-            // 应该重新创建一个窗口。
-            if (BrowserWindow.getAllWindows().length === 0) {
-                createWindow()
-            } else if (myWindow) {
-                // 如果窗口只是被隐藏了，则显示它
-                if (!myWindow.isVisible()) {
-                    myWindow.show();
-                }
-                myWindow.focus();
-            }
-        })
+  // disable chromium mpris
+  if (isCreateMpris) {
+    app.commandLine.appendSwitch(
+      'disable-features',
+      'HardwareMediaKeyHandling,MediaSessionService'
+    );
+  }
+
+
+
+  app.whenReady().then(async () => {
+
+    process.on('uncaughtException', (err) => {
+      console.error('捕获到未处理异常:', err)
     })
+    //api初始化
+    try {
+      await startNeteaseMusicApi();  // 等待 API 启动
+      console.log('Netease API 已就绪');
+      createWindow();                 // API 启动后再创建窗口
+    } catch (err) {
+      console.error('Netease API 启动失败:', err);
+      app.quit();                     // 启动失败退出
+    }
+    app.on('activate', () => {
+      // 在macOS上，当点击dock图标并且没有其他窗口打开时，
+      // 应该重新创建一个窗口。
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow()
+      } else if (myWindow) {
+        // 如果窗口只是被隐藏了，则显示它
+        if (!myWindow.isVisible()) {
+          myWindow.show();
+        }
+        myWindow.focus();
+      }
+    })
+  })
 
     // 监听渲染进程触发的手动检查更新事件
     // 与 src/electron/ipcMain.js 中的处理并存，仅用于设置标记
@@ -300,14 +325,17 @@ const createWindow = () => {
     // ipcMain.on('player-saved', () => {
     //     app.quit();
     // });
-    //api初始化
-    startNeteaseMusicApi()
     //ipcMain初始化
     IpcMainEvent(win, app, { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow: () => lyricWindow })
     MusicDownload(win)
     LocalFiles(win, app)
     InitTray(win, app, path.resolve(__dirname, './src/assets/icon/' + (process.platform === 'win32' ? 'icon.ico' : 'icon.png')))
     registerShortcuts(win, app)
+
+  // create mpris
+  if (isCreateMpris) {
+    createMpris(win);
+  }
 }
 
 // 创建桌面歌词窗口

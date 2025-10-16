@@ -5,7 +5,7 @@ const path = require('path')
 const { parseFile } = require('music-metadata')
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require('./shortcuts')
-const Store = require('electron-store')
+const Store = require('electron-store').default;
 const CancelToken = axios.CancelToken
 let cancel = null
 

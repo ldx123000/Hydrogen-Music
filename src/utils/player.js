@@ -9,6 +9,7 @@ import { usePlayerStore } from '../store/playerStore'
 import { useLibraryStore } from '../store/libraryStore'
 import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
+import {watch} from "vue";
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -23,6 +24,10 @@ let loadLast = true
 let playModeOne = false //为true代表顺序播放已全部结束
 let refreshingStream = false
 let lastRefreshAttempt = 0
+
+watch(volume, (v) => {
+  window.playerApi?.setVolume?.(v)
+})
 
 // 统一更新窗口标题和（macOS）Dock菜单
 function updateWindowTitleDock() {
@@ -1238,6 +1243,13 @@ export function musicVideoCheck(seek, update) {
 }
 
 
+function setVolume(value) {
+  volume.value = Math.max(0, Math.min(1, value))
+  console.log(volume.value)
+  currentMusic.value.volume(volume.value)
+}
+
+
 window.addEventListener('mousedown', (e) => {
     if (e.target.parentNode.parentNode.id == 'widget-progress') {
         changeProgressByDragStart()
@@ -1313,3 +1325,52 @@ windowApi.beforeQuit(() => {
     }
     windowApi.exitApp(JSON.stringify(list))
 })
+
+window.playerApi.onSetPosition((positionSeconds) => {
+  changeProgress(positionSeconds)
+})
+window.playerApi.onPlayPause(() => {
+  if (playing.value) pauseMusic()
+  else startMusic()
+})
+
+// 播放下一首
+window.playerApi.onNext(() => {
+  playNext() // 你自己实现的渲染端播放下一首逻辑
+})
+
+// 播放上一首
+window.playerApi.onPrevious(() => {
+  playLast()
+})
+
+// 播放/暂停
+window.playerApi.onPlayM(() => {
+  startMusic()
+})
+window.playerApi.onPauseM(() => {
+  pauseMusic()
+})
+
+//循环模式切换
+window.playerApi.onRepeat(() => {
+  changePlayMode()
+})
+
+// 随机播放切换
+window.playerApi.onShuffle(() => {
+  if (playMode.value !== 3) {
+    playMode.value = 3
+    setShuffledList()
+  } else {
+    playMode.value = 0
+    shuffledList.value = null
+    shuffleIndex.value = null
+  }
+  window.playerApi.switchShuffle(playMode.value === 3)
+})
+
+window.playerApi.onVolumeChanged((v) => {
+    setVolume(v)
+  }
+)

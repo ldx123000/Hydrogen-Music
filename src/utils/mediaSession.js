@@ -100,7 +100,28 @@ export function initMediaSession() {
     let artwork = getArtworkForTrack(cur, localBase64Img.value)
     if (isMac && artwork && artwork.length > 1) artwork = [artwork[0]]
     try {
-      navigator.mediaSession.metadata = new MediaMetadata({ title, artist, album, artwork })
+      const metadata = {
+        title: title,
+        artUrl: artist,
+        artist: artist,
+        album: album,
+        artwork: [
+          {
+            src: cur.al.picUrl + '?param=224y224',
+            type: 'image/jpg',
+            sizes: '224x224',
+          },
+          {
+            src: cur.al.picUrl + '?param=512y512',
+            type: 'image/jpg',
+            sizes: '512x512',
+          },
+        ],
+        length: Number(time.value) || 10
+      };
+
+      navigator.mediaSession.metadata = new window.MediaMetadata(metadata);
+      playerApi.sendMetaData(metadata);
     } catch (_) {}
     updatePlaybackState()
     // 换曲瞬间：强制把位置归零，避免系统控件保留上一首进度
