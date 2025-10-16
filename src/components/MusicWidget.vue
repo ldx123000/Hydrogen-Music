@@ -321,12 +321,12 @@
                 position: relative;
                 .volume-slider{
                     height: 7Px !important;
-                    box-shadow: 0 0 0 0.5Px black !important;
+                    box-shadow: 0 0 0 0.5Px var(--text) !important;
                 }
                 .volume-process-outline{
                     width: 100%;
                     height: 100%;
-                    border: 1Px solid black;
+                    border: 1Px solid var(--text);
                     position: absolute;
                     top: 0;
                     left: 0;
@@ -334,7 +334,7 @@
                 .volume-process{
                     width: 64%;
                     height: 100%;
-                    background: black;
+                    background: var(--text);
                     position: absolute;
                     top: 0;
                     left: -1Px;

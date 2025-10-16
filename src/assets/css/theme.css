@@ -69,7 +69,10 @@ body {
 .dark .settings-page .default-shortcuts,
 .dark .settings-page .check-update-btn,
 .dark .select-download-folder .selected-folder,
-.dark .select-local-folder .selected-folder,
+.dark .local-folder .selected-local-folder-item .selected-folder,
+.dark .select-download-folder .select-option,
+.dark .local-folder .add-option,
+.dark .settings-page .setting-title .save,
 .dark .settings-page .button,
 .dark option {
   background-color: var(--layer) !important;
@@ -86,7 +89,12 @@ body {
 .dark .default-shortcuts:hover,
 .dark .check-update-btn:hover,
 .dark .check-update-btn:focus,
-.dark .check-update-btn:active {
+.dark .check-update-btn:active,
+.dark .settings-page .button:hover,
+.dark .settings-page .button:focus,
+.dark .settings-page .button:active,
+.dark .select-download-folder .select-option:hover,
+.dark .local-folder .add-option:hover {
   box-shadow: 0 0 0 1px var(--text) !important;
 }
 
@@ -427,6 +435,24 @@ body {
 
 /* Player page accents */
 .dark .player-container .border {
+  background-color: var(--text) !important;
+}
+
+/* Main Player: progress + volume bar borders */
+.dark .player-container .player-process .music-progress {
+  /* replace light-mode black outline */
+  box-shadow: 0 0 0 0.5px var(--text) !important;
+}
+
+.dark .player-container .player-voluem .volume-slider {
+  box-shadow: 0 0 0 0.5px var(--text) !important;
+}
+
+.dark .player-container .voluem-outline {
+  border-color: var(--text) !important;
+}
+
+.dark .player-container .voluem-content {
   background-color: var(--text) !important;
 }
 

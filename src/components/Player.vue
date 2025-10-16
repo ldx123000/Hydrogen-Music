@@ -1025,7 +1025,7 @@ const toggleDjSub = async (isSubscribe) => {
                     .music-progress {
                         width: 100% !important;
                         height: 1.3vh !important;
-                        box-shadow: 0 0 0 0.5px black;
+                        box-shadow: 0 0 0 0.5px var(--text);
                         transition: 0.2s;
                     }
                 }
@@ -1055,18 +1055,18 @@ const toggleDjSub = async (isSubscribe) => {
                     position: relative;
                     .volume-slider {
                         height: 1.3vh !important;
-                        box-shadow: 0 0 0 0.5px black !important;
+                        box-shadow: 0 0 0 0.5px var(--text) !important;
                     }
                     .voluem-outline {
                         width: 100%;
                         height: 100%;
-                        border: 1px solid black;
+                        border: 1px solid var(--text);
                         position: absolute;
                     }
                     .voluem-content {
                         width: 46%;
                         height: 100%;
-                        background-color: black;
+                        background-color: var(--text);
                         position: absolute;
                     }
                 }
