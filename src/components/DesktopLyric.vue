@@ -562,10 +562,16 @@ watchEffect(() => {
 // 辅助函数
 const getArtistNames = song => {
     if (!song) return '';
-    if (song.type === 'local') {
-        return song.ar || '未知艺术家';
+    const ar = song.ar;
+    // 统一处理：ar 可能是字符串数组、对象数组({name})或字符串
+    if (Array.isArray(ar)) {
+        const names = ar
+            .map(a => (typeof a === 'string' ? a : (a && a.name) || ''))
+            .filter(Boolean);
+        return names.length ? names.join(' / ') : '未知艺术家';
     }
-    return song.ar?.map(artist => artist.name).join(' / ') || '未知艺术家';
+    if (typeof ar === 'string') return ar || '未知艺术家';
+    return '未知艺术家';
 };
 
 // IPC 通信处理

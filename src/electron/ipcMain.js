@@ -81,9 +81,21 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     ipcMain.handle('get-image-base64', async (e, filePath) => {
         try {
-            const data = await parseFile(filePath)
-            if (data.common.picture)
-                return `data:${data.common.picture[0].format};base64,${data.common.picture[0].data.toString('base64')}`
+            // 显式禁用跳过封面，避免新版库默认不读取封面
+            const data = await parseFile(filePath, { skipCovers: false }).catch(() => null)
+            const picArr = data && data.common && Array.isArray(data.common.picture) ? data.common.picture : null
+            const pic = picArr && picArr.length > 0 ? picArr[0] : null
+            if (pic && pic.data) {
+                let mime = (pic.format && String(pic.format).startsWith('image/')) ? pic.format : null
+                if (!mime) {
+                    // 简单的文件头嗅探，兜底 MIME
+                    const buf = Buffer.from(pic.data)
+                    if (buf.length > 12 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) mime = 'image/png'
+                    else if (buf.length > 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) mime = 'image/jpeg'
+                    else mime = 'image/jpeg'
+                }
+                return `data:${mime};base64,${Buffer.from(pic.data).toString('base64')}`
+            }
 
             // 若无内嵌封面，尝试同名图片或常见封面文件
             const parsed = path.parse(filePath)

@@ -36,6 +36,21 @@ watch(rightPanelMode, (newMode, oldMode) => {
 
 // 当播放电台节目时，右侧显示电台简介而非歌词
 const isDj = computed(() => playerStore.listInfo && playerStore.listInfo.type === 'dj');
+
+// 当切到本地歌曲时，若右侧是评论区则自动切回歌词，避免无按钮无法关闭
+const currentTrack = computed(() => {
+    const list = playerStore.songList || [];
+    const idx = typeof playerStore.currentIndex === 'number' ? playerStore.currentIndex : 0;
+    return list[idx] || null;
+});
+
+watch(currentTrack, (song) => {
+    try {
+        if (song && song.type === 'local' && rightPanelMode.value === 1) {
+            rightPanelMode.value = 0;
+        }
+    } catch (_) {}
+});
 </script>
 
 <template>

@@ -228,7 +228,7 @@ const toggleDjSub = async (isSubscribe) => {
                         <span
                             @click="checkArtist(singer.id)"
                             :class="['author', { disabled: isDjMode }]"
-                            :style="{ color: videoIsPlaying || coverBlur ? 'black' : 'rgb(105, 105, 105)' }"
+                            :style="{ color: (videoIsPlaying || coverBlur) ? 'var(--text)' : 'var(--muted-text)' }"
                             v-for="(singer, index) in songList?.[currentIndex]?.ar || []"
                         >
                             {{ singer.name || '' }}{{ index == (songList?.[currentIndex]?.ar?.length || 0) - 1 ? '' : ' / ' }}
@@ -502,8 +502,8 @@ const toggleDjSub = async (isSubscribe) => {
                     ></path>
                 </svg>
 
-                <!-- 喜欢/收藏：歌曲与电台分别处理 -->
-                <template v-if="!isDjMode">
+                <!-- 喜欢/收藏：仅在线歌曲显示；本地与电台隐藏/分支另行处理 -->
+                <template v-if="!isDjMode && (songList?.[currentIndex]?.type !== 'local')">
                     <svg
                         t="1668786418014"
                         v-if="userStore.likelist"
@@ -542,7 +542,7 @@ const toggleDjSub = async (isSubscribe) => {
                         ></path>
                     </svg>
                 </template>
-                <template v-else>
+                <template v-else-if="isDjMode">
                     <!-- 电台收藏/取消收藏 -->
                     <svg
                         t="1668786418014"
@@ -582,13 +582,16 @@ const toggleDjSub = async (isSubscribe) => {
                         ></path>
                     </svg>
                 </template>
-                <svg t="1669445939818" @click="download()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5311" width="200" height="200">
+                <!-- 下载：本地歌曲不显示 -->
+                <svg v-if="songList?.[currentIndex]?.type !== 'local'" t="1669445939818" @click="download()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5311" width="200" height="200">
                     <path d="M545.472 32v837.504L947.2 467.712l44.544 46.144-478.08 478.144L32.128 510.4l44.48-44.544 405.248 403.712V32h63.616z" p-id="5312"></path>
                 </svg>
-                <svg v-show="!isDjMode" @click="addToPlaylist()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+                <!-- 添加到歌单：本地与电台均不显示 -->
+                <svg v-if="!isDjMode && (songList?.[currentIndex]?.type !== 'local')" @click="addToPlaylist()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
                     <path d="M512 85.333333c235.648 0 426.666667 191.018667 426.666667 426.666667s-191.018667 426.666667-426.666667 426.666667S85.333333 747.648 85.333333 512 276.352 85.333333 512 85.333333z m0 85.333334a341.333333 341.333333 0 1 0 0 682.666666 341.333333 341.333333 0 0 0 0-682.666666z m0 128a42.666667 42.666667 0 0 1 42.666667 42.666666v128H682.666667a42.666667 42.666667 0 0 1 0 85.333334H554.666667v128a42.666667 42.666667 0 0 1-85.333334 0V554.666667H341.333333a42.666667 42.666667 0 0 1 0-85.333334h128V341.333333a42.666667 42.666667 0 0 1 42.666667-42.666666z" fill="#000000"></path>
                 </svg>
-                <svg t="1668785761323" @click="toAlbum()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1173" width="200" height="200">
+                <!-- 显示专辑：本地歌曲不显示图标 -->
+                <svg v-if="songList?.[currentIndex]?.type !== 'local'" t="1668785761323" @click="toAlbum()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1173" width="200" height="200">
                     <path
                         d="M459.838061 502.318545c0-30.657939 24.948364-55.606303 55.606303-55.606303s55.544242 24.948364 55.544242 55.606303-24.886303 55.606303-55.544242 55.606303a55.668364 55.668364 0 0 1-55.606303-55.606303m173.242181 0c0-64.884364-52.751515-117.666909-117.635878-117.666909a117.79103 117.79103 0 0 0-117.666909 117.666909 117.79103 117.79103 0 0 0 117.666909 117.66691 117.76 117.76 0 0 0 117.604848-117.66691"
                         p-id="1174"
@@ -679,8 +682,9 @@ const toggleDjSub = async (isSubscribe) => {
                     ></path>
                 </svg>
 
-                <!-- 歌词/评论切换按钮 -->
+                <!-- 歌词/评论切换按钮：本地歌曲隐藏评论按钮 -->
                 <svg
+                    v-if="songList?.[currentIndex]?.type !== 'local'"
                     t="1673520001"
                     @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
                     :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
@@ -985,12 +989,12 @@ const toggleDjSub = async (isSubscribe) => {
                 }
                 .music-author {
                     font-size: 10px;
-                    color: rgb(105, 105, 105);
+                    color: var(--muted-text);
                     .author {
                         transition: 0.2s;
                         &:hover {
                             cursor: pointer;
-                            color: black !important;
+                            color: var(--text) !important;
                         }
                         &.disabled {
                             pointer-events: none;

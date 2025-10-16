@@ -100,28 +100,21 @@ export function initMediaSession() {
     let artwork = getArtworkForTrack(cur, localBase64Img.value)
     if (isMac && artwork && artwork.length > 1) artwork = [artwork[0]]
     try {
+      if (!artwork || artwork.length === 0) artwork = [{ src: '' }]
       const metadata = {
         title: title,
-        artUrl: artist,
         artist: artist,
         album: album,
-        artwork: [
-          {
-            src: cur.al.picUrl + '?param=224y224',
-            type: 'image/jpg',
-            sizes: '224x224',
-          },
-          {
-            src: cur.al.picUrl + '?param=512y512',
-            type: 'image/jpg',
-            sizes: '512x512',
-          },
-        ],
-        length: Number(time.value) || 10
-      };
+        artwork: artwork || [],
+        length: Number(time.value) || 10,
+        // 供 mpris 使用的附加字段
+        trackId: (cur && (cur.id || cur.url || 'local')),
+        url: (typeof cur.url === 'string') ? cur.url : ''
+      }
 
-      navigator.mediaSession.metadata = new window.MediaMetadata(metadata);
-      playerApi.sendMetaData(metadata);
+      navigator.mediaSession.metadata = new window.MediaMetadata({ title, artist, album, artwork: metadata.artwork })
+      // 发送给 mpris（Linux）桥接
+      try { windowApi && windowApi.sendMetaData && windowApi.sendMetaData(metadata) } catch (_) {}
     } catch (_) {}
     updatePlaybackState()
     // 换曲瞬间：强制把位置归零，避免系统控件保留上一首进度
