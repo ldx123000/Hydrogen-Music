@@ -5,8 +5,17 @@ const LocalFiles = require('./src/electron/localmusic')
 const InitTray = require('./src/electron/tray')
 const registerShortcuts = require('./src/electron/shortcuts')
 const { updateApplicationMenu } = require('./src/electron/shortcuts')
-const {isCreateMpris} = require('./src/utils/platform');
-const {createMpris} = require('./src/electron/mpris');
+// Avoid depending on src/utils in packaged build; compute inline
+const isCreateMpris = process.platform === 'linux';
+// Load MPRIS integration lazily only on Linux to avoid packaging issues on macOS/Windows
+let createMpris;
+if (isCreateMpris) {
+  try {
+    ({ createMpris } = require('./src/electron/mpris'));
+  } catch (e) {
+    console.warn('MPRIS module not available:', e);
+  }
+}
 
 
 const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron')
@@ -333,7 +342,7 @@ const createWindow = () => {
     registerShortcuts(win, app)
 
   // create mpris
-  if (isCreateMpris) {
+  if (isCreateMpris && typeof createMpris === 'function') {
     createMpris(win);
   }
 }

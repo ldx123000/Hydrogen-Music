@@ -39,6 +39,8 @@ const lycCurrentIndex = ref(null);
 const interludeIndex = ref(null);
 const interludeAnimation = ref(false);
 const interludeRemainingTime = ref(null);
+// 当从有间奏的行切换到下一行时，立即折叠上一行的间奏，避免其收起动画影响高度测量
+const interludeFastClose = ref(false);
 let interludeInTimer = null;
 let interludeOutTimer = null;
 let interludeProgressInterval = null;
@@ -270,9 +272,12 @@ function handleInterludeOnIndexChange(newIdx) {
     } else {
         // 不满足阈值：立即开始收起，无论之前间奏属于哪一行
         interludeAnimation.value = false;
+        // 立即禁用收起过渡，避免高度渐变影响后续定位
+        interludeFastClose.value = true;
         clearInterludeTimers();
         interludeOutTimer = setTimeout(() => {
             interludeIndex.value = null;
+            interludeFastClose.value = false;
             interludeOutTimer = null;
         }, 900);
         interludeRemainingTime.value = null;
@@ -364,10 +369,18 @@ const { currentLyricIndex } = storeToRefs(playerStore);
 watch(
     currentLyricIndex,
     async (newIndex) => {
+        // 若上一行存在已展开的间奏，为防止其收起过渡影响高度测量，启用快速折叠
+        if (interludeIndex.value != null && interludeIndex.value !== newIndex) {
+            interludeFastClose.value = true;
+        }
         lycCurrentIndex.value = newIndex;
         // 等待DOM稳定后，统一调用同步函数，确保 scroll-area 高度与偏移一并更新
         await nextTick();
         syncLyricPosition();
+        // 短暂延时后恢复正常过渡（供后续可能的间奏展开使用）
+        if (interludeFastClose.value) {
+            setTimeout(() => { interludeFastClose.value = false; }, 120);
+        }
         // 仅在索引变化时做阈值判断，是否展示/收起间奏
         handleInterludeOnIndexChange(newIndex);
     },
@@ -526,7 +539,7 @@ watch([playing, lyricShow], ([p, show]) => {
                             :style="{ backgroundColor: videoIsPlaying ? 'var(--lyric-hilight-bg-dim)' : 'var(--lyric-hilight-bg)' }"
                         ></div>
                     </div>
-                    <div v-if="lycCurrentIndex != -1 && interludeIndex == index" class="music-interlude" :class="{ 'music-interlude-in': interludeAnimation }">
+                    <div v-if="lycCurrentIndex != -1 && interludeIndex == index" class="music-interlude" :class="{ 'music-interlude-in': interludeAnimation, 'music-interlude-fast-close': interludeFastClose }">
                         <div class="interlude-left">
                             <div class="diamond">
                                 <div class="diamond-inner"></div>
@@ -786,6 +799,12 @@ watch([playing, lyricShow], ([p, show]) => {
                 align-items: center;
                 position: relative;
                 left: 0;
+                &.music-interlude-fast-close{
+                    transition: none !important;
+                    height: 0 !important;
+                    opacity: 0 !important;
+                    transform: scale(0) !important;
+                }
                 .interlude-left {
                     .diamond {
                         width: 28px;
