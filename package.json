@@ -27,6 +27,9 @@
     "js-cookie": "^3.0.1",
     "js-md5": "^0.7.3",
     "music-metadata": "^7.13.0",
+    "node-id3": "^0.2.9",
+    "metaflac-js": "^1.0.5",
+    "sharp": "^0.32.6",
     "nanoid": "^3.3.4",
     "NeteaseCloudMusicApi": "^4.8.9",
     "pinia": "^2.0.23",
@@ -50,6 +53,9 @@
     "productName": "Hydrogen Music",
     "appId": "com.hydrogenmusic.app",
     "asar": true,
+    "asarUnpack": [
+      "**/node_modules/sharp/**"
+    ],
     "directories": {
       "output": "release/${version}"
     },

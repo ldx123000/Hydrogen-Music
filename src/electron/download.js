@@ -5,6 +5,12 @@ const axios = require('axios')
 const Store = require('electron-store');
 const path = require('path');
 const { nanoid } = require('nanoid')
+let NodeID3 = null
+let Metaflac = null
+let Sharp = null
+try { NodeID3 = require('node-id3') } catch (_) { NodeID3 = null }
+try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
+try { Sharp = require('sharp') } catch (_) { Sharp = null }
 module.exports = MusicDownload = (win) => {
   const settingsStore = new Store({ name: 'settings' })
   let isClose = false
@@ -45,7 +51,7 @@ module.exports = MusicDownload = (win) => {
   })
 
   win.webContents.session.on('will-download', (event, item, webContents) => {
-    // 以歌曲名创建文件夹，内部保存音频/歌词/封面
+    // 以歌曲名创建文件夹，内部保存音频/歌词/封面，并在音频文件内写入元数据
     const baseName = sanitize(downloadObj.fileName)
     let destDir = path.join(downloadObj.savePath, baseName)
     try {
@@ -102,7 +108,7 @@ module.exports = MusicDownload = (win) => {
       if (state === 'completed') {
         console.log('Download successfully')
         try {
-          // 下载完成后，如果有歌词数据，按同名写入 .lrc
+          // 下载完成后，如果有歌词数据，按同名写入 .lrc，并尝试写入音频标签
           if (downloadObj && downloadObj.lyrics && (downloadObj.lyrics.lrc || downloadObj.lyrics.tlyric || downloadObj.lyrics.romalrc)) {
             const audioPath = item.getSavePath()
             if (audioPath) {
@@ -123,34 +129,88 @@ module.exports = MusicDownload = (win) => {
                   console.warn('写入歌词文件失败:', e)
                 }
               }
+              // 同步将歌词写入 MP3 或 FLAC 标签（无时间戳文本）
+              try {
+                const uslt = buildUnsyncedLyricText(downloadObj.lyrics)
+                const extLower = (parsed.ext || '').toLowerCase()
+                if (uslt && uslt.trim().length > 0) {
+                  if (NodeID3 && extLower === '.mp3') {
+                    NodeID3.update({ unsynchronisedLyrics: { language: 'chi', text: uslt } }, audioPath)
+                  } else if (Metaflac && extLower === '.flac') {
+                    const flac = new Metaflac(audioPath)
+                    // 常见键：LYRICS/UNSYNCEDLYRICS，尽量都写一份
+                    try { flac.setTag(`LYRICS=${uslt}`) } catch (_) {}
+                    try { flac.setTag(`UNSYNCEDLYRICS=${uslt}`) } catch (_) {}
+                    try { flac.save() } catch (_) {}
+                  }
+                }
+              } catch (e) {
+                console.warn('写入歌词到标签失败:', e && e.message ? e.message : e)
+              }
             }
           }
 
-          // 下载封面为同名图片（若无内嵌封面可作为回退）
+          // 仅尝试写入音频封面标签（不再生成同名封面图片侧车）；自动将 webp 等转为 jpg/png
           if (downloadObj && downloadObj.coverUrl) {
             const audioPath = item.getSavePath()
             if (audioPath) {
               const parsed = path.parse(audioPath)
-              const targetDir = parsed.dir
-              // 根据 content-type 或 URL 推断扩展名
+              // 根据 content-type 或 URL 推断扩展名（用于判断与转码）
               const fetchAndSaveCover = async () => {
                 try {
                   const resp = await axios.get(downloadObj.coverUrl, { responseType: 'arraybuffer', timeout: 15000 })
                   const buf = Buffer.from(resp.data)
                   const contentType = (resp.headers && resp.headers['content-type']) || ''
-                  let ext = '.jpg'
-                  if (contentType.includes('png')) ext = '.png'
-                  else if (contentType.includes('webp')) ext = '.webp'
-                  else if (contentType.includes('jpeg')) ext = '.jpg'
-                  else {
-                    // 从URL推断一次
-                    const lower = downloadObj.coverUrl.split('?')[0].toLowerCase()
-                    if (lower.endsWith('.png')) ext = '.png'
-                    else if (lower.endsWith('.webp')) ext = '.webp'
+                  const lowerUrl = downloadObj.coverUrl.split('?')[0].toLowerCase()
+                  const isWebp = contentType.includes('webp') || lowerUrl.endsWith('.webp')
+                  const isPngResp = contentType.includes('png') || lowerUrl.endsWith('.png')
+                  const isJpegResp = contentType.includes('jpeg') || contentType.includes('jpg') || lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')
+
+                  // 准备嵌入的数据与 MIME；必要时用 sharp 转码为 jpg/png
+                  let embedBuf = buf
+                  let embedMime = isPngResp ? 'image/png' : (isJpegResp ? 'image/jpeg' : (isWebp ? 'image/webp' : ''))
+                  if (Sharp) {
+                    try {
+                      // 若是 webp 或未知类型，优先尝试转码；有 alpha 用 png，无 alpha 用 jpeg
+                      if (isWebp || (!isPngResp && !isJpegResp)) {
+                        const img = Sharp(buf)
+                        const meta = await img.metadata().catch(() => ({}))
+                        const hasAlpha = !!meta.hasAlpha
+                        if (hasAlpha) {
+                          embedBuf = await img.toFormat('png').toBuffer()
+                          embedMime = 'image/png'
+                        } else {
+                          embedBuf = await img.toFormat('jpeg', { mozjpeg: true, quality: 90 }).toBuffer()
+                          embedMime = 'image/jpeg'
+                        }
+                      }
+                    } catch (convErr) {
+                      console.warn('封面转码失败，将尝试原图内嵌:', convErr && convErr.message ? convErr.message : convErr)
+                    }
                   }
-                  const imgPath = path.join(targetDir, parsed.name + ext)
-                  if (!fs.existsSync(imgPath)) {
-                    fs.writeFileSync(imgPath, buf)
+                  // 内嵌封面：mp3(APIC) / flac(PICTURE)。注意：metaflac-js 仅支持 jpg/png
+                  try {
+                    const extLower = (parsed.ext || '').toLowerCase()
+                    const isPngEmbed = (embedMime || '').includes('png')
+                    const isJpegEmbed = (embedMime || '').includes('jpeg') || (embedMime || '').includes('jpg')
+                    if (NodeID3 && extLower === '.mp3') {
+                      const mime = isPngEmbed ? 'image/png' : (isJpegEmbed ? 'image/jpeg' : 'image/jpeg')
+                      NodeID3.update({ image: { mime, type: { id: 3, name: 'front cover' }, description: 'Cover', imageBuffer: embedBuf } }, audioPath)
+                    } else if (Metaflac && extLower === '.flac') {
+                      if (isPngEmbed || isJpegEmbed) {
+                        try {
+                          const flac = new Metaflac(audioPath)
+                          flac.importPictureFromBuffer(embedBuf)
+                          flac.save()
+                        } catch (fe) {
+                          console.warn('写入FLAC封面失败:', fe && fe.message ? fe.message : fe)
+                        }
+                      } else {
+                        console.warn('FLAC 封面未写入：需要 PNG/JPEG，但当前类型为', embedMime || 'unknown')
+                      }
+                    }
+                  } catch (e) {
+                    console.warn('写入封面到标签失败:', e && e.message ? e.message : e)
                   }
                 } catch (e) {
                   console.warn('下载封面失败:', e && e.message ? e.message : e)
@@ -161,22 +221,42 @@ module.exports = MusicDownload = (win) => {
             }
           }
 
-          // 写入侧车元数据，便于本地读取歌手/专辑信息
+          // 在音频文件内写入基础标签（不再生成 .json 侧车）
           try {
             const audioPath = item.getSavePath()
             if (audioPath) {
               const parsed = path.parse(audioPath)
-              const metaPath = path.join(parsed.dir, parsed.name + '.json')
-              if (!fs.existsSync(metaPath)) {
-                const meta = {
-                  id: downloadObj.id || null,
-                  name: downloadObj.fileName || parsed.name,
-                  artists: Array.isArray(downloadObj.artists) ? downloadObj.artists.filter(Boolean) : [],
-                  album: downloadObj.album || null,
-                  source: 'netease',
-                  createdAt: Date.now()
+              // 基础标签：标题/艺术家/专辑
+              try {
+                const titleVal = downloadObj.fileName || parsed.name
+                const artistsArr = Array.isArray(downloadObj.artists) ? downloadObj.artists.filter(Boolean) : []
+                const albumVal = downloadObj.album || ''
+                const extLower = (parsed.ext || '').toLowerCase()
+                if (NodeID3 && extLower === '.mp3') {
+                  const tag = {
+                    title: titleVal,
+                    artist: artistsArr.join(' / '),
+                    album: albumVal,
+                    comment: { language: 'XXX', text: 'Hydrogen Music' }
+                  }
+                  NodeID3.update(tag, audioPath)
+                } else if (Metaflac && extLower === '.flac') {
+                  try {
+                    const flac = new Metaflac(audioPath)
+                    if (titleVal) flac.setTag(`TITLE=${titleVal}`)
+                    if (albumVal) flac.setTag(`ALBUM=${albumVal}`)
+                    if (artistsArr.length) {
+                      // 同时写入合并和分条 ARTIST，提升兼容性
+                      try { flac.setTag(`ARTIST=${artistsArr.join(' / ')}`) } catch (_) {}
+                      artistsArr.forEach(a => { try { if (a) flac.setTag(`ARTIST=${a}`) } catch (_) {} })
+                    }
+                    flac.save()
+                  } catch (fe) {
+                    console.warn('写入FLAC基础标签失败:', fe && fe.message ? fe.message : fe)
+                  }
                 }
-                fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8')
+              } catch (e) {
+                console.warn('写入基础标签失败:', e && e.message ? e.message : e)
               }
             }
           } catch (e) {
@@ -274,6 +354,24 @@ function buildCombinedLrcText(lyricPayload, meta) {
     }
     return out
   } catch (e) {
+    return ''
+  }
+}
+
+// 生成无时间戳的纯文本歌词（用于内嵌到 MP3/FLAC 标签中）
+function buildUnsyncedLyricText(lyricPayload) {
+  try {
+    const combined = buildCombinedLrcText(lyricPayload, null) || ''
+    // 去掉所有 [..] 标签（时间与头部元信息），合并并清理空白
+    const text = combined
+      .replace(/\[[^\]]+\]/g, '')
+      .replace(/[\t ]+/g, ' ')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter((line) => !!line)
+      .join('\n')
+    return text
+  } catch (_) {
     return ''
   }
 }
