@@ -1,10 +1,4 @@
 const startNeteaseMusicApi = require('./src/electron/services')
-const IpcMainEvent = require('./src/electron/ipcMain')
-const MusicDownload = require('./src/electron/download')
-const LocalFiles = require('./src/electron/localmusic')
-const InitTray = require('./src/electron/tray')
-const registerShortcuts = require('./src/electron/shortcuts')
-const { updateApplicationMenu } = require('./src/electron/shortcuts')
 // Avoid depending on src/utils in packaged build; compute inline
 const isCreateMpris = process.platform === 'linux';
 // Load MPRIS integration lazily only on Linux to avoid packaging issues on macOS/Windows
@@ -19,11 +13,7 @@ if (isCreateMpris) {
 
 
 const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron')
-const Winstate = require('electron-win-state').default
-const { autoUpdater } = require("electron-updater");
 const path = require('path')
-const Store = require('electron-store').default;
-const settingsStore = new Store({ name: 'settings' });
 
 let myWindow = null
 let lyricWindow = null
@@ -163,6 +153,7 @@ const createWindow = () => {
 
     process.env.DIST = path.join(__dirname, './')
     const indexHtml = path.join(process.env.DIST, 'dist/index.html')
+    const Winstate = require('electron-win-state').default
     const winstate = new Winstate({
         //自定义默认窗口大小
         defaultWidth: 1024,
@@ -191,6 +182,7 @@ const createWindow = () => {
     myWindow = win
 
     // 监听来自 ipcMain 的菜单更新事件（仅 macOS 生效，并加强负载校验）
+    const { updateApplicationMenu } = require('./src/electron/shortcuts')
     win.on('update-dock-menu', async (songInfo) => {
         if (process.platform !== 'darwin') return;
 
@@ -234,6 +226,7 @@ const createWindow = () => {
                 return
             }
             // 配置自动更新器
+            const { autoUpdater } = require('electron-updater')
             autoUpdater.autoDownload = false
             autoUpdater.autoInstallOnAppQuit = false
 
@@ -301,6 +294,8 @@ const createWindow = () => {
         // 在macOS上，'close'事件通常意味着窗口将被销毁，而不是隐藏
         if (process.platform === 'darwin') {
             // 如果用户设置为“最小化”，则阻止关闭并隐藏窗口
+            const Store = require('electron-store').default
+            const settingsStore = new Store({ name: 'settings' })
             const settings = await settingsStore.get('settings');
             if (settings && settings.other && settings.other.quitApp === 'minimize') {
                 event.preventDefault();
@@ -313,6 +308,8 @@ const createWindow = () => {
         } else {
             // 在非macOS平台上，保留您原有的逻辑
             event.preventDefault();
+            const Store = require('electron-store').default
+            const settingsStore = new Store({ name: 'settings' })
             const settings = await settingsStore.get('settings');
             if (settings && settings.other && settings.other.quitApp === 'minimize') {
                 win.hide();
@@ -334,7 +331,13 @@ const createWindow = () => {
     // ipcMain.on('player-saved', () => {
     //     app.quit();
     // });
-    //ipcMain初始化
+    //ipcMain初始化（懒加载模块，减少主进程冷启动解析量）
+    const IpcMainEvent = require('./src/electron/ipcMain')
+    const MusicDownload = require('./src/electron/download')
+    const LocalFiles = require('./src/electron/localmusic')
+    const InitTray = require('./src/electron/tray')
+    const registerShortcuts = require('./src/electron/shortcuts')
+
     IpcMainEvent(win, app, { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow: () => lyricWindow })
     MusicDownload(win)
     LocalFiles(win, app)

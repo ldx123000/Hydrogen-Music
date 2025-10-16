@@ -1,18 +1,19 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { isLogin } from '../utils/authority'
 import { noticeOpen } from '../utils/dialog'
-import HomePage from '../views/HomePage.vue'
-import CloudDisk from '../views/CloudDisk.vue'
-import PersonalFMPage from '../views/PersonalFMPage.vue'
-import LoginPage from '../views/LoginPage.vue'
-import LoginContent from '../components/LoginContent.vue'
-import MyMusic from '../views/MyMusic.vue'
-import LibraryDetail from '../components/LibraryDetail.vue'
-import RecommendSongs from '../components/RecommendSongs.vue'
-import LocalMusicDetail from '../components/LocalMusicDetail.vue'
-import SearchResult from '../views/SearchResult.vue'
-import Settings from '../views/Settings.vue'
-import RadioDetail from '../components/RadioDetail.vue'
+// 路由组件全部切换为懒加载，减小首屏体积
+const HomePage = () => import('../views/HomePage.vue')
+const CloudDisk = () => import('../views/CloudDisk.vue')
+const PersonalFMPage = () => import('../views/PersonalFMPage.vue')
+const LoginPage = () => import('../views/LoginPage.vue')
+const LoginContent = () => import('../components/LoginContent.vue')
+const MyMusic = () => import('../views/MyMusic.vue')
+const LibraryDetail = () => import('../components/LibraryDetail.vue')
+const RecommendSongs = () => import('../components/RecommendSongs.vue')
+const LocalMusicDetail = () => import('../components/LocalMusicDetail.vue')
+const SearchResult = () => import('../views/SearchResult.vue')
+const Settings = () => import('../views/Settings.vue')
+const RadioDetail = () => import('../components/RadioDetail.vue')
 
 import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
