@@ -240,12 +240,31 @@ function getSafeSeek() {
     return typeof progress.value === 'number' ? progress.value : 0;
 }
 
+// 辅助：查找“下一句有正文内容的歌词”的索引（忽略仅用于时长占位、正文为空的行）
+function findNextContentIndex(fromIdx) {
+    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return -1;
+    for (let i = fromIdx + 1; i < lyricsObjArr.value.length; i++) {
+        const it = lyricsObjArr.value[i];
+        if (it && typeof it.lyric === 'string' && it.lyric.trim()) return i;
+    }
+    return -1;
+}
+
 // 当当前歌词行号变化时，根据阈值决定是否展示/收起间奏
 function handleInterludeOnIndexChange(newIdx) {
     if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return;
     if (typeof newIdx !== 'number') return;
-    const last = lyricsObjArr.value.length - 1;
-    if (newIdx < 0 || newIdx >= last) {
+    if (newIdx < 0) {
+        interludeAnimation.value = false;
+        clearInterludeTimers();
+        interludeIndex.value = null;
+        interludeRemainingTime.value = null;
+        return;
+    }
+
+    // 只对“有下一句正文”的情况启用间奏，否则视为“没有下一句歌词”不展示
+    const nextIdx = findNextContentIndex(newIdx);
+    if (nextIdx === -1) {
         interludeAnimation.value = false;
         clearInterludeTimers();
         interludeIndex.value = null;
@@ -254,7 +273,7 @@ function handleInterludeOnIndexChange(newIdx) {
     }
 
     const currentSeek = getSafeSeek();
-    const nextLineTime = Number(lyricsObjArr.value[newIdx + 1]?.time ?? NaN);
+    const nextLineTime = Number(lyricsObjArr.value[nextIdx]?.time ?? NaN);
     if (!Number.isFinite(nextLineTime)) return;
 
     const gap = nextLineTime - currentSeek; // 秒
@@ -291,8 +310,18 @@ function handleInterludeOnProgress() {
     const idx = typeof lycCurrentIndex.value === 'number' ? lycCurrentIndex.value : -1;
     if (idx < 0 || !interludeAnimation.value) return;
 
+    // 若没有下一句“有正文内容”的歌词，则不展示/继续间奏
+    const nextIdx = findNextContentIndex(idx);
+    if (nextIdx === -1) {
+        interludeAnimation.value = false;
+        clearInterludeTimers();
+        interludeIndex.value = null;
+        interludeRemainingTime.value = null;
+        return;
+    }
+
     const currentSeek = getSafeSeek();
-    const nextLineTime = Number(lyricsObjArr.value[idx + 1]?.time ?? NaN);
+    const nextLineTime = Number(lyricsObjArr.value[nextIdx]?.time ?? NaN);
     if (!Number.isFinite(nextLineTime)) return;
     const gap = nextLineTime - currentSeek;
 

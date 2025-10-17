@@ -114,6 +114,7 @@ module.exports = MusicDownload = (win) => {
             if (audioPath) {
               const parsed = path.parse(audioPath)
               const lrcPath = path.join(parsed.dir, parsed.name + '.lrc')
+              // 生成最终合并 LRC 文本
               const lrcText = buildCombinedLrcText(downloadObj.lyrics, {
                 name: downloadObj.fileName,
                 artists: Array.isArray(downloadObj.artists) ? downloadObj.artists : [],
@@ -289,20 +290,20 @@ module.exports = MusicDownload = (win) => {
   })
 }
 
-// 构建合并后的 LRC 文本：原文、翻译、罗马音按同时间顺序输出
+// 构建合并后的 LRC 文本：核心修复——兼容 [mm:ss:cc] 与 [mm:ss.xxx] 时间格式
 function buildCombinedLrcText(lyricPayload, meta) {
   try {
-    const timeTag = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g
+    // 更宽松的时间标签解析：允许分隔符为 : ： . ． 。 , ， ; ； / - _ 或任意空白
+    // 支持 [mm sep ss] 与 [mm sep ss sep cc] 形式（cc 可为 1-3 位，表示 10ms/1ms 精度）
+    const timeTag = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,3}))?\]/g
     const parseLines = (text) => {
       const map = new Map()
       if (!text || typeof text !== 'string') return map
       const lines = text.split(/\r?\n/)
       for (const raw of lines) {
         if (!raw) continue
-        // 抽取所有时间标签
         const tags = Array.from(raw.matchAll(timeTag))
         if (!tags || tags.length === 0) continue
-        // 行文本（去掉最后一个时间标签前的内容）
         const lyricText = raw.split(']').pop().trim()
         if (!lyricText) continue
         for (const m of tags) {
@@ -321,7 +322,6 @@ function buildCombinedLrcText(lyricPayload, meta) {
     const tMap = parseLines(lyricPayload.tlyric)
     const rMap = parseLines(lyricPayload.romalrc)
 
-    // 收集所有时间点（以原文为主，缺失时合并翻译/罗马音时间）
     const allKeysSet = new Set([...oMap.keys(), ...tMap.keys(), ...rMap.keys()])
     const allTimes = Array.from(allKeysSet).map(k => Number(k)).sort((a, b) => a - b)
 
@@ -347,7 +347,6 @@ function buildCombinedLrcText(lyricPayload, meta) {
       const o = oMap.get(key)
       const tr = tMap.get(key)
       const r = rMap.get(key)
-      // 原文优先；若没有原文，也允许仅输出译文/罗马音
       if (o) out += `${formatTag(t)}${o}\n`
       if (tr) out += `${formatTag(t)}${tr}\n`
       if (r) out += `${formatTag(t)}${r}\n`

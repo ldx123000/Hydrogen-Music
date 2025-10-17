@@ -110,58 +110,64 @@ const formatLyricTimeOriginal = (time) => {
 };
 
 function lyricHandleOriginal(arr, tarr, rarr) {
-    let lyricArr = [];
-    for (let i = 0; i < arr.length; i++) {
-        if (arr[i] == '') continue;
-        const obj = {};
-        const lyctime = arr[i].match(regTimeOriginal);
-        if (!lyctime) continue;
-        obj.lyric = arr[i].split(']')[1].trim() === '' ? '' : arr[i].split(']')[1].trim();
-        if (!obj.lyric) continue;
-        if (obj.lyric.indexOf('纯音乐') != -1 || obj.time > 4500) {
-            lyricArr = [
-                { lyric: '纯音乐，请欣赏', time: 0 },
-                { lyric: '', time: Math.trunc(songList.value[currentIndex.value].dt / 1000) },
-            ];
-            return lyricArr;
+    // 将原/译/罗马音统一解析为 { time, text } 列表，按时间排序
+    const parseList = (lines) => {
+        if (!lines) return [];
+        const out = [];
+        for (const line of lines) {
+            if (!line) continue;
+            const m = line.match(regTimeOriginal);
+            if (!m) continue;
+            const text = line.split(']')[1]?.trim() || '';
+            if (!text) continue;
+            const time = formatLyricTimeOriginal(m[0].slice(1, m[0].length - 1));
+            out.push({ time, text });
         }
-        if (tarr && obj.lyric.indexOf('作词') == -1 && obj.lyric.indexOf('作曲') == -1) {
-            for (let j = 0; j < tarr.length; j++) {
-                if (tarr[j] == '') continue;
-                if (tarr[j].indexOf(lyctime[0].substring(0, lyctime[0].length - 1)) != -1) {
-                    obj.tlyric = tarr[j].split(']')[1].trim() === '' ? '' : tarr[j].split(']')[1].trim();
-                    if (!obj.tlyric) {
-                        tarr.splice(j, 1);
-                        j--;
-                        continue;
-                    }
-                    tarr.splice(j, 1);
-                    break;
-                }
-            }
-        }
-        if (rarr && obj.lyric.indexOf('作词') == -1 && obj.lyric.indexOf('作曲') == -1) {
-            for (let k = 0; k < rarr.length; k++) {
-                if (rarr[k] == '') continue;
-                if (rarr[k].indexOf(lyctime[0].substring(0, lyctime[0].length - 1)) != -1) {
-                    obj.rlyric = rarr[k].split(']')[1].trim() === '' ? '' : rarr[k].split(']')[1].trim();
-                    if (!obj.rlyric) {
-                        rarr.splice(k, 1);
-                        k--;
-                        continue;
-                    }
-                    rarr.splice(k, 1);
-                    break;
-                }
-            }
-        }
-        obj.time = lyctime ? formatLyricTimeOriginal(lyctime[0].slice(1, lyctime[0].length - 1)) : 0;
-        if (!(obj.lyric === '')) lyricArr.push(obj);
+        return out.sort((a, b) => a.time - b.time);
+    };
+
+    const oList = parseList(arr);
+    const tList = parseList(tarr);
+    const rList = parseList(rarr);
+
+    // 纯音乐检测（任一轨迹包含“纯音乐”提示）
+    if (oList.some(i => i.text.includes('纯音乐')) || tList.some(i => i.text.includes('纯音乐'))) {
+        return [
+            { lyric: '纯音乐，请欣赏', time: 0 },
+            { lyric: '', time: Math.trunc((songList.value[currentIndex.value]?.dt || 0) / 1000) },
+        ];
     }
-    function sortBy(field) {
-        return (x, y) => x[field] - y[field];
+
+    // 在原文时间轴上，按“最近时间点（±120ms 容差）”对齐翻译与罗马音
+    const findNearest = (list, target, maxDelta = 0.12) => {
+        if (!list || list.length === 0) return null;
+        // 二分查找更近的起点
+        let lo = 0, hi = list.length - 1, idx = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (list[mid].time <= target) { idx = mid; lo = mid + 1; } else { hi = mid - 1; }
+        }
+        let best = null, bestDelta = Infinity;
+        for (let i = Math.max(0, idx - 2); i <= Math.min(list.length - 1, idx + 2); i++) {
+            const d = Math.abs(list[i].time - target);
+            if (d < bestDelta) { best = list[i]; bestDelta = d; }
+        }
+        return bestDelta <= maxDelta ? best : null;
+    };
+
+    const results = [];
+    for (const o of oList) {
+        // 跳过“作词/作曲”等信息行
+        if (o.text.includes('作词') || o.text.includes('作曲')) continue;
+        const obj = { lyric: o.text, tlyric: '', rlyric: '', time: o.time };
+        const t = findNearest(tList, o.time);
+        if (t && t.text) obj.tlyric = t.text;
+        const r = findNearest(rList, o.time);
+        if (r && r.text) obj.rlyric = r.text;
+        if (obj.lyric) results.push(obj);
     }
-    return lyricArr.sort(sortBy('time'));
+
+    return results;
 }
 
 // 处理原始歌词数据，更新 lyricsObjArr（在线：原逻辑；本地：多轨合并）
