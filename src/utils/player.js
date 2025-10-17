@@ -244,7 +244,8 @@ export function play(url, autoplay, resumeSeek = null) {
         currentMusic.value.unload()
         Howler.unload()
     }
-
+    // 播放前更新音量
+    window.playerApi?.setVolume?.(volume.value)
     // 每次播放新音乐时，检查当前歌曲是否有对应的视频
     checkAndLoadVideoForCurrentSong()
 
@@ -917,6 +918,23 @@ export function changePlayMode() {
         shuffleIndex.value = null
     }
     windowApi.changeTrayMusicPlaymode(playMode.value)
+
+  // 通知 MPRIS 循环模式
+  switch (playMode.value) {
+    case 0: // 顺序播放
+    case 3: // 随机播放
+      window.playerApi.switchRepeatMode('off')
+      break
+    case 1: // 列表循环
+      window.playerApi.switchRepeatMode('on')
+      break
+    case 2: // 单曲循环
+      window.playerApi.switchRepeatMode('one')
+      break
+  }
+
+  // 通知 MPRIS 随机状态
+  window.playerApi.switchShuffle(playMode.value === 3)
 }
 
 export function playAll(listType, list) {
@@ -1243,7 +1261,7 @@ export function musicVideoCheck(seek, update) {
 }
 
 
-function setVolume(value) {
+function setVolumeForPlay(value) {
   volume.value = Math.max(0, Math.min(1, value))
   console.log(volume.value)
   currentMusic.value.volume(volume.value)
@@ -1371,6 +1389,6 @@ window.playerApi.onShuffle(() => {
 })
 
 window.playerApi.onVolumeChanged((v) => {
-    setVolume(v)
+    setVolumeForPlay(v)
   }
 )

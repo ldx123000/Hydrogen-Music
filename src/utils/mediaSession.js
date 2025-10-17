@@ -57,7 +57,6 @@ export function initMediaSession() {
   const updatePosition = (opts = {}) => {
     const { forceZero = false, override } = opts || {}
     try {
-      if (typeof navigator.mediaSession.setPositionState !== 'function') return
       let duration = Number(time.value) || 0
       let position = Number(progress.value) || 0
       if (override && typeof override.duration === 'number') duration = override.duration
@@ -66,11 +65,13 @@ export function initMediaSession() {
         duration = Number(override && typeof override.duration === 'number' ? override.duration : 0)
         position = 0
       }
-      // 允许 duration 为 0 用于“换曲瞬间归零”，随后真正时长会在加载完成时刷新
-      navigator.mediaSession.setPositionState({ duration, position, playbackRate: 1.0 })
+      playerApi.sendPlayerCurrentTrackTime(position)
       lastDur = duration
       lastPos = position
       lastTs = Date.now()
+      if (typeof navigator.mediaSession.setPositionState !== 'function') return
+      // 允许 duration 为 0 用于“换曲瞬间归零”，随后真正时长会在加载完成时刷新
+      navigator.mediaSession.setPositionState({ duration, position, playbackRate: 1.0 })
     } catch (_) {}
   }
 
@@ -114,7 +115,7 @@ export function initMediaSession() {
 
       navigator.mediaSession.metadata = new window.MediaMetadata({ title, artist, album, artwork: metadata.artwork })
       // 发送给 mpris（Linux）桥接
-      try { windowApi && windowApi.sendMetaData && windowApi.sendMetaData(metadata) } catch (_) {}
+      try { playerApi && playerApi.sendMetaData && windowApi.sendMetaData(metadata) } catch (_) {}
     } catch (_) {}
     updatePlaybackState()
     // 换曲瞬间：强制把位置归零，避免系统控件保留上一首进度
