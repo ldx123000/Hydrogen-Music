@@ -46,6 +46,12 @@ if (!gotTheLock) {
 
 
   app.whenReady().then(async () => {
+    // 尝试启用平台 HEVC 硬件解码（在支持的平台上）
+    try {
+      app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport')
+      // 某些平台可能需要忽略 GPU 黑名单以启用硬件解码
+      app.commandLine.appendSwitch('ignore-gpu-blocklist')
+    } catch (_) {}
 
     process.on('uncaughtException', (err) => {
       console.error('捕获到未处理异常:', err)

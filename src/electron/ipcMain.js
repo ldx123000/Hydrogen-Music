@@ -3,6 +3,13 @@ const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
 const { parseFile } = require('music-metadata')
+const { spawn } = require('child_process')
+let ffmpegPath = null
+try {
+    ffmpegPath = require('ffmpeg-static')
+} catch (_) {
+    ffmpegPath = null
+}
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require('./shortcuts')
 const Store = require('electron-store').default;
@@ -271,6 +278,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         if (!settings.local.videoFolder) return 'noSavePath'
         const videoPath = path.join(settings.local.videoFolder, request.option.params.cid + '_' + request.option.params.quality.substring(3) + '.mp4')
         let returnCode = 'success'
+        let transcodeProc = null
         if (await fileIsExists(videoPath)) {
             request.option.params.timing = JSON.parse(request.option.params.timing)
             request.option.params.path = videoPath
@@ -305,19 +313,85 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 })
             })
             return new Promise((resolve, reject) => {
-                writer.on("finish", () => {
-                    win.setProgressBar(-1)
+                writer.on("finish", async () => {
                     if (returnCode == 'cancel') {
+                        win.setProgressBar(-1)
                         resolve(returnCode)
-                        return returnCode
+                        return
                     }
-                    request.option.params.timing = JSON.parse(request.option.params.timing)
-                    request.option.params.path = videoPath
-                    saveMusicVideo(request.option.params)
-                    resolve(returnCode)
+
+                    // 下载完成后，如编码为 HEVC，尝试自动转码为 H.264 提高兼容性
+                    const codec = (request && request.option && request.option.params && request.option.params.codec) ? String(request.option.params.codec).toLowerCase() : ''
+                    const isHevc = /hev1|hvc1|hevc/.test(codec)
+
+                    const finalizeSave = () => {
+                        try { win.setProgressBar(-1) } catch (_) {}
+                        try {
+                            request.option.params.timing = JSON.parse(request.option.params.timing)
+                        } catch (_) {}
+                        request.option.params.path = videoPath
+                        saveMusicVideo(request.option.params)
+                        resolve('success')
+                    }
+
+                    if (isHevc && ffmpegPath) {
+                        try {
+                            const tmpOut = videoPath.replace(/\.mp4$/i, '_avc.mp4')
+                            // 开始转码，视频转 H.264，移除音频(-an)（B站 dash 为纯视频流）
+                            const args = [
+                                '-y',
+                                '-i', videoPath,
+                                '-c:v', 'libx264',
+                                '-preset', 'veryfast',
+                                '-crf', '23',
+                                '-pix_fmt', 'yuv420p',
+                                '-movflags', 'faststart',
+                                '-an',
+                                tmpOut
+                            ]
+                            transcodeProc = spawn(ffmpegPath, args, { windowsHide: true })
+
+                            // 若用户取消，则同时终止转码
+                            const cancelListener = () => {
+                                try { transcodeProc && transcodeProc.kill('SIGKILL') } catch (_) {}
+                            }
+                            ipcMain.once('cancel-download-music-video', cancelListener)
+
+                            transcodeProc.on('error', (err) => {
+                                console.warn('转码进程启动失败，保留原始文件:', err && err.message ? err.message : err)
+                                finalizeSave()
+                            })
+                            transcodeProc.on('exit', (code) => {
+                                // 移除取消监听
+                                try { ipcMain.removeListener('cancel-download-music-video', cancelListener) } catch (_) {}
+                                if (code === 0) {
+                                    try {
+                                        fs.unlinkSync(videoPath)
+                                    } catch (_) {}
+                                    try {
+                                        fs.renameSync(tmpOut, videoPath)
+                                    } catch (e) {
+                                        console.warn('替换转码结果失败，使用转码文件路径:', e && e.message ? e.message : e)
+                                        request.option.params.path = tmpOut
+                                    }
+                                } else {
+                                    // 转码失败，保留原始文件
+                                    try { fs.existsSync(tmpOut) && fs.unlinkSync(tmpOut) } catch (_) {}
+                                    console.warn('转码失败，保留原始 HEVC 文件，可能无法播放')
+                                }
+                                finalizeSave()
+                            })
+                        } catch (err) {
+                            console.warn('执行转码异常，保留原始文件:', err && err.message ? err.message : err)
+                            finalizeSave()
+                        }
+                    } else {
+                        // 非 HEVC 或无 ffmpeg，直接保存
+                        finalizeSave()
+                    }
                 })
                 writer.on("error", () => {
-                    win.setProgressBar(-1)
+                    try { win.setProgressBar(-1) } catch (_) {}
                     reject('failed')
                 })
             })

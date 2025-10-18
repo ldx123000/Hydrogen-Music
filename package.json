@@ -25,6 +25,7 @@
     "electron-win-state": "^1.1.22",
     "fs-extra": "^11.3.2",
     "howler": "^2.2.4",
+    "ffmpeg-static": "^5.2.0",
     "js-cookie": "^3.0.5",
     "js-md5": "^0.8.3",
     "mpris-service": "^2.1.2",
