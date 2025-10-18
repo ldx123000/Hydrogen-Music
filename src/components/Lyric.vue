@@ -44,6 +44,8 @@ const interludeFastClose = ref(false);
 let interludeInTimer = null;
 let interludeOutTimer = null;
 let interludeProgressInterval = null;
+// 在“上一句预计结束”时再启动间奏的延迟定时器（启发式）
+let interludeDeferStartTimer = null;
 
 let initMax = null;
 let initOffset = null;
@@ -55,6 +57,65 @@ const suppressLyricFlash = ref(true);
 
 // 在高频同步中避免并发测量
 const syncingLayout = ref(false);
+
+// —— 每首歌自适应的演唱时长估计模型 ——
+// 以该首歌中“非间奏”的行间间隔，反推每个“文本单位”的平均时长（秒/单位），用于估计单行演唱结束点
+const songSecPerUnit = ref(0.22); // 回退默认：每个文本单位约 0.22s
+
+function textUnitCount(text) {
+    if (!text || typeof text !== 'string') return 0;
+    const trimmed = text.trim();
+    if (!trimmed) return 0;
+    const cjk = (trimmed.match(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]/g) || []).length;
+    const words = trimmed.split(/\s+/).filter(Boolean).length; // 英文按词估计
+    // 将英文词按 0.6 的权重折算为“单位”，避免对长单词过度计数
+    return cjk + words * 0.6;
+}
+
+function median(arr) {
+    if (!arr.length) return NaN;
+    const a = arr.slice().sort((x, y) => x - y);
+    const mid = a.length >> 1;
+    return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+}
+
+function recomputeSongTimingModel() {
+    try {
+        const arr = Array.isArray(lyricsObjArr.value) ? lyricsObjArr.value : [];
+        if (!arr.length) return;
+        const candidates = [];
+        const thr = Number(lyricInterludeTime.value || 0) || 8; // 用户阈值或回退 8s
+        const upper = Math.min(Math.max(thr - 1, 4.5), 10); // 认为 <= upper 的行间隔主要是演唱
+        const lower = 0.8; // 过滤极短的间隔
+        for (let i = 0; i < arr.length - 1; i++) {
+            const cur = arr[i];
+            const nextIdx = findNextContentIndex(i);
+            if (nextIdx === -1) continue;
+            const next = arr[nextIdx];
+            if (!cur || !next) continue;
+            const t0 = Number(cur.time);
+            const t1 = Number(next.time);
+            if (!Number.isFinite(t0) || !Number.isFinite(t1)) continue;
+            const gap = t1 - t0;
+            if (!(gap > lower && gap <= upper)) continue;
+            const units = textUnitCount(String(cur.lyric || ''));
+            if (!(units > 0)) continue;
+            const spUnit = gap / units; // 秒/单位
+            if (Number.isFinite(spUnit) && spUnit > 0.05 && spUnit < 0.8) candidates.push(spUnit);
+        }
+        if (candidates.length) {
+            const med = median(candidates);
+            // 夹在合理区间，避免异常值
+            songSecPerUnit.value = Math.min(0.45, Math.max(0.08, med));
+        } else {
+            // 回退默认
+            songSecPerUnit.value = 0.22;
+        }
+    } catch (_) {
+        // 回退默认
+        songSecPerUnit.value = 0.22;
+    }
+}
 
 const waitForNextFrame = () =>
     new Promise(resolve => {
@@ -189,6 +250,8 @@ watch(
     async newLyrics => {
         if (newLyrics && newLyrics.length > 0) {
             await setDefaultStyle();
+            // 重新根据本首歌的行间隔校准演唱速率
+            recomputeSongTimingModel();
         }
     }
 );
@@ -226,8 +289,10 @@ const onLyricAreaAfterEnter = async () => {
 function clearInterludeTimers() {
     try { if (interludeInTimer) clearTimeout(interludeInTimer) } catch (_) {}
     try { if (interludeOutTimer) clearTimeout(interludeOutTimer) } catch (_) {}
+    try { if (interludeDeferStartTimer) clearTimeout(interludeDeferStartTimer) } catch (_) {}
     interludeInTimer = null;
     interludeOutTimer = null;
+    interludeDeferStartTimer = null;
 }
 
 function getSafeSeek() {
@@ -248,6 +313,27 @@ function findNextContentIndex(fromIdx) {
         if (it && typeof it.lyric === 'string' && it.lyric.trim()) return i;
     }
     return -1;
+}
+
+// 启发式：估算一行歌词的大致演唱时长（秒）
+// 中文字符约 0.25s/字，英文按单词 0.18s/词，基础时长 0.8s，夹在 [1.0s, 6.0s]
+function estimateLineDurationSec(text) {
+    const units = textUnitCount(text);
+    const basePad = 0.5; // 最小基底，避免过短
+    const est = basePad + (units > 0 ? units * songSecPerUnit.value : 0);
+    return Math.min(7.0, Math.max(0.8, est));
+}
+
+// 计算“上一句预计结束时间”：行起始 + 估算时长，但不超过下一行起始
+function estimateLineEndTimeSec(index, nextIndex) {
+    const cur = lyricsObjArr.value?.[index];
+    const nxt = lyricsObjArr.value?.[nextIndex];
+    if (!cur || typeof cur.time !== 'number') return NaN;
+    const lineStart = Number(cur.time);
+    const nextStart = (nxt && typeof nxt.time === 'number') ? Number(nxt.time) : Infinity;
+    const estDur = estimateLineDurationSec(String(cur.lyric || ''));
+    const estEnd = lineStart + estDur;
+    return Math.min(estEnd, nextStart);
 }
 
 // 当当前歌词行号变化时，根据阈值决定是否展示/收起间奏
@@ -276,24 +362,29 @@ function handleInterludeOnIndexChange(newIdx) {
     const nextLineTime = Number(lyricsObjArr.value[nextIdx]?.time ?? NaN);
     if (!Number.isFinite(nextLineTime)) return;
 
-    const gap = nextLineTime - currentSeek; // 秒
     const threshold = Number(lyricInterludeTime.value || 0);
 
-    if (gap >= threshold) {
-        // 满足阈值：将间奏绑定到“当前行”，并在 1s 后进入动画
+    // 先清理任何既有定时器
+    clearInterludeTimers();
+
+    // 启发式：以“上一句预计结束时间”为起点计算纯间奏
+    const estEnd = estimateLineEndTimeSec(newIdx, nextIdx);
+    if (!Number.isFinite(estEnd)) return;
+    const pureGap = nextLineTime - estEnd; // 仅“上一句结束”到“下一句开始”的空档
+
+    if (pureGap >= threshold) {
         interludeIndex.value = newIdx;
         interludeAnimation.value = false;
-        clearInterludeTimers();
-        interludeInTimer = setTimeout(() => {
+        const delayMs = Math.max(0, Math.round((estEnd - currentSeek) * 1000));
+        interludeDeferStartTimer = setTimeout(() => {
+            if (lycCurrentIndex.value !== newIdx) return;
             interludeAnimation.value = true;
-            interludeInTimer = null;
-        }, 1000);
+            interludeDeferStartTimer = null;
+        }, delayMs);
     } else {
-        // 不满足阈值：立即开始收起，无论之前间奏属于哪一行
+        // 不满足阈值：确保不展示
         interludeAnimation.value = false;
-        // 立即禁用收起过渡，避免高度渐变影响后续定位
         interludeFastClose.value = true;
-        clearInterludeTimers();
         interludeOutTimer = setTimeout(() => {
             interludeIndex.value = null;
             interludeFastClose.value = false;
@@ -308,7 +399,7 @@ function handleInterludeOnProgress() {
     if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return;
     if (!playing.value || !lyricShow.value) return;
     const idx = typeof lycCurrentIndex.value === 'number' ? lycCurrentIndex.value : -1;
-    if (idx < 0 || !interludeAnimation.value) return;
+    if (idx < 0) return;
 
     // 若没有下一句“有正文内容”的歌词，则不展示/继续间奏
     const nextIdx = findNextContentIndex(idx);
@@ -323,8 +414,18 @@ function handleInterludeOnProgress() {
     const currentSeek = getSafeSeek();
     const nextLineTime = Number(lyricsObjArr.value[nextIdx]?.time ?? NaN);
     if (!Number.isFinite(nextLineTime)) return;
-    const gap = nextLineTime - currentSeek;
+    const estEnd = estimateLineEndTimeSec(idx, nextIdx);
+    if (!Number.isFinite(estEnd)) return;
 
+    // 若尚未到“上一句预计结束”时刻，则不应显示动画
+    if (currentSeek < estEnd) {
+        interludeAnimation.value = false;
+        interludeRemainingTime.value = null;
+        return;
+    }
+
+    const gap = nextLineTime - currentSeek; // 距离下一句开始的剩余秒
+    const pureGapRemaining = nextLineTime - Math.max(currentSeek, estEnd); // 仅剩余的纯间奏秒数
     if (gap < 1) {
         interludeAnimation.value = false;
         clearInterludeTimers();
@@ -334,7 +435,7 @@ function handleInterludeOnProgress() {
         }, 900);
         interludeRemainingTime.value = null;
     } else {
-        interludeRemainingTime.value = Math.trunc(gap - 1);
+        interludeRemainingTime.value = Math.max(0, Math.trunc(pureGapRemaining - 1));
     }
 }
 
@@ -355,6 +456,14 @@ watch(
         await recalcLyricLayout();
     },
     { deep: true, flush: 'post' }
+);
+
+// 当“间奏阈值”调整时，重新校准本歌演唱速率模型
+watch(
+    () => lyricInterludeTime.value,
+    () => {
+        recomputeSongTimingModel();
+    }
 );
 
 // 观察歌词区域的真实可见性（包含 lyrics 存在、显示开关和原文开关，并且有可显示的原文内容）
