@@ -8,12 +8,12 @@ const libraryStore = useLibraryStore(pinia)
 
 import { noticeOpen } from "./dialog";
 
-// 检查是否有增强版API可用
+// 检查是否有增强版API可用（新包名）
 let enhancedApi = null;
 try {
-    enhancedApi = require('@neteaseapireborn/api');
+    enhancedApi = require('@neteasecloudmusicapienhanced/api');
 } catch (e) {
-    console.log('neteaseapireborn API未找到，使用传统请求方式');
+    console.log('@neteasecloudmusicapienhanced/api 未找到，使用传统请求方式');
 }
 
 const request = axios.create({

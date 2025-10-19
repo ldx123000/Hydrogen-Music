@@ -66,10 +66,18 @@ function textUnitCount(text) {
     if (!text || typeof text !== 'string') return 0;
     const trimmed = text.trim();
     if (!trimmed) return 0;
-    const cjk = (trimmed.match(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]/g) || []).length;
-    const words = trimmed.split(/\s+/).filter(Boolean).length; // 英文按词估计
+    // 汉字（含扩展、兼容区）
+    const han = (trimmed.match(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]/g) || []).length;
+    // 日文平假名、片假名、片假名扩展、半角片假名
+    const hira = (trimmed.match(/[\u3040-\u309F]/g) || []).length;
+    const kata = (trimmed.match(/[\u30A0-\u30FF]/g) || []).length; // 含长音符“ー”
+    const kataExt = (trimmed.match(/[\u31F0-\u31FF]/g) || []).length;
+    const halfKata = (trimmed.match(/[\uFF66-\uFF9D]/g) || []).length;
+    // 英文按词估计
+    const words = trimmed.split(/\s+/).filter(Boolean).length;
     // 将英文词按 0.6 的权重折算为“单位”，避免对长单词过度计数
-    return cjk + words * 0.6;
+    // 假名与汉字都按 1.0 的单位权重计算，避免日文歌词被低估
+    return han + hira + kata + kataExt + halfKata + words * 0.6;
 }
 
 function median(arr) {

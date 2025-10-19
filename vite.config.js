@@ -31,7 +31,7 @@ export default defineConfig({
             return 'vendor-utils'
           }
           // 网易云音乐API
-          if (id.includes('NeteaseCloudMusicApi') || id.includes('@neteaseapireborn/api')) {
+          if (id.includes('NeteaseCloudMusicApi') || id.includes('@neteasecloudmusicapienhanced/api')) {
             return 'vendor-music-api'
           }
           // 其他第三方库

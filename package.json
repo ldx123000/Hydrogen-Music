@@ -17,7 +17,7 @@
     "dist": "vite build && node scripts/build.js"
   },
   "dependencies": {
-    "@neteaseapireborn/api": "^4.29.9",
+    "@neteasecloudmusicapienhanced/api": "^4.29.11",
     "axios": "^1.12.2",
     "dbus-next": "^0.10.2",
     "electron-store": "^11.0.2",
