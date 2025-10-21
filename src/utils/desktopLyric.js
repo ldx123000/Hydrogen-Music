@@ -95,33 +95,28 @@ function buildMultiTrack(olrc, tlrc, rlrc) {
 }
 
 // 与原先在线歌词一致的处理逻辑（仅用于“在线”）
-const regTimeOriginal = /\[\d{2}:\d{2}.\d{2,3}\]/;
-const formatLyricTimeOriginal = (time) => {
-    const regMin = /.*:/;
-    const regSec = /:.*\./;
-    const regMs = /\./;
-
-    if (time.indexOf('.') == -1) time = time.replace(/(.*):/, '$1.');
-    const min = parseInt(time.match(regMin)[0].slice(0, 2));
-    let sec = parseInt(time.match(regSec)[0].slice(1, 3));
-    const ms = time.slice(time.match(regMs).index + 1, time.match(regMs).index + 3);
-    if (min !== 0) sec += min * 60;
-    return Number(sec + '.' + ms);
-};
+// 修复：
+// 1) 处理同一行包含多个时间标签的情况 [mm:ss.xxx][mm:ss.xxx]文本
+// 2) 正确移除所有时间标签，避免将“[04:03.890”当作正文渲染
+// 3) 兼容 1-2 位分钟与 2-3 位毫秒
+const regTimeTagGlobal = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
 
 function lyricHandleOriginal(arr, tarr, rarr) {
     // 将原/译/罗马音统一解析为 { time, text } 列表，按时间排序
     const parseList = (lines) => {
         if (!lines) return [];
         const out = [];
-        for (const line of lines) {
-            if (!line) continue;
-            const m = line.match(regTimeOriginal);
-            if (!m) continue;
-            const text = line.split(']')[1]?.trim() || '';
+        for (const raw of lines) {
+            if (!raw) continue;
+            const tags = Array.from(raw.matchAll(regTimeTagGlobal));
+            if (!tags || tags.length === 0) continue;
+            // 移除所有时间标签，保留纯文本
+            const text = raw.replace(regTimeTagGlobal, '').trim();
             if (!text) continue;
-            const time = formatLyricTimeOriginal(m[0].slice(1, m[0].length - 1));
-            out.push({ time, text });
+            for (const t of tags) {
+                const time = parseTimeTag(t[0]);
+                out.push({ time, text });
+            }
         }
         return out.sort((a, b) => a.time - b.time);
     };

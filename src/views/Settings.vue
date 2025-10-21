@@ -106,6 +106,25 @@ onActivated(() => {
     setupUpdateListeners();
 });
 
+// 当从“首页/子页”切换到“主播放器界面”（widgetState: true -> false）时，
+// 如果当前仍处于设置路由，则自动保存设置（避免未发生路由切换导致 onBeforeRouteLeave 不触发）。
+watch(
+    () => playerStore.widgetState,
+    (now, prev) => {
+        try {
+            const isLeavingToPlayer = prev === true && now === false;
+            const inSettings = router.currentRoute.value?.name === 'settings';
+            if (isLeavingToPlayer && inSettings) {
+                setAppSettings();
+                initSettings();
+                noticeOpen('设置已保存', 2);
+            }
+        } catch (_) {
+            // ignore
+        }
+    }
+);
+
 // 设置更新监听器
 const setupUpdateListeners = () => {
     // 监听手动更新检查结果（不显示大窗弹出）
