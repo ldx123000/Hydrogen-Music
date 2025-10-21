@@ -367,6 +367,21 @@ body {
   background-color: rgba(255, 255, 255, 0.18) !important;
 }
 
+/* Modal-like overlay panels (playlist/radio detail) */
+.dark .introduce-detail-text {
+  /* Dark mode wants lighter panel */
+  background: rgba(255, 255, 255, 0.16) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(120%) !important;
+  backdrop-filter: blur(18px) saturate(120%) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* In dark mode, corner squares on detail overlays should be black */
+.dark .introduce-detail-text .dialog-style {
+  background-color: rgba(0, 0, 0, 0.9) !important;
+}
+
 .dark .library-list .list-item::after {
   background-color: rgba(255, 255, 255, 0.06) !important;
 }

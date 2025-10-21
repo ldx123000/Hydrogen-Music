@@ -435,7 +435,12 @@
       .introduce-detail-text{
         width: 0;
         height: 0;
-        background-color: rgba(0, 0, 0, 0.9);
+        /* Frosted glass panel - Light mode wants deeper (darker) */
+        background: rgba(0, 0, 0, 0.66);
+        -webkit-backdrop-filter: blur(18Px) saturate(120%);
+        backdrop-filter: blur(18Px) saturate(120%);
+        border: 1Px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 10Px 30Px rgba(0, 0, 0, 0.45);
         position: fixed;
         z-index: 998;
         top: 50%;
@@ -455,7 +460,7 @@
             margin: 0;
             font: 14Px Source Han Sans;
             font-weight: 600;
-            color: rgba(255, 255, 255, 0.9);
+            color: rgba(255, 255, 255, 0.92);
             text-align: left;
             text-indent: 2em;
           }
@@ -480,11 +485,12 @@
             width: 100%;
             height: 100%;
           }
+          svg path{ fill: #ffffff !important; }
         }
         .dialog-style{
           width: 9Px;
           height: 9Px;
-          background-color: rgb(247, 247, 247);
+          background-color: rgba(247, 247, 247, 0.9);
           position: absolute;
           opacity: 0;
           animation: dialog-style-in 0.4s forwards;

@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "start": "nodemon --exec electron . --watch ./ --ext .html",
     "_dist": "如果想要发布到github中去：vite build && electron-builder -p always",
-    "dist": "vite build && node scripts/build.js"
+    "dist": "vite build && node scripts/build.js -p never"
   },
   "dependencies": {
     "@neteasecloudmusicapienhanced/api": "^4.29.11",
@@ -48,7 +48,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
     "electron": "^38.3.0",
-    "electron-builder": "^26.0.12",
+    "electron-builder": "^26.1.0",
     "electron-rebuild": "^3.2.9",
     "nodemon": "^3.1.10",
     "sass": "^1.93.2",
