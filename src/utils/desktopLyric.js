@@ -30,10 +30,11 @@ const {
 // - lrc/tlyric/romalrc 三种来源按时间对齐
 // - 单个 LRC 中同一时间多行（原/译/罗马）自动合并
 const regNewLine = /\n/;
-const timeTag = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
+// 更宽松的时间标签：允许 : ： . ． 。 , ， ; ； / - _ 或空白作为分隔，支持 [mm sep ss] 与 [mm sep ss sep cc]
+const timeTag = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/g;
 
 function parseTimeTag(tag) {
-    const m = tag.match(/\[(\d{1,2}):(\d{2})\.?(\d{0,3})?\]/);
+    const m = tag.match(/\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/);
     if (!m) return 0;
     const mm = parseInt(m[1] || '0', 10);
     const ss = parseInt(m[2] || '0', 10);
@@ -99,7 +100,8 @@ function buildMultiTrack(olrc, tlrc, rlrc) {
 // 1) 处理同一行包含多个时间标签的情况 [mm:ss.xxx][mm:ss.xxx]文本
 // 2) 正确移除所有时间标签，避免将“[04:03.890”当作正文渲染
 // 3) 兼容 1-2 位分钟与 2-3 位毫秒
-const regTimeTagGlobal = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g;
+// 与 timeTag 一致的全局移除/匹配表达式
+const regTimeTagGlobal = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/g;
 
 function lyricHandleOriginal(arr, tarr, rarr) {
     // 将原/译/罗马音统一解析为 { time, text } 列表，按时间排序

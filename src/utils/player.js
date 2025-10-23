@@ -581,15 +581,16 @@ function processLocalLyricData() {
 
     try {
         const regNewLine = /\n/
-        const regTime = /\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?\]/g
+        // 更宽松的 LRC 时间标签：允许 : ： . ． 。 , ， ; ； / - _ 或空白作为分隔
+        const regTime = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/g
 
         // 时间解析函数（返回秒，保留毫秒）
         const parseTime = (timeStr) => {
-            const m = timeStr.match(/\[(\d{1,2}):(\d{1,2})\.?(\d{0,3})\]/)
+            const m = timeStr.match(/\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/)
             if (!m) return 0
             const min = parseInt(m[1]) || 0
             const sec = parseInt(m[2]) || 0
-            const ms = m[3] ? parseInt(m[3].padEnd(3, '0')) : 0
+            const ms = m[3] ? parseInt((m[3] + '00').slice(0, 3)) : 0
             return min * 60 + sec + ms / 1000
         }
 
