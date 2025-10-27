@@ -240,6 +240,8 @@ async function refreshStreamAndResume(eventType, error) {
 }
 
 export function play(url, autoplay, resumeSeek = null) {
+    // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
+    clearInterval(musicProgress)
     if (currentMusic.value) {
         currentMusic.value.unload()
         Howler.unload()
@@ -522,7 +524,11 @@ export function loadMusicVideo(id) {
 export function addSong(id, index, autoplay, isLocal) {
     // 主动切歌：从头开始播放，不恢复上次进度
     loadLast = false
+    // 先停止旧的进度计时，避免残留计时在下一秒把UI回写为上一首的进度
+    clearInterval(musicProgress)
+    // 立即重置前端进度与时长，避免看到上一首的进度与时长
     progress.value = 0
+    time.value = 0
     // 清空上首的本地封面，避免下一首短暂使用上一首封面
     try { localBase64Img.value = null } catch (_) {}
     // 立即通知 SMTC/Media Session 将进度归零，避免保留上一首的时间轴

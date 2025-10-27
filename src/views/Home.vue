@@ -172,6 +172,8 @@
     align-items: center;
     .header-router{
       position: relative;
+      /* Use margin to shift right without creating a stacking context */
+      margin-left: 52px;
       a{
         font: 18px SourceHanSansCN-Bold;
         color: black;
@@ -196,21 +198,22 @@
         transition: left 0.3s ease;
       }
       /* removed fixed transforms; left is computed dynamically */
-      .user{
-        position: absolute;
-        top: 50%;
-        right: -35px;
-        transform: translateY(-50%);
-        z-index: 999;
-        .user-container{
-          width: 25px;
-          height: 25px;
-          position: relative;
-          .user-head{
-            width: 100%;
-            height: 100%;
-            border: 1px solid rgb(0, 0, 0, 0.6);
-            border-radius: 50%;
+        .user{
+          position: absolute;
+          top: 50%;
+          right: -35px;
+          transform: translateY(-50%);
+          z-index: 999;
+          .user-container{
+            width: 25px;
+            height: 25px;
+            position: relative;
+            -webkit-app-region: no-drag; /* Avatar and menu should be clickable */
+            .user-head{
+              width: 100%;
+              height: 100%;
+              border: 1px solid rgb(0, 0, 0, 0.6);
+              border-radius: 50%;
             overflow: hidden;
             position: relative;
             &:hover{
@@ -249,6 +252,8 @@
             position: absolute;
             top: 35px;
             left: -32.5px;
+            z-index: 2001; /* Above dragBar/globalWidget (999) */
+            -webkit-app-region: no-drag; /* Ensure clicks not captured by drag regions */
             &-active {
               height: 96px;padding: 12Px 0;
             }
@@ -294,15 +299,11 @@
       }
     }
     .router-closed{
-      width: 100%;
       height: 27px;
-      .user{
-        width: 30px;
-        position: absolute;
-        left: 365px;
-        transform: translateY(-55%);
-        z-index: 999;
-      }
+      /* When router is closed (no nav links), cancel the offset */
+      margin-left: 0;
+      /* Keep .user default right-anchored behavior so it always stays
+         to the right of the nav group without jumping left. */
     }
   }
   .home-content{
