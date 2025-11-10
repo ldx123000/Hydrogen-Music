@@ -480,8 +480,39 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             const res = await readLyric(path.join(folderPath, fileName + '.txt'))
             if (res) return lyricHandle(res)
         }
-        const metedata = await parseFile(filePath)
-        if (metedata.common.lyrics) return metedata.common.lyrics[0]
+        // 尝试从音频内嵌标签读取歌词
+        try {
+            const metadata = await parseFile(filePath).catch(() => null)
+            if (metadata) {
+                // 1) 通用字段（常见于 ID3v2 USLT）
+                if (metadata.common && Array.isArray(metadata.common.lyrics) && metadata.common.lyrics.length > 0) {
+                    const txt = metadata.common.lyrics.join('\n').trim()
+                    if (txt) return lyricHandle(txt)
+                }
+
+                // 2) 扫描所有原生标签，兼容 FLAC/Vorbis 与其他容器
+                const natives = metadata.native || {}
+                const wantIds = new Set(['lyrics', 'unsyncedlyrics', 'unsynchronisedlyrics', 'uslt', 'sylt', '©lyr', '----:com.apple.itunes:lyrics'])
+                let found = null
+
+                for (const type of Object.keys(natives)) {
+                    const entries = natives[type] || []
+                    for (const tag of entries) {
+                        const id = String(tag && tag.id || '').toLowerCase()
+                        if (id.includes('lyrics') || wantIds.has(id)) {
+                            const v = tag.value
+                            if (typeof v === 'string' && v.trim()) { found = v.trim() }
+                            else if (v && typeof v.text === 'string' && v.text.trim()) { found = v.text.trim() }
+                            else if (Buffer.isBuffer(v)) { found = v.toString('utf8').trim() }
+                        }
+                        if (found) break
+                    }
+                    if (found) break
+                }
+
+                if (found && found.trim()) return lyricHandle(found)
+            }
+        } catch (_) { /* ignore parse errors */ }
 
         return false
     })
