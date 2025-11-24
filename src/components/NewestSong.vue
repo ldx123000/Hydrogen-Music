@@ -2,11 +2,13 @@
   import { onActivated, ref } from 'vue'
   import { useRouter } from 'vue-router';
   import { getNewestSong } from '../api/song';
-  import { addToNext } from '../utils/player';
+  import { addToNext, startMusic, pauseMusic } from '../utils/player';
   import { usePlayerStore } from '../store/playerStore';
+  import { storeToRefs } from 'pinia';
 
   const router = useRouter()
   const playerStore = usePlayerStore()
+  const { songId, playing } = storeToRefs(playerStore)
   const newestSongList = ref()
 
   onActivated(() => {
@@ -28,6 +30,14 @@
     song.al = picUrl
     song.ar = song.song.artists
     addToNext(song, true)
+  }
+  const togglePlay = (song) => {
+    if (songId.value === song.id) {
+      if (playing.value) pauseMusic()
+      else startMusic()
+      return
+    }
+    play(song)
   }
   const checkArtist = (artistId) => {
     router.push('/mymusic/artist/' + artistId)
@@ -51,7 +61,15 @@
                     </div>
                 </div>
             </div>
-            <svg t="1668421583939" @click="play(item)" class="item-play" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6964" width="200" height="200"><path d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z" p-id="6965"></path></svg>
+            <button class="item-play" @click.stop="togglePlay(item)" :aria-label="(songId === item.id && playing) ? '暂停' : '播放'">
+              <svg v-if="songId === item.id && playing" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                <rect x="256" y="200" width="160" height="624" rx="32" fill="currentColor" />
+                <rect x="608" y="200" width="160" height="624" rx="32" fill="currentColor" />
+              </svg>
+              <svg v-else viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                <path d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z" fill="currentColor"></path>
+              </svg>
+            </button>
         </div>
     </div>
   </div>
@@ -138,7 +156,21 @@
             .item-play{
                 width: 2vw;
                 height: 2vw;
+                padding: 0;
+                border: none;
+                outline: none;
+                background: transparent !important;
+                -webkit-appearance: none;
+                appearance: none;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                color: inherit;
                 transition: 0.2s;
+                svg{
+                    width: 100%;
+                    height: 100%;
+                }
                 &:hover{
                     cursor: pointer;
                 }

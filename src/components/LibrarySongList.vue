@@ -1,10 +1,10 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { RecycleScroller } from 'vue-virtual-scroller';
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import { songTime } from '../utils/player';
 import { nanoid } from 'nanoid';
-import { addToList, addSong, setShuffledList, addToNext } from '../utils/player';
+import { addToList, addSong, setShuffledList, addToNext, startMusic, pauseMusic } from '../utils/player';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../store/userStore';
 import { useLibraryStore } from '../store/libraryStore';
@@ -21,6 +21,7 @@ const playerStore = usePlayerStore();
 const { songId, playMode, playing } = storeToRefs(playerStore);
 const otherStore = useOtherStore();
 const props = defineProps(['songlist', 'type']);
+const hoverNid = ref(null);
 
 const getData = computed(() => {
     props.songlist.map(item => {
@@ -61,6 +62,18 @@ const play = (song, index) => {
     if (playMode.value == 3) setShuffledList();
 };
 
+const togglePlay = (song, index) => {
+    if (songId.value === song.id) {
+        if (playing.value) {
+            pauseMusic();
+        } else {
+            startMusic();
+        }
+        return;
+    }
+    play(song, index);
+};
+
 const openMenu = (e, item) => {
     otherStore.contextMenuShow = true;
     otherStore.selectedItem = item;
@@ -96,18 +109,31 @@ const openMenu = (e, item) => {
             <div
                 class="list-item"
                 :class="{ 'list-item-playing': songId == item.id, 'list-item-disabled': item.playable !== undefined && !item.playable, 'list-item-vip': item.vipOnly }"
+                @mouseenter="hoverNid = item.nid"
+                @mouseleave="hoverNid = null"
                 @dblclick="play(item, index)"
                 @contextmenu="openMenu($event, item)"
             >
                 <div class="item-title">
                     <div class="item-state">
-                        <div class="playing-eq" v-show="songId == item.id" :class="{ 'is-paused': !playing }" aria-hidden="true">
-                            <span class="bar"></span>
-                            <span class="bar"></span>
-                            <span class="bar"></span>
-                            <span class="bar"></span>
-                        </div>
-                        <div class="item-num" v-show="!(songId == item.id)">{{ index + 1 }}</div>
+                        <button v-if="hoverNid === item.nid" class="item-play-btn" @click.stop="togglePlay(item, index)" :aria-label="(songId === item.id && playing) ? '暂停' : '播放'">
+                            <svg v-if="songId === item.id && playing" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="256" y="200" width="160" height="624" rx="32" fill="currentColor" />
+                                <rect x="608" y="200" width="160" height="624" rx="32" fill="currentColor" />
+                            </svg>
+                            <svg v-else viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z" fill="currentColor"></path>
+                            </svg>
+                        </button>
+                        <template v-else>
+                            <div class="playing-eq" v-show="songId == item.id" :class="{ 'is-paused': !playing }" aria-hidden="true">
+                                <span class="bar"></span>
+                                <span class="bar"></span>
+                                <span class="bar"></span>
+                                <span class="bar"></span>
+                            </div>
+                            <div class="item-num" v-show="!(songId == item.id)">{{ index + 1 }}</div>
+                        </template>
                     </div>
                     <span class="item-name">
                         <span>{{ item.name }}</span>
@@ -145,6 +171,7 @@ const openMenu = (e, item) => {
             background-color: rgba(0, 0, 0, 0.04);
         }
         .list-item {
+            height: 42Px;
             padding: 12px 8px;
             display: flex;
             flex-direction: row;
@@ -171,6 +198,33 @@ const openMenu = (e, item) => {
                 }
                 .item-state {
                     width: 26px;
+                    .item-play-btn {
+                        width: 22px;
+                        height: 22px;
+                        border: none;
+                        outline: none;
+                        box-shadow: none;
+                        background: transparent !important;
+                        -webkit-appearance: none;
+                        appearance: none;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 0;
+                        color: inherit;
+                        cursor: pointer;
+                        transition: opacity 0.15s ease, transform 0.15s ease;
+                        svg {
+                            width: 18px;
+                            height: 18px;
+                        }
+                        &:hover {
+                            opacity: 0.7;
+                        }
+                        &:active {
+                            transform: scale(0.9);
+                        }
+                    }
                     .item-num {
                         font: 14px Geometos;
                         color: rgb(127, 127, 127);
