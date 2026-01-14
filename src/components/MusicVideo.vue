@@ -27,10 +27,72 @@ const isDownloading = ref(false);
 const currentSongHasVideo = ref(false); // 当前歌曲是否确实有视频文件
 const headers = {
     Accept: '*/*',
-    'Accept-Encoding': 'utf-8', //这里设置返回的编码方式 设置其他的会是乱码
+    'Accept-Encoding': 'gzip, deflate',
     'Accept-Language': 'zh-CN,zh;q=0.8',
     'Content-Type': 'application/json;charset=UTF-8',
     referer: 'https://www.bilibili.com/',
+    'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+};
+
+const readStoredBiliCookie = () => {
+    const stored = localStorage.getItem('BiliCookie');
+    if (stored) return stored;
+    const safeDecode = v => {
+        if (!v) return v;
+        try {
+            const s = String(v);
+            return s.includes('%') ? decodeURIComponent(s) : s;
+        } catch (_) {
+            return String(v);
+        }
+    };
+    const sessdata = safeDecode(localStorage.getItem('Sessdata'));
+    if (!sessdata) return '';
+    const biliJct = safeDecode(localStorage.getItem('BiliJct'));
+    const dedeUserId = safeDecode(localStorage.getItem('DedeUserID'));
+    let cookieStr = `SESSDATA=${sessdata};`;
+    if (biliJct) cookieStr += ` bili_jct=${biliJct};`;
+    if (dedeUserId) cookieStr += ` DedeUserID=${dedeUserId};`;
+    return cookieStr;
+};
+
+const applyBiliCookieToHeaders = () => {
+    headers.cookie = readStoredBiliCookie() || '';
+};
+
+const storeBiliCookiesFromLoginUrl = urlStr => {
+    if (!urlStr) return null;
+    const getParam = key => {
+        try {
+            const u = new URL(urlStr);
+            return u.searchParams.get(key);
+        } catch (_) {
+            try {
+                const m = String(urlStr).match(new RegExp(`${key}=([^&;#]+)`));
+                return m ? decodeURIComponent(m[1]) : null;
+            } catch (_) {
+                return null;
+            }
+        }
+    };
+
+    const sessdata = getParam('SESSDATA');
+    if (!sessdata) return null;
+    const biliJct = getParam('bili_jct');
+    const dedeUserId = getParam('DedeUserID');
+
+    let cookieStr = `SESSDATA=${sessdata};`;
+    if (biliJct) cookieStr += ` bili_jct=${biliJct};`;
+    if (dedeUserId) cookieStr += ` DedeUserID=${dedeUserId};`;
+
+    localStorage.setItem('Sessdata', sessdata);
+    if (biliJct) localStorage.setItem('BiliJct', biliJct);
+    else localStorage.removeItem('BiliJct');
+    if (dedeUserId) localStorage.setItem('DedeUserID', dedeUserId);
+    else localStorage.removeItem('DedeUserID');
+    localStorage.setItem('BiliCookie', cookieStr);
+    return cookieStr;
 };
 
 const loginOrLogout = () => {
@@ -46,6 +108,10 @@ const loginOrLogout = () => {
         }
     } else {
         localStorage.removeItem('Sessdata');
+        localStorage.removeItem('BiliJct');
+        localStorage.removeItem('DedeUserID');
+        localStorage.removeItem('BiliCookie');
+        headers.cookie = '';
         userStore.biliUser = null;
         qrKey.value = null;
     }
@@ -135,9 +201,6 @@ const checkInterval = () => {
 };
 const loginHandle = async data => {
     closeLogin();
-    if (selectedInfo.value.bvid) {
-        search();
-    }
     try {
         console.log('登录数据:', data);
 
@@ -148,27 +211,12 @@ const loginHandle = async data => {
             return;
         }
 
-        // 解析URL中的cookie信息
-        const url = new URL(data.url);
-        const urlStr = data.url;
-
-        // 提取SESSDATA
-        const sessdataMatch = urlStr.match(/SESSDATA=([^&;]+)/);
-        const biliJctMatch = urlStr.match(/bili_jct=([^&;]+)/);
-        const dedeUserIdMatch = urlStr.match(/DedeUserID=([^&;]+)/);
-
-        if (!sessdataMatch) {
+        const cookieStr = storeBiliCookiesFromLoginUrl(data.url);
+        if (!cookieStr) {
             noticeOpen('登录失败：无法获取SESSDATA', 2);
             loginOrLogout();
             return;
         }
-
-        // 构建cookie字符串
-        let cookieStr = `SESSDATA=${sessdataMatch[1]};`;
-        if (biliJctMatch) cookieStr += ` bili_jct=${biliJctMatch[1]};`;
-        if (dedeUserIdMatch) cookieStr += ` DedeUserID=${dedeUserIdMatch[1]};`;
-
-        localStorage.setItem('Sessdata', sessdataMatch[1]);
         headers.cookie = cookieStr;
 
         // 使用正确的用户信息API
@@ -182,6 +230,13 @@ const loginHandle = async data => {
         if (userInfo.code == 0) {
             noticeOpen('登录成功', 2);
             userStore.biliUser = userInfo.data;
+            if (selectedInfo.value.bvid) {
+                try {
+                    await search();
+                } catch (_) {
+                    // ignore
+                }
+            }
         } else {
             noticeOpen('获取用户信息失败', 2);
             loginOrLogout();
@@ -205,8 +260,7 @@ const search = async () => {
         if (bv) {
             setDefault();
             selectedInfo.value = { bvid: bv };
-            if (localStorage.getItem('Sessdata')) headers.cookie = 'SESSDATA=' + localStorage.getItem('Sessdata') + ';';
-            else headers.cookie = '';
+            applyBiliCookieToHeaders();
             const videoInfo = await windowApi.getRequestData({ url: 'http://api.bilibili.com/x/web-interface/view', option: { headers: headers, params: { bvid: bv } } });
             if (videoInfo.code == 0) {
                 currentVideoInfo.value = videoInfo.data;
@@ -214,9 +268,20 @@ const search = async () => {
                     url: 'http://api.bilibili.com/x/player/playurl',
                     option: { headers: headers, params: { bvid: bv, cid: currentVideoInfo.value.cid, fourk: 1, fnval: 80 } },
                 });
-                currentVideoInfo.value.quality = videoData.data.accept_description;
+                if (!videoData || videoData.code !== 0 || !videoData.data) {
+                    currentVideoInfo.value.quality = null;
+                    currentVideoInfo.value.video = null;
+                    noticeOpen('获取画质失败，请尝试重新登录或重试', 2);
+                    return;
+                }
+                const quality =
+                    videoData.data.accept_description ||
+                    (Array.isArray(videoData.data.support_formats)
+                        ? videoData.data.support_formats.map(f => f.display_desc || f.new_description || f.description).filter(Boolean)
+                        : null);
+                currentVideoInfo.value.quality = quality;
                 if (currentVideoInfo.value.pages.length == 1) {
-                    currentVideoInfo.value.video = videoData.data.dash.video;
+                    currentVideoInfo.value.video = (videoData.data.dash && videoData.data.dash.video) || (videoData.data.durl ? videoData.data.durl.map(d => ({ url: d.url, id: videoData.data.quality })) : null);
                     selectedInfo.value.part = currentVideoInfo.value.cid;
                 }
             } else noticeOpen('获取视频失败', 3);
@@ -238,14 +303,25 @@ const setDefault = () => {
 const selectPart = async cid => {
     setDefault();
     selectedInfo.value.part = cid;
-    if (localStorage.getItem('Sessdata')) headers.cookie = 'SESSDATA=' + localStorage.getItem('Sessdata') + ';';
+    applyBiliCookieToHeaders();
     const videoData = await windowApi.getRequestData({
         url: 'http://api.bilibili.com/x/player/playurl',
         option: { headers: headers, params: { bvid: selectedInfo.value.bvid, cid: cid, fourk: 1, fnval: 80 } },
     });
-    currentVideoInfo.value.quality = videoData.data.accept_description;
-    currentVideoInfo.value.video = videoData.data.dash.video;
-    currentVideoInfo.value.duration = videoData.data.dash.duration;
+    if (!videoData || videoData.code !== 0 || !videoData.data) {
+        currentVideoInfo.value.quality = null;
+        currentVideoInfo.value.video = null;
+        noticeOpen('获取画质失败，请尝试重新登录或重试', 2);
+        return;
+    }
+    const quality =
+        videoData.data.accept_description ||
+        (Array.isArray(videoData.data.support_formats)
+            ? videoData.data.support_formats.map(f => f.display_desc || f.new_description || f.description).filter(Boolean)
+            : null);
+    currentVideoInfo.value.quality = quality;
+    currentVideoInfo.value.video = (videoData.data.dash && videoData.data.dash.video) || (videoData.data.durl ? videoData.data.durl.map(d => ({ url: d.url, id: videoData.data.quality })) : null);
+    currentVideoInfo.value.duration = (videoData.data.dash && videoData.data.dash.duration) || currentVideoInfo.value.duration;
 };
 const selectQuality = (item, index) => {
     if (!localStorage.getItem('Sessdata')) {
@@ -310,7 +386,7 @@ const addVideo = async flag => {
     if (!flag) return;
     isDownloading.value = true;
     noticeOpen('开始添加，请稍后', 2);
-    if (localStorage.getItem('Sessdata')) headers.cookie = 'SESSDATA=' + localStorage.getItem('Sessdata') + ';';
+    applyBiliCookieToHeaders();
     console.log(currentVideoInfo.value);
     console.log(selectedInfo.value);
     let urlIndex = selectedInfo.value.qn - (currentVideoInfo.value.quality.length - currentVideoInfo.value.video.length / 2)
@@ -334,7 +410,7 @@ const addVideo = async flag => {
         console.warn('选择AVC候选源时出错，使用默认源:', e)
     }
 
-    const finalUrl = chosen.baseUrl || chosen.base_url
+    const finalUrl = chosen.baseUrl || chosen.base_url || chosen.url
     const finalCodec = (chosen.codecs || '').toLowerCase()
 
     windowApi
