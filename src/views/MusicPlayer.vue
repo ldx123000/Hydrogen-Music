@@ -37,6 +37,29 @@ watch(rightPanelMode, (newMode, oldMode) => {
 // 当播放电台节目时，右侧显示电台简介而非歌词
 const isDj = computed(() => playerStore.listInfo && playerStore.listInfo.type === 'dj');
 
+const withCoverParam = (url, size = 512) => {
+    if (!url) return null;
+    if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+    const hasQuery = url.includes('?');
+    const hasParam = /(?:\\?|&)param=\\d+y\\d+/.test(url);
+    if (hasParam) return url;
+    return `${url}${hasQuery ? '&' : '?'}param=${size}y${size}`;
+};
+
+const coverBgUrl = computed(() => {
+    const list = playerStore.songList || [];
+    const idx = typeof playerStore.currentIndex === 'number' ? playerStore.currentIndex : 0;
+    const song = list[idx] || null;
+    if (!song) return null;
+    if (song.type === 'local') return playerStore.localBase64Img || null;
+    const url = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url || null;
+    return withCoverParam(url, 512);
+});
+
+const showCoverBackdrop = computed(() => {
+    return !!playerStore.coverBlur && !!coverBgUrl.value && !playerStore.videoIsPlaying;
+});
+
 // 当切到本地歌曲时，若右侧是评论区则自动切回歌词，避免无按钮无法关闭
 const currentTrack = computed(() => {
     const list = playerStore.songList || [];
@@ -55,9 +78,20 @@ watch(currentTrack, (song) => {
 
 <template>
     <div class="music-player">
+        <Transition name="fade3">
+            <div
+                v-if="showCoverBackdrop"
+                class="back-drop"
+                :style="{ backgroundImage: coverBgUrl ? `url(${coverBgUrl})` : 'none' }"
+            ></div>
+        </Transition>
         <Player
             class="player-container"
-            :class="{ 'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow, 'player-blur': playerStore.videoIsPlaying }"
+            :class="{
+                'player-hide': playerStore.videoIsPlaying && !playerStore.playerShow,
+                'player-blur': playerStore.videoIsPlaying,
+                'cover-blur': showCoverBackdrop,
+            }"
             v-model:rightPanelMode="rightPanelMode"
         ></Player>
 
@@ -100,6 +134,36 @@ watch(currentTrack, (song) => {
     align-items: center;
     justify-content: center;
     transition: 0.2s;
+    position: relative;
+    overflow: hidden;
+
+    .back-drop {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 0;
+        width: 120%;
+        height: 120%;
+        pointer-events: none;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: cover;
+        filter: blur(50px) saturate(120%);
+        transform: translate3d(-10%, -10%, 0);
+        transition: 0.3s;
+    }
+
+    .back-drop::before {
+        content: '';
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--cover-backdrop-overlay, rgba(255, 255, 255, 0.3));
+    }
+
     .player-container {
         padding: 16px 12px;
         padding-bottom: 4vh;
@@ -108,6 +172,8 @@ watch(currentTrack, (song) => {
         background-color: rgba(255, 255, 255, 0.35);
         opacity: 0;
         animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
+        position: relative;
+        z-index: 1;
         @keyframes player-in {
             0% {
                 height: 0;
@@ -143,11 +209,17 @@ watch(currentTrack, (song) => {
         background-color: rgba(255, 255, 255, 0.2);
         backdrop-filter: blur(4px);
     }
+    .cover-blur {
+        background-color: rgba(255, 255, 255, 0.2);
+        transform: translateZ(0);
+    }
     .right-panel {
         margin-left: 50px;
         width: calc(100% - 42vh - 50px);
         height: 100%;
         transition: 0.6s cubic-bezier(0.3, 0.79, 0.55, 0.99);
+        position: relative;
+        z-index: 1;
         .lyric-container,
         .comments-container {
             width: 100%;
@@ -211,6 +283,15 @@ watch(currentTrack, (song) => {
 }
 .fade2-enter-from,
 .fade2-leave-to {
+    opacity: 0;
+}
+
+.fade3-enter-active,
+.fade3-leave-active {
+    transition: opacity 0.35s ease;
+}
+.fade3-enter-from,
+.fade3-leave-to {
     opacity: 0;
 }
 </style>

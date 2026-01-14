@@ -14,6 +14,7 @@
   /* text color on top of hilight bar */
   --lyric-scan-outside-text: #000000;
   /* text color outside bar */
+  --cover-backdrop-overlay: rgba(255, 255, 255, 0.3);
 }
 
 html,
@@ -38,6 +39,7 @@ body {
   --lyric-hilight-bg-dim: rgba(255, 255, 255, 0.82);
   --lyric-scan-inside-text: #000000;
   --lyric-scan-outside-text: var(--text);
+  --cover-backdrop-overlay: rgba(0, 0, 0, 0.42);
   --btn-minimize: #ffffff;
   --btn-maximize: #ffffff;
   --btn-close: #ffffff;
@@ -573,6 +575,10 @@ body {
 
 .dark .music-player .player-container {
   background-color: var(--panel) !important;
+}
+
+.dark .music-player .player-container.cover-blur {
+  background-color: rgba(25, 27, 31, 0.35) !important;
 }
 
 .dark .music-player .player-blur {

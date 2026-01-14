@@ -307,6 +307,14 @@ const setLyricBlur = () => {
 const openLyricBlur = flag => {
     if (flag) playerStore.lyricBlur = !playerStore.lyricBlur;
 };
+
+const setCoverBlur = () => {
+    if (!playerStore.coverBlur) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openCoverBlur);
+    else openCoverBlur(true);
+};
+const openCoverBlur = flag => {
+    if (flag) playerStore.coverBlur = !playerStore.coverBlur;
+};
 const userLogout = async () => {
     if (isLogin()) {
         logout().then(async result => {
@@ -425,17 +433,28 @@ const clearFmRecent = () => {
                                 <Selector v-model="musicLevel" :options="musicLevelOptions"></Selector>
                             </div>
                         </div>
-                        <div class="option">
-                            <div class="option-name">开启歌词模糊</div>
-                            <div class="option-operation">
-                                <div class="toggle" @click="setLyricBlur()">
-                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricBlur }">{{ playerStore.lyricBlur ? '已开启' : '已关闭' }}</div>
-                                    <Transition name="toggle">
-                                        <div class="toggle-on" v-show="playerStore.lyricBlur"></div>
-                                    </Transition>
-                                </div>
-                            </div>
-                        </div>
+	                        <div class="option">
+	                            <div class="option-name">开启背景封面模糊</div>
+	                            <div class="option-operation">
+	                                <div class="toggle" @click="setCoverBlur()">
+	                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.coverBlur }">{{ playerStore.coverBlur ? '已开启' : '已关闭' }}</div>
+	                                    <Transition name="toggle">
+	                                        <div class="toggle-on" v-show="playerStore.coverBlur"></div>
+	                                    </Transition>
+	                                </div>
+	                            </div>
+	                        </div>
+	                        <div class="option">
+	                            <div class="option-name">开启歌词模糊</div>
+	                            <div class="option-operation">
+	                                <div class="toggle" @click="setLyricBlur()">
+	                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricBlur }">{{ playerStore.lyricBlur ? '已开启' : '已关闭' }}</div>
+	                                    <Transition name="toggle">
+	                                        <div class="toggle-on" v-show="playerStore.lyricBlur"></div>
+	                                    </Transition>
+	                                </div>
+	                            </div>
+	                        </div>
                         <div class="option">
                             <div class="option-name">歌词字体大小</div>
                             <div class="option-operation">
