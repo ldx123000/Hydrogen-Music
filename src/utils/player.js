@@ -673,10 +673,8 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
             // 本地封面到达后，提示 Media Session 刷新一次元数据（以载入封面）
             try { window.dispatchEvent(new CustomEvent('mediaSession:updateArtwork')) } catch (_) {}
         })
-        const filePath = songList.value[currentIndex.value].url.replace(/\\/g, '/')
-        const fileUrl = filePath.startsWith('file://')
-            ? filePath
-            : 'file://' + filePath
+        const localPath = songList.value[currentIndex.value].url
+        const fileUrl = windowApi?.toFileUrl ? windowApi.toFileUrl(localPath) : localPath
         play(fileUrl, autoplay)
         lyric.value = null
         lyricsObjArr.value = null

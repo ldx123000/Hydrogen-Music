@@ -165,6 +165,21 @@ function sendPlayerCurrentTrackTime(t) {
   ipcRenderer.send("playerCurrentTrackTime", t)
 }
 
+function toFileUrl(filePathOrUrl) {
+    if (!filePathOrUrl || typeof filePathOrUrl !== 'string') return ''
+    if (filePathOrUrl.startsWith('file://')) return filePathOrUrl
+    const normalized = String(filePathOrUrl).replace(/\\/g, '/')
+    // If it already looks like a URL (http/https/etc.), return as-is
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(normalized)) return normalized
+
+    // Windows drive letter paths need a leading slash in file URLs: /C:/...
+    const withLeadingSlash = /^[a-zA-Z]:\//.test(normalized) ? `/${normalized}` : normalized
+
+    // encodeURI won't encode '#' and '?', which break URLs (fragment/query), so patch them manually
+    const encoded = encodeURI(withLeadingSlash).replace(/#/g, '%23').replace(/\?/g, '%3F')
+    return encoded.startsWith('/') ? `file://${encoded}` : `file:///${encoded}`
+}
+
 
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
@@ -185,6 +200,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     localMusicFiles,
     localMusicCount,
     getLocalMusicImage: (filePath) => ipcRenderer.invoke('get-image-base64', filePath),
+    toFileUrl,
     playOrPauseMusic,
     playOrPauseMusicCheck,
     lastOrNextMusic,

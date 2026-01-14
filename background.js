@@ -15,6 +15,7 @@ if (isCreateMpris) {
 const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron')
 const path = require('path')
 
+
 let myWindow = null
 let lyricWindow = null
 let forceQuit = false;
@@ -99,6 +100,7 @@ if (!gotTheLock) {
         forceQuit = true;
     });
 }
+
 const createWindow = () => {
     // 设置应用名称（在开发模式下也生效）
     app.setName('Hydrogen Music')

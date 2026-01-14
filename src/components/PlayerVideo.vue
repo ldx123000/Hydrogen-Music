@@ -20,11 +20,8 @@
     console.log('原始视频文件路径:', videoPath)
     
     // 处理本地文件路径，确保使用 file:// 协议
-    if (videoPath && !videoPath.startsWith('http') && !videoPath.startsWith('file://')) {
-      // 对于 Windows 路径，需要转换反斜杠为正斜杠
-      videoPath = videoPath.replace(/\\/g, '/')
-      // 添加 file:// 协议
-      videoPath = `file://${videoPath}`
+    if (videoPath && !videoPath.startsWith('http')) {
+      videoPath = windowApi?.toFileUrl ? windowApi.toFileUrl(videoPath) : videoPath
     }
     
     console.log('处理后的视频文件路径:', videoPath)
