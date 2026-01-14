@@ -63,6 +63,8 @@ const themeOptions = ref([
     { label: '深色', value: 'dark' },
 ]);
 const downloadFolder = ref(null);
+const downloadCreateSongFolder = ref(false);
+const downloadSaveLyricFile = ref(false);
 const videoFolder = ref(null);
 const localFolder = ref([]);
 const shortcutsList = ref(null);
@@ -89,6 +91,8 @@ onActivated(() => {
         lyricInterlude.value = settings.music.lyricInterlude;
         videoFolder.value = settings.local.videoFolder;
         downloadFolder.value = settings.local.downloadFolder;
+        downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder;
+        downloadSaveLyricFile.value = !!settings.local.downloadSaveLyricFile;
         localFolder.value = settings.local.localFolder;
         shortcutsList.value = settings.shortcuts;
         globalShortcuts.value = settings.other.globalShortcuts;
@@ -101,7 +105,7 @@ onActivated(() => {
     } catch (_) {
         theme.value = 'system';
     }
-    
+
     // 设置更新事件监听器
     setupUpdateListeners();
 });
@@ -128,7 +132,7 @@ watch(
 // 设置更新监听器
 const setupUpdateListeners = () => {
     // 监听手动更新检查结果（不显示大窗弹出）
-    windowApi.manualUpdateAvailable((version) => {
+    windowApi.manualUpdateAvailable(version => {
         newVersion.value = version;
         // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
     });
@@ -146,6 +150,8 @@ const setAppSettings = () => {
         local: {
             videoFolder: videoFolder.value,
             downloadFolder: downloadFolder.value,
+            downloadCreateSongFolder: downloadCreateSongFolder.value,
+            downloadSaveLyricFile: downloadSaveLyricFile.value,
             localFolder: localFolder.value,
         },
         shortcuts: shortcutsList.value,
@@ -158,7 +164,7 @@ const setAppSettings = () => {
 };
 
 // apply theme immediately when user changes
-watch(theme, (val) => setTheme(val));
+watch(theme, val => setTheme(val));
 
 onBeforeRouteLeave((to, from, next) => {
     setAppSettings();
@@ -492,6 +498,28 @@ const clearFmRecent = () => {
                             </div>
                         </div>
                         <div class="option">
+                            <div class="option-name">下载歌曲时创建独立文件夹</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="downloadCreateSongFolder = !downloadCreateSongFolder">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': downloadCreateSongFolder }">{{ downloadCreateSongFolder ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="downloadCreateSongFolder"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">下载歌曲时创建独立歌词文件</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="downloadSaveLyricFile = !downloadSaveLyricFile">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': downloadSaveLyricFile }">{{ downloadSaveLyricFile ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="downloadSaveLyricFile"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
                             <div class="option-name">本地目录</div>
                             <div class="local-folder">
                                 <div class="selected-local-folder-item">
@@ -612,9 +640,9 @@ const clearFmRecent = () => {
                 <div class="app-author" @click="toGithub()">Made by ldx123000 | Modified from Hydrogen Music</div>
             </div>
         </div>
-        
+
         <!-- 更新对话框 -->
-        <UpdateDialog 
+        <UpdateDialog
             :visible="showUpdateDialog"
             :new-version="newVersion"
             @close="closeUpdateDialog"
@@ -1000,7 +1028,7 @@ const clearFmRecent = () => {
             }
             .update-check {
                 margin: 8px 0;
-                
+
                 .check-update-btn {
                     padding: 5px 15px;
                     background-color: rgba(255, 255, 255, 0.35);
@@ -1011,18 +1039,18 @@ const clearFmRecent = () => {
                     font: 13px SourceHanSansCN-Bold;
                     cursor: pointer;
                     transition: 0.2s;
-                    
+
                     &:hover {
                         opacity: 0.8;
                         box-shadow: 0 0 0 1px black;
                     }
-                    
+
                     &:focus {
                         outline: none;
                         border-radius: 0;
                         box-shadow: 0 0 0 1px black;
                     }
-                    
+
                     &:active {
                         outline: none;
                         border-radius: 0;

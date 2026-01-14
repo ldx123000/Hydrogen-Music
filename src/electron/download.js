@@ -51,21 +51,43 @@ module.exports = MusicDownload = (win) => {
   })
 
   win.webContents.session.on('will-download', (event, item, webContents) => {
+    const settings = (() => {
+      try { return settingsStore.get('settings') || null } catch (_) { return null }
+    })()
+    const createSongFolder = !!(settings && settings.local && settings.local.downloadCreateSongFolder)
+    const saveLyricFile = !!(settings && settings.local && settings.local.downloadSaveLyricFile)
+
     // 以歌曲名创建文件夹，内部保存音频/歌词/封面，并在音频文件内写入元数据
     const baseName = sanitize(downloadObj.fileName)
-    let destDir = path.join(downloadObj.savePath, baseName)
-    try {
-      let suffix = 1
-      while (fs.existsSync(destDir) && !fs.statSync(destDir).isDirectory()) {
-        destDir = path.join(downloadObj.savePath, `${baseName} (${suffix++})`)
+    let destDir = downloadObj.savePath
+    let audioFileName = baseName + '.' + downloadObj.type
+    if (createSongFolder) {
+      destDir = path.join(downloadObj.savePath, baseName)
+      try {
+        let suffix = 1
+        while (fs.existsSync(destDir) && !fs.statSync(destDir).isDirectory()) {
+          destDir = path.join(downloadObj.savePath, `${baseName} (${suffix++})`)
+        }
+        fse.ensureDirSync(destDir)
+      } catch (e) {
+        try { fse.ensureDirSync(downloadObj.savePath) } catch (_) {}
+        destDir = downloadObj.savePath
       }
-      fse.ensureDirSync(destDir)
-    } catch (e) {
+      audioFileName = baseName + '.' + downloadObj.type
+    } else {
       try { fse.ensureDirSync(downloadObj.savePath) } catch (_) {}
-      destDir = downloadObj.savePath
+      // 文件名冲突处理：在同一目录下追加 (n)
+      try {
+        let suffix = 1
+        const parsedType = '.' + String(downloadObj.type || '').replace(/^\./, '')
+        const ext = parsedType === '.' ? '' : parsedType
+        while (fs.existsSync(path.join(destDir, audioFileName))) {
+          audioFileName = `${baseName} (${suffix++})${ext}`
+        }
+      } catch (_) {}
     }
 
-    const audioPath = path.join(destDir, baseName + '.' + downloadObj.type)
+    const audioPath = path.join(destDir, audioFileName)
     item.setSavePath(audioPath)
 
     const totalBytes = item.getTotalBytes();
@@ -108,7 +130,7 @@ module.exports = MusicDownload = (win) => {
       if (state === 'completed') {
         console.log('Download successfully')
         try {
-          // 下载完成后，如果有歌词数据，按同名写入 .lrc，并尝试写入音频标签
+          // 下载完成后：可选写入同名 .lrc；并始终尝试写入音频标签（内嵌歌词）
           if (downloadObj && downloadObj.lyrics && (downloadObj.lyrics.lrc || downloadObj.lyrics.tlyric || downloadObj.lyrics.romalrc)) {
             const audioPath = item.getSavePath()
             if (audioPath) {
@@ -120,7 +142,7 @@ module.exports = MusicDownload = (win) => {
                 artists: Array.isArray(downloadObj.artists) ? downloadObj.artists : [],
                 album: downloadObj.album || null
               })
-              if (lrcText && lrcText.trim().length > 0) {
+              if (saveLyricFile && lrcText && lrcText.trim().length > 0) {
                 try {
                   // 若已存在第三方歌词文件，尊重现有文件，不覆盖
                   if (!fs.existsSync(lrcPath)) {
@@ -130,18 +152,37 @@ module.exports = MusicDownload = (win) => {
                   console.warn('写入歌词文件失败:', e)
                 }
               }
-              // 同步将歌词写入 MP3 或 FLAC 标签（无时间戳文本）
+              // 将歌词写入 MP3 或 FLAC 标签（MP3: USLT/SYLT；FLAC: Vorbis comments）
               try {
-                const uslt = buildUnsyncedLyricText(downloadObj.lyrics)
+                const timedLrcText = lrcText
+                const fallbackPlainText = buildUnsyncedLyricText(downloadObj.lyrics)
+                const hasTimedTags = typeof timedLrcText === 'string' && /\[\d{1,3}[:：.\uFF0E\u3002,，;；/\-_\s]\s*\d{1,2}/.test(timedLrcText)
+                const lyricTextForEmbed = (hasTimedTags ? timedLrcText : fallbackPlainText) || ''
+                const sylt = hasTimedTags ? buildSynchronisedLyricsFrames(downloadObj.lyrics) : null
                 const extLower = (parsed.ext || '').toLowerCase()
-                if (uslt && uslt.trim().length > 0) {
+                if (lyricTextForEmbed && lyricTextForEmbed.trim().length > 0) {
                   if (NodeID3 && extLower === '.mp3') {
-                    NodeID3.update({ unsynchronisedLyrics: { language: 'chi', text: uslt } }, audioPath)
+                    const tags = { unsynchronisedLyrics: { language: 'chi', text: lyricTextForEmbed } }
+                    if (sylt && Array.isArray(sylt) && sylt.length) tags.synchronisedLyrics = sylt
+                    NodeID3.update(tags, audioPath)
                   } else if (Metaflac && extLower === '.flac') {
                     const flac = new Metaflac(audioPath)
-                    // 常见键：LYRICS/UNSYNCEDLYRICS，尽量都写一份
-                    try { flac.setTag(`LYRICS=${uslt}`) } catch (_) {}
-                    try { flac.setTag(`UNSYNCEDLYRICS=${uslt}`) } catch (_) {}
+                    // 兼容性优先：LYRICS 写纯文本；带时间戳的 LRC 额外写入自定义键，避免播放器直接显示时间标
+                    const plain = (fallbackPlainText || '').trim()
+                    const timed = (timedLrcText || '').trim()
+                    if (plain) {
+                      try { flac.setTag(`LYRICS=${plain}`) } catch (_) {}
+                      try { flac.setTag(`UNSYNCEDLYRICS=${plain}`) } catch (_) {}
+                    } else if (timed) {
+                      // 没有纯文本时才回退写入（总比没有强）
+                      try { flac.setTag(`LYRICS=${timed}`) } catch (_) {}
+                    }
+                    if (hasTimedTags && timed) {
+                      // 非标准，但部分播放器/工具会读取；保留 .lrc 文件作为主要同步歌词来源
+                      try { flac.setTag(`LRC=${timed}`) } catch (_) {}
+                      try { flac.setTag(`LYRICS_LRC=${timed}`) } catch (_) {}
+                      try { flac.setTag(`SYNCEDLYRICS=${timed}`) } catch (_) {}
+                    }
                     try { flac.save() } catch (_) {}
                   }
                 }
@@ -372,5 +413,74 @@ function buildUnsyncedLyricText(lyricPayload) {
     return text
   } catch (_) {
     return ''
+  }
+}
+
+// 生成带时间戳的同步歌词帧（ID3v2 SYLT），用于 MP3 内嵌同步歌词
+function buildSynchronisedLyricsFrames(lyricPayload) {
+  try {
+    if (!NodeID3 || !NodeID3.TagConstants) return null
+    const TagConstants = NodeID3.TagConstants
+    const timeTag = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,3}))?\]/g
+
+    const extractEntries = (text) => {
+      const entries = []
+      if (!text || typeof text !== 'string') return entries
+      const lines = text.split(/\r?\n/)
+      for (const raw of lines) {
+        if (!raw) continue
+        const tags = Array.from(raw.matchAll(timeTag))
+        if (!tags || tags.length === 0) continue
+        const lyricText = raw.split(']').pop().trim()
+        if (!lyricText) continue
+        for (const m of tags) {
+          const mm = parseInt(m[1] || '0', 10)
+          const ss = parseInt(m[2] || '0', 10)
+          const ms = m[3] ? parseInt((String(m[3]) + '00').slice(0, 3), 10) : 0
+          const timeMs = Math.max(0, Math.round((mm * 60 + ss) * 1000 + ms))
+          entries.push({ timeMs, text: lyricText })
+        }
+      }
+      return entries
+    }
+
+    const grouped = new Map() // timeMs -> { o: [], t: [], r: [] }
+    const addToGroup = (entries, key) => {
+      for (const e of entries) {
+        if (!e || typeof e.timeMs !== 'number' || e.timeMs < 0) continue
+        const bucket = grouped.get(e.timeMs) || { o: [], t: [], r: [] }
+        if (e.text && String(e.text).trim()) bucket[key].push(String(e.text).trim())
+        grouped.set(e.timeMs, bucket)
+      }
+    }
+
+    addToGroup(extractEntries(lyricPayload && lyricPayload.lrc), 'o')
+    addToGroup(extractEntries(lyricPayload && lyricPayload.tlyric), 't')
+    addToGroup(extractEntries(lyricPayload && lyricPayload.romalrc), 'r')
+
+    const times = Array.from(grouped.keys()).sort((a, b) => a - b)
+    const synchronisedText = []
+    for (const timeMs of times) {
+      const bucket = grouped.get(timeMs)
+      if (!bucket) continue
+      const parts = []
+      if (bucket.o && bucket.o.length) parts.push(bucket.o.join('\n'))
+      if (bucket.t && bucket.t.length) parts.push(bucket.t.join('\n'))
+      if (bucket.r && bucket.r.length) parts.push(bucket.r.join('\n'))
+      const text = parts.join('\n').trim()
+      if (!text) continue
+      synchronisedText.push({ text, timeStamp: timeMs })
+    }
+    if (!synchronisedText.length) return null
+
+    return [{
+      language: 'chi',
+      timeStampFormat: TagConstants.TimeStampFormat.MILLISECONDS,
+      contentType: TagConstants.SynchronisedLyrics.ContentType.LYRICS,
+      shortText: 'Lyrics',
+      synchronisedText
+    }]
+  } catch (_) {
+    return null
   }
 }

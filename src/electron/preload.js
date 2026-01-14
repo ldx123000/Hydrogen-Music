@@ -226,7 +226,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     musicVideoIsExists: (obj) => ipcRenderer.invoke('music-video-isexists', obj),
     clearUnusedVideo: (state) => ipcRenderer.invoke('clear-unused-video', state),
     deleteMusicVideo: (id) => ipcRenderer.invoke('delete-music-video', id),
-    getLocalMusicLyric: (filePath) => ipcRenderer.invoke('get-local-music-lyric', filePath),
+    getLocalMusicLyric: (filePath, options) => ipcRenderer.invoke('get-local-music-lyric', filePath, options),
     copyTxt,
     checkUpdate,
     manualUpdateAvailable,

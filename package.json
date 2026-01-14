@@ -12,7 +12,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "nodemon --exec electron . --watch ./ --ext .html",
+    "start": "nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",
     "_dist": "如果想要发布到github中去：vite build && electron-builder -p always",
     "dist": "vite build && node scripts/build.js -p never"
   },
