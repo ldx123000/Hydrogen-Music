@@ -93,8 +93,8 @@ const openMenu = (e, item) => {
         menuList.style.right = null;
         menuList.style.left = clientX + 'Px';
     }
-    if (screenHeight - clientY < 240) {
-        menuList.style.top = screenHeight - 240 + 'Px';
+    if (screenHeight - clientY < 280) {
+        menuList.style.top = screenHeight - 280 + 'Px';
         menuList.style.bottom = null;
     } else {
         menuList.style.bottom = null;

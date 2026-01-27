@@ -23,6 +23,10 @@ export const useOtherStore = defineStore('otherStore', {
                 name: '下载'
             },
             {
+                id: 11,
+                name: '显示专辑'
+            },
+            {
                 id: 4,
                 name: '添加到歌单'
             },
@@ -43,6 +47,10 @@ export const useOtherStore = defineStore('otherStore', {
             {
                 id: 3,
                 name: '下载'
+            },
+            {
+                id: 11,
+                name: '显示专辑'
             },
             {
                 id: 4,

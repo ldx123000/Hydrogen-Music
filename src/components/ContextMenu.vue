@@ -1,18 +1,22 @@
 <script setup>
   import { ref, watch } from 'vue'
+  import { useRouter } from 'vue-router'
   import { createPlaylist, updatePlaylist, deletePlaylist } from '../api/playlist'
   import { addToNext, addToNextLocal } from '../utils/player'
   import { noticeOpen } from '../utils/dialog';
   import { useLibraryStore } from '../store/libraryStore';
   import { useLocalStore } from '../store/localStore';
   import { useOtherStore } from '../store/otherStore';
+  import { usePlayerStore } from '../store/playerStore'
   import { useUserStore } from '../store/userStore';
   import { getLikelist } from '../api/user';
   import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
   import { storeToRefs } from 'pinia';
+  const router = useRouter()
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()
   const otherStore = useOtherStore()
+  const playerStore = usePlayerStore()
   const userStore = useUserStore()
   const { librarySongs, listType1, listType2, needTimestamp } = storeToRefs(libraryStore)
 
@@ -197,6 +201,18 @@
     if(id == 1) { addToNext(otherStore.selectedItem, true); return; }
     if(id == 2) { addToNext(otherStore.selectedItem, false); return; }
     if(id == 3) { localStore.updateDownloadList(otherStore.selectedItem); return; }
+    if(id == 11) {
+      const song = otherStore.selectedItem
+      const albumId = song?.al?.id
+      if (!albumId) {
+        noticeOpen('暂无专辑信息', 2)
+        return
+      }
+      playerStore.forbidLastRouter = true
+      router.push('/mymusic/album/' + albumId)
+      otherStore.contextMenuShow = false
+      return
+    }
     if(id == 4) { addToPlaylist(); return; }
     if(id == 5) { deleteFromPlaylist(); return; }
     if(id == 6) { newPlaylist(); return; }
