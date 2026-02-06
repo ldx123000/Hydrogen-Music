@@ -93,9 +93,7 @@ const routes = [
                 component: RecommendSongs,
                 beforeEnter: (to, from, next) => {
                     if(isLogin()) {
-                        libraryStore.updateRecommendSongs().then(() => {
-                            next()
-                        })
+                        next()
                     } else {
                         noticeOpen("请先登录", 2)
                         next({name: 'login'})

@@ -71,6 +71,33 @@ export function getRecommendSongs(params) {
 }
 
 /**
+ * 获取历史日推可用日期列表
+ * @returns
+ */
+export function getHistoryRecommendSongDates() {
+    return request({
+      url: '/history/recommend/songs',
+      method: 'get',
+      params: {
+
+      },
+    });
+}
+
+/**
+ * 获取指定日期的历史日推详情
+ * @param {*} params
+ * @returns
+ */
+export function getHistoryRecommendSongsDetail(params) {
+    return request({
+      url: '/history/recommend/songs/detail',
+      method: 'get',
+      params,
+    });
+}
+
+/**
  * 说明 : 调用此接口 , 传入类型和歌单 id 可收藏歌单或者取消收藏歌单
  * 必选参数 :
  * t : 类型,1:收藏,2:取消收藏 id : 歌单 id

@@ -4,6 +4,7 @@ import { loadLastSong } from './player'
 import { scanMusic } from './locaMusic'
 import { initDownloadManager } from './downloadManager'
 import { getUserProfile, getLikelist, getUserPlaylist } from '../api/user'
+import { getRecommendSongs } from '../api/playlist'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
@@ -14,6 +15,32 @@ const playerStore = usePlayerStore()
 const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const { updateUser } = userStore
+
+function formatLocalYmd(date) {
+    const year = date.getFullYear()
+    const month = `${date.getMonth() + 1}`.padStart(2, '0')
+    const day = `${date.getDate()}`.padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
+// 背景“打卡”一次日推：用于让后端积累 history/recommend/songs 的日期列表
+async function seedDailyRecommendHistory() {
+    try {
+        if (!isLogin()) return
+
+        const ymd = formatLocalYmd(new Date())
+        const uid = userStore?.user?.userId || 'unknown'
+        const key = `hm.rec.seed:${uid}`
+        if (localStorage.getItem(key) === ymd) return
+
+        const res = await getRecommendSongs()
+        if (res && res.code === 200) {
+            localStorage.setItem(key, ymd)
+        }
+    } catch (_) {
+        // 忽略：不影响启动流程
+    }
+}
 
 export const initSettings = () => {
     windowApi.getSettings().then(settings => {
@@ -115,6 +142,8 @@ export const init = () => {
         // 先加载用户信息，再恢复播放状态，确保喜欢列表已加载
         getUserProfile().then(result => {
             updateUser(result.profile)
+            // 登录状态下后台获取一次“今日推荐”，用于积累历史日推可用日期
+            seedDailyRecommendHistory()
             // 加载用户喜欢列表
             return getUserLikelist()
         }).then(() => {

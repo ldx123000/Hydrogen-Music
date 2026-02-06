@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { getPlaylistDetail, getPlaylistAll, getRecommendSongs, playlistDynamic } from '../api/playlist'
+import { getPlaylistDetail, getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail, playlistDynamic } from '../api/playlist'
 import { getAlbumDetail, albumDynamic } from '../api/album'
 import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum } from '../api/artist'
 import { getArtistMV } from '../api/mv'
@@ -162,9 +162,14 @@ export const useLibraryStore = defineStore('libraryStore', {
                 this.libraryMV = result.mvs
             })
         },
-        async updateRecommendSongs() {
-            await getRecommendSongs().then(result => {
-                this.librarySongs = mapSongsPlayableStatus(result.data.dailySongs)
+        async updateRecommendSongs(date) {
+            const request = date ? getHistoryRecommendSongsDetail({ date }) : getRecommendSongs()
+            await request.then(result => {
+                const dailySongs = result?.data?.dailySongs || []
+                const historySongs = result?.data?.songs || result?.data?.dailySongs || result?.songs || []
+                const songs = date ? historySongs : dailySongs
+
+                this.librarySongs = mapSongsPlayableStatus(songs) || []
             })
         },
     },
