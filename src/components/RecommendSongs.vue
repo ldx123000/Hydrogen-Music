@@ -10,10 +10,9 @@ import LibrarySongList from './LibrarySongList.vue';
 const libraryStore = useLibraryStore();
 const route = useRoute();
 const router = useRouter();
-const TODAY_KEY = '__today__';
 
 const historyDates = ref([]);
-const selectedDate = ref(TODAY_KEY);
+const selectedDate = ref('');
 const loadingDates = ref(false);
 const loadingSongs = ref(false);
 const initialized = ref(false);
@@ -27,13 +26,8 @@ const todayDate = computed(() => {
     return `${year}-${month}-${day}`;
 });
 
-const displayDate = computed(() => {
-    return selectedDate.value == TODAY_KEY ? todayDate.value : selectedDate.value;
-});
-
 const hasDateOption = date => {
     if (!date) return false;
-    if (date == TODAY_KEY) return true;
     return historyDates.value.includes(date);
 };
 
@@ -45,15 +39,19 @@ const normalizeDateList = result => {
 
 const syncRouteDateQuery = async date => {
     const query = { ...route.query };
-    if (date == TODAY_KEY) delete query.date;
+    if (!date) delete query.date;
     else query.date = date;
     await router.replace({ path: route.path, query });
 };
 
 const loadRecommendSongs = async date => {
+    if (!date) {
+        libraryStore.librarySongs = [];
+        return;
+    }
     loadingSongs.value = true;
     try {
-        await libraryStore.updateRecommendSongs(date == TODAY_KEY ? null : date);
+        await libraryStore.updateRecommendSongs(date);
     } catch (e) {
         noticeOpen('获取推荐歌曲失败', 2);
     } finally {
@@ -67,7 +65,7 @@ const applyDateFromRouteQuery = () => {
         selectedDate.value = queryDate;
         return;
     }
-    selectedDate.value = TODAY_KEY;
+    selectedDate.value = historyDates.value[0] || '';
 };
 
 const loadHistoryDates = async () => {
@@ -75,13 +73,18 @@ const loadHistoryDates = async () => {
     try {
         const result = await getHistoryRecommendSongDates();
         const dateList = normalizeDateList(result);
-        historyDates.value = dateList.filter(date => date && date != todayDate.value);
+        historyDates.value = Array.from(new Set(dateList.filter(date => !!date))).sort((a, b) => b.localeCompare(a));
     } catch (e) {
         historyDates.value = [];
         noticeOpen('获取历史日推日期失败', 2);
     } finally {
         loadingDates.value = false;
     }
+};
+
+const formatDateLabel = date => {
+    if (date == todayDate.value) return `今天 (${date})`;
+    return date;
 };
 
 watch(selectedDate, async (date, oldDate) => {
@@ -95,7 +98,7 @@ watch(
     async () => {
         if (!initialized.value) return;
         const queryDate = typeof route.query.date == 'string' ? route.query.date : '';
-        const targetDate = queryDate && hasDateOption(queryDate) ? queryDate : TODAY_KEY;
+        const targetDate = queryDate && hasDateOption(queryDate) ? queryDate : historyDates.value[0] || '';
         if (targetDate == selectedDate.value) return;
 
         syncingFromRoute.value = true;
@@ -110,7 +113,7 @@ onMounted(async () => {
     applyDateFromRouteQuery();
 
     if (typeof route.query.date == 'string' && !hasDateOption(route.query.date)) {
-        await syncRouteDateQuery(TODAY_KEY);
+        await syncRouteDateQuery(selectedDate.value);
     }
 
     await loadRecommendSongs(selectedDate.value);
@@ -126,8 +129,7 @@ onMounted(async () => {
             <div class="rec-option rec-option-date">
                 <label class="rec-date-picker">
                     <select v-model="selectedDate" :disabled="loadingDates || loadingSongs">
-                        <option :value="TODAY_KEY">今天 ({{ todayDate }})</option>
-                        <option v-for="date in historyDates" :key="date" :value="date">{{ date }}</option>
+                        <option v-for="date in historyDates" :key="date" :value="date">{{ formatDateLabel(date) }}</option>
                     </select>
                 </label>
             </div>
@@ -135,6 +137,7 @@ onMounted(async () => {
                 <button class="play-all" @click="playAll('rec', libraryStore.librarySongs)">播放全部</button>
             </div>
             <span class="rec-status" v-if="loadingSongs">正在加载推荐歌曲...</span>
+            <span class="rec-status" v-else-if="!historyDates.length">暂无可用日推日期</span>
         </div>
         <LibrarySongList :songlist="libraryStore.librarySongs"></LibrarySongList>
     </div>
