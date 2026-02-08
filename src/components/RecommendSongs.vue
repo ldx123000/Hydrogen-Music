@@ -26,9 +26,23 @@ const todayDate = computed(() => {
     return `${year}-${month}-${day}`;
 });
 
+const reachedDailyUpdateTime = computed(() => {
+    const now = new Date();
+    return now.getHours() >= 6;
+});
+
+const todayMissingFromHistory = computed(() => !historyDates.value.includes(todayDate.value));
+const shouldInsertTodayOption = computed(() => reachedDailyUpdateTime.value && todayMissingFromHistory.value);
+
+const dateOptions = computed(() => {
+    if (!todayDate.value) return historyDates.value;
+    if (!shouldInsertTodayOption.value) return historyDates.value;
+    return [todayDate.value, ...historyDates.value];
+});
+
 const hasDateOption = date => {
     if (!date) return false;
-    return historyDates.value.includes(date);
+    return dateOptions.value.includes(date);
 };
 
 const normalizeDateList = result => {
@@ -49,9 +63,12 @@ const loadRecommendSongs = async date => {
         libraryStore.librarySongs = [];
         return;
     }
+
+    const shouldUseTodayRecommend = date == todayDate.value && shouldInsertTodayOption.value;
+
     loadingSongs.value = true;
     try {
-        await libraryStore.updateRecommendSongs(date);
+        await libraryStore.updateRecommendSongs(shouldUseTodayRecommend ? '' : date);
     } catch (e) {
         noticeOpen('获取推荐歌曲失败', 2);
     } finally {
@@ -65,7 +82,7 @@ const applyDateFromRouteQuery = () => {
         selectedDate.value = queryDate;
         return;
     }
-    selectedDate.value = historyDates.value[0] || '';
+    selectedDate.value = dateOptions.value[0] || '';
 };
 
 const loadHistoryDates = async () => {
@@ -98,7 +115,7 @@ watch(
     async () => {
         if (!initialized.value) return;
         const queryDate = typeof route.query.date == 'string' ? route.query.date : '';
-        const targetDate = queryDate && hasDateOption(queryDate) ? queryDate : historyDates.value[0] || '';
+        const targetDate = queryDate && hasDateOption(queryDate) ? queryDate : dateOptions.value[0] || '';
         if (targetDate == selectedDate.value) return;
 
         syncingFromRoute.value = true;
@@ -129,7 +146,7 @@ onMounted(async () => {
             <div class="rec-option rec-option-date">
                 <label class="rec-date-picker">
                     <select v-model="selectedDate" :disabled="loadingDates || loadingSongs">
-                        <option v-for="date in historyDates" :key="date" :value="date">{{ formatDateLabel(date) }}</option>
+                        <option v-for="date in dateOptions" :key="date" :value="date">{{ formatDateLabel(date) }}</option>
                     </select>
                 </label>
             </div>
@@ -137,7 +154,7 @@ onMounted(async () => {
                 <button class="play-all" @click="playAll('rec', libraryStore.librarySongs)">播放全部</button>
             </div>
             <span class="rec-status" v-if="loadingSongs">正在加载推荐歌曲...</span>
-            <span class="rec-status" v-else-if="!historyDates.length">暂无可用日推日期</span>
+            <span class="rec-status" v-else-if="!dateOptions.length">暂无可用日推日期</span>
         </div>
         <LibrarySongList :songlist="libraryStore.librarySongs"></LibrarySongList>
     </div>
