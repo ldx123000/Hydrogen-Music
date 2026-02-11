@@ -5,12 +5,7 @@
 
   //0为以网易云账号登录，1为以本地账户
   const modeSelect = (mode) => {
-    if(mode === 0) {
-      // 跳转到一键登录页面
-      router.push({path:'/login/account', query: {mode: 4}})
-    } else {
-      router.push({path:'/login/account', query: {mode: mode}})
-    }
+    router.push({ path: '/login/account', query: { mode } })
   }
 </script>
 
@@ -45,6 +40,9 @@
 <style scoped lang="scss">
   .login-page{
     height: calc(100% - 110Px);
+    --login-card-bg: rgba(255, 255, 255, 0.35);
+    --login-text: #000000;
+    --login-border: #000000;
     .login-mode{
       height: 100%;
       display: flex;
@@ -54,7 +52,7 @@
       .mode-type{
         width: 250px;
         height: 100px;
-        background-color: rgba(255, 255, 255, 0.35);
+        background-color: var(--login-card-bg);
         display: flex;
         flex-direction: row;
         justify-content: center;
@@ -66,9 +64,9 @@
           width: 0;
           height: 100px;
           border: {
-            top: 1px solid black;
-            left: 1px solid black;
-            bottom: 1px solid black;
+            top: 1px solid var(--login-border);
+            left: 1px solid var(--login-border);
+            bottom: 1px solid var(--login-border);
           };
           position: absolute;
           left: 0;
@@ -81,9 +79,9 @@
           width: 0;
           height: 100px;
           border: {
-            top: 1px solid black;
-            right: 1px solid black;
-            bottom: 1px solid black;
+            top: 1px solid var(--login-border);
+            right: 1px solid var(--login-border);
+            bottom: 1px solid var(--login-border);
           };
           position: absolute;
           right: 0;
@@ -117,7 +115,7 @@
           display: flex;
           flex-direction: column;
           align-items: flex-start;
-          color: black;
+          color: var(--login-text);
           .type-title{
             font: 20px SourceHanSansCN-Bold;
           }
@@ -133,5 +131,11 @@
         opacity: 0.8;
       }
     }
+  }
+
+  :global(.dark) .login-page {
+    --login-card-bg: rgba(255, 255, 255, 0.08);
+    --login-text: #f2f5f7;
+    --login-border: rgba(255, 255, 255, 0.55);
   }
 </style>

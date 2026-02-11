@@ -323,14 +323,6 @@ const userLogout = async () => {
                 userStore.user = null;
                 userStore.biliUser = null;
 
-                // 清理登录session，确保下次一键登录能正常工作
-                try {
-                    await window.electronAPI?.clearLoginSession?.();
-                    console.log('登录session已清理');
-                } catch (error) {
-                    console.error('清理登录session失败:', error);
-                }
-
                 router.push('/');
                 noticeOpen('已退出账号', 2);
             } else noticeOpen('退出登录失败', 2);

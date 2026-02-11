@@ -1,23 +1,25 @@
 <script setup>
-  import { watch, ref, onUnmounted } from 'vue'
-  import DataCheckAnimaton from './DataCheckAnimaton.vue'
+  import { onUnmounted, ref, watch } from 'vue'
+  import { onBeforeRouteLeave } from 'vue-router'
   import QRCode from 'qrcode'
-  import { getQRcode, checkQRcodeStatus } from '../api/login'
-  import { onBeforeRouteLeave } from 'vue-router';
+  import DataCheckAnimaton from './DataCheckAnimaton.vue'
+  import { createQRcode, getQRcodeKey, checkQRcodeStatus } from '../api/login'
   import { loginHandle } from '../utils/handle'
+  import { noticeOpen } from '../utils/dialog'
 
   const props = defineProps(['firstLoadMode'])
-  const firstLoadMode = ref(props.firstLoadMode)
-  const loging = ref(-1)
-  const qrKey = ref(null)
-  const qrcodeImg = ref(null)
-  const qrStatus = ref(null)
-  const statusTitle = ref(null)
-  const statusTitleEN = ref('QRCODE')
-  const checkQRInterval = ref(null)
   const emits = defineEmits(['jumpTo'])
 
-  // 清理定时器的统一方法
+  const firstLoadMode = ref(Number(props.firstLoadMode) || 0)
+  const loging = ref(-1)
+  const qrKey = ref(null)
+  const qrcodeImg = ref('')
+  const qrStatus = ref(801)
+  const statusTitle = ref('请使用网易云音乐扫码')
+  const statusTitleEN = ref('QRCODE')
+  const checkQRInterval = ref(null)
+  const loadingQr = ref(false)
+
   const clearTimer = () => {
     if (checkQRInterval.value) {
       clearInterval(checkQRInterval.value)
@@ -25,294 +27,401 @@
     }
   }
 
-  // 路由离开前清理
+  const startPolling = () => {
+    clearTimer()
+    checkQRInterval.value = setInterval(() => {
+      checkQRcode()
+    }, 1000)
+  }
+
+  const generateFallbackQrImg = async (key) => {
+    const loginUrl = `https://music.163.com/login?codekey=${key}`
+    return QRCode.toDataURL(loginUrl, {
+      errorCorrectionLevel: 'Q',
+      type: 'image/png',
+      width: 192,
+      height: 192,
+      color: {
+        dark: '#000000',
+        light: '#00000000',
+      },
+    })
+  }
+
+  const loadData = async () => {
+    if (loadingQr.value) return
+
+    loadingQr.value = true
+    qrcodeImg.value = ''
+    qrStatus.value = 801
+    statusTitle.value = '请使用网易云音乐扫码'
+    statusTitleEN.value = 'QRCODE'
+
+    try {
+      const keyResult = await getQRcodeKey()
+      const key = keyResult?.data?.unikey
+      if (!key) {
+        throw new Error('获取二维码 key 失败')
+      }
+
+      qrKey.value = key
+
+      const qrResult = await createQRcode(key)
+      const qrimg = qrResult?.data?.qrimg
+      qrcodeImg.value = qrimg || await generateFallbackQrImg(key)
+
+      startPolling()
+    } catch (error) {
+      noticeOpen(error?.message || '二维码加载失败，请重试', 2)
+      qrStatus.value = 800
+      statusTitle.value = '二维码加载失败, 点击刷新'
+      statusTitleEN.value = 'ERROR'
+      loging.value = -1
+    } finally {
+      loadingQr.value = false
+    }
+  }
+
+  const checkQR = () => {
+    clearTimer()
+
+    if (firstLoadMode.value === 1 || !qrKey.value || !qrcodeImg.value) {
+      firstLoadMode.value = 0
+      loadData()
+      return
+    }
+
+    startPolling()
+  }
+
+  defineExpose({ checkQR, clearTimer })
+
+  watch(() => qrStatus.value, (newVal) => {
+    if (newVal === 800) {
+      statusTitle.value = '二维码过期, 点击刷新'
+      statusTitleEN.value = 'ERROR'
+      loging.value = -1
+    } else if (newVal === 801) {
+      statusTitle.value = '请使用网易云音乐扫码'
+      statusTitleEN.value = 'QRCODE'
+      loging.value = -1
+    } else if (newVal === 802) {
+      statusTitle.value = '请在手机端确认登录'
+      statusTitleEN.value = 'CONFIRM'
+      loging.value = 1
+    } else if (newVal === 803) {
+      statusTitle.value = '登录成功，正在跳转'
+      statusTitleEN.value = 'LOGGING...'
+      loging.value = 2
+    }
+  })
+
+  const checkQRcode = () => {
+    if (!qrKey.value) return
+
+    checkQRcodeStatus(qrKey.value).then(result => {
+      if (result?.code === 800) {
+        qrStatus.value = 800
+      } else if (result?.code === 801) {
+        qrStatus.value = 801
+      } else if (result?.code === 802) {
+        qrStatus.value = 802
+      } else if (result?.code === 803) {
+        qrStatus.value = 803
+        clearTimer()
+        loginHandle(result, 'qr')
+        emits('jumpTo')
+      }
+    }).catch(() => {
+      // 轮询失败保持静默，避免频繁打断
+    })
+  }
+
+  const refreshQRCode = () => {
+    if (qrStatus.value === 800 || qrStatus.value === 802) {
+      loging.value = -2
+      loadData()
+    }
+  }
+
+  if (firstLoadMode.value === 0) {
+    loadData()
+  }
+
   onBeforeRouteLeave(() => {
     clearTimer()
   })
 
-  // 组件卸载时清理
   onUnmounted(() => {
     clearTimer()
   })
-
-  //初次加载页面获取QRcode
-  if(firstLoadMode.value == 0) {
-    loadData()
-  }
-  
-  const checkQR = () => {
-    clearTimer()
-    if(firstLoadMode.value == 1) {
-        firstLoadMode.value = 0
-        loadData()
-    }
-    checkQRInterval.value = setInterval(() => {
-        checkQRcode()
-    }, 1000);
-  }
-  
-  defineExpose({checkQR, clearTimer})
-
-  watch(() => qrStatus.value, (newVal,oldVal) => {
-    if(newVal == 800) {
-        statusTitle.value = '二维码过期,点击刷新'
-        statusTitleEN.value = 'ERROR'
-        loging.value = -1
-    }
-    else if(newVal == 802) {
-        statusTitle.value = '请确认登录'
-        statusTitleEN.value = 'CONFIRM'
-        loging.value = 1
-    } else if(newVal == 803) {
-        statusTitleEN.value = 'LOGING...'
-        loging.value = 2
-    }
-  })
-
-  async function loadData() {
-      await getQRcode().then(result => {
-        qrKey.value = result.data.unikey
-        const loginUrl = `https://music.163.com/login?codekey=${qrKey.value}`
-        let opts = {
-            errorCorrectionLevel: 'Q',
-            type: "image/png",
-            width: 192,
-            height: 192,
-            color: {
-                dark: "#000000",
-                light: "#00000000"
-            }
-        };
-        QRCode.toDataURL(loginUrl, opts, (err, url) => {
-            if(err) throw err
-            qrcodeImg.value = url
-        })
-        checkQR()
-      })
-  }
-
-  const checkQRcode = () => {
-    if(qrKey.value == null) return
-    checkQRcodeStatus(qrKey.value).then(result => {
-        if(result.code === 800) {
-            qrStatus.value = 800
-            console.log("二维码过期")
-        } else if(result.code === 801) {
-            qrStatus.value = 801
-            console.log("等待扫码")
-        } else if(result.code === 802) {
-            qrStatus.value = 802
-            console.log("待确认")
-        } else if(result.code === 803) {
-            qrStatus.value = 803
-            clearTimer()
-            loginHandle(result, 'qr')
-            emits('jumpTo')
-            console.log("授权登录成功")
-        }
-    })
-  }
-
-  const checkStatus = () => {
-    if(qrStatus.value == 802) {
-        loging.value = -2
-        loadData()
-    }
-    if(qrStatus.value == 800) {
-        loging.value = -2
-        loadData()
-    }
-  }
 </script>
 
 <template>
-  <div class="qrcode-container" @click="checkStatus()">
-        <div class="qrcode-border" :class="{'qrcode-loging-1': loging == 1, 'qrcode-loging-1 qrcode-loging-2': loging == 2}">
-            <div class="qrcode" :class="{'qrcode-checking': loging == 2, 'qrcode-invalid': qrStatus == 800, 'qrcode-recover': loging == -2}">
-                <img :src="qrcodeImg" alt="" v-show="qrcodeImg">
-                <span class="qrcode-loading" v-show="!qrcodeImg">Loading...</span>
-            </div>
-            <div class="qrcode-status" :class="{'qrcode-checking': loging == 2, 'status-1': qrStatus == 800, 'status-2': qrStatus == 802, 'hide': loging == -2}">{{statusTitle}}</div>
-            <div class="border border1"></div>
-            <div class="border border2"></div>
-            <div class="border border3"></div>
-            <div class="border border4"></div>
-            <div class="line line1"></div>
-            <div class="line line2"></div>
-            <div class="line line3"></div>
-            <div class="line line4"></div>
-            <div class="qrcode-text">{{statusTitleEN}}</div>
-            <DataCheckAnimaton class="check-animation" v-show="loging == 2"></DataCheckAnimaton>
-        </div>
+  <div class="qrcode-container" @click="refreshQRCode">
+    <div class="qrcode-border" :class="{ 'qrcode-loging-1': loging == 1, 'qrcode-loging-1 qrcode-loging-2': loging == 2 }">
+      <div class="qrcode" :class="{ 'qrcode-checking': loging == 2, 'qrcode-invalid': qrStatus == 800, 'qrcode-recover': loging == -2 }">
+        <img :src="qrcodeImg" alt="二维码" v-show="qrcodeImg">
+        <span class="qrcode-loading" v-show="!qrcodeImg">Loading...</span>
+      </div>
+      <div class="qrcode-status" :class="{ 'qrcode-checking': loging == 2, 'status-1': qrStatus == 800, 'status-2': qrStatus == 802, hide: loging == -2 }">{{ statusTitle }}</div>
+      <div class="border border1"></div>
+      <div class="border border2"></div>
+      <div class="border border3"></div>
+      <div class="border border4"></div>
+      <div class="qr-line qr-line1"></div>
+      <div class="qr-line qr-line2"></div>
+      <div class="qr-line qr-line3"></div>
+      <div class="qr-line qr-line4"></div>
+      <div class="qrcode-text">{{ statusTitleEN }}</div>
+      <DataCheckAnimaton class="check-animation" v-show="loging == 2"></DataCheckAnimaton>
     </div>
+  </div>
 </template>
 
 <style scoped lang="scss">
-  .qrcode-container{
+  .qrcode-container {
     margin-top: 7vh;
     display: flex;
     justify-content: center;
     align-items: center;
-    //////
-    &:hover{
-        cursor: pointer;
+    --qrcode-text: var(--text);
+    --qrcode-border: var(--text);
+    --qrcode-line: var(--text);
+    --qrcode-line-fade: var(--border);
+    --qrcode-status-bg: #000000;
+    --qrcode-status-text: #ffffff;
+    --qrcode-status-danger: #d10000;
+
+    &:hover {
+      cursor: pointer;
     }
-    .qrcode-border{
-        width: 27.6vh;
-        height: 27.6vh;
-        position: relative;
-        transition: 0.3s;
-        .qrcode{
-            width: 26vh;
-            height: 26vh;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            img{
-                width: 100%;
-                height: 100%;
-            }
-            .qrcode-loading{
-                font: 18px Gilroy-ExtraBold;
-                line-height: 26vh;
-            }
-        }
-        .qrcode-checking{
-            opacity: 0 !important;
-            transition: 0.2s 1s !important;
-        }
-        .qrcode-invalid{
-            opacity: 0.5;
-            transition: 0.3s;
-        }
-        .qrcode-recover{
-            opacity: 1 !important;
-        }
-        .qrcode-status{
-            width: 0;
-            background-color: black;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%,-50%);
-            font: 14px SourceHanSansCN-Bold;
-            color: rgba(255, 255, 255, 0);
-            white-space: nowrap;
-            opacity: 0;
-            transition: 0.3s;
-        }
-        .hide{
-            opacity: 0 !important;
-        }
-        .status-1{
-            background-color: red;
-            animation: status 0.3s cubic-bezier(.13,.86,.51,.98) forwards;
-        }
-        .status-2{
-            background-color: black;
-            animation: status 0.3s cubic-bezier(.13,.86,.51,.98) forwards;
-        }
-        @keyframes status {
-            0%{opacity: 1;}
-            100%{width: 100%;opacity: 1;color: rgba(255, 255, 255, 1);}
+
+    .qrcode-border {
+      width: 27.6vh;
+      height: 27.6vh;
+      position: relative;
+      transition: 0.3s;
+
+      .qrcode {
+        width: 26vh;
+        height: 26vh;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+
+        img {
+          width: 100%;
+          height: 100%;
         }
 
-        .border{
-            width: 40px;
-            height: 40px;
-            position: absolute
+        .qrcode-loading {
+          font: 18px Gilroy-ExtraBold;
+          line-height: 26vh;
+          color: var(--qrcode-text);
         }
-        $borderWidth: 2 + px;
-        .border1{
-            border: {
-                top: $borderWidth solid black;
-                left: $borderWidth solid black;
-            }
-            top: 0;
-            left: 0;
+      }
+
+      .qrcode-checking {
+        opacity: 0 !important;
+        transition: 0.2s 1s !important;
+      }
+
+      .qrcode-invalid {
+        opacity: 0.5;
+        transition: 0.3s;
+      }
+
+      .qrcode-recover {
+        opacity: 1 !important;
+      }
+
+      .qrcode-status {
+        width: 0;
+        background-color: var(--qrcode-status-bg);
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font: 14px SourceHanSansCN-Bold;
+        color: rgba(255, 255, 255, 0);
+        white-space: nowrap;
+        opacity: 0;
+        transition: 0.3s;
+      }
+
+      .hide {
+        opacity: 0 !important;
+      }
+
+      .status-1 {
+        background-color: var(--qrcode-status-danger);
+        animation: status 0.3s cubic-bezier(.13, .86, .51, .98) forwards;
+      }
+
+      .status-2 {
+        background-color: var(--qrcode-status-bg);
+        animation: status 0.3s cubic-bezier(.13, .86, .51, .98) forwards;
+      }
+
+      @keyframes status {
+        0% {
+          opacity: 1;
         }
-        .border2{
-            border: {
-                top: $borderWidth solid black;
-                right: $borderWidth solid black;
-            }
-            top: 0;
-            right: 0;
+
+        100% {
+          width: 100%;
+          opacity: 1;
+          color: var(--qrcode-status-text);
         }
-        .border3{
-            border: {
-                bottom: $borderWidth solid black;
-                right: $borderWidth solid black;
-            }
-            bottom: 0;
-            right: 0;
-        }
-        .border4{
-            border: {
-                bottom: $borderWidth solid black;
-                left: $borderWidth solid black;
-            }
-            bottom: 0;
-            left: 0;
-        }
-        .line{
-            width: 40px;
-            height: 1px;
-            background: linear-gradient(to right, rgb(0, 0, 0) 30%, rgba(0, 0, 0, 0.1));
-            position: absolute;
-        }
-        .line1{
-            top: -13px;
-            left: -32px;
-            transform: rotate(-135deg);
-        }
-        .line2{
-            top: -13px;
-            right: -32px;
-            transform: rotate(-45deg);
-        }
-        .line3{
-            bottom: -13px;
-            right: -32px;
-            transform: rotate(45deg);
-        }
-        .line4{
-            bottom: -13px;
-            left: -32px;
-            transform: rotate(135deg);
-        }
-        .qrcode-text{
-            font: 1vh Geometos;
-            color: black;
-            position: absolute;
-            top: -1.2vh;
-            left: 0.2vh;
-        }
-        .check-animation{
-            width: 100%;
-            height: 100%;
-            position: absolute;
-        }
+      }
+
+      .border {
+        width: 40px;
+        height: 40px;
+        position: absolute;
+      }
+
+      $borderWidth: 2 + px;
+
+      .border1 {
+        border: {
+          top: $borderWidth solid var(--qrcode-border);
+          left: $borderWidth solid var(--qrcode-border);
+        };
+
+        top: 0;
+        left: 0;
+      }
+
+      .border2 {
+        border: {
+          top: $borderWidth solid var(--qrcode-border);
+          right: $borderWidth solid var(--qrcode-border);
+        };
+
+        top: 0;
+        right: 0;
+      }
+
+      .border3 {
+        border: {
+          bottom: $borderWidth solid var(--qrcode-border);
+          right: $borderWidth solid var(--qrcode-border);
+        };
+
+        bottom: 0;
+        right: 0;
+      }
+
+      .border4 {
+        border: {
+          bottom: $borderWidth solid var(--qrcode-border);
+          left: $borderWidth solid var(--qrcode-border);
+        };
+
+        bottom: 0;
+        left: 0;
+      }
+
+      .qr-line {
+        width: 40px;
+        height: 1px;
+        background: linear-gradient(to right, var(--qrcode-line) 30%, var(--qrcode-line-fade));
+        position: absolute;
+      }
+
+      .qr-line1 {
+        top: -13px;
+        left: -32px;
+        transform: rotate(-135deg);
+      }
+
+      .qr-line2 {
+        top: -13px;
+        right: -32px;
+        transform: rotate(-45deg);
+      }
+
+      .qr-line3 {
+        bottom: -13px;
+        right: -32px;
+        transform: rotate(45deg);
+      }
+
+      .qr-line4 {
+        bottom: -13px;
+        left: -32px;
+        transform: rotate(135deg);
+      }
+
+      .qrcode-text {
+        font: 1vh Geometos;
+        color: var(--qrcode-text);
+        position: absolute;
+        top: -1.2vh;
+        left: 0.2vh;
+      }
+
+      .check-animation {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+      }
     }
-    .qrcode-loging-1{
-        width: 22vh;
-        height: 22vh;
-        transition: 0.2s ease;
+
+    .qrcode-loging-1 {
+      width: 22vh;
+      height: 22vh;
+      transition: 0.2s ease;
     }
-    .qrcode-loging-2{
-        .border, .line{
-            animation: qrcode-acticity 0.3s 0.2s forwards;
+
+    .qrcode-loging-2 {
+      .border,
+      .qr-line {
+        animation: qrcode-acticity 0.3s 0.2s forwards;
+      }
+
+      @keyframes qrcode-acticity {
+        0% {
+          opacity: 0;
         }
-        @keyframes qrcode-acticity {
-            0%{opacity: 0;}
-            20%{opacity: 1;}
-            40%{opacity: 0;}
-            60%{opacity: 1;}
-            80%{opacity: 0;}
-            90%{opacity: 1;}
-            100%{opacity: 0;}
+
+        20% {
+          opacity: 1;
         }
+
+        40% {
+          opacity: 0;
+        }
+
+        60% {
+          opacity: 1;
+        }
+
+        80% {
+          opacity: 0;
+        }
+
+        90% {
+          opacity: 1;
+        }
+
+        100% {
+          opacity: 0;
+        }
+      }
     }
-}
+  }
+
+  :global(.dark) .qrcode-container {
+    --qrcode-text: var(--text);
+    --qrcode-border: var(--text);
+    --qrcode-line: var(--text);
+    --qrcode-line-fade: var(--border);
+    --qrcode-status-bg: rgba(17, 24, 33, 0.92);
+    --qrcode-status-text: #f2f5f7;
+    --qrcode-status-danger: #ef5350;
+  }
 </style>

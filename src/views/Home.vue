@@ -26,12 +26,7 @@
             window.localStorage.clear()
             userStore.user = null
             userStore.biliUser = null
-            
-            // 清除Electron中的登录状态，确保下次登录需要重新扫码
-            if(window.electronAPI?.clearNeteaseSession) {
-              window.electronAPI.clearNeteaseSession()
-            }
-            
+
             router.push('/')
             noticeOpen("已退出账号", 2)
         }

@@ -129,10 +129,6 @@ export const init = () => {
             userStore.user = null
             userStore.likelist = null
             userStore.favoritePlaylistId = null
-            // 清除Electron中的登录状态
-            if(window.electronAPI?.clearNeteaseSession) {
-                window.electronAPI.clearNeteaseSession()
-            }
             // 即使登录失效，也要恢复播放状态
             loadLastSong()
         })

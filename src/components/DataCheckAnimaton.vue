@@ -31,6 +31,10 @@
 
 <style scoped lang="scss">
   .check-animation{
+    --check-main: #000000;
+    --check-alt: #ffffff;
+    --check-error: #ff2d2d;
+    --check-surface-dark: rgba(17, 24, 33, 0.92);
     position: relative;
     opacity: 0;
     overflow: hidden;
@@ -38,7 +42,7 @@
         content: '';
         width: 100%;
         height: 100%;
-        background-color: black;
+        background-color: var(--check-main);
         position: absolute;
         z-index: -1;
         top: 0;
@@ -60,7 +64,7 @@
     .white-border{
         width: 99%;
         height: 99%;
-        border: 6px solid rgb(0, 0, 0);
+        border: 6px solid var(--check-main);
         position: absolute;
         top: 50%;
         left: 50%;
@@ -69,23 +73,23 @@
         justify-items: center;
         animation: white-border 1s 0.6s ease forwards;
         @keyframes white-border {
-            0%{border: 6px solid rgb(255, 255, 255);}
-            40%{border: 6px solid rgb(255, 255, 255);width: 94%;height: 94%;}
-            75%{border: 6px solid rgb(255, 255, 255);}
-            80%{border: 6px solid rgb(0, 0, 0);}
-            90%{border: 6px solid rgb(255, 255, 255)}
-            95%{border: 6px solid rgb(0, 0, 0);}
-            100%{border: 6px solid rgb(0, 0, 0);width: 94%;height: 94%;}
+            0%{border: 6px solid var(--check-alt);}
+            40%{border: 6px solid var(--check-alt);width: 94%;height: 94%;}
+            75%{border: 6px solid var(--check-alt);}
+            80%{border: 6px solid var(--check-main);}
+            90%{border: 6px solid var(--check-alt)}
+            95%{border: 6px solid var(--check-main);}
+            100%{border: 6px solid var(--check-main);width: 94%;height: 94%;}
         }
         .check-text{
             width: 100%;
             height: 100%;
             position: relative;
             font: 46px SouceHanSansCN-Heavy;
-            color: white;
+            color: var(--check-alt);
             animation: font-color 0.2s 1.7s forwards;
             @keyframes font-color {
-                100%{color: black;}
+                100%{color: var(--check-main);}
             }
             div{
                 width: 50%;
@@ -161,27 +165,33 @@
     &::after{
         animation: error2 0.2s 1s linear forwards;
         @keyframes error2 {
-            0%{opacity: 1;background-color: red;}
+            0%{opacity: 1;background-color: var(--check-error);}
             50%{opacity: 1;}
             60%{opacity: 0;}
             90%{opacity: 0;}
-            100%{opacity: 1;background-color: red;}
+            100%{opacity: 1;background-color: var(--check-error);}
         }
     }
     .white-border{
         animation: white-border-error 1s 0.6s ease forwards;
         @keyframes white-border-error {
-            0%{border: 6px solid rgb(255, 255, 255);}
-            40%{border: 6px solid rgb(255, 255, 255);width: 94%;height: 94%;}
-            75%{border: 6px solid rgb(255, 255, 255);}
-            80%{border: 6px solid rgb(255, 0, 0);}
-            90%{border: 6px solid rgb(255, 255, 255)}
-            95%{border: 6px solid rgb(255, 0, 0);}
-            100%{border: 6px solid rgb(255, 255, 255);width: 94%;height: 94%;}
+            0%{border: 6px solid var(--check-alt);}
+            40%{border: 6px solid var(--check-alt);width: 94%;height: 94%;}
+            75%{border: 6px solid var(--check-alt);}
+            80%{border: 6px solid var(--check-error);}
+            90%{border: 6px solid var(--check-alt)}
+            95%{border: 6px solid var(--check-error);}
+            100%{border: 6px solid var(--check-alt);width: 94%;height: 94%;}
         }
         .check-text{
             animation: none
         }
     }
+  }
+
+  :global(.dark) .check-animation{
+    --check-main: var(--check-surface-dark);
+    --check-alt: var(--text);
+    --check-error: #ef5350;
   }
 </style>

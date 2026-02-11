@@ -4,7 +4,7 @@ import request from "../utils/request";
  * 调用此接口可生成一个 key
  * @returns 
  */
-export function getQRcode() {
+export function getQRcodeKey() {
     return request({
         url: '/login/qr/key',
         method: 'get',
@@ -12,6 +12,28 @@ export function getQRcode() {
             timestamp: new Date().getTime()
         }
     })
+}
+
+/**
+ * 生成二维码（官方推荐：先取 key 再 create）
+ * @param {string} key
+ * @returns
+ */
+export function createQRcode(key) {
+    return request({
+        url: '/login/qr/create',
+        method: 'get',
+        params: {
+            key,
+            qrimg: true,
+            timestamp: new Date().getTime(),
+        },
+    })
+}
+
+// 兼容旧调用：原 getQRcode 仅取 key
+export function getQRcode() {
+    return getQRcodeKey()
 }
 /**
  * 轮询此接口可获取二维码扫码状态,800 为二维码过期,801 为等待扫码,802 为待确认,803 为授权登录成功(803 状态码下会返回 cookies)
@@ -61,51 +83,6 @@ export function loginByPhone(params) {
         url: '/login/cellphone',
         method: 'post',
         params,
-    });
-}
-
-
-/**
- * 使用Cookie登录
- * 通过粘贴网页版网易云音乐的cookie来登录
- * @param {String} cookie - 从网页版复制的cookie字符串
- * @returns 
- */
-export function loginByCookie(cookie) {
-    return new Promise((resolve, reject) => {
-        try {
-            // 直接设置cookie到document.cookie
-            document.cookie = cookie;
-            
-            // 解析cookie字符串，提取关键字段
-            const cookieObj = {};
-            cookie.split(';').forEach(item => {
-                const [key, value] = item.trim().split('=');
-                if (key && value) {
-                    cookieObj[key] = value;
-                }
-            });
-            
-            // 检查是否包含必要的登录cookie
-            if (cookieObj.MUSIC_U) {
-                // 模拟成功响应格式
-                resolve({
-                    code: 200,
-                    cookie: cookie,
-                    message: 'Cookie登录成功'
-                });
-            } else {
-                reject({
-                    code: 400,
-                    message: 'Cookie中缺少必要的登录信息(MUSIC_U)'
-                });
-            }
-        } catch (error) {
-            reject({
-                code: 500,
-                message: 'Cookie格式错误或登录失败'
-            });
-        }
     });
 }
 

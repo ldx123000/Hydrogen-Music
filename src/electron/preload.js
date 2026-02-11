@@ -151,12 +151,6 @@ function updateDockMenu(songInfo) {
         // ignore
     }
 }
-function openNeteaseLogin() {
-    return ipcRenderer.invoke('open-netease-login')
-}
-function clearLoginSession() {
-    return ipcRenderer.invoke('clear-login-session')
-}
 function sendMetaData(metadata) {
   ipcRenderer.send('metadata', metadata);
 }
@@ -245,8 +239,6 @@ contextBridge.exposeInMainWorld('windowApi', {
 
 // 新的API用于处理登录功能和桌面歌词
 contextBridge.exposeInMainWorld('electronAPI', {
-    openNeteaseLogin,
-    clearLoginSession,
     // 桌面歌词相关API
     createLyricWindow: () => ipcRenderer.invoke('create-lyric-window'),
     closeLyricWindow: () => ipcRenderer.invoke('close-lyric-window'),

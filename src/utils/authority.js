@@ -1,39 +1,40 @@
 import Cookies from "js-cookie";
 
-export function setCookies(data, type) {
-  console.log(data)
-  if(type == 'account') {
-    const cookies = data.cookie.split(';;')
-    cookies.map(cookie => {
-      document.cookie = cookie;
-      const temCookie = cookie.split(';')[0].split('=');
-      localStorage.setItem('cookie:' + temCookie[0], temCookie[1])
-    });
+const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+
+function extractAuthCookieValues(rawCookie) {
+  const cookieText = String(rawCookie || '')
+  const cookieMap = {}
+
+  AUTH_COOKIE_KEYS.forEach((key) => {
+    const matcher = new RegExp(`(?:^|[;\\s,])${key}=([^;\\s,]+)`)
+    const match = cookieText.match(matcher)
+    if (match && match[1]) {
+      cookieMap[key] = match[1]
+    }
+  })
+
+  return cookieMap
+}
+
+function persistAuthCookies(cookieMap) {
+  Object.entries(cookieMap).forEach(([key, value]) => {
+    if (!value) return
+    try { document.cookie = `${key}=${value}; path=/`; } catch (_) {}
+    try { localStorage.setItem('cookie:' + key, value) } catch (_) {}
+  })
+}
+
+export function setCookies(data) {
+  const cookieSource = data?.cookie || ''
+  const cookieMap = extractAuthCookieValues(cookieSource)
+
+  // 部分接口返回只有 MUSIC_U，或者以对象字段携带
+  if (!Object.keys(cookieMap).length && data?.profile && data?.token) {
+    cookieMap.MUSIC_U = data.token
   }
-  if(type == 'qr') {
-    const cookies = data.cookie.split(';')
-    cookies.map(cookie => {
-      const temCookie = cookie.split('=');
-      if(temCookie[0] == 'MUSIC_U' || temCookie[0] == 'MUSIC_A_T' || temCookie[0] == 'MUSIC_R_T') {
-        document.cookie = cookie;
-        localStorage.setItem('cookie:' + temCookie[0], temCookie[1])
-      }
-    });
-  }
-  if(type == 'cookie') {
-    const cookies = data.cookie.split(';')
-    cookies.map(cookie => {
-      const temCookie = cookie.trim().split('=');
-      if(temCookie[0] && temCookie[1]) {
-        // 设置到document.cookie
-        document.cookie = cookie.trim();
-        // 保存重要的cookie到localStorage
-        if(temCookie[0] == 'MUSIC_U' || temCookie[0] == 'MUSIC_A_T' || temCookie[0] == 'MUSIC_R_T') {
-          localStorage.setItem('cookie:' + temCookie[0], temCookie[1])
-        }
-      }
-    });
-  }
+
+  persistAuthCookies(cookieMap)
 }
 
 //获取Cookie - 优先从localStorage读取，确保在Electron中的可靠性

@@ -36,9 +36,6 @@ function triggerAutoLogout(reason) {
     userStore.user = null;
     userStore.likelist = null;
 
-    // 清理嵌入式会话（若存在）
-    try { window.electronAPI?.clearLoginSession?.(); } catch (_) {}
-
     // 友好提示
     const message = reason || '登录状态已失效，已自动退出，请重新登录';
     noticeOpen(message, 3);
@@ -52,11 +49,13 @@ function triggerAutoLogout(reason) {
 
 // 请求拦截器
 request.interceptors.request.use(function (config) {
+  config.params = config.params || {}
+
   if (enhancedApi && config.useEnhancedApi) {
     return config;
   }
   
-  if(config.url != '/login/qr/check' && isLogin())
+  if(config.url != '/login/qr/check' && isLogin() && !config.params.cookie)
     config.params.cookie = `MUSIC_U=${getCookie('MUSIC_U')};`;
   if(libraryStore.needTimestamp.indexOf(config.url) != -1) {
     config.params.timestamp = new Date().getTime()
