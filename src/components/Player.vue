@@ -19,6 +19,10 @@ const props = defineProps({
         type: Number,
         default: 0,
     },
+    commentCountBadge: {
+        type: String,
+        default: '',
+    },
 });
 
 const emit = defineEmits(['update:rightPanelMode']);
@@ -27,6 +31,33 @@ const emit = defineEmits(['update:rightPanelMode']);
 const switchRightPanel = mode => {
     emit('update:rightPanelMode', mode);
 };
+
+const commentCountText = computed(() => props.commentCountBadge || '0');
+const commentCountLen = computed(() => commentCountText.value.length);
+
+const commentCountBadgeWidth = computed(() => {
+    const len = commentCountLen.value;
+    if (len <= 1) return 13.8;
+    if (len === 2) return 14.9;
+    if (len === 3) return 16.4;
+    if (len === 4) return 18.4;
+    if (len === 5) return 19.8;
+    return 21.2;
+});
+
+const commentCountBadgeX = computed(() => 23.2 - commentCountBadgeWidth.value);
+const commentCountBadgeCenterX = computed(() => commentCountBadgeX.value + commentCountBadgeWidth.value / 2);
+const commentCountBadgeRx = computed(() => 4.6);
+
+const commentCountFontSize = computed(() => {
+    const len = commentCountLen.value;
+    if (len <= 1) return 8.0;
+    if (len === 2) return 7.6;
+    if (len === 3) return 7.2;
+    if (len === 4) return 6.6;
+    if (len === 5) return 6.1;
+    return 5.7;
+});
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -69,7 +100,7 @@ const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
 
 // 当前电台订阅状态与rid
 const djSubed = ref(false);
-const djRid = computed(() => (isDjMode.value && listInfo.value?.id) ? listInfo.value.id : null);
+const djRid = computed(() => (isDjMode.value && listInfo.value?.id ? listInfo.value.id : null));
 
 const loadDjSubStatus = async () => {
     try {
@@ -82,7 +113,10 @@ const loadDjSubStatus = async () => {
     }
 };
 
-watch(djRid, () => { djSubed.value = false; if (djRid.value) loadDjSubStatus(); });
+watch(djRid, () => {
+    djSubed.value = false;
+    if (djRid.value) loadDjSubStatus();
+});
 
 const checkIsLike = computed(() => id => {
     return userStore.likelist.includes(id);
@@ -175,7 +209,7 @@ const addToPlaylist = () => {
 };
 
 // 订阅/取消订阅 电台
-const toggleDjSub = async (isSubscribe) => {
+const toggleDjSub = async isSubscribe => {
     if (!djRid.value) return;
     try {
         await subDj(djRid.value, isSubscribe);
@@ -194,20 +228,14 @@ const toggleDjSub = async (isSubscribe) => {
                     <!-- Force re-create <img> when song changes so old cover doesn't persist -->
                     <img
                         v-if="songList?.[currentIndex]?.type != 'local'"
-                        :key="'remote-'+(songId || songList?.[currentIndex]?.id)"
+                        :key="'remote-' + (songId || songList?.[currentIndex]?.id)"
                         :src="songList?.[currentIndex]?.coverUrl || songList?.[currentIndex]?.al?.picUrl"
                         alt=""
                     />
-                    <img
-                        v-else
-                        v-show="localBase64Img"
-                        :key="'local-'+(songId || songList?.[currentIndex]?.id)"
-                        :src="localBase64Img"
-                        alt=""
-                    />
+                    <img v-else v-show="localBase64Img" :key="'local-' + (songId || songList?.[currentIndex]?.id)" :src="localBase64Img" alt="" />
                     <img
                         v-if="songList?.[currentIndex]?.type == 'local' && !localBase64Img"
-                        :key="'local-default-'+(songId || songList?.[currentIndex]?.id)"
+                        :key="'local-default-' + (songId || songList?.[currentIndex]?.id)"
                         src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140"
                         alt=""
                     />
@@ -228,7 +256,7 @@ const toggleDjSub = async (isSubscribe) => {
                         <span
                             @click="checkArtist(singer.id)"
                             :class="['author', { disabled: isDjMode }]"
-                            :style="{ color: (videoIsPlaying || coverBlur) ? 'var(--text)' : 'var(--muted-text)' }"
+                            :style="{ color: videoIsPlaying || coverBlur ? 'var(--text)' : 'var(--muted-text)' }"
                             v-for="(singer, index) in songList?.[currentIndex]?.ar || []"
                         >
                             {{ singer.name || '' }}{{ index == (songList?.[currentIndex]?.ar?.length || 0) - 1 ? '' : ' / ' }}
@@ -295,7 +323,12 @@ const toggleDjSub = async (isSubscribe) => {
                                     d="M0,0L0,152 "
                                 />
                                 <path id="line1" style="fill: #000000" transform="translate(48 24)  rotate(0 0.0005 76)" opacity="1" d="" />
-                                <path id="line1" style="stroke: currentColor; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0" transform="translate(48 24)  rotate(0 0.0005 76)" d="M0,0L0,152 " />
+                                <path
+                                    id="line1"
+                                    style="stroke: currentColor; stroke-width: 8; stroke-opacity: 1; stroke-dasharray: 0 0"
+                                    transform="translate(48 24)  rotate(0 0.0005 76)"
+                                    d="M0,0L0,152 "
+                                />
                             </g>
                         </g>
                     </svg>
@@ -503,7 +536,7 @@ const toggleDjSub = async (isSubscribe) => {
                 </svg>
 
                 <!-- 喜欢/收藏：仅在线歌曲显示；本地与电台隐藏/分支另行处理 -->
-                <template v-if="!isDjMode && (songList?.[currentIndex]?.type !== 'local')">
+                <template v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local'">
                     <svg
                         t="1668786418014"
                         v-if="userStore.likelist"
@@ -583,15 +616,49 @@ const toggleDjSub = async (isSubscribe) => {
                     </svg>
                 </template>
                 <!-- 下载：本地歌曲不显示 -->
-                <svg v-if="songList?.[currentIndex]?.type !== 'local'" t="1669445939818" @click="download()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5311" width="200" height="200">
+                <svg
+                    v-if="songList?.[currentIndex]?.type !== 'local'"
+                    t="1669445939818"
+                    @click="download()"
+                    class="icon"
+                    viewBox="0 0 1024 1024"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    p-id="5311"
+                    width="200"
+                    height="200"
+                >
                     <path d="M545.472 32v837.504L947.2 467.712l44.544 46.144-478.08 478.144L32.128 510.4l44.48-44.544 405.248 403.712V32h63.616z" p-id="5312"></path>
                 </svg>
                 <!-- 添加到歌单：本地与电台均不显示 -->
-                <svg v-if="!isDjMode && (songList?.[currentIndex]?.type !== 'local')" @click="addToPlaylist()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
-                    <path d="M512 85.333333c235.648 0 426.666667 191.018667 426.666667 426.666667s-191.018667 426.666667-426.666667 426.666667S85.333333 747.648 85.333333 512 276.352 85.333333 512 85.333333z m0 85.333334a341.333333 341.333333 0 1 0 0 682.666666 341.333333 341.333333 0 0 0 0-682.666666z m0 128a42.666667 42.666667 0 0 1 42.666667 42.666666v128H682.666667a42.666667 42.666667 0 0 1 0 85.333334H554.666667v128a42.666667 42.666667 0 0 1-85.333334 0V554.666667H341.333333a42.666667 42.666667 0 0 1 0-85.333334h128V341.333333a42.666667 42.666667 0 0 1 42.666667-42.666666z" fill="#000000"></path>
+                <svg
+                    v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local'"
+                    @click="addToPlaylist()"
+                    class="icon"
+                    viewBox="0 0 1024 1024"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="200"
+                    height="200"
+                >
+                    <path
+                        d="M512 85.333333c235.648 0 426.666667 191.018667 426.666667 426.666667s-191.018667 426.666667-426.666667 426.666667S85.333333 747.648 85.333333 512 276.352 85.333333 512 85.333333z m0 85.333334a341.333333 341.333333 0 1 0 0 682.666666 341.333333 341.333333 0 0 0 0-682.666666z m0 128a42.666667 42.666667 0 0 1 42.666667 42.666666v128H682.666667a42.666667 42.666667 0 0 1 0 85.333334H554.666667v128a42.666667 42.666667 0 0 1-85.333334 0V554.666667H341.333333a42.666667 42.666667 0 0 1 0-85.333334h128V341.333333a42.666667 42.666667 0 0 1 42.666667-42.666666z"
+                        fill="#000000"
+                    ></path>
                 </svg>
                 <!-- 显示专辑：本地歌曲不显示图标 -->
-                <svg v-if="songList?.[currentIndex]?.type !== 'local'" t="1668785761323" @click="toAlbum()" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1173" width="200" height="200">
+                <svg
+                    v-if="songList?.[currentIndex]?.type !== 'local'"
+                    t="1668785761323"
+                    @click="toAlbum()"
+                    class="icon"
+                    viewBox="0 0 1024 1024"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    p-id="1173"
+                    width="200"
+                    height="200"
+                >
                     <path
                         d="M459.838061 502.318545c0-30.657939 24.948364-55.606303 55.606303-55.606303s55.544242 24.948364 55.544242 55.606303-24.886303 55.606303-55.544242 55.606303a55.668364 55.668364 0 0 1-55.606303-55.606303m173.242181 0c0-64.884364-52.751515-117.666909-117.635878-117.666909a117.79103 117.79103 0 0 0-117.666909 117.666909 117.79103 117.79103 0 0 0 117.666909 117.66691 117.76 117.76 0 0 0 117.604848-117.66691"
                         p-id="1174"
@@ -626,7 +693,7 @@ const toggleDjSub = async (isSubscribe) => {
                         p-id="3090"
                     ></path>
                 </svg>
-                
+
                 <svg
                     t="1668787163705"
                     @click="changePlayMode()"
@@ -644,7 +711,7 @@ const toggleDjSub = async (isSubscribe) => {
                         p-id="2181"
                     ></path>
                 </svg>
-                
+
                 <svg
                     t="1668787191526"
                     @click="changePlayMode()"
@@ -685,19 +752,22 @@ const toggleDjSub = async (isSubscribe) => {
                 <!-- 歌词/评论切换按钮：本地歌曲隐藏评论按钮 -->
                 <svg
                     v-if="songList?.[currentIndex]?.type !== 'local'"
-                    t="1673520001"
                     @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
                     :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
                     class="icon comment-icon"
-                    viewBox="0 0 1024 1024"
+                    viewBox="0 0 24 24"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     width="32"
                     height="32"
                 >
-                    <path
-                        d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-512 128v85.333333H256v-85.333333h85.333333z m341.333334 0v85.333333H384v-85.333333h298.666667z m-341.333334 170.666666v85.333334H256v-85.333334h85.333333z m256 0v85.333334H384v-85.333334h213.333333z"
-                    ></path>
+                    <path class="comment-bubble" d="M6.4 5.5h8.3a2.8 2.8 0 0 1 2.8 2.8v5a2.8 2.8 0 0 1-2.8 2.8H9.3l-3.8 3v-3h-.3a2.8 2.8 0 0 1-2.8-2.8v-5a2.8 2.8 0 0 1 2.8-2.8h1.2z" />
+                    <line class="comment-line" x1="7.2" y1="9.9" x2="13.3" y2="9.9" />
+                    <line class="comment-line" x1="7.2" y1="12.6" x2="11.4" y2="12.6" />
+                    <rect class="comment-count-pill" :x="commentCountBadgeX" y="0.7" :width="commentCountBadgeWidth" height="9.2" :rx="commentCountBadgeRx" />
+                    <text class="comment-count-text" :x="commentCountBadgeCenterX" y="5.35" text-anchor="middle" dominant-baseline="middle" :style="{ fontSize: `${commentCountFontSize}px` }">
+                        {{ commentCountText }}
+                    </text>
                 </svg>
                 <!-- 桌面歌词控制按钮 -->
                 <svg
@@ -1085,14 +1155,16 @@ const toggleDjSub = async (isSubscribe) => {
             display: flex;
             flex-direction: column;
             align-items: center;
+            gap: 3vh;
             position: absolute;
             bottom: 2vh;
             right: -50px;
             opacity: 0;
             svg {
-                margin-top: 3vh;
+                margin-top: 0;
                 width: 2.5vh;
                 height: 2.5vh;
+                display: block;
             }
         }
     }
@@ -1133,25 +1205,51 @@ const toggleDjSub = async (isSubscribe) => {
     .comment-icon {
         cursor: pointer;
         transition: all 0.3s ease;
+        color: rgba(0, 0, 0, 0.6);
+        overflow: visible;
+        width: 3.16vh !important;
+        height: 3.16vh !important;
+        margin-bottom: -0.5vh;
+
+        .comment-bubble,
+        .comment-line {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            vector-effect: non-scaling-stroke;
+        }
+
+        .comment-count-pill {
+            fill: #000000;
+            opacity: 0.96;
+        }
+
+        .comment-count-text {
+            fill: #ffffff;
+            opacity: 1;
+            font-family: SourceHanSansCN-Bold;
+            font-size: 6.8px;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
 
         &.comment-icon-inactive {
-            opacity: 0.5;
+            color: #8a8a8a;
 
-            path {
-                fill: rgba(0, 0, 0, 0.3);
+            .comment-bubble,
+            .comment-line {
+                opacity: 0.5;
             }
         }
 
         &.comment-icon-active {
             opacity: 1;
-
-            path {
-                fill: #000000;
-            }
+            color: #000000;
         }
 
         &:hover {
-            opacity: 0.8;
             transform: scale(1.05);
         }
     }

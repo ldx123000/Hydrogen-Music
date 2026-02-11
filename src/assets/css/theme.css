@@ -517,7 +517,7 @@ body {
   fill: var(--text) !important;
 }
 
-.dark .player .song-control .icon path {
+.dark .player .song-control .icon:not(.comment-icon) path {
   fill: var(--text) !important;
   stroke: var(--text) !important;
 }
@@ -528,14 +528,47 @@ body {
   stroke: #E5404F !important;
 }
 
-/* Make comment toggle clearly dimmer when closed (override generic icon rule) */
-.dark .player .song-control .comment-icon.comment-icon-inactive {
-  opacity: 1 !important; /* darker than default 0.5 */
+/* Comment icon uses an integrated SVG (bubble + count badge).
+   Do NOT apply generic "icon path fill" to it; always style parts explicitly. */
+.dark .player .song-control .comment-icon {
+  color: var(--text) !important;
 }
 
-.dark .player .song-control .comment-icon.comment-icon-inactive path {
-  fill: rgba(255, 255, 255, 0.2) !important;
-  stroke: rgba(255, 255, 255, 0.2) !important;
+.dark .player .song-control .comment-icon.comment-icon-active {
+  color: var(--text) !important;
+}
+
+.dark .player .song-control .comment-icon.comment-icon-inactive {
+  color: rgba(255, 255, 255, 0.34) !important;
+}
+
+.dark .player .song-control .comment-icon .comment-bubble,
+.dark .player .song-control .comment-icon .comment-line {
+  color: inherit !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+.dark .player .song-control .comment-icon.comment-icon-active .comment-bubble,
+.dark .player .song-control .comment-icon.comment-icon-active .comment-line {
+  stroke: var(--text) !important;
+}
+
+.dark .player .song-control .comment-icon.comment-icon-inactive .comment-bubble,
+.dark .player .song-control .comment-icon.comment-icon-inactive .comment-line {
+  stroke: rgba(255, 255, 255, 0.34) !important;
+}
+
+.dark .player .song-control .comment-icon .comment-count-pill {
+  fill: #ffffff !important;
+  stroke: #ffffff !important;
+  opacity: 0.98 !important;
+}
+
+.dark .player .song-control .comment-icon .comment-count-text {
+  fill: #000000 !important;
+  opacity: 1 !important;
 }
 
 /* In dark mode, dim lyric controls when turned off */
@@ -829,15 +862,6 @@ body {
 .dark .arknights-comments .send-reply-btn {
   background: var(--text) !important;
   color: #000 !important;
-}
-
-.dark .player-container .comment-icon-inactive path {
-  /* Dimmer closed comment icon in dark mode */
-  fill: rgba(255, 255, 255, 0.1) !important;
-}
-
-.dark .player-container .comment-icon-active path {
-  fill: var(--text) !important;
 }
 
 .dark .player-container .desktop-lyric-btn:not(.active) { opacity: 0.5 !important; }

@@ -14,6 +14,8 @@ import {
 } from '../utils/commentScrollMemory';
 import CommentText from './CommentText.vue';
 
+const emit = defineEmits(['total-change']);
+
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
 const { songId, songList, currentIndex, listInfo } = storeToRefs(playerStore);
@@ -121,6 +123,7 @@ const clearScrollCheckRaf = () => {
 const fetchComments = async (reset = false) => {
     if (loading.value || (!hasMore.value && !reset)) return;
 
+    const requestTargetKey = commentTargetKey.value;
     loading.value = true;
     let fetchSucceeded = false;
 
@@ -146,7 +149,14 @@ const fetchComments = async (reset = false) => {
                 comments.value.push(...(response.comments || []));
             }
 
-            total.value = response.total || 0;
+            const responseTotal = Number(response.total);
+            total.value = Number.isFinite(responseTotal) && responseTotal > 0 ? Math.floor(responseTotal) : 0;
+            if (requestTargetKey) {
+                emit('total-change', {
+                    targetKey: requestTargetKey,
+                    total: total.value,
+                });
+            }
             offset.value += limit.value;
             hasMore.value = (response.comments || []).length === limit.value;
             fetchSucceeded = true;

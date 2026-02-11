@@ -7,6 +7,8 @@ import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
 import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
+import { getMusicComments } from '../api/song';
+import { getDjProgramComments } from '../api/dj';
 const playerStore = usePlayerStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
@@ -67,6 +69,87 @@ const currentTrack = computed(() => {
     return list[idx] || null;
 });
 
+const commentCount = ref(0);
+const commentCountRequestSerial = ref(0);
+
+const commentTarget = computed(() => {
+    const track = currentTrack.value;
+    if (!track || track.type === 'local') return null;
+
+    if (isDj.value) {
+        const programId = track && (track.programId || track.programID || track.programid);
+        if (!programId) return null;
+        return {
+            key: `dj:${programId}`,
+            type: 'dj',
+            id: programId,
+        };
+    }
+
+    const musicId = (track && (track.id || track.songId || track.musicId)) || playerStore.songId;
+    if (!musicId) return null;
+    return {
+        key: `song:${musicId}`,
+        type: 'song',
+        id: musicId,
+    };
+});
+
+const formatCommentCount = total => {
+    const count = Number(total);
+    if (!Number.isFinite(count) || count <= 0) return '0';
+    if (count < 10000) return `${Math.floor(count)}`;
+    return `${Math.floor(count / 10000)}w+`;
+};
+
+const commentCountBadge = computed(() => formatCommentCount(commentCount.value));
+
+const fetchCommentCount = async target => {
+    const serial = ++commentCountRequestSerial.value;
+
+    if (!target) {
+        commentCount.value = 0;
+        return;
+    }
+
+    try {
+        let response = null;
+        if (target.type === 'dj') {
+            response = await getDjProgramComments(target.id, { limit: 1, offset: 0 });
+        } else {
+            response = await getMusicComments({ id: target.id, limit: 1, offset: 0 });
+        }
+
+        if (serial !== commentCountRequestSerial.value) return;
+
+        if (response && response.code === 200) {
+            const total = Number(response.total);
+            commentCount.value = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
+        } else {
+            commentCount.value = 0;
+        }
+    } catch (_) {
+        if (serial !== commentCountRequestSerial.value) return;
+        commentCount.value = 0;
+    }
+};
+
+const handleCommentTotalChange = payload => {
+    const currentTarget = commentTarget.value;
+    if (!currentTarget || !payload || payload.targetKey !== currentTarget.key) return;
+
+    const total = Number(payload.total);
+    commentCount.value = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
+};
+
+watch(
+    () => (commentTarget.value ? commentTarget.value.key : ''),
+    () => {
+        fetchCommentCount(commentTarget.value);
+    },
+    { immediate: true }
+);
+
 const commentPanelKey = computed(() => {
     const track = currentTrack.value;
     const idx = typeof playerStore.currentIndex === 'number' ? playerStore.currentIndex : 0;
@@ -103,6 +186,7 @@ watch(currentTrack, (song) => {
                 'player-blur': playerStore.videoIsPlaying,
                 'cover-blur': showCoverBackdrop,
             }"
+            :comment-count-badge="commentCountBadge"
             v-model:rightPanelMode="rightPanelMode"
         ></Player>
 
@@ -112,7 +196,7 @@ watch(currentTrack, (song) => {
             <Transition name="panel-switch" mode="out-in">
                 <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
                 <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
-                <Comments class="comments-container" v-else-if="rightPanelMode === 1" :key="commentPanelKey"></Comments>
+                <Comments class="comments-container" v-else-if="rightPanelMode === 1" :key="commentPanelKey" @total-change="handleCommentTotalChange"></Comments>
             </Transition>
         </div>
 
