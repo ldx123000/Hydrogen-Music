@@ -2,6 +2,7 @@
   import {  ref, onActivated } from 'vue'
   import { onBeforeRouteLeave } from 'vue-router';
   import { getBanner } from '../api/other';
+  const emit = defineEmits(['open-breaking-news'])
   const timer1 = ref(null)
   const timer2 = ref(null)
   const timer3 = ref(null)
@@ -94,7 +95,21 @@
 
     //点击banner
     function bannerItem(item, index) {
-        console.log("bannerClick")
+        if (!item || (!item.pic && !item.imageUrl && !item.url && !item.targetId)) return
+
+        const targetType = Number(item.targetType)
+        const targetId = Number(item.targetId)
+
+        emit('open-breaking-news', {
+            bannerId: Number.isFinite(Number(item.bannerId)) ? Number(item.bannerId) : null,
+            pic: item.pic || item.imageUrl || '',
+            typeTitle: item.typeTitle || '',
+            targetType: Number.isFinite(targetType) ? targetType : null,
+            targetId: Number.isFinite(targetId) ? targetId : null,
+            url: item.url || null,
+            titleColor: item.titleColor || null,
+            index: Number.isFinite(Number(index)) ? Number(index) : 0,
+        })
     }
 </script>
 

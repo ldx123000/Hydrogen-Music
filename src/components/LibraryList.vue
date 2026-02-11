@@ -32,9 +32,11 @@
   }
 
   onActivated(() => {
-    if(lastRouter.value && libraryInfo.value && !playerStore.forbidLastRouter) router.push(lastRouter.value)
-    if(lastRouter.value && lastRouter.value.name == 'local' && localStore.currentSelectedSongs && !playerStore.forbidLastRouter) router.push(lastRouter.value.fullPath)
-    document.getElementById('libraryListScroll').scrollTop = scrollTop.value
+    const isMyMusicRoot = router.currentRoute.value && router.currentRoute.value.name == 'mymusic'
+    if(isMyMusicRoot && lastRouter.value && libraryInfo.value && !playerStore.forbidLastRouter) router.push(lastRouter.value)
+    if(isMyMusicRoot && lastRouter.value && lastRouter.value.name == 'local' && localStore.currentSelectedSongs && !playerStore.forbidLastRouter) router.push(lastRouter.value.fullPath)
+    if(document.getElementById('libraryListScroll'))
+      document.getElementById('libraryListScroll').scrollTop = scrollTop.value || 0
   })
   onBeforeRouteLeave((to, from, next) => {
     if(!from.params.id && from.name != 'rec') {

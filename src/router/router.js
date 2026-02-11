@@ -26,6 +26,7 @@ const { updateLibraryDetail } = libraryStore
 const { libraryInfo } = storeToRefs(libraryStore)
 const localStore = useLocalStore()
 const otherStore = useOtherStore()
+const hasDifferentLibraryId = (to, from) => String(to?.params?.id || '') != String(from?.params?.id || '')
 
 const routes = [
     {
@@ -61,30 +62,41 @@ const routes = [
                 path: '/mymusic/playlist/:id',
                 name: 'playlist',
                 component: LibraryDetail,
-                beforeEnter: (to, from, next) => {
-                    if(!libraryInfo.value || from.name != 'playlist') updateLibraryDetail(to.params.id, to.name)
-                    next()
+                beforeEnter: async (to, from, next) => {
+                    const needReload = !libraryInfo.value || from.name != 'playlist' || hasDifferentLibraryId(to, from)
+                    try {
+                        if (needReload) await updateLibraryDetail(to.params.id, to.name)
+                    } finally {
+                        next()
+                    }
                 }
             },
             {
                 path: '/mymusic/album/:id',
                 name: 'album',
                 component: LibraryDetail,
-                beforeEnter: (to, from, next) => {
-                    if(!libraryInfo.value || from.name != 'album') updateLibraryDetail(to.params.id, to.name).then(() => {
+                beforeEnter: async (to, from, next) => {
+                    const needReload = !libraryInfo.value || from.name != 'album' || hasDifferentLibraryId(to, from)
+                    try {
+                        if (needReload) await updateLibraryDetail(to.params.id, to.name)
+                    } finally {
                         next()
                         if(document.getElementById('libraryScroll'))
                             document.getElementById('libraryScroll').scrollTop = 0
-                    })
+                    }
                 }
             },
             {
                 path: '/mymusic/artist/:id',
                 name: 'artist',
                 component: LibraryDetail,
-                beforeEnter: (to, from, next) => {
-                    if(!libraryInfo.value || from.name != 'artist') updateLibraryDetail(to.params.id, to.name)
-                    next()
+                beforeEnter: async (to, from, next) => {
+                    const needReload = !libraryInfo.value || from.name != 'artist' || hasDifferentLibraryId(to, from)
+                    try {
+                        if (needReload) await updateLibraryDetail(to.params.id, to.name)
+                    } finally {
+                        next()
+                    }
                 }
             },
             {
