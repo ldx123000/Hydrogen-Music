@@ -67,6 +67,17 @@ const currentTrack = computed(() => {
     return list[idx] || null;
 });
 
+const commentPanelKey = computed(() => {
+    const track = currentTrack.value;
+    const idx = typeof playerStore.currentIndex === 'number' ? playerStore.currentIndex : 0;
+    if (isDj.value) {
+        const pid = track && (track.programId || track.programID || track.programid);
+        return `comments-dj-${pid || 'none'}-${idx}`;
+    }
+    const sid = (track && (track.id || track.songId || track.musicId)) || playerStore.songId || 'none';
+    return `comments-song-${sid}-${idx}`;
+});
+
 watch(currentTrack, (song) => {
     try {
         if (song && song.type === 'local' && rightPanelMode.value === 1) {
@@ -101,7 +112,7 @@ watch(currentTrack, (song) => {
             <Transition name="panel-switch" mode="out-in">
                 <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
                 <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
-                <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments"></Comments>
+                <Comments class="comments-container" v-else-if="rightPanelMode === 1" :key="commentPanelKey"></Comments>
             </Transition>
         </div>
 

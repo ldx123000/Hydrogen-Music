@@ -6,15 +6,32 @@ import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
 import { storeToRefs } from 'pinia';
 import { noticeOpen } from '../utils/dialog';
+import {
+    getCommentScrollPosition,
+    setCommentScrollPosition,
+    getLastCommentTargetKey,
+    setLastCommentTargetKey,
+} from '../utils/commentScrollMemory';
 import CommentText from './CommentText.vue';
 
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
 const { songId, songList, currentIndex, listInfo } = storeToRefs(playerStore);
+const currentTrack = computed(() => {
+    const list = songList.value || [];
+    const idx = typeof currentIndex.value === 'number' ? currentIndex.value : 0;
+    return list[idx] || null;
+});
 const isDj = computed(() => listInfo.value && listInfo.value.type === 'dj');
 const programId = computed(() => {
-    const cur = songList.value && songList.value[currentIndex.value];
+    const cur = currentTrack.value;
     return cur && (cur.programId || cur.programID || cur.programid);
+});
+const musicCommentId = computed(() => {
+    if (isDj.value) return null;
+    const cur = currentTrack.value;
+    const curId = cur && (cur.id || cur.songId || cur.musicId);
+    return curId || songId.value || null;
 });
 
 const comments = ref([]);
@@ -28,11 +45,84 @@ const newComment = ref('');
 const replyingTo = ref(null);
 const submitting = ref(false);
 
+const COMMENTS_PREFETCH_PX = 200;
+const commentsContainerRef = ref(null);
+const scrollCheckRafId = ref(null);
+const commentTargetKey = computed(() => {
+    if (isDj.value) {
+        return programId.value ? `dj:${programId.value}` : '';
+    }
+    return musicCommentId.value ? `song:${musicCommentId.value}` : '';
+});
+const pendingRestoreScrollTop = ref(null);
+
+const resetCommentsScroll = () => {
+    const container = commentsContainerRef.value;
+    if (!container) return;
+    container.scrollTop = 0;
+};
+
+const getDistanceToBottom = () => {
+    const container = commentsContainerRef.value;
+    if (!container) return Number.POSITIVE_INFINITY;
+    return container.scrollHeight - (container.scrollTop + container.clientHeight);
+};
+
+const cacheCurrentScrollPosition = (targetKey = commentTargetKey.value) => {
+    const container = commentsContainerRef.value;
+    if (!container || !targetKey) return;
+    setCommentScrollPosition(targetKey, container.scrollTop);
+};
+
+const restoreCommentsScrollIfNeeded = () => {
+    if (pendingRestoreScrollTop.value === null) return;
+
+    const container = commentsContainerRef.value;
+    if (!container) return;
+
+    const expectedScrollTop = pendingRestoreScrollTop.value;
+    container.scrollTop = expectedScrollTop;
+
+    // 如果当前位置已恢复到目标（或已没有更多可加载），结束恢复流程。
+    const restored = Math.abs(container.scrollTop - expectedScrollTop) <= 2;
+    if (restored || !hasMore.value) {
+        pendingRestoreScrollTop.value = null;
+    }
+
+    cacheCurrentScrollPosition();
+};
+
+const shouldAutoLoadMore = () => {
+    if (loading.value || !hasMore.value) return false;
+    return getDistanceToBottom() <= COMMENTS_PREFETCH_PX;
+};
+
+const tryAutoLoadMore = () => {
+    if (!shouldAutoLoadMore()) return;
+    fetchComments(false);
+};
+
+const handleCommentsScroll = () => {
+    cacheCurrentScrollPosition();
+    if (scrollCheckRafId.value !== null) return;
+    scrollCheckRafId.value = requestAnimationFrame(() => {
+        scrollCheckRafId.value = null;
+        tryAutoLoadMore();
+    });
+};
+
+const clearScrollCheckRaf = () => {
+    if (scrollCheckRafId.value === null) return;
+    cancelAnimationFrame(scrollCheckRafId.value);
+    scrollCheckRafId.value = null;
+};
+
 // 获取评论数据
 const fetchComments = async (reset = false) => {
     if (loading.value || (!hasMore.value && !reset)) return;
 
     loading.value = true;
+    let fetchSucceeded = false;
 
     try {
         const params = {
@@ -44,7 +134,7 @@ const fetchComments = async (reset = false) => {
         if (isDj.value && programId.value) {
             response = await getDjProgramComments(programId.value, params);
         } else {
-            response = await getMusicComments({ id: songId.value, ...params });
+            response = await getMusicComments({ id: musicCommentId.value, ...params });
         }
 
         if (response && response.code === 200) {
@@ -59,12 +149,19 @@ const fetchComments = async (reset = false) => {
             total.value = response.total || 0;
             offset.value += limit.value;
             hasMore.value = (response.comments || []).length === limit.value;
+            fetchSucceeded = true;
         }
     } catch (error) {
         console.error('获取评论失败:', error);
         noticeOpen('获取评论失败', 2);
     } finally {
         loading.value = false;
+    }
+
+    if (fetchSucceeded) {
+        await nextTick();
+        restoreCommentsScrollIfNeeded();
+        tryAutoLoadMore();
     }
 };
 
@@ -85,7 +182,7 @@ const submitComment = async () => {
             response = await postDjProgramComment(programId.value, newComment.value.trim(), replyingTo.value ? replyingTo.value.commentId : null);
         } else {
             const params = {
-                id: songId.value,
+                id: musicCommentId.value,
                 content: newComment.value.trim(),
             };
             if (replyingTo.value) params.commentId = replyingTo.value.commentId;
@@ -121,7 +218,7 @@ const toggleLikeComment = async comment => {
         if (isDj.value && programId.value) {
             response = await likeDjProgramComment(programId.value, comment.commentId, !comment.liked);
         } else {
-            response = await likeMusicComment({ id: songId.value, cid: comment.commentId, t: comment.liked ? 0 : 1 });
+            response = await likeMusicComment({ id: musicCommentId.value, cid: comment.commentId, t: comment.liked ? 0 : 1 });
         }
 
         if (response && response.code === 200) {
@@ -198,21 +295,51 @@ const formatTime = timestamp => {
     }
 };
 
-// 监听歌曲变化
-watch([songId, programId, isDj], () => {
-    // 只要目标变了就刷新
-    if ((isDj.value && programId.value) || (!isDj.value && songId.value)) {
+// 监听歌曲/节目变化，切换时重置滚动到顶部
+watch(
+    commentTargetKey,
+    (target, previousTarget) => {
+        if (!target) return;
+
+        const lastCommentTarget = getLastCommentTargetKey();
+        const switchedWhileCommentsClosed = !previousTarget && !!lastCommentTarget && lastCommentTarget !== target;
+
+        if (previousTarget) {
+            cacheCurrentScrollPosition(previousTarget);
+        }
+
+        if (previousTarget || switchedWhileCommentsClosed) {
+            pendingRestoreScrollTop.value = null;
+            resetCommentsScroll();
+        } else {
+            const cachedScrollTop = getCommentScrollPosition(target);
+            pendingRestoreScrollTop.value = typeof cachedScrollTop === 'number' && cachedScrollTop > 0 ? cachedScrollTop : null;
+            if (pendingRestoreScrollTop.value === null) {
+                resetCommentsScroll();
+            }
+        }
+
+        setLastCommentTargetKey(target);
         fetchComments(true);
-    }
-}, { immediate: true });
+    },
+    { immediate: true }
+);
 
 onMounted(() => {
-    if ((isDj.value && programId.value) || (!isDj.value && songId.value)) fetchComments(true);
+    nextTick(() => {
+        tryAutoLoadMore();
+    });
+});
+
+onUnmounted(() => {
+    cacheCurrentScrollPosition();
+    setLastCommentTargetKey(commentTargetKey.value);
+    clearScrollCheckRaf();
 });
 </script>
 
 <template>
-    <div class="arknights-comments">
+    <div class="arknights-comments" ref="commentsContainerRef" @scroll.passive="handleCommentsScroll">
         <!-- 评论区主标题 -->
         <div class="comments-header">
             <div class="header-frame">
@@ -451,17 +578,6 @@ onMounted(() => {
 
             <!-- 状态提示区域 -->
             <div class="status-section">
-                <!-- 加载更多 -->
-                <div class="load-more-button" v-if="hasMore && !loading" @click="fetchComments(false)">
-                    <div class="button-frame">
-                        <div class="frame-corner frame-tl"></div>
-                        <div class="frame-corner frame-tr"></div>
-                        <div class="frame-corner frame-bl"></div>
-                        <div class="frame-corner frame-br"></div>
-                    </div>
-                    <span class="button-text">LOAD MORE</span>
-                </div>
-
                 <!-- 加载中 -->
                 <div class="loading-status" v-if="loading">
                     <div class="loading-frame">
@@ -769,26 +885,26 @@ onMounted(() => {
 .section-header {
     display: flex;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 14px;
 
     .section-title-wrapper {
         display: flex;
         align-items: baseline;
-        margin-right: 16px;
+        margin-right: 12px;
     }
 
     .section-title {
         font-family: Bender-Bold, monospace;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: bold;
         color: #000;
         letter-spacing: 1px;
-        margin-right: 8px;
+        margin-right: 6px;
     }
 
     .section-count {
         font-family: Bender-Bold, monospace;
-        font-size: 12px;
+        font-size: 11px;
         color: rgba(0, 0, 0, 0.6);
     }
 
@@ -801,39 +917,37 @@ onMounted(() => {
 
 // 评论区域
 .hot-comments-section {
-    margin-bottom: 32px;
+    margin-bottom: 24px;
 }
 
 .latest-comments-section {
     .comments-grid {
-        margin-bottom: 24px;
+        margin-bottom: 18px;
     }
 }
 
 .comments-grid {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
 }
 
 // 评论卡片
 .comment-card {
     position: relative;
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.28);
     border: 1px solid rgba(0, 0, 0, 0.1);
+    border-left: 3px solid rgba(0, 0, 0, 0.28);
     transition: all 0.2s;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 
     &:hover {
-        background: rgba(255, 255, 255, 0.45);
+        background: rgba(255, 255, 255, 0.4);
         transform: translateY(-1px);
     }
 
     &.hot-card {
-        background: rgba(255, 248, 225, 0.4);
-
-        &:hover {
-            background: rgba(255, 248, 225, 0.6);
-        }
+        border-left-color: rgba(233, 192, 104, 0.76);
     }
 
     .card-frame {
@@ -847,7 +961,7 @@ onMounted(() => {
 
     .card-content {
         position: relative;
-        padding: 16px 20px;
+        padding: 12px 14px;
     }
 }
 
@@ -855,15 +969,15 @@ onMounted(() => {
 .comment-meta {
     display: flex;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 
     .user-avatar {
         position: relative;
-        margin-right: 12px;
+        margin-right: 10px;
 
         img {
-            width: 32px;
-            height: 32px;
+            width: 28px;
+            height: 28px;
             object-fit: cover;
         }
 
@@ -881,12 +995,12 @@ onMounted(() => {
         flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 1px;
     }
 
     .username {
         font-family: SourceHanSansCN-Bold;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: bold;
         color: #000;
         text-align: left;
@@ -894,7 +1008,7 @@ onMounted(() => {
 
     .timestamp {
         font-family: Bender-Bold, monospace;
-        font-size: 10px;
+        font-size: 9px;
         color: rgba(0, 0, 0, 0.5);
         letter-spacing: 0.5px;
         text-align: left;
@@ -904,10 +1018,10 @@ onMounted(() => {
 // 评论内容 - 更新为适配CommentText组件
 .comment-text {
     font-family: SourceHanSansCN-Bold;
-    font-size: 14px;
+    font-size: 13px;
     color: rgba(0, 0, 0, 0.85);
-    line-height: 1.5;
-    margin-bottom: 12px;
+    line-height: 1.45;
+    margin-bottom: 9px;
     word-break: break-word;
     text-align: left;
     user-select: text;
@@ -937,15 +1051,15 @@ onMounted(() => {
 .comment-controls {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 12px;
 
     .control-item {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 5px;
         cursor: pointer;
         transition: all 0.2s;
-        padding: 4px 8px;
+        padding: 3px 7px;
         background: rgba(0, 0, 0, 0.05);
 
         &:hover {
@@ -978,7 +1092,7 @@ onMounted(() => {
 
         .control-text {
             font-family: Bender-Bold, monospace;
-            font-size: 10px;
+            font-size: 9px;
             color: rgba(0, 0, 0, 0.6);
             letter-spacing: 0.5px;
             font-weight: bold;
@@ -991,29 +1105,6 @@ onMounted(() => {
     display: flex;
     justify-content: center;
     margin-top: 24px;
-}
-
-// 加载更多按钮
-.load-more-button {
-    position: relative;
-    padding: 12px 24px;
-    background: rgba(255, 255, 255, 0.3);
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    cursor: pointer;
-    transition: all 0.2s;
-
-    &:hover {
-        background: rgba(255, 255, 255, 0.45);
-        transform: translateY(-1px);
-    }
-
-    .button-text {
-        font-family: Bender-Bold, monospace;
-        font-size: 12px;
-        color: #000;
-        letter-spacing: 1px;
-        font-weight: bold;
-    }
 }
 
 // 加载状态
@@ -1076,7 +1167,7 @@ onMounted(() => {
 // 响应式设计
 // 内联回复框样式
 .inline-reply-box {
-    margin-top: 16px;
+    margin-top: 12px;
     background: rgba(255, 255, 255, 0.15);
     border: 1px solid rgba(0, 0, 0, 0.1);
     position: relative;
@@ -1092,43 +1183,43 @@ onMounted(() => {
 
     .reply-content {
         position: relative;
-        padding: 16px;
+        padding: 12px;
     }
 
     .reply-header {
         display: flex;
         align-items: center;
-        margin-bottom: 12px;
-        padding: 6px 10px;
+        margin-bottom: 10px;
+        padding: 5px 8px;
         background: rgba(0, 0, 0, 0.05);
         border-left: 2px solid #000;
 
         .reply-prefix {
             font-family: Bender-Bold, monospace;
-            font-size: 9px;
+            font-size: 8px;
             color: rgba(0, 0, 0, 0.6);
-            margin-right: 8px;
+            margin-right: 6px;
             letter-spacing: 1px;
         }
 
         .reply-target {
             font-family: SourceHanSansCN-Bold;
-            font-size: 11px;
+            font-size: 10px;
             color: #000;
             font-weight: bold;
             flex: 1;
         }
 
         .close-reply {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
             background: rgba(0, 0, 0, 0.1);
             color: #000;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
             line-height: 1;
             transition: all 0.2s;
 
@@ -1141,25 +1232,25 @@ onMounted(() => {
 
     .reply-input-wrapper {
         position: relative;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
     }
 
     .reply-textarea {
         width: 100%;
-        min-height: 60px;
-        padding: 10px 12px;
+        min-height: 52px;
+        padding: 8px 10px;
         background: rgba(255, 255, 255, 0.6);
         border: none;
         outline: none;
         font-family: SourceHanSansCN-Bold;
-        font-size: 13px;
+        font-size: 12px;
         color: #000;
         resize: vertical;
 
         &::placeholder {
             color: rgba(0, 0, 0, 0.4);
             font-family: Bender-Bold, monospace;
-            font-size: 11px;
+            font-size: 10px;
             letter-spacing: 0.5px;
         }
 
@@ -1202,11 +1293,11 @@ onMounted(() => {
 
         .cancel-reply-btn,
         .send-reply-btn {
-            padding: 6px 12px;
+            padding: 5px 10px;
             border: none;
             cursor: pointer;
             font-family: Bender-Bold, monospace;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: bold;
             letter-spacing: 0.5px;
             transition: all 0.2s;
@@ -1253,13 +1344,13 @@ onMounted(() => {
     }
 
     .comment-card .card-content {
-        padding: 12px 16px;
+        padding: 10px 12px;
     }
 
     .comment-meta .user-avatar {
         img {
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
         }
     }
 

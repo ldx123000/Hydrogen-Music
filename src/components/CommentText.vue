@@ -142,6 +142,7 @@ const copyText = async () => {
 .comment-text {
   position: relative;
   word-break: break-word;
+  white-space: pre-wrap;
   line-height: 1.5;
   cursor: text;
   user-select: text;
@@ -157,6 +158,7 @@ const copyText = async () => {
 
 .text-segment {
   color: inherit;
+  white-space: inherit;
 }
 
 .emoji-segment {

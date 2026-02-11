@@ -759,6 +759,10 @@ body {
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
+.dark .arknights-comments .comment-card.hot-card {
+  border-left-color: rgba(233, 192, 104, 0.76) !important;
+}
+
 .dark .arknights-comments .comment-card:hover {
   background: rgba(30, 34, 38, 0.8) !important;
 }
@@ -799,11 +803,6 @@ body {
 .dark .arknights-comments .comment-controls .control-item.active .control-text {
   fill: #ff4757 !important;
   color: #ff4757 !important;
-}
-
-.dark .arknights-comments .load-more-button {
-  background: rgba(30, 34, 38, 0.6) !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 .dark .arknights-comments .loading-status {

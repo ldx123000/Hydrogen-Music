@@ -1127,6 +1127,28 @@ async function updateFavoritePlaylistIfViewing() {
 }
 
 export function addToNext(nextSong, autoplay) {
+    // FM页面已离开但播放器状态仍是personalfm时，playNext会被FM分支拦截导致无法播放
+    // 在“立即播放”场景下自动退出FM上下文，确保后续走普通切歌逻辑
+    if (listInfo.value && listInfo.value.type === 'personalfm' && autoplay) {
+        let isOnPersonalFMRoute = false
+        try {
+            const hash = (typeof window !== 'undefined' && window.location && window.location.hash) ? window.location.hash : ''
+            isOnPersonalFMRoute = hash.includes('/personalfm')
+        } catch (_) {}
+        if (!isOnPersonalFMRoute) {
+            listInfo.value = null
+            // 退出FM后首次点播：清理FM临时单曲队列，避免FM歌曲混入后续播放列表
+            songList.value = []
+            currentIndex.value = 0
+            songId.value = null
+            // FM模式下 shuffledList 可能为空，清理后保持数组结构，避免随机模式下报错
+            if (playMode.value == 3) {
+                shuffledList.value = []
+                shuffleIndex.value = 0
+            }
+        }
+    }
+
     if (!songList.value) songList.value = []
     if (nextSong.id == songId.value) return
 
@@ -1138,6 +1160,7 @@ export function addToNext(nextSong, autoplay) {
     songList.value.splice(currentIndex.value + 1, 0, nextSong)
 
     if (playMode.value == 3) {
+        if (!Array.isArray(shuffledList.value)) shuffledList.value = []
         const shufflei = (shuffledList.value || []).findIndex((song) => song.id === nextSong.id)
         if (shufflei != -1) {
             shuffledList.value.splice(shufflei, 1)

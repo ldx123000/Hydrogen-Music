@@ -40,21 +40,8 @@ const play = (song, index) => {
         return;
     }
     if (props.type == 'search') {
-        // 修复：从搜索结果点击时，应立即播放，而不是添加到下一首
-        // 创建一个仅包含当前点击歌曲的临时列表
-        const searchSongList = [song];
-
-        // 更新播放列表
-        addToList('search', searchSongList);
-
-        // 立即播放
-        addSong(song.id, 0, true);
-
-        // 如果当前是随机播放模式，重新生成随机列表
-        if (playMode.value == 3) {
-            setShuffledList();
-        }
-
+        // 搜索结果播放时：沿用“新增到现有播放列表并立即播放”的统一逻辑
+        addToNext(song, true);
         return;
     }
     addToList(router.currentRoute.value.name, props.songlist);
