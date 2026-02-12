@@ -838,6 +838,85 @@ body {
   color: #ff4757 !important;
 }
 
+.dark .arknights-comments .floor-replies .floor-toggle {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.68) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-toggle:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-panel {
+  background: rgba(32, 36, 41, 0.56) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-item {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-left-color: rgba(255, 255, 255, 0.24) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-avatar {
+  border-color: rgba(255, 255, 255, 0.24) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-username,
+.dark .arknights-comments .floor-replies .floor-text {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-time,
+.dark .arknights-comments .floor-replies .floor-status {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-control-item {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-control-item:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-control-item .floor-control-icon svg {
+  fill: rgba(255, 255, 255, 0.7) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-control-item .floor-control-text {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-more {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-more:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-toggle:focus,
+.dark .arknights-comments .floor-replies .floor-toggle:focus-visible,
+.dark .arknights-comments .floor-replies .floor-more:focus,
+.dark .arknights-comments .floor-replies .floor-more:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-error {
+  color: #ff7b7b !important;
+}
+
 .dark .arknights-comments .loading-status {
   background: rgba(30, 34, 38, 0.5) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;

@@ -29,6 +29,43 @@ export function getDjProgramComments(id, { limit = 20, offset = 0, before } = {}
   return get('/comment/dj', params)
 }
 
+function normalizeCommentNewResponse(response) {
+  const data = response && typeof response === 'object' ? response.data || {} : {}
+  return {
+    ...(response || {}),
+    comments: Array.isArray(data.comments) ? data.comments : [],
+    total: Number.isFinite(Number(data.totalCount)) ? Number(data.totalCount) : 0,
+    hasMore: !!data.hasMore,
+    cursor: data.cursor ?? ''
+  }
+}
+
+// 节目评论（新版，comment/new）
+export async function getDjProgramCommentsNew({ id, sortType = 3, pageSize = 20, pageNo = 1, cursor } = {}) {
+  const response = await get('/comment/new', {
+    id,
+    type: 4, // 4 = 电台节目
+    sortType,
+    pageSize,
+    pageNo,
+    ...(cursor !== undefined && cursor !== null && cursor !== '' ? { cursor } : {}),
+    timestamp: new Date().getTime()
+  })
+  return normalizeCommentNewResponse(response)
+}
+
+// 节目评论楼层回复
+export function getDjProgramCommentFloor({ id, parentCommentId, limit = 20, time = -1 } = {}) {
+  return get('/comment/floor', {
+    id,
+    type: 4, // 4 = 电台节目
+    parentCommentId,
+    limit,
+    time,
+    timestamp: new Date().getTime()
+  })
+}
+
 export function postDjProgramComment(id, content, commentId = null) {
   const params = {
     id,

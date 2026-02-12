@@ -1,17 +1,12 @@
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue';
-import { getMusicComments, postMusicComment, likeMusicComment } from '../api/song';
-import { getDjProgramComments, postDjProgramComment, likeDjProgramComment } from '../api/dj';
+import { getMusicCommentsNew, getMusicCommentFloor, postMusicComment, likeMusicComment } from '../api/song';
+import { getDjProgramCommentsNew, getDjProgramCommentFloor, postDjProgramComment, likeDjProgramComment } from '../api/dj';
 import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
 import { storeToRefs } from 'pinia';
 import { noticeOpen } from '../utils/dialog';
-import {
-    getCommentScrollPosition,
-    setCommentScrollPosition,
-    getLastCommentTargetKey,
-    setLastCommentTargetKey,
-} from '../utils/commentScrollMemory';
+import { getCommentScrollPosition, setCommentScrollPosition, getLastCommentTargetKey, setLastCommentTargetKey } from '../utils/commentScrollMemory';
 import CommentText from './CommentText.vue';
 
 const emit = defineEmits(['total-change']);
@@ -41,11 +36,15 @@ const hotComments = ref([]);
 const loading = ref(false);
 const total = ref(0);
 const hasMore = ref(true);
-const offset = ref(0);
+const nextCursor = ref('0');
+const pageNo = ref(1);
 const limit = ref(20);
 const newComment = ref('');
 const replyingTo = ref(null);
 const submitting = ref(false);
+const floorReplies = ref({});
+
+const FLOOR_REPLY_LIMIT = 5;
 
 const COMMENTS_PREFETCH_PX = 200;
 const commentsContainerRef = ref(null);
@@ -119,47 +118,307 @@ const clearScrollCheckRaf = () => {
     scrollCheckRafId.value = null;
 };
 
+const getUserName = user => (user && user.nickname) || '未知用户';
+
+const getUserAvatar = (user, size = 40) => {
+    if (user && user.avatarUrl) return `${user.avatarUrl}?param=${size}y${size}`;
+    return 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+};
+
+const resolveReplyRootCommentId = (comment, rootCommentId = null) => {
+    const explicitRoot = Number(rootCommentId);
+    if (Number.isFinite(explicitRoot) && explicitRoot > 0) return explicitRoot;
+
+    const parentId = Number(comment && comment.parentCommentId);
+    if (Number.isFinite(parentId) && parentId > 0) return parentId;
+
+    const selfId = Number(comment && comment.commentId);
+    if (Number.isFinite(selfId) && selfId > 0) return selfId;
+
+    return null;
+};
+
+const isInlineReplyVisible = comment => {
+    if (!replyingTo.value || !comment || !comment.commentId) return false;
+    const expectedRootId = resolveReplyRootCommentId(replyingTo.value, replyingTo.value.__rootCommentId);
+    return expectedRootId === comment.commentId;
+};
+
+const toPositiveInt = value => {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0;
+};
+
+const getCommentReplyCount = comment => {
+    return toPositiveInt(comment && comment.showFloorComment && comment.showFloorComment.replyCount);
+};
+
+const createFloorState = replyCount => ({
+    expanded: false,
+    loading: false,
+    error: '',
+    items: [],
+    hasMore: replyCount > 0,
+    nextTime: -1,
+    total: replyCount,
+});
+
+const getFloorCommentKey = comment => {
+    if (!comment || !comment.commentId) return '';
+    return String(comment.commentId);
+};
+
+const getFloorState = comment => {
+    const key = getFloorCommentKey(comment);
+    if (!key) return null;
+    return floorReplies.value[key] || null;
+};
+
+const ensureFloorState = comment => {
+    const key = getFloorCommentKey(comment);
+    if (!key) return null;
+    if (!floorReplies.value[key]) {
+        floorReplies.value[key] = createFloorState(getCommentReplyCount(comment));
+    }
+    return floorReplies.value[key];
+};
+
+const rebuildFloorStates = (preserveExisting = true) => {
+    const previous = preserveExisting ? floorReplies.value || {} : {};
+    const next = {};
+    const mergedComments = [...hotComments.value, ...comments.value];
+
+    for (const comment of mergedComments) {
+        const key = getFloorCommentKey(comment);
+        if (!key) continue;
+
+        const replyCount = getCommentReplyCount(comment);
+        const previousState = previous[key];
+
+        if (previousState) {
+            const nextState = {
+                ...previousState,
+                total: replyCount > 0 ? replyCount : previousState.total || 0,
+            };
+            if (nextState.total > 0 && nextState.items.length >= nextState.total) {
+                nextState.hasMore = false;
+            }
+            next[key] = nextState;
+        } else {
+            next[key] = createFloorState(replyCount);
+        }
+    }
+
+    floorReplies.value = next;
+};
+
+const mergeFloorItems = (existing = [], incoming = []) => {
+    if (!existing.length) return incoming.slice();
+    if (!incoming.length) return existing.slice();
+
+    const seen = new Set(existing.map(item => item.commentId));
+    const merged = existing.slice();
+    for (const item of incoming) {
+        if (seen.has(item.commentId)) continue;
+        merged.push(item);
+        seen.add(item.commentId);
+    }
+    return merged;
+};
+
+const requestCommentList = async params => {
+    if (isDj.value && programId.value) {
+        return getDjProgramCommentsNew({ id: programId.value, ...params });
+    }
+    if (musicCommentId.value) {
+        return getMusicCommentsNew({ id: musicCommentId.value, ...params });
+    }
+    return null;
+};
+
+const requestCommentFloor = async params => {
+    if (isDj.value && programId.value) {
+        return getDjProgramCommentFloor({ id: programId.value, ...params });
+    }
+    if (musicCommentId.value) {
+        return getMusicCommentFloor({ id: musicCommentId.value, ...params });
+    }
+    return null;
+};
+
+const loadFloorReplies = async (comment, { forceFirstPage = false } = {}) => {
+    const state = ensureFloorState(comment);
+    if (!state || state.loading) return;
+
+    const replyCount = getCommentReplyCount(comment);
+    if (!replyCount && state.items.length === 0) {
+        state.hasMore = false;
+        state.total = 0;
+        state.expanded = true;
+        return;
+    }
+
+    const isFirstPage = forceFirstPage || state.items.length === 0;
+    if (!isFirstPage && !state.hasMore) return;
+
+    state.loading = true;
+    state.error = '';
+
+    try {
+        const response = await requestCommentFloor({
+            parentCommentId: comment.commentId,
+            limit: FLOOR_REPLY_LIMIT,
+            time: isFirstPage ? -1 : state.nextTime,
+        });
+
+        if (response && response.code === 200) {
+            const data = response.data || {};
+            const incomingItems = Array.isArray(data.comments) ? data.comments : [];
+
+            if (isFirstPage) {
+                state.items = incomingItems;
+            } else {
+                state.items = mergeFloorItems(state.items, incomingItems);
+            }
+
+            const totalCount = Number(data.totalCount);
+            if (Number.isFinite(totalCount) && totalCount >= 0) {
+                state.total = Math.floor(totalCount);
+            }
+
+            state.hasMore = !!data.hasMore;
+
+            const nextTimeValue = Number(data.time);
+            if (Number.isFinite(nextTimeValue) && nextTimeValue >= 0) {
+                state.nextTime = nextTimeValue;
+            }
+
+            if (state.total > 0 && state.items.length >= state.total) {
+                state.hasMore = false;
+            }
+
+            state.expanded = true;
+        } else {
+            state.error = '回复加载失败，点击重试';
+        }
+    } catch (error) {
+        console.error('获取楼层回复失败:', error);
+        state.error = '回复加载失败，点击重试';
+    } finally {
+        state.loading = false;
+    }
+};
+
+const toggleFloorReplies = async comment => {
+    const state = ensureFloorState(comment);
+    if (!state) return;
+
+    if (state.expanded) {
+        state.expanded = false;
+        return;
+    }
+
+    if (state.items.length > 0) {
+        state.expanded = true;
+        return;
+    }
+
+    await loadFloorReplies(comment, { forceFirstPage: true });
+};
+
+const loadMoreFloorReplies = async comment => {
+    const state = ensureFloorState(comment);
+    if (!state || state.loading || !state.hasMore) return;
+    await loadFloorReplies(comment);
+};
+
+const retryFloorReplies = async comment => {
+    const state = ensureFloorState(comment);
+    if (!state) return;
+    state.error = '';
+    await loadFloorReplies(comment, { forceFirstPage: state.items.length === 0 });
+};
+
 // 获取评论数据
 const fetchComments = async (reset = false) => {
     if (loading.value || (!hasMore.value && !reset)) return;
 
     const requestTargetKey = commentTargetKey.value;
+    if (!requestTargetKey) return;
+
     loading.value = true;
     let fetchSucceeded = false;
 
     try {
-        const params = {
-            limit: limit.value,
-            offset: reset ? 0 : offset.value,
-        };
+        if (reset) {
+            const [latestResult, hotResult] = await Promise.allSettled([
+                requestCommentList({
+                    sortType: 3,
+                    pageSize: limit.value,
+                    pageNo: 1,
+                    cursor: '0',
+                }),
+                requestCommentList({
+                    sortType: 2,
+                    pageSize: limit.value,
+                    pageNo: 1,
+                }),
+            ]);
 
-        let response = null;
-        if (isDj.value && programId.value) {
-            response = await getDjProgramComments(programId.value, params);
-        } else {
-            response = await getMusicComments({ id: musicCommentId.value, ...params });
-        }
+            const latestResponse = latestResult.status === 'fulfilled' ? latestResult.value : null;
+            const hotResponse = hotResult.status === 'fulfilled' ? hotResult.value : null;
 
-        if (response && response.code === 200) {
-            if (reset) {
-                comments.value = response.comments || [];
-                hotComments.value = response.hotComments || [];
-                offset.value = 0;
+            if (latestResponse && latestResponse.code === 200) {
+                comments.value = latestResponse.comments || [];
+                total.value = toPositiveInt(latestResponse.total);
+                hasMore.value = !!latestResponse.hasMore;
+                nextCursor.value = latestResponse.cursor || '';
+                pageNo.value = 2;
+                fetchSucceeded = true;
             } else {
-                comments.value.push(...(response.comments || []));
+                comments.value = [];
+                total.value = 0;
+                hasMore.value = false;
+                nextCursor.value = '';
+                pageNo.value = 1;
             }
 
-            const responseTotal = Number(response.total);
-            total.value = Number.isFinite(responseTotal) && responseTotal > 0 ? Math.floor(responseTotal) : 0;
+            if (hotResponse && hotResponse.code === 200) {
+                hotComments.value = hotResponse.comments || [];
+                fetchSucceeded = true;
+            } else {
+                hotComments.value = [];
+            }
+        } else {
+            const latestResponse = await requestCommentList({
+                sortType: 3,
+                pageSize: limit.value,
+                pageNo: pageNo.value,
+                ...(nextCursor.value ? { cursor: nextCursor.value } : {}),
+            });
+
+            if (latestResponse && latestResponse.code === 200) {
+                const incoming = latestResponse.comments || [];
+                comments.value.push(...incoming);
+                total.value = toPositiveInt(latestResponse.total);
+                hasMore.value = !!latestResponse.hasMore && incoming.length > 0;
+                nextCursor.value = latestResponse.cursor || nextCursor.value;
+                pageNo.value += 1;
+                fetchSucceeded = true;
+            }
+        }
+
+        rebuildFloorStates(!reset);
+
+        if (fetchSucceeded) {
             if (requestTargetKey) {
                 emit('total-change', {
                     targetKey: requestTargetKey,
                     total: total.value,
                 });
             }
-            offset.value += limit.value;
-            hasMore.value = (response.comments || []).length === limit.value;
-            fetchSucceeded = true;
+        } else {
+            noticeOpen('获取评论失败', 2);
         }
     } catch (error) {
         console.error('获取评论失败:', error);
@@ -233,7 +492,9 @@ const toggleLikeComment = async comment => {
 
         if (response && response.code === 200) {
             comment.liked = !comment.liked;
-            comment.likedCount += comment.liked ? 1 : -1;
+            const currentCount = Number(comment.likedCount) || 0;
+            const nextCount = currentCount + (comment.liked ? 1 : -1);
+            comment.likedCount = nextCount > 0 ? nextCount : 0;
         }
     } catch (error) {
         console.error('点赞失败:', error);
@@ -242,14 +503,20 @@ const toggleLikeComment = async comment => {
 };
 
 // 回复评论
-const toggleReply = comment => {
-    if (replyingTo.value && replyingTo.value.commentId === comment.commentId) {
+const toggleReply = (comment, rootCommentId = null) => {
+    const rootId = resolveReplyRootCommentId(comment, rootCommentId);
+    if (!rootId) return;
+
+    if (replyingTo.value && replyingTo.value.commentId === comment.commentId && resolveReplyRootCommentId(replyingTo.value, replyingTo.value.__rootCommentId) === rootId) {
         // 如果点击的是当前正在回复的评论，则取消回复
         cancelReply();
     } else {
         // 否则开始回复这个评论
-        replyingTo.value = comment;
-        newComment.value = `@${comment.user.nickname} `;
+        replyingTo.value = {
+            ...comment,
+            __rootCommentId: rootId,
+        };
+        newComment.value = `@${getUserName(comment.user)} `;
         // 使用nextTick确保DOM更新后再聚焦
         nextTick(() => {
             // 聚焦到回复输入框
@@ -269,7 +536,7 @@ const cancelReply = () => {
 };
 
 // 处理复制成功
-const handleCopySuccess = text => {
+const handleCopySuccess = () => {
     noticeOpen('评论已复制到剪贴板', 1);
 };
 
@@ -281,8 +548,11 @@ const handleCopyError = error => {
 
 // 格式化时间
 const formatTime = timestamp => {
+    const ts = Number(timestamp);
+    if (!Number.isFinite(ts) || ts <= 0) return '刚刚';
+
     const now = Date.now();
-    const diff = now - timestamp;
+    const diff = now - ts;
 
     const minute = 60 * 1000;
     const hour = 60 * minute;
@@ -309,7 +579,16 @@ const formatTime = timestamp => {
 watch(
     commentTargetKey,
     (target, previousTarget) => {
-        if (!target) return;
+        if (!target) {
+            comments.value = [];
+            hotComments.value = [];
+            floorReplies.value = {};
+            total.value = 0;
+            hasMore.value = false;
+            nextCursor.value = '0';
+            pageNo.value = 1;
+            return;
+        }
 
         const lastCommentTarget = getLastCommentTargetKey();
         const switchedWhileCommentsClosed = !previousTarget && !!lastCommentTarget && lastCommentTarget !== target;
@@ -421,11 +700,11 @@ onUnmounted(() => {
                     <div class="card-content">
                         <div class="comment-meta">
                             <div class="user-avatar">
-                                <img :src="comment.user.avatarUrl + '?param=40y40'" :alt="comment.user.nickname" />
+                                <img :src="getUserAvatar(comment.user, 40)" :alt="getUserName(comment.user)" />
                                 <div class="avatar-frame"></div>
                             </div>
                             <div class="user-info">
-                                <span class="username">{{ comment.user.nickname }}</span>
+                                <span class="username">{{ getUserName(comment.user) }}</span>
                                 <span class="timestamp">{{ formatTime(comment.time) }}</span>
                             </div>
                         </div>
@@ -456,8 +735,75 @@ onUnmounted(() => {
                             </div>
                         </div>
 
+                        <div class="floor-replies" v-if="getCommentReplyCount(comment) > 0">
+                            <button class="floor-toggle" type="button" @click="toggleFloorReplies(comment)">
+                                <span v-if="!getFloorState(comment)?.expanded">展开{{ getCommentReplyCount(comment) }}条回复</span>
+                                <span v-else>收起回复</span>
+                            </button>
+
+                            <div class="floor-panel" v-if="getFloorState(comment)?.expanded">
+                                <div class="floor-list" v-if="(getFloorState(comment)?.items || []).length > 0">
+                                    <div class="floor-item" v-for="reply in getFloorState(comment).items" :key="`floor-${comment.commentId}-${reply.commentId}`">
+                                        <div class="floor-avatar">
+                                            <img :src="getUserAvatar(reply.user, 24)" :alt="getUserName(reply.user)" />
+                                        </div>
+                                        <div class="floor-main">
+                                            <div class="floor-item-meta">
+                                                <span class="floor-username">{{ getUserName(reply.user) }}</span>
+                                                <span class="floor-time">{{ formatTime(reply.time) }}</span>
+                                            </div>
+                                            <CommentText
+                                                class="floor-text"
+                                                :text="reply.content || ''"
+                                                :enable-emoji="true"
+                                                :copyable="true"
+                                                :show-copy-button="false"
+                                                @copy-success="handleCopySuccess"
+                                                @copy-error="handleCopyError"
+                                            />
+                                            <div class="floor-controls">
+                                                <div class="floor-control-item floor-like" :class="{ active: reply.liked }" @click="toggleLikeComment(reply)">
+                                                    <div class="floor-control-icon">
+                                                        <svg viewBox="0 0 1024 1024" width="10" height="10">
+                                                            <path
+                                                                d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z"
+                                                            />
+                                                        </svg>
+                                                    </div>
+                                                    <span class="floor-control-text">{{ (Number(reply.likedCount) || 0) > 0 ? reply.likedCount : 'LIKE' }}</span>
+                                                </div>
+
+                                                <div class="floor-control-item floor-reply" @click="toggleReply(reply, comment.commentId)">
+                                                    <div class="floor-control-icon">
+                                                        <svg viewBox="0 0 1024 1024" width="10" height="10">
+                                                            <path
+                                                                d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z"
+                                                            />
+                                                        </svg>
+                                                    </div>
+                                                    <span class="floor-control-text">REPLY</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="floor-status floor-error" v-if="getFloorState(comment)?.error" @click="retryFloorReplies(comment)">
+                                    {{ getFloorState(comment).error }}
+                                </div>
+
+                                <div class="floor-status floor-empty" v-else-if="!getFloorState(comment)?.loading && (getFloorState(comment)?.items || []).length === 0">暂无回复</div>
+
+                                <button class="floor-more" type="button" v-if="getFloorState(comment)?.hasMore" :disabled="getFloorState(comment)?.loading" @click="loadMoreFloorReplies(comment)">
+                                    {{ getFloorState(comment)?.loading ? '加载中...' : '展开更多回复' }}
+                                </button>
+
+                                <div class="floor-status floor-end" v-else-if="!getFloorState(comment)?.hasMore && (getFloorState(comment)?.items || []).length > 0">已展示全部回复</div>
+                            </div>
+                        </div>
+
                         <!-- 内联回复框 -->
-                        <div class="inline-reply-box" v-if="replyingTo && replyingTo.commentId === comment.commentId">
+                        <div class="inline-reply-box" v-if="isInlineReplyVisible(comment)">
                             <div class="reply-frame">
                                 <div class="frame-corner frame-tl"></div>
                                 <div class="frame-corner frame-tr"></div>
@@ -468,7 +814,7 @@ onUnmounted(() => {
                             <div class="reply-content">
                                 <div class="reply-header">
                                     <span class="reply-prefix">REPLY TO</span>
-                                    <span class="reply-target">{{ comment.user.nickname }}</span>
+                                    <span class="reply-target">{{ getUserName(replyingTo?.user || comment.user) }}</span>
                                     <div class="close-reply" @click="cancelReply()">×</div>
                                 </div>
 
@@ -515,11 +861,11 @@ onUnmounted(() => {
                     <div class="card-content">
                         <div class="comment-meta">
                             <div class="user-avatar">
-                                <img :src="comment.user.avatarUrl + '?param=40y40'" :alt="comment.user.nickname" />
+                                <img :src="getUserAvatar(comment.user, 40)" :alt="getUserName(comment.user)" />
                                 <div class="avatar-frame"></div>
                             </div>
                             <div class="user-info">
-                                <span class="username">{{ comment.user.nickname }}</span>
+                                <span class="username">{{ getUserName(comment.user) }}</span>
                                 <span class="timestamp">{{ formatTime(comment.time) }}</span>
                             </div>
                         </div>
@@ -550,8 +896,75 @@ onUnmounted(() => {
                             </div>
                         </div>
 
+                        <div class="floor-replies" v-if="getCommentReplyCount(comment) > 0">
+                            <button class="floor-toggle" type="button" @click="toggleFloorReplies(comment)">
+                                <span v-if="!getFloorState(comment)?.expanded">展开{{ getCommentReplyCount(comment) }}条回复</span>
+                                <span v-else>收起回复</span>
+                            </button>
+
+                            <div class="floor-panel" v-if="getFloorState(comment)?.expanded">
+                                <div class="floor-list" v-if="(getFloorState(comment)?.items || []).length > 0">
+                                    <div class="floor-item" v-for="reply in getFloorState(comment).items" :key="`floor-${comment.commentId}-${reply.commentId}`">
+                                        <div class="floor-avatar">
+                                            <img :src="getUserAvatar(reply.user, 24)" :alt="getUserName(reply.user)" />
+                                        </div>
+                                        <div class="floor-main">
+                                            <div class="floor-item-meta">
+                                                <span class="floor-username">{{ getUserName(reply.user) }}</span>
+                                                <span class="floor-time">{{ formatTime(reply.time) }}</span>
+                                            </div>
+                                            <CommentText
+                                                class="floor-text"
+                                                :text="reply.content || ''"
+                                                :enable-emoji="true"
+                                                :copyable="true"
+                                                :show-copy-button="false"
+                                                @copy-success="handleCopySuccess"
+                                                @copy-error="handleCopyError"
+                                            />
+                                            <div class="floor-controls">
+                                                <div class="floor-control-item floor-like" :class="{ active: reply.liked }" @click="toggleLikeComment(reply)">
+                                                    <div class="floor-control-icon">
+                                                        <svg viewBox="0 0 1024 1024" width="10" height="10">
+                                                            <path
+                                                                d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674z"
+                                                            />
+                                                        </svg>
+                                                    </div>
+                                                    <span class="floor-control-text">{{ (Number(reply.likedCount) || 0) > 0 ? reply.likedCount : 'LIKE' }}</span>
+                                                </div>
+
+                                                <div class="floor-control-item floor-reply" @click="toggleReply(reply, comment.commentId)">
+                                                    <div class="floor-control-icon">
+                                                        <svg viewBox="0 0 1024 1024" width="10" height="10">
+                                                            <path
+                                                                d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-256 128v85.333333H256v-85.333333h341.333333z m0 170.666666v85.333334H256v-85.333334h341.333333z"
+                                                            />
+                                                        </svg>
+                                                    </div>
+                                                    <span class="floor-control-text">REPLY</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="floor-status floor-error" v-if="getFloorState(comment)?.error" @click="retryFloorReplies(comment)">
+                                    {{ getFloorState(comment).error }}
+                                </div>
+
+                                <div class="floor-status floor-empty" v-else-if="!getFloorState(comment)?.loading && (getFloorState(comment)?.items || []).length === 0">暂无回复</div>
+
+                                <button class="floor-more" type="button" v-if="getFloorState(comment)?.hasMore" :disabled="getFloorState(comment)?.loading" @click="loadMoreFloorReplies(comment)">
+                                    {{ getFloorState(comment)?.loading ? '加载中...' : '展开更多回复' }}
+                                </button>
+
+                                <div class="floor-status floor-end" v-else-if="!getFloorState(comment)?.hasMore && (getFloorState(comment)?.items || []).length > 0">已展示全部回复</div>
+                            </div>
+                        </div>
+
                         <!-- 内联回复框 -->
-                        <div class="inline-reply-box" v-if="replyingTo && replyingTo.commentId === comment.commentId">
+                        <div class="inline-reply-box" v-if="isInlineReplyVisible(comment)">
                             <div class="reply-frame">
                                 <div class="frame-corner frame-tl"></div>
                                 <div class="frame-corner frame-tr"></div>
@@ -562,7 +975,7 @@ onUnmounted(() => {
                             <div class="reply-content">
                                 <div class="reply-header">
                                     <span class="reply-prefix">REPLY TO</span>
-                                    <span class="reply-target">{{ comment.user.nickname }}</span>
+                                    <span class="reply-target">{{ getUserName(replyingTo?.user || comment.user) }}</span>
                                     <div class="close-reply" @click="cancelReply()">×</div>
                                 </div>
 
@@ -1110,6 +1523,214 @@ onUnmounted(() => {
     }
 }
 
+.floor-replies {
+    margin-top: 10px;
+    padding-left: 0;
+
+    .floor-toggle {
+        border: none;
+        margin-top: 0;
+        padding: 4px 8px;
+        background: rgba(0, 0, 0, 0.08);
+        cursor: pointer;
+        font-family: Bender-Bold, monospace;
+        font-size: 9px;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        color: rgba(0, 0, 0, 0.68);
+        transition: all 0.2s;
+        border-radius: 0;
+        outline: none;
+        box-shadow: none;
+        -webkit-tap-highlight-color: transparent;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.14);
+            color: rgba(0, 0, 0, 0.86);
+        }
+
+        &:focus,
+        &:focus-visible {
+            outline: none;
+            box-shadow: none;
+        }
+    }
+
+    .floor-panel {
+        margin-top: 8px;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 0;
+    }
+
+    .floor-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .floor-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 6px 8px;
+        background: rgba(176, 209, 217, 0.07);
+        border-left: 2px solid rgba(0, 0, 0, 0.2);
+        border-radius: 0;
+    }
+
+    .floor-avatar {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        overflow: hidden;
+        border-radius: 0;
+
+        img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+    }
+
+    .floor-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .floor-item-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+    }
+
+    .floor-username {
+        font-family: SourceHanSansCN-Bold;
+        font-size: 11px;
+        font-weight: bold;
+        color: rgba(0, 0, 0, 0.82);
+    }
+
+    .floor-time {
+        font-family: Bender-Bold, monospace;
+        font-size: 9px;
+        letter-spacing: 0.4px;
+        color: rgba(0, 0, 0, 0.5);
+    }
+
+    .floor-text {
+        font-family: SourceHanSansCN-Bold;
+        font-size: 12px;
+        line-height: 1.45;
+        color: rgba(0, 0, 0, 0.82);
+    }
+
+    .floor-controls {
+        margin-top: 5px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .floor-control-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 5px;
+        background: rgba(0, 0, 0, 0.05);
+        cursor: pointer;
+        transition: all 0.2s;
+        border-radius: 0;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.11);
+            transform: translateY(-1px);
+        }
+
+        .floor-control-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            svg {
+                fill: rgba(0, 0, 0, 0.58);
+                transition: fill 0.2s;
+            }
+        }
+
+        .floor-control-text {
+            font-family: Bender-Bold, monospace;
+            font-size: 8px;
+            font-weight: bold;
+            letter-spacing: 0.4px;
+            color: rgba(0, 0, 0, 0.58);
+        }
+
+        &.active {
+            .floor-control-icon svg,
+            .floor-control-text {
+                fill: #ff4757;
+                color: #ff4757;
+            }
+        }
+    }
+
+    .floor-more {
+        margin-top: 8px;
+        border: none;
+        background: rgba(0, 0, 0, 0.08);
+        color: rgba(0, 0, 0, 0.68);
+        font-family: Bender-Bold, monospace;
+        font-size: 9px;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        padding: 4px 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        border-radius: 0;
+        outline: none;
+        box-shadow: none;
+        -webkit-tap-highlight-color: transparent;
+
+        &:hover:not(:disabled) {
+            background: rgba(0, 0, 0, 0.14);
+            color: rgba(0, 0, 0, 0.86);
+        }
+
+        &:focus,
+        &:focus-visible {
+            outline: none;
+            box-shadow: none;
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    }
+
+    .floor-status {
+        margin-top: 8px;
+        font-family: Bender-Bold, monospace;
+        font-size: 9px;
+        letter-spacing: 0.5px;
+        color: rgba(0, 0, 0, 0.56);
+    }
+
+    .floor-error {
+        color: #d64545;
+        cursor: pointer;
+
+        &:hover {
+            color: #b82f2f;
+        }
+    }
+}
+
 // 状态区域
 .status-section {
     display: flex;
@@ -1370,6 +1991,46 @@ onUnmounted(() => {
 
     .section-title {
         font-size: 12px;
+    }
+
+    .floor-replies {
+        padding-left: 0;
+
+        .floor-panel {
+            padding: 7px 8px;
+        }
+
+        .floor-item {
+            padding: 5px 6px;
+            gap: 6px;
+        }
+
+        .floor-avatar {
+            width: 20px;
+            height: 20px;
+        }
+
+        .floor-toggle,
+        .floor-more,
+        .floor-status {
+            font-size: 9px;
+        }
+
+        .floor-text {
+            font-size: 11px;
+        }
+
+        .floor-controls {
+            gap: 6px;
+        }
+
+        .floor-control-item {
+            padding: 2px 4px;
+        }
+
+        .floor-control-item .floor-control-text {
+            font-size: 8px;
+        }
     }
 }
 </style>

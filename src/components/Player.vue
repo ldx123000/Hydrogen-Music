@@ -1215,7 +1215,7 @@ const toggleDjSub = async isSubscribe => {
         .comment-line {
             fill: none;
             stroke: currentColor;
-            stroke-width: 2;
+            stroke-width: 1.5;
             stroke-linecap: round;
             stroke-linejoin: round;
             vector-effect: non-scaling-stroke;

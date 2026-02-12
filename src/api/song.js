@@ -95,6 +95,63 @@ export function getMusicComments(id, { limit = 20, offset = 0, before, ...extraP
 }
 
 /**
+ * 归一化 comment/new 返回结构，避免上层关心 data 字段层级
+ * @param {object} response - 原始接口响应
+ * @returns {object}
+ */
+function normalizeCommentNewResponse(response) {
+    const data = response && typeof response === 'object' ? response.data || {} : {};
+    return {
+        ...(response || {}),
+        comments: Array.isArray(data.comments) ? data.comments : [],
+        total: Number.isFinite(Number(data.totalCount)) ? Number(data.totalCount) : 0,
+        hasMore: !!data.hasMore,
+        cursor: data.cursor ?? '',
+    };
+}
+
+/**
+ * 获取新版音乐评论（comment/new）
+ * @param {object} params
+ * @param {string|number} params.id - 音乐ID
+ * @param {number|string} params.sortType - 1推荐/2热度/3时间
+ * @param {number|string} params.pageSize - 每页数量
+ * @param {number|string} params.pageNo - 页码
+ * @param {number|string} params.cursor - 时间排序游标
+ */
+export async function getMusicCommentsNew({ id, sortType = 3, pageSize = 20, pageNo = 1, cursor } = {}) {
+    const response = await get('/comment/new', {
+        id,
+        type: 0, // 0 = 歌曲
+        sortType,
+        pageSize,
+        pageNo,
+        ...(cursor !== undefined && cursor !== null && cursor !== '' ? { cursor } : {}),
+        timestamp: new Date().getTime(),
+    });
+    return normalizeCommentNewResponse(response);
+}
+
+/**
+ * 获取音乐评论楼层回复（comment/floor）
+ * @param {object} params
+ * @param {string|number} params.id - 音乐ID
+ * @param {string|number} params.parentCommentId - 父评论ID
+ * @param {number|string} params.limit - 分页数量
+ * @param {number|string} params.time - 分页游标时间
+ */
+export function getMusicCommentFloor({ id, parentCommentId, limit = 20, time = -1 } = {}) {
+    return get('/comment/floor', {
+        id,
+        type: 0, // 0 = 歌曲
+        parentCommentId,
+        limit,
+        time,
+        timestamp: new Date().getTime(),
+    });
+}
+
+/**
  * 发送音乐评论
  * @param {string|number} id - 音乐ID
  * @param {string} content - 评论内容
