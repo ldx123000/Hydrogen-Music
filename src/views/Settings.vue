@@ -44,6 +44,7 @@ const lyricSize = ref(20);
 const tlyricSize = ref(13);
 const rlyricSize = ref(12);
 const lyricInterlude = ref(13);
+const searchAssistLimit = ref(8);
 const globalShortcuts = ref(false);
 const quitApp = ref('minimize');
 const quitAppOptions = ref([
@@ -76,6 +77,12 @@ const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ','
 const showUpdateDialog = ref(false);
 const newVersion = ref('');
 
+const normalizeSearchAssistLimit = value => {
+    const num = Number.parseInt(value, 10);
+    if (!Number.isFinite(num)) return 8;
+    return Math.max(1, num);
+};
+
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
@@ -89,6 +96,7 @@ onActivated(() => {
         tlyricSize.value = settings.music.tlyricSize;
         rlyricSize.value = settings.music.rlyricSize;
         lyricInterlude.value = settings.music.lyricInterlude;
+        searchAssistLimit.value = normalizeSearchAssistLimit(settings.music.searchAssistLimit);
         videoFolder.value = settings.local.videoFolder;
         downloadFolder.value = settings.local.downloadFolder;
         downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder;
@@ -146,6 +154,7 @@ const setAppSettings = () => {
             tlyricSize: tlyricSize.value,
             rlyricSize: rlyricSize.value,
             lyricInterlude: lyricInterlude.value,
+            searchAssistLimit: normalizeSearchAssistLimit(searchAssistLimit.value),
         },
         local: {
             videoFolder: videoFolder.value,
@@ -447,6 +456,12 @@ const clearFmRecent = () => {
 	                                </div>
 	                            </div>
 	                        </div>
+                        <div class="option">
+                            <div class="option-name">搜索下拉条目数量</div>
+                            <div class="option-operation">
+                                <input v-model="searchAssistLimit" name="searchAssistLimit" />
+                            </div>
+                        </div>
                         <div class="option">
                             <div class="option-name">歌词字体大小</div>
                             <div class="option-operation">

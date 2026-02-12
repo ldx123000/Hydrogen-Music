@@ -11,17 +11,19 @@ import { storeToRefs } from 'pinia'
 
 const userStore = useUserStore(pinia)
 const playerStore = usePlayerStore()
-const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
+const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const { updateUser } = userStore
 
 export const initSettings = () => {
     windowApi.getSettings().then(settings => {
+        const rawSearchAssistLimit = Number.parseInt(settings?.music?.searchAssistLimit, 10)
         quality.value = settings.music.level
         lyricSize.value = settings.music.lyricSize
         tlyricSize.value = settings.music.tlyricSize
         rlyricSize.value = settings.music.rlyricSize
         lyricInterludeTime.value = settings.music.lyricInterlude
+        searchAssistLimit.value = Number.isFinite(rawSearchAssistLimit) ? Math.max(1, rawSearchAssistLimit) : 8
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp

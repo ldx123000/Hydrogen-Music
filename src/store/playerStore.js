@@ -28,6 +28,7 @@ export const usePlayerStore = defineStore('playerStore', {
             rlyricSize: null,
             lyricType: ['original'],
             lyricInterludeTime: null, //歌词间奏等待时间
+            searchAssistLimit: 8, //搜索下拉面板显示数量
             lyricShow: false, //歌词是否显示
             lyricEle: null,//歌词DOM
             isLyricDelay: true, //调整进度的时候禁止赋予delay属性

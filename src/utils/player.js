@@ -1135,6 +1135,11 @@ export function addToNext(nextSong, autoplay) {
             const hash = (typeof window !== 'undefined' && window.location && window.location.hash) ? window.location.hash : ''
             isOnPersonalFMRoute = hash.includes('/personalfm')
         } catch (_) {}
+        // 仍在FM页面时，保持原有“下一首FM”逻辑，避免破坏FM流程
+        if (isOnPersonalFMRoute) {
+            playNext()
+            return
+        }
         if (!isOnPersonalFMRoute) {
             listInfo.value = null
             // 退出FM后首次点播：清理FM临时单曲队列，避免FM歌曲混入后续播放列表
@@ -1149,28 +1154,58 @@ export function addToNext(nextSong, autoplay) {
         }
     }
 
+    if (!nextSong || !nextSong.id) return
     if (!songList.value) songList.value = []
     if (nextSong.id == songId.value) return
+
+    // 修正当前索引越界/异常，避免“插入成功但自动播放失败”
+    if (!Number.isInteger(currentIndex.value) || currentIndex.value < 0) currentIndex.value = 0
+    if (songList.value.length > 0 && currentIndex.value >= songList.value.length) {
+        currentIndex.value = songList.value.length - 1
+    }
 
     const si = (songList.value || []).findIndex((song) => song.id === nextSong.id)
     if (si != -1) {
         songList.value.splice(si, 1)
         if (si < currentIndex.value) currentIndex.value--
     }
-    songList.value.splice(currentIndex.value + 1, 0, nextSong)
+    let songInsertIndex = currentIndex.value + 1
+    if (songInsertIndex < 0) songInsertIndex = 0
+    if (songInsertIndex > songList.value.length) songInsertIndex = songList.value.length
+    songList.value.splice(songInsertIndex, 0, nextSong)
 
+    let shuffledInsertIndex = 0
     if (playMode.value == 3) {
-        if (!Array.isArray(shuffledList.value)) shuffledList.value = []
+        if (!Array.isArray(shuffledList.value) || shuffledList.value.length === 0) {
+            setShuffledList()
+        }
+        if (!Number.isInteger(shuffleIndex.value) || shuffleIndex.value < 0) {
+            const fallbackIndex = (shuffledList.value || []).findIndex((song) => song.id === songId.value)
+            shuffleIndex.value = fallbackIndex >= 0 ? fallbackIndex : 0
+        }
+        if (shuffledList.value.length > 0 && shuffleIndex.value >= shuffledList.value.length) {
+            shuffleIndex.value = shuffledList.value.length - 1
+        }
+
         const shufflei = (shuffledList.value || []).findIndex((song) => song.id === nextSong.id)
         if (shufflei != -1) {
             shuffledList.value.splice(shufflei, 1)
-            if (shufflei < currentIndex.value) shuffleIndex.value--
+            if (shufflei < shuffleIndex.value) shuffleIndex.value--
         }
-        shuffledList.value.splice(shuffleIndex.value + 1, 0, nextSong)
+        shuffledInsertIndex = shuffleIndex.value + 1
+        if (shuffledInsertIndex < 0) shuffledInsertIndex = 0
+        if (shuffledInsertIndex > shuffledList.value.length) shuffledInsertIndex = shuffledList.value.length
+        shuffledList.value.splice(shuffledInsertIndex, 0, nextSong)
     }
-    if (autoplay) playNext()
-    else noticeOpen('已添加至下一首', 2)
-    if (songList.value.length == 1) addSong(nextSong.id, 0, autoplay)
+
+    if (!autoplay) {
+        noticeOpen('已添加至下一首', 2)
+        return
+    }
+
+    // 直接播放“刚插入”的目标项，避免依赖 playNext 的索引状态
+    if (playMode.value == 3) addSong(nextSong.id, shuffledInsertIndex, true)
+    else addSong(nextSong.id, songInsertIndex, true)
 }
 export function addToNextLocal(song, autoplay) {
     addToNext(localMusicHandle([song], true), autoplay)

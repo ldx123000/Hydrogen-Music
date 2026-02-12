@@ -32,3 +32,31 @@ export function search(params) {
         params,
     })
 }
+
+/**
+ * 说明 : 调用此接口,可获取热门搜索列表(详细)
+ * @param {*} params
+ * @returns
+ */
+export function searchHotDetail(params = {}) {
+    return request({
+        url: '/search/hot/detail',
+        method: 'get',
+        params,
+    })
+}
+
+/**
+ * 说明 : 调用此接口,传入搜索关键词可获得搜索建议
+ * 必选参数 : keywords : 关键词
+ * 可选参数 : type : 如果传 'mobile' 则返回移动端关键词流
+ * @param {*} params
+ * @returns
+ */
+export function searchSuggest(params) {
+    return request({
+        url: '/search/suggest',
+        method: 'get',
+        params,
+    })
+}

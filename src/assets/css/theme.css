@@ -1509,6 +1509,46 @@ body {
   background-color: var(--text) !important;
 }
 
+/* Search assist dropdown: align with app-wide dark system surfaces */
+.dark .search-assist {
+  background: var(--panel) !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--shadow) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.dark .search-assist .assist-corner {
+  border-color: var(--text) !important;
+}
+
+.dark .search-assist .assist-header {
+  border-bottom-color: var(--border) !important;
+}
+
+.dark .search-assist .assist-header .assist-title {
+  color: var(--text) !important;
+}
+
+.dark .search-assist .assist-header .assist-count,
+.dark .search-assist .assist-body .assist-status,
+.dark .search-assist .assist-body .assist-item .assist-index {
+  color: var(--muted-text) !important;
+}
+
+.dark .search-assist .assist-header .assist-line {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.24), transparent) !important;
+}
+
+.dark .search-assist .assist-body .assist-item {
+  color: var(--text) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.22)) !important;
+}
+
+.dark .search-assist .assist-body .assist-item:hover {
+  color: #0f1114 !important;
+}
+
 /* MyMusic view tweaks */
 .dark .my-music .no-folder {
   background-color: var(--layer) !important;

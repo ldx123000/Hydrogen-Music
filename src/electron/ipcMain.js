@@ -135,32 +135,46 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
         return null
     })
+    const normalizeSearchAssistLimit = value => {
+        const num = Number.parseInt(value, 10)
+        if (!Number.isFinite(num)) return 8
+        return Math.max(1, num)
+    }
+
     ipcMain.on('set-settings', (e, settings) => {
-        settingsStore.set('settings', JSON.parse(settings))
+        const parsedSettings = JSON.parse(settings)
+        if (!parsedSettings.music) parsedSettings.music = {}
+        parsedSettings.music.searchAssistLimit = normalizeSearchAssistLimit(parsedSettings.music.searchAssistLimit)
+        settingsStore.set('settings', parsedSettings)
         registerShortcuts(win)
     })
-	    ipcMain.handle('get-settings', async () => {
-	        const settings = await settingsStore.get('settings')
-	        if (settings) return settings
-	        else {
-	            let initSettings = {
-	                music: {
-	                    level: 'standard',
-	                    lyricSize: '20',
-	                    tlyricSize: '14',
-	                    rlyricSize: '12',
-	                    lyricInterlude: 13
-	                },
-	                local: {
-	                    videoFolder: null,
-	                    downloadFolder: null,
-	                    downloadCreateSongFolder: false,
-	                    downloadSaveLyricFile: false,
-	                    localFolder: []
-	                },
-	                shortcuts: [
-	                    {
-	                        id: 'play',
+    ipcMain.handle('get-settings', async () => {
+        const settings = await settingsStore.get('settings')
+        if (settings) {
+            if (!settings.music) settings.music = {}
+            settings.music.searchAssistLimit = normalizeSearchAssistLimit(settings.music.searchAssistLimit)
+            settingsStore.set('settings', settings)
+            return settings
+        } else {
+            let initSettings = {
+                music: {
+                    level: 'standard',
+                    lyricSize: '20',
+                    tlyricSize: '14',
+                    rlyricSize: '12',
+                    lyricInterlude: 13,
+                    searchAssistLimit: 8
+                },
+                local: {
+                    videoFolder: null,
+                    downloadFolder: null,
+                    downloadCreateSongFolder: false,
+                    downloadSaveLyricFile: false,
+                    localFolder: []
+                },
+                shortcuts: [
+                    {
+                        id: 'play',
                         name: '播放/暂停',
                         shortcut: 'CommandOrControl+P',
                         globalShortcut: 'CommandOrControl+Alt+P',
