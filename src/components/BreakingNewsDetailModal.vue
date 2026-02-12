@@ -4,8 +4,10 @@ import { useRouter } from 'vue-router'
 import { getSongDetail } from '../api/song'
 import { getAlbumDetail } from '../api/album'
 import { getPlaylistDetail } from '../api/playlist'
+import { getMVDetail } from '../api/mv'
 import { useLibraryStore } from '../store/libraryStore'
 import { usePlayerStore } from '../store/playerStore'
+import { useOtherStore } from '../store/otherStore'
 import { mapSongsPlayableStatus } from '../utils/songStatus'
 import { addToNext } from '../utils/player'
 import { noticeOpen } from '../utils/dialog'
@@ -26,6 +28,7 @@ const emit = defineEmits(['close'])
 const router = useRouter()
 const libraryStore = useLibraryStore()
 const playerStore = usePlayerStore()
+const otherStore = useOtherStore()
 
 const loading = ref(false)
 const loadError = ref('')
@@ -65,6 +68,7 @@ const formatCount = value => {
 const buildSongUrl = id => (id ? `https://music.163.com/#/song?id=${id}` : '')
 const buildAlbumUrl = id => (id ? `https://music.163.com/#/album?id=${id}` : '')
 const buildPlaylistUrl = id => (id ? `https://music.163.com/#/playlist?id=${id}` : '')
+const buildMvUrl = id => (id ? `https://music.163.com/mv?id=${id}` : '')
 
 const targetType = computed(() => toValidNumber(props.banner?.targetType))
 const targetId = computed(() => toValidResourceId(props.banner?.targetId))
@@ -74,6 +78,7 @@ const parseTargetFromUrl = rawUrl => {
   if (!url) return { type: null, id: null }
 
   const patterns = [
+    { type: 1004, regex: /(?:orpheus:\/\/mv\/|[#/]mv\?id=|\/mv\/)(\d+)/i },
     { type: 10, regex: /(?:orpheus:\/\/album\/|[#/]album\?id=|\/album\/)(\d+)/i },
     { type: 1000, regex: /(?:orpheus:\/\/playlist\/|[#/]playlist\?id=|\/playlist\/)(\d+)/i },
     { type: 1, regex: /(?:orpheus:\/\/song\/|[#/]song\?id=|\/song\/)(\d+)/i },
@@ -111,6 +116,7 @@ const targetTypeText = computed(() => {
   if (type === 1) return 'SONG'
   if (type === 10) return 'ALBUM'
   if (type === 1000) return 'PLAYLIST'
+  if (type === 1004) return 'MV'
   if (type === 3000) return 'EXTERNAL'
   return 'UNKNOWN'
 })
@@ -124,6 +130,7 @@ const shareUrl = computed(() => {
   if (resolvedTargetType.value === 1) return buildSongUrl(resolvedTargetId.value)
   if (resolvedTargetType.value === 10) return buildAlbumUrl(resolvedTargetId.value)
   if (resolvedTargetType.value === 1000) return buildPlaylistUrl(resolvedTargetId.value)
+  if (resolvedTargetType.value === 1004) return buildMvUrl(resolvedTargetId.value)
   return normalizeUrl(props.banner?.url)
 })
 
@@ -140,6 +147,7 @@ const primaryActionLabel = computed(() => {
   if (resolvedTargetType.value === 1) return '立即播放'
   if (resolvedTargetType.value === 10) return '打开专辑'
   if (resolvedTargetType.value === 1000) return '打开歌单'
+  if (resolvedTargetType.value === 1004) return '站内播放'
   return '打开链接'
 })
 
@@ -167,6 +175,7 @@ const buildFallbackDetail = message => {
   if (!fallbackLink && type === 1) fallbackLink = buildSongUrl(id)
   if (!fallbackLink && type === 10) fallbackLink = buildAlbumUrl(id)
   if (!fallbackLink && type === 1000) fallbackLink = buildPlaylistUrl(id)
+  if (!fallbackLink && type === 1004) fallbackLink = buildMvUrl(id)
 
   return {
     kind: 'fallback',
@@ -264,6 +273,32 @@ const loadDetail = async () => {
       return
     }
 
+    if (type === 1004) {
+      if (!id) throw new Error('缺少 MV ID')
+      const mvRes = await getMVDetail(id)
+      if (serial !== requestSerial.value) return
+
+      const mv = mvRes?.data || null
+      if (!mv) throw new Error('未获取到 MV 信息')
+
+      const artistText = (mv?.artists || []).map(item => item?.name).filter(Boolean).join(' / ') || mv?.artistName || '未知艺人'
+      const publishTime = typeof mv?.publishTime === 'string' ? mv.publishTime.trim() : ''
+      const playCount = toValidNumber(mv?.playCount) || 0
+      const subCount = toValidNumber(mv?.subCount) || 0
+
+      detailData.value = {
+        kind: 'mv',
+        title: mv?.name || '未命名 MV',
+        subtitle: publishTime ? `${artistText} · ${publishTime}` : artistText,
+        desc: mv?.desc || mv?.briefDesc || '暂无 MV 简介',
+        stats: `${formatCount(playCount)} 播放 · ${formatCount(subCount)} 收藏`,
+        cover: mv?.cover || props.banner?.pic || '',
+        shareUrl: buildMvUrl(mv?.id || id),
+        mvId: mv?.id || id,
+      }
+      return
+    }
+
     const external = normalizeUrl(props.banner?.url)
     detailData.value = {
       kind: 'external',
@@ -321,6 +356,17 @@ const handlePrimaryAction = async () => {
     }
     await openLibraryPage('playlist', resolvedTargetId.value)
     closeModal()
+    return
+  }
+
+  if (type === 1004) {
+    const mvId = resolvedTargetId.value || detailData.value?.mvId
+    if (!mvId) {
+      noticeOpen('MV 信息缺失', 2)
+      return
+    }
+    const success = await otherStore.getMvData(mvId)
+    if (success) closeModal()
     return
   }
 
@@ -452,6 +498,17 @@ onBeforeUnmount(() => {
   --bn-panel-bg: rgba(242, 246, 248, 0.95);
   --bn-panel-border: rgba(0, 0, 0, 0.28);
   --bn-grid: rgba(0, 0, 0, 0.08);
+  --bn-panel-texture: url('../assets/img/halftone.png');
+  --bn-panel-texture-size: 160px;
+  --bn-panel-overlay: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 43%,
+    var(--bn-grid) 43%,
+    var(--bn-grid) 44%,
+    transparent 44%,
+    transparent 100%
+  );
   --bn-text: #111213;
   --bn-muted: rgba(0, 0, 0, 0.62);
   --bn-desc: rgba(0, 0, 0, 0.78);
@@ -461,7 +518,12 @@ onBeforeUnmount(() => {
   --bn-action-text: #ffffff;
   --bn-action-ghost-bg: rgba(0, 0, 0, 0.06);
   --bn-action-ghost-text: #111213;
+  --bn-action-ghost-hover-bg: rgba(0, 0, 0, 0.12);
+  --bn-meta-bg: rgba(0, 0, 0, 0.04);
   --bn-cover-border: rgba(0, 0, 0, 0.2);
+  --bn-cover-bg: rgba(0, 0, 0, 0.06);
+  --bn-scrollbar-thumb: rgba(0, 0, 0, 0.22);
+  --bn-error-text: #d4381f;
 
   position: fixed;
   inset: 0;
@@ -482,8 +544,8 @@ onBeforeUnmount(() => {
   position: relative;
   overflow: hidden;
   background-color: var(--bn-panel-bg);
-  background-image: url('../assets/img/halftone.png');
-  background-size: 160px;
+  background-image: var(--bn-panel-texture);
+  background-size: var(--bn-panel-texture-size);
   border: 1px solid var(--bn-panel-border);
   box-shadow: 0 26px 54px rgba(0, 0, 0, 0.35);
 }
@@ -493,7 +555,7 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: linear-gradient(135deg, transparent 0%, transparent 43%, var(--bn-grid) 43%, var(--bn-grid) 44%, transparent 44%, transparent 100%);
+  background-image: var(--bn-panel-overlay);
 }
 
 .frame-corner {
@@ -561,7 +623,7 @@ onBeforeUnmount(() => {
   font: 11px Bender-Bold;
   letter-spacing: 0.8px;
   color: var(--bn-text) !important;
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--bn-meta-bg);
 }
 
 .type-chip {
@@ -585,7 +647,7 @@ onBeforeUnmount(() => {
   width: 42%;
   min-height: 430px;
   border: 1px solid var(--bn-cover-border);
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--bn-cover-bg);
   overflow: hidden;
 }
 
@@ -646,7 +708,7 @@ onBeforeUnmount(() => {
 }
 
 .detail-desc::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--bn-scrollbar-thumb);
 }
 
 .detail-stats {
@@ -662,7 +724,7 @@ onBeforeUnmount(() => {
 }
 
 .detail-state-error {
-  color: #d4381f !important;
+  color: var(--bn-error-text) !important;
 }
 
 .detail-actions {
@@ -714,28 +776,7 @@ onBeforeUnmount(() => {
 }
 
 .action-btn.ghost:hover {
-  background: rgba(0, 0, 0, 0.12) !important;
-}
-
-:global(.dark) .breaking-news-modal {
-  --bn-mask: rgba(5, 8, 10, 0.72);
-  --bn-panel-bg: rgba(35, 41, 48, 0.94);
-  --bn-panel-border: rgba(255, 255, 255, 0.22);
-  --bn-grid: rgba(255, 255, 255, 0.05);
-  --bn-text: #f1f3f5;
-  --bn-muted: rgba(241, 243, 245, 0.78);
-  --bn-desc: rgba(241, 243, 245, 0.9);
-  --bn-chip-bg: #f1f3f5;
-  --bn-chip-text: #0f1114;
-  --bn-action-bg: #f1f3f5;
-  --bn-action-text: #0f1114;
-  --bn-action-ghost-bg: rgba(255, 255, 255, 0.08);
-  --bn-action-ghost-text: #f1f3f5;
-  --bn-cover-border: rgba(255, 255, 255, 0.22);
-}
-
-:global(.dark) .breaking-news-modal .action-btn.ghost:hover {
-  background: rgba(255, 255, 255, 0.14) !important;
+  background: var(--bn-action-ghost-hover-bg) !important;
 }
 
 .breaking-news-fade-enter-active,
@@ -780,5 +821,41 @@ onBeforeUnmount(() => {
     margin-top: 16px;
     padding-top: 10px;
   }
+}
+</style>
+
+<style lang="scss">
+html.dark .breaking-news-modal,
+.dark .breaking-news-modal {
+  --bn-mask: rgba(5, 8, 10, 0.72);
+  --bn-panel-bg: rgba(35, 41, 48, 0.94);
+  --bn-panel-border: rgba(255, 255, 255, 0.22);
+  --bn-grid: rgba(255, 255, 255, 0.05);
+  --bn-panel-texture: none;
+  --bn-panel-texture-size: 160px;
+  --bn-panel-overlay: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 43%,
+    var(--bn-grid) 43%,
+    var(--bn-grid) 44%,
+    transparent 44%,
+    transparent 100%
+  );
+  --bn-text: #f1f3f5;
+  --bn-muted: rgba(241, 243, 245, 0.78);
+  --bn-desc: rgba(241, 243, 245, 0.9);
+  --bn-chip-bg: #f1f3f5;
+  --bn-chip-text: #0f1114;
+  --bn-action-bg: #f1f3f5;
+  --bn-action-text: #0f1114;
+  --bn-action-ghost-bg: rgba(255, 255, 255, 0.08);
+  --bn-action-ghost-hover-bg: rgba(255, 255, 255, 0.14);
+  --bn-action-ghost-text: #f1f3f5;
+  --bn-meta-bg: rgba(255, 255, 255, 0.1);
+  --bn-cover-border: rgba(255, 255, 255, 0.22);
+  --bn-cover-bg: rgba(255, 255, 255, 0.08);
+  --bn-scrollbar-thumb: rgba(255, 255, 255, 0.28);
+  --bn-error-text: #ff7a66;
 }
 </style>

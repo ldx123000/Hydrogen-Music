@@ -401,6 +401,20 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
 
 <style scoped lang="scss">
 .library-detail {
+    --ld-text: #000000;
+    --ld-muted: rgb(122, 122, 122);
+    --ld-secondary: rgb(78, 78, 78);
+    --ld-line: rgb(154, 154, 154);
+    --ld-border: #000000;
+    --ld-btn-bg: #000000;
+    --ld-btn-text: #ffffff;
+    --ld-btn-hover-bg: rgb(40, 40, 40);
+    --ld-cover-border: rgb(218, 218, 218);
+    --ld-overlay-bg: rgba(0, 0, 0, 0.66);
+    --ld-overlay-border: rgba(255, 255, 255, 0.12);
+    --ld-overlay-text: rgba(255, 255, 255, 0.92);
+    --ld-overlay-corner: rgba(247, 247, 247, 0.9);
+
     width: 100%;
     height: calc(100% - 22px);
     .view-control {
@@ -447,7 +461,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             flex-direction: row;
             .introduce-img {
                 margin-right: 10px;
-                border: 0.5px solid rgb(218, 218, 218);
+                border: 0.5px solid var(--ld-cover-border);
                 box-shadow: 0 0 6px 1px rgba(0, 0, 0, 0.03);
                 // padding: 2Px;
                 width: 150px;
@@ -477,7 +491,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     width: 90%;
                     font: 22px Source Han Sans;
                     font-weight: bold;
-                    color: black;
+                    color: var(--ld-text);
                     overflow: hidden;
                     display: -webkit-box;
                     -webkit-box-orient: vertical;
@@ -493,7 +507,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     .introduce-author {
                         width: 100%;
                         font-size: 12px;
-                        color: black;
+                        color: var(--ld-text);
                         transition: 0.2s;
                         overflow: hidden;
                         display: -webkit-box;
@@ -506,7 +520,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                         }
                     }
                     .introduce-num {
-                        color: rgb(122, 122, 122);
+                        color: var(--ld-muted);
                     }
                     .library-operation {
                         margin-top: 10px;
@@ -529,7 +543,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                             span {
                                 margin-left: 5px;
                                 font-size: 15px;
-                                color: black;
+                                color: var(--ld-text);
                             }
                         }
                     }
@@ -543,19 +557,19 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                 height: 16px;
             }
             .introduce-1 {
-                border: 1px solid black;
+                border: 1px solid var(--ld-border);
                 font: 10px SourceHanSansCN-Bold;
-                color: black;
+                color: var(--ld-text);
             }
             .introduce-2 {
                 margin-top: 6px;
-                background-color: black;
+                background-color: var(--ld-btn-bg);
                 font: 10px SourceHanSansCN-Bold;
-                color: white;
+                color: var(--ld-btn-text);
                 transition: 0.2s;
                 &:hover {
                     cursor: pointer;
-                    background-color: rgb(40, 40, 40);
+                    background-color: var(--ld-btn-hover-bg);
                 }
             }
         }
@@ -563,10 +577,10 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             width: 0;
             height: 0;
             /* Frosted glass panel - Light mode wants deeper (darker) */
-            background: rgba(0, 0, 0, 0.66);
+            background: var(--ld-overlay-bg);
             -webkit-backdrop-filter: blur(18px) saturate(120%);
             backdrop-filter: blur(18px) saturate(120%);
-            border: 1px solid rgba(255, 255, 255, 0.12);
+            border: 1px solid var(--ld-overlay-border);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
             position: fixed;
             z-index: 998;
@@ -589,7 +603,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     margin: 0;
                     font: 14px Source Han Sans;
                     font-weight: 600;
-                    color: rgba(255, 255, 255, 0.92);
+                    color: var(--ld-overlay-text);
                     text-align: left;
                     text-indent: 2em;
                 }
@@ -625,7 +639,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             .dialog-style {
                 width: 9px;
                 height: 9px;
-                background-color: rgba(247, 247, 247, 0.9);
+                background-color: var(--ld-overlay-corner);
                 position: absolute;
                 opacity: 0;
                 animation: dialog-style-in 0.4s forwards;
@@ -693,15 +707,15 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             span {
                 margin-right: 25px;
                 font: 15px SourceHanSansCN-Bold;
-                color: rgb(78, 78, 78);
+                color: var(--ld-secondary);
                 transition: 0.2s;
                 &:hover {
                     cursor: pointer;
-                    color: black;
+                    color: var(--ld-text);
                 }
             }
             .type-selected {
-                color: black;
+                color: var(--ld-text);
             }
         }
         .library-playall {
@@ -725,23 +739,23 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                 span {
                     margin: 0 5px;
                     font: 12px SourceHanSansCN-Bold;
-                    color: black;
+                    color: var(--ld-text);
                     white-space: nowrap;
                 }
             }
             .playall-line {
                 width: 100%;
                 height: 0.5px;
-                background-color: rgb(154, 154, 154);
+                background-color: var(--ld-line);
             }
             .playall-en {
                 margin-left: 4px;
                 font: 8px Geometos;
-                color: rgb(154, 154, 154);
+                color: var(--ld-line);
                 transition: 0.2s;
                 &:hover {
                     cursor: pointer;
-                    color: black;
+                    color: var(--ld-text);
                 }
             }
         }
@@ -763,6 +777,23 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
 </style>
 
 <style lang="scss">
+html.dark .library-detail,
+.dark .library-detail {
+    --ld-text: var(--text);
+    --ld-muted: var(--muted-text);
+    --ld-secondary: rgba(241, 243, 245, 0.76);
+    --ld-line: rgba(241, 243, 245, 0.36);
+    --ld-border: rgba(241, 243, 245, 0.55);
+    --ld-btn-bg: rgba(241, 243, 245, 0.94);
+    --ld-btn-text: #0f1114;
+    --ld-btn-hover-bg: #ffffff;
+    --ld-cover-border: rgba(255, 255, 255, 0.24);
+    --ld-overlay-bg: rgba(11, 14, 18, 0.84);
+    --ld-overlay-border: rgba(255, 255, 255, 0.18);
+    --ld-overlay-text: rgba(241, 243, 245, 0.92);
+    --ld-overlay-corner: rgba(241, 243, 245, 0.72);
+}
+
 .metro-enter-active {
     animation: introduce-detail-in 0.6s 0.3s forwards;
 }
