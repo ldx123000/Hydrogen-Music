@@ -1,157 +1,157 @@
 <script setup>
-import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue';
-import { getMusicCommentsNew, getMusicCommentFloor, postMusicComment, likeMusicComment } from '../api/song';
-import { getDjProgramCommentsNew, getDjProgramCommentFloor, postDjProgramComment, likeDjProgramComment } from '../api/dj';
-import { usePlayerStore } from '../store/playerStore';
-import { useUserStore } from '../store/userStore';
-import { storeToRefs } from 'pinia';
-import { noticeOpen } from '../utils/dialog';
-import { getCommentScrollPosition, setCommentScrollPosition, getLastCommentTargetKey, setLastCommentTargetKey } from '../utils/commentScrollMemory';
-import CommentText from './CommentText.vue';
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { getMusicCommentsNew, getMusicCommentFloor, postMusicComment, likeMusicComment } from '../api/song'
+import { getDjProgramCommentsNew, getDjProgramCommentFloor, postDjProgramComment, likeDjProgramComment } from '../api/dj'
+import { usePlayerStore } from '../store/playerStore'
+import { useUserStore } from '../store/userStore'
+import { storeToRefs } from 'pinia'
+import { noticeOpen } from '../utils/dialog'
+import { getCommentScrollPosition, setCommentScrollPosition, getLastCommentTargetKey, setLastCommentTargetKey } from '../utils/commentScrollMemory'
+import CommentText from './CommentText.vue'
 
-const emit = defineEmits(['total-change']);
+const emit = defineEmits(['total-change'])
 
-const playerStore = usePlayerStore();
-const userStore = useUserStore();
-const { songId, songList, currentIndex, listInfo } = storeToRefs(playerStore);
+const playerStore = usePlayerStore()
+const userStore = useUserStore()
+const { songId, songList, currentIndex, listInfo } = storeToRefs(playerStore)
 const currentTrack = computed(() => {
-    const list = songList.value || [];
-    const idx = typeof currentIndex.value === 'number' ? currentIndex.value : 0;
-    return list[idx] || null;
-});
-const isDj = computed(() => listInfo.value && listInfo.value.type === 'dj');
+    const list = songList.value || []
+    const idx = typeof currentIndex.value === 'number' ? currentIndex.value : 0
+    return list[idx] || null
+})
+const isDj = computed(() => listInfo.value && listInfo.value.type === 'dj')
 const programId = computed(() => {
-    const cur = currentTrack.value;
-    return cur && (cur.programId || cur.programID || cur.programid);
-});
+    const cur = currentTrack.value
+    return cur && (cur.programId || cur.programID || cur.programid)
+})
 const musicCommentId = computed(() => {
-    if (isDj.value) return null;
-    const cur = currentTrack.value;
-    const curId = cur && (cur.id || cur.songId || cur.musicId);
-    return curId || songId.value || null;
-});
+    if (isDj.value) return null
+    const cur = currentTrack.value
+    const curId = cur && (cur.id || cur.songId || cur.musicId)
+    return curId || songId.value || null
+})
 
-const comments = ref([]);
-const hotComments = ref([]);
-const loading = ref(false);
-const total = ref(0);
-const hasMore = ref(true);
-const nextCursor = ref('0');
-const pageNo = ref(1);
-const limit = ref(20);
-const newComment = ref('');
-const replyingTo = ref(null);
-const submitting = ref(false);
-const floorReplies = ref({});
+const comments = ref([])
+const hotComments = ref([])
+const loading = ref(false)
+const total = ref(0)
+const hasMore = ref(true)
+const nextCursor = ref('0')
+const pageNo = ref(1)
+const limit = ref(20)
+const newComment = ref('')
+const replyingTo = ref(null)
+const submitting = ref(false)
+const floorReplies = ref({})
 
-const FLOOR_REPLY_LIMIT = 5;
+const FLOOR_REPLY_LIMIT = 5
 
-const COMMENTS_PREFETCH_PX = 200;
-const commentsContainerRef = ref(null);
-const scrollCheckRafId = ref(null);
+const COMMENTS_PREFETCH_PX = 200
+const commentsContainerRef = ref(null)
+const scrollCheckRafId = ref(null)
 const commentTargetKey = computed(() => {
     if (isDj.value) {
-        return programId.value ? `dj:${programId.value}` : '';
+        return programId.value ? `dj:${programId.value}` : ''
     }
-    return musicCommentId.value ? `song:${musicCommentId.value}` : '';
-});
-const pendingRestoreScrollTop = ref(null);
+    return musicCommentId.value ? `song:${musicCommentId.value}` : ''
+})
+const pendingRestoreScrollTop = ref(null)
 
 const resetCommentsScroll = () => {
-    const container = commentsContainerRef.value;
-    if (!container) return;
-    container.scrollTop = 0;
-};
+    const container = commentsContainerRef.value
+    if (!container) return
+    container.scrollTop = 0
+}
 
 const getDistanceToBottom = () => {
-    const container = commentsContainerRef.value;
-    if (!container) return Number.POSITIVE_INFINITY;
-    return container.scrollHeight - (container.scrollTop + container.clientHeight);
-};
+    const container = commentsContainerRef.value
+    if (!container) return Number.POSITIVE_INFINITY
+    return container.scrollHeight - (container.scrollTop + container.clientHeight)
+}
 
 const cacheCurrentScrollPosition = (targetKey = commentTargetKey.value) => {
-    const container = commentsContainerRef.value;
-    if (!container || !targetKey) return;
-    setCommentScrollPosition(targetKey, container.scrollTop);
-};
+    const container = commentsContainerRef.value
+    if (!container || !targetKey) return
+    setCommentScrollPosition(targetKey, container.scrollTop)
+}
 
 const restoreCommentsScrollIfNeeded = () => {
-    if (pendingRestoreScrollTop.value === null) return;
+    if (pendingRestoreScrollTop.value === null) return
 
-    const container = commentsContainerRef.value;
-    if (!container) return;
+    const container = commentsContainerRef.value
+    if (!container) return
 
-    const expectedScrollTop = pendingRestoreScrollTop.value;
-    container.scrollTop = expectedScrollTop;
+    const expectedScrollTop = pendingRestoreScrollTop.value
+    container.scrollTop = expectedScrollTop
 
     // 如果当前位置已恢复到目标（或已没有更多可加载），结束恢复流程。
-    const restored = Math.abs(container.scrollTop - expectedScrollTop) <= 2;
+    const restored = Math.abs(container.scrollTop - expectedScrollTop) <= 2
     if (restored || !hasMore.value) {
-        pendingRestoreScrollTop.value = null;
+        pendingRestoreScrollTop.value = null
     }
 
-    cacheCurrentScrollPosition();
-};
+    cacheCurrentScrollPosition()
+}
 
 const shouldAutoLoadMore = () => {
-    if (loading.value || !hasMore.value) return false;
-    return getDistanceToBottom() <= COMMENTS_PREFETCH_PX;
-};
+    if (loading.value || !hasMore.value) return false
+    return getDistanceToBottom() <= COMMENTS_PREFETCH_PX
+}
 
 const tryAutoLoadMore = () => {
-    if (!shouldAutoLoadMore()) return;
-    fetchComments(false);
-};
+    if (!shouldAutoLoadMore()) return
+    fetchComments(false)
+}
 
 const handleCommentsScroll = () => {
-    cacheCurrentScrollPosition();
-    if (scrollCheckRafId.value !== null) return;
+    cacheCurrentScrollPosition()
+    if (scrollCheckRafId.value !== null) return
     scrollCheckRafId.value = requestAnimationFrame(() => {
-        scrollCheckRafId.value = null;
-        tryAutoLoadMore();
-    });
-};
+        scrollCheckRafId.value = null
+        tryAutoLoadMore()
+    })
+}
 
 const clearScrollCheckRaf = () => {
-    if (scrollCheckRafId.value === null) return;
-    cancelAnimationFrame(scrollCheckRafId.value);
-    scrollCheckRafId.value = null;
-};
+    if (scrollCheckRafId.value === null) return
+    cancelAnimationFrame(scrollCheckRafId.value)
+    scrollCheckRafId.value = null
+}
 
-const getUserName = user => (user && user.nickname) || '未知用户';
+const getUserName = user => (user && user.nickname) || '未知用户'
 
 const getUserAvatar = (user, size = 40) => {
-    if (user && user.avatarUrl) return `${user.avatarUrl}?param=${size}y${size}`;
-    return 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-};
+    if (user && user.avatarUrl) return `${user.avatarUrl}?param=${size}y${size}`
+    return 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='
+}
 
 const resolveReplyRootCommentId = (comment, rootCommentId = null) => {
-    const explicitRoot = Number(rootCommentId);
-    if (Number.isFinite(explicitRoot) && explicitRoot > 0) return explicitRoot;
+    const explicitRoot = Number(rootCommentId)
+    if (Number.isFinite(explicitRoot) && explicitRoot > 0) return explicitRoot
 
-    const parentId = Number(comment && comment.parentCommentId);
-    if (Number.isFinite(parentId) && parentId > 0) return parentId;
+    const parentId = Number(comment && comment.parentCommentId)
+    if (Number.isFinite(parentId) && parentId > 0) return parentId
 
-    const selfId = Number(comment && comment.commentId);
-    if (Number.isFinite(selfId) && selfId > 0) return selfId;
+    const selfId = Number(comment && comment.commentId)
+    if (Number.isFinite(selfId) && selfId > 0) return selfId
 
-    return null;
-};
+    return null
+}
 
 const isInlineReplyVisible = comment => {
-    if (!replyingTo.value || !comment || !comment.commentId) return false;
-    const expectedRootId = resolveReplyRootCommentId(replyingTo.value, replyingTo.value.__rootCommentId);
-    return expectedRootId === comment.commentId;
-};
+    if (!replyingTo.value || !comment || !comment.commentId) return false
+    const expectedRootId = resolveReplyRootCommentId(replyingTo.value, replyingTo.value.__rootCommentId)
+    return expectedRootId === comment.commentId
+}
 
 const toPositiveInt = value => {
-    const num = Number(value);
-    return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0;
-};
+    const num = Number(value)
+    return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0
+}
 
 const getCommentReplyCount = comment => {
-    return toPositiveInt(comment && comment.showFloorComment && comment.showFloorComment.replyCount);
-};
+    return toPositiveInt(comment && comment.showFloorComment && comment.showFloorComment.replyCount)
+}
 
 const createFloorState = replyCount => ({
     expanded: false,
@@ -161,193 +161,193 @@ const createFloorState = replyCount => ({
     hasMore: replyCount > 0,
     nextTime: -1,
     total: replyCount,
-});
+})
 
 const getFloorCommentKey = comment => {
-    if (!comment || !comment.commentId) return '';
-    return String(comment.commentId);
-};
+    if (!comment || !comment.commentId) return ''
+    return String(comment.commentId)
+}
 
 const getFloorState = comment => {
-    const key = getFloorCommentKey(comment);
-    if (!key) return null;
-    return floorReplies.value[key] || null;
-};
+    const key = getFloorCommentKey(comment)
+    if (!key) return null
+    return floorReplies.value[key] || null
+}
 
 const ensureFloorState = comment => {
-    const key = getFloorCommentKey(comment);
-    if (!key) return null;
+    const key = getFloorCommentKey(comment)
+    if (!key) return null
     if (!floorReplies.value[key]) {
-        floorReplies.value[key] = createFloorState(getCommentReplyCount(comment));
+        floorReplies.value[key] = createFloorState(getCommentReplyCount(comment))
     }
-    return floorReplies.value[key];
-};
+    return floorReplies.value[key]
+}
 
 const rebuildFloorStates = (preserveExisting = true) => {
-    const previous = preserveExisting ? floorReplies.value || {} : {};
-    const next = {};
-    const mergedComments = [...hotComments.value, ...comments.value];
+    const previous = preserveExisting ? floorReplies.value || {} : {}
+    const next = {}
+    const mergedComments = [...hotComments.value, ...comments.value]
 
     for (const comment of mergedComments) {
-        const key = getFloorCommentKey(comment);
-        if (!key) continue;
+        const key = getFloorCommentKey(comment)
+        if (!key) continue
 
-        const replyCount = getCommentReplyCount(comment);
-        const previousState = previous[key];
+        const replyCount = getCommentReplyCount(comment)
+        const previousState = previous[key]
 
         if (previousState) {
             const nextState = {
                 ...previousState,
                 total: replyCount > 0 ? replyCount : previousState.total || 0,
-            };
-            if (nextState.total > 0 && nextState.items.length >= nextState.total) {
-                nextState.hasMore = false;
             }
-            next[key] = nextState;
+            if (nextState.total > 0 && nextState.items.length >= nextState.total) {
+                nextState.hasMore = false
+            }
+            next[key] = nextState
         } else {
-            next[key] = createFloorState(replyCount);
+            next[key] = createFloorState(replyCount)
         }
     }
 
-    floorReplies.value = next;
-};
+    floorReplies.value = next
+}
 
 const mergeFloorItems = (existing = [], incoming = []) => {
-    if (!existing.length) return incoming.slice();
-    if (!incoming.length) return existing.slice();
+    if (!existing.length) return incoming.slice()
+    if (!incoming.length) return existing.slice()
 
-    const seen = new Set(existing.map(item => item.commentId));
-    const merged = existing.slice();
+    const seen = new Set(existing.map(item => item.commentId))
+    const merged = existing.slice()
     for (const item of incoming) {
-        if (seen.has(item.commentId)) continue;
-        merged.push(item);
-        seen.add(item.commentId);
+        if (seen.has(item.commentId)) continue
+        merged.push(item)
+        seen.add(item.commentId)
     }
-    return merged;
-};
+    return merged
+}
 
 const requestCommentList = async params => {
     if (isDj.value && programId.value) {
-        return getDjProgramCommentsNew({ id: programId.value, ...params });
+        return getDjProgramCommentsNew({ id: programId.value, ...params })
     }
     if (musicCommentId.value) {
-        return getMusicCommentsNew({ id: musicCommentId.value, ...params });
+        return getMusicCommentsNew({ id: musicCommentId.value, ...params })
     }
-    return null;
-};
+    return null
+}
 
 const requestCommentFloor = async params => {
     if (isDj.value && programId.value) {
-        return getDjProgramCommentFloor({ id: programId.value, ...params });
+        return getDjProgramCommentFloor({ id: programId.value, ...params })
     }
     if (musicCommentId.value) {
-        return getMusicCommentFloor({ id: musicCommentId.value, ...params });
+        return getMusicCommentFloor({ id: musicCommentId.value, ...params })
     }
-    return null;
-};
+    return null
+}
 
 const loadFloorReplies = async (comment, { forceFirstPage = false } = {}) => {
-    const state = ensureFloorState(comment);
-    if (!state || state.loading) return;
+    const state = ensureFloorState(comment)
+    if (!state || state.loading) return
 
-    const replyCount = getCommentReplyCount(comment);
+    const replyCount = getCommentReplyCount(comment)
     if (!replyCount && state.items.length === 0) {
-        state.hasMore = false;
-        state.total = 0;
-        state.expanded = true;
-        return;
+        state.hasMore = false
+        state.total = 0
+        state.expanded = true
+        return
     }
 
-    const isFirstPage = forceFirstPage || state.items.length === 0;
-    if (!isFirstPage && !state.hasMore) return;
+    const isFirstPage = forceFirstPage || state.items.length === 0
+    if (!isFirstPage && !state.hasMore) return
 
-    state.loading = true;
-    state.error = '';
+    state.loading = true
+    state.error = ''
 
     try {
         const response = await requestCommentFloor({
             parentCommentId: comment.commentId,
             limit: FLOOR_REPLY_LIMIT,
             time: isFirstPage ? -1 : state.nextTime,
-        });
+        })
 
         if (response && response.code === 200) {
-            const data = response.data || {};
-            const incomingItems = Array.isArray(data.comments) ? data.comments : [];
+            const data = response.data || {}
+            const incomingItems = Array.isArray(data.comments) ? data.comments : []
 
             if (isFirstPage) {
-                state.items = incomingItems;
+                state.items = incomingItems
             } else {
-                state.items = mergeFloorItems(state.items, incomingItems);
+                state.items = mergeFloorItems(state.items, incomingItems)
             }
 
-            const totalCount = Number(data.totalCount);
+            const totalCount = Number(data.totalCount)
             if (Number.isFinite(totalCount) && totalCount >= 0) {
-                state.total = Math.floor(totalCount);
+                state.total = Math.floor(totalCount)
             }
 
-            state.hasMore = !!data.hasMore;
+            state.hasMore = !!data.hasMore
 
-            const nextTimeValue = Number(data.time);
+            const nextTimeValue = Number(data.time)
             if (Number.isFinite(nextTimeValue) && nextTimeValue >= 0) {
-                state.nextTime = nextTimeValue;
+                state.nextTime = nextTimeValue
             }
 
             if (state.total > 0 && state.items.length >= state.total) {
-                state.hasMore = false;
+                state.hasMore = false
             }
 
-            state.expanded = true;
+            state.expanded = true
         } else {
-            state.error = '回复加载失败，点击重试';
+            state.error = '回复加载失败，点击重试'
         }
     } catch (error) {
-        console.error('获取楼层回复失败:', error);
-        state.error = '回复加载失败，点击重试';
+        console.error('获取楼层回复失败:', error)
+        state.error = '回复加载失败，点击重试'
     } finally {
-        state.loading = false;
+        state.loading = false
     }
-};
+}
 
 const toggleFloorReplies = async comment => {
-    const state = ensureFloorState(comment);
-    if (!state) return;
+    const state = ensureFloorState(comment)
+    if (!state) return
 
     if (state.expanded) {
-        state.expanded = false;
-        return;
+        state.expanded = false
+        return
     }
 
     if (state.items.length > 0) {
-        state.expanded = true;
-        return;
+        state.expanded = true
+        return
     }
 
-    await loadFloorReplies(comment, { forceFirstPage: true });
-};
+    await loadFloorReplies(comment, { forceFirstPage: true })
+}
 
 const loadMoreFloorReplies = async comment => {
-    const state = ensureFloorState(comment);
-    if (!state || state.loading || !state.hasMore) return;
-    await loadFloorReplies(comment);
-};
+    const state = ensureFloorState(comment)
+    if (!state || state.loading || !state.hasMore) return
+    await loadFloorReplies(comment)
+}
 
 const retryFloorReplies = async comment => {
-    const state = ensureFloorState(comment);
-    if (!state) return;
-    state.error = '';
-    await loadFloorReplies(comment, { forceFirstPage: state.items.length === 0 });
-};
+    const state = ensureFloorState(comment)
+    if (!state) return
+    state.error = ''
+    await loadFloorReplies(comment, { forceFirstPage: state.items.length === 0 })
+}
 
 // 获取评论数据
 const fetchComments = async (reset = false) => {
-    if (loading.value || (!hasMore.value && !reset)) return;
+    if (loading.value || (!hasMore.value && !reset)) return
 
-    const requestTargetKey = commentTargetKey.value;
-    if (!requestTargetKey) return;
+    const requestTargetKey = commentTargetKey.value
+    if (!requestTargetKey) return
 
-    loading.value = true;
-    let fetchSucceeded = false;
+    loading.value = true
+    let fetchSucceeded = false
 
     try {
         if (reset) {
@@ -363,31 +363,31 @@ const fetchComments = async (reset = false) => {
                     pageSize: limit.value,
                     pageNo: 1,
                 }),
-            ]);
+            ])
 
-            const latestResponse = latestResult.status === 'fulfilled' ? latestResult.value : null;
-            const hotResponse = hotResult.status === 'fulfilled' ? hotResult.value : null;
+            const latestResponse = latestResult.status === 'fulfilled' ? latestResult.value : null
+            const hotResponse = hotResult.status === 'fulfilled' ? hotResult.value : null
 
             if (latestResponse && latestResponse.code === 200) {
-                comments.value = latestResponse.comments || [];
-                total.value = toPositiveInt(latestResponse.total);
-                hasMore.value = !!latestResponse.hasMore;
-                nextCursor.value = latestResponse.cursor || '';
-                pageNo.value = 2;
-                fetchSucceeded = true;
+                comments.value = latestResponse.comments || []
+                total.value = toPositiveInt(latestResponse.total)
+                hasMore.value = !!latestResponse.hasMore
+                nextCursor.value = latestResponse.cursor || ''
+                pageNo.value = 2
+                fetchSucceeded = true
             } else {
-                comments.value = [];
-                total.value = 0;
-                hasMore.value = false;
-                nextCursor.value = '';
-                pageNo.value = 1;
+                comments.value = []
+                total.value = 0
+                hasMore.value = false
+                nextCursor.value = ''
+                pageNo.value = 1
             }
 
             if (hotResponse && hotResponse.code === 200) {
-                hotComments.value = hotResponse.comments || [];
-                fetchSucceeded = true;
+                hotComments.value = hotResponse.comments || []
+                fetchSucceeded = true
             } else {
-                hotComments.value = [];
+                hotComments.value = []
             }
         } else {
             const latestResponse = await requestCommentList({
@@ -395,236 +395,236 @@ const fetchComments = async (reset = false) => {
                 pageSize: limit.value,
                 pageNo: pageNo.value,
                 ...(nextCursor.value ? { cursor: nextCursor.value } : {}),
-            });
+            })
 
             if (latestResponse && latestResponse.code === 200) {
-                const incoming = latestResponse.comments || [];
-                comments.value.push(...incoming);
-                total.value = toPositiveInt(latestResponse.total);
-                hasMore.value = !!latestResponse.hasMore && incoming.length > 0;
-                nextCursor.value = latestResponse.cursor || nextCursor.value;
-                pageNo.value += 1;
-                fetchSucceeded = true;
+                const incoming = latestResponse.comments || []
+                comments.value.push(...incoming)
+                total.value = toPositiveInt(latestResponse.total)
+                hasMore.value = !!latestResponse.hasMore && incoming.length > 0
+                nextCursor.value = latestResponse.cursor || nextCursor.value
+                pageNo.value += 1
+                fetchSucceeded = true
             }
         }
 
-        rebuildFloorStates(!reset);
+        rebuildFloorStates(!reset)
 
         if (fetchSucceeded) {
             if (requestTargetKey) {
                 emit('total-change', {
                     targetKey: requestTargetKey,
                     total: total.value,
-                });
+                })
             }
         } else {
-            noticeOpen('获取评论失败', 2);
+            noticeOpen('获取评论失败', 2)
         }
     } catch (error) {
-        console.error('获取评论失败:', error);
-        noticeOpen('获取评论失败', 2);
+        console.error('获取评论失败:', error)
+        noticeOpen('获取评论失败', 2)
     } finally {
-        loading.value = false;
+        loading.value = false
     }
 
     if (fetchSucceeded) {
-        await nextTick();
-        restoreCommentsScrollIfNeeded();
-        tryAutoLoadMore();
+        await nextTick()
+        restoreCommentsScrollIfNeeded()
+        tryAutoLoadMore()
     }
-};
+}
 
 // 发送评论
 const submitComment = async () => {
-    if (!newComment.value.trim() || submitting.value) return;
+    if (!newComment.value.trim() || submitting.value) return
 
     if (!userStore.user) {
-        noticeOpen('请先登录', 2);
-        return;
+        noticeOpen('请先登录', 2)
+        return
     }
 
-    submitting.value = true;
+    submitting.value = true
 
     try {
-        let response = null;
+        let response = null
         if (isDj.value && programId.value) {
-            response = await postDjProgramComment(programId.value, newComment.value.trim(), replyingTo.value ? replyingTo.value.commentId : null);
+            response = await postDjProgramComment(programId.value, newComment.value.trim(), replyingTo.value ? replyingTo.value.commentId : null)
         } else {
             const params = {
                 id: musicCommentId.value,
                 content: newComment.value.trim(),
-            };
-            if (replyingTo.value) params.commentId = replyingTo.value.commentId;
-            response = await postMusicComment(params);
+            }
+            if (replyingTo.value) params.commentId = replyingTo.value.commentId
+            response = await postMusicComment(params)
         }
 
         if (response && response.code === 200) {
-            noticeOpen('评论发送成功', 2);
-            newComment.value = '';
-            replyingTo.value = null;
+            noticeOpen('评论发送成功', 2)
+            newComment.value = ''
+            replyingTo.value = null
             // 重新获取评论
-            await fetchComments(true);
+            await fetchComments(true)
         } else {
-            noticeOpen('评论发送失败', 2);
+            noticeOpen('评论发送失败', 2)
         }
     } catch (error) {
-        console.error('发送评论失败:', error);
-        noticeOpen('评论发送失败', 2);
+        console.error('发送评论失败:', error)
+        noticeOpen('评论发送失败', 2)
     } finally {
-        submitting.value = false;
+        submitting.value = false
     }
-};
+}
 
 // 点赞评论
 const toggleLikeComment = async comment => {
     if (!userStore.user) {
-        noticeOpen('请先登录', 2);
-        return;
+        noticeOpen('请先登录', 2)
+        return
     }
 
     try {
-        let response = null;
+        let response = null
         if (isDj.value && programId.value) {
-            response = await likeDjProgramComment(programId.value, comment.commentId, !comment.liked);
+            response = await likeDjProgramComment(programId.value, comment.commentId, !comment.liked)
         } else {
-            response = await likeMusicComment({ id: musicCommentId.value, cid: comment.commentId, t: comment.liked ? 0 : 1 });
+            response = await likeMusicComment({ id: musicCommentId.value, cid: comment.commentId, t: comment.liked ? 0 : 1 })
         }
 
         if (response && response.code === 200) {
-            comment.liked = !comment.liked;
-            const currentCount = Number(comment.likedCount) || 0;
-            const nextCount = currentCount + (comment.liked ? 1 : -1);
-            comment.likedCount = nextCount > 0 ? nextCount : 0;
+            comment.liked = !comment.liked
+            const currentCount = Number(comment.likedCount) || 0
+            const nextCount = currentCount + (comment.liked ? 1 : -1)
+            comment.likedCount = nextCount > 0 ? nextCount : 0
         }
     } catch (error) {
-        console.error('点赞失败:', error);
-        noticeOpen('操作失败', 2);
+        console.error('点赞失败:', error)
+        noticeOpen('操作失败', 2)
     }
-};
+}
 
 // 回复评论
 const toggleReply = (comment, rootCommentId = null) => {
-    const rootId = resolveReplyRootCommentId(comment, rootCommentId);
-    if (!rootId) return;
+    const rootId = resolveReplyRootCommentId(comment, rootCommentId)
+    if (!rootId) return
 
     if (replyingTo.value && replyingTo.value.commentId === comment.commentId && resolveReplyRootCommentId(replyingTo.value, replyingTo.value.__rootCommentId) === rootId) {
         // 如果点击的是当前正在回复的评论，则取消回复
-        cancelReply();
+        cancelReply()
     } else {
         // 否则开始回复这个评论
         replyingTo.value = {
             ...comment,
             __rootCommentId: rootId,
-        };
-        newComment.value = `@${getUserName(comment.user)} `;
+        }
+        newComment.value = `@${getUserName(comment.user)} `
         // 使用nextTick确保DOM更新后再聚焦
         nextTick(() => {
             // 聚焦到回复输入框
-            const textarea = document.querySelector('.reply-textarea');
+            const textarea = document.querySelector('.reply-textarea')
             if (textarea) {
-                textarea.focus();
-                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+                textarea.focus()
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length)
             }
-        });
+        })
     }
-};
+}
 
 // 取消回复
 const cancelReply = () => {
-    replyingTo.value = null;
-    newComment.value = '';
-};
+    replyingTo.value = null
+    newComment.value = ''
+}
 
 // 处理复制成功
 const handleCopySuccess = () => {
-    noticeOpen('评论已复制到剪贴板', 1);
-};
+    noticeOpen('评论已复制到剪贴板', 1)
+}
 
 // 处理复制失败
 const handleCopyError = error => {
-    noticeOpen('复制失败，请手动选择文字复制', 2);
-    console.warn('复制评论失败:', error);
-};
+    noticeOpen('复制失败，请手动选择文字复制', 2)
+    console.warn('复制评论失败:', error)
+}
 
 // 格式化时间
 const formatTime = timestamp => {
-    const ts = Number(timestamp);
-    if (!Number.isFinite(ts) || ts <= 0) return '刚刚';
+    const ts = Number(timestamp)
+    if (!Number.isFinite(ts) || ts <= 0) return '刚刚'
 
-    const now = Date.now();
-    const diff = now - ts;
+    const now = Date.now()
+    const diff = now - ts
 
-    const minute = 60 * 1000;
-    const hour = 60 * minute;
-    const day = 24 * hour;
-    const month = 30 * day;
-    const year = 365 * day;
+    const minute = 60 * 1000
+    const hour = 60 * minute
+    const day = 24 * hour
+    const month = 30 * day
+    const year = 365 * day
 
     if (diff < minute) {
-        return '刚刚';
+        return '刚刚'
     } else if (diff < hour) {
-        return `${Math.floor(diff / minute)}分钟前`;
+        return `${Math.floor(diff / minute)}分钟前`
     } else if (diff < day) {
-        return `${Math.floor(diff / hour)}小时前`;
+        return `${Math.floor(diff / hour)}小时前`
     } else if (diff < month) {
-        return `${Math.floor(diff / day)}天前`;
+        return `${Math.floor(diff / day)}天前`
     } else if (diff < year) {
-        return `${Math.floor(diff / month)}个月前`;
+        return `${Math.floor(diff / month)}个月前`
     } else {
-        return `${Math.floor(diff / year)}年前`;
+        return `${Math.floor(diff / year)}年前`
     }
-};
+}
 
 // 监听歌曲/节目变化，切换时重置滚动到顶部
 watch(
     commentTargetKey,
     (target, previousTarget) => {
         if (!target) {
-            comments.value = [];
-            hotComments.value = [];
-            floorReplies.value = {};
-            total.value = 0;
-            hasMore.value = false;
-            nextCursor.value = '0';
-            pageNo.value = 1;
-            return;
+            comments.value = []
+            hotComments.value = []
+            floorReplies.value = {}
+            total.value = 0
+            hasMore.value = false
+            nextCursor.value = '0'
+            pageNo.value = 1
+            return
         }
 
-        const lastCommentTarget = getLastCommentTargetKey();
-        const switchedWhileCommentsClosed = !previousTarget && !!lastCommentTarget && lastCommentTarget !== target;
+        const lastCommentTarget = getLastCommentTargetKey()
+        const switchedWhileCommentsClosed = !previousTarget && !!lastCommentTarget && lastCommentTarget !== target
 
         if (previousTarget) {
-            cacheCurrentScrollPosition(previousTarget);
+            cacheCurrentScrollPosition(previousTarget)
         }
 
         if (previousTarget || switchedWhileCommentsClosed) {
-            pendingRestoreScrollTop.value = null;
-            resetCommentsScroll();
+            pendingRestoreScrollTop.value = null
+            resetCommentsScroll()
         } else {
-            const cachedScrollTop = getCommentScrollPosition(target);
-            pendingRestoreScrollTop.value = typeof cachedScrollTop === 'number' && cachedScrollTop > 0 ? cachedScrollTop : null;
+            const cachedScrollTop = getCommentScrollPosition(target)
+            pendingRestoreScrollTop.value = typeof cachedScrollTop === 'number' && cachedScrollTop > 0 ? cachedScrollTop : null
             if (pendingRestoreScrollTop.value === null) {
-                resetCommentsScroll();
+                resetCommentsScroll()
             }
         }
 
-        setLastCommentTargetKey(target);
-        fetchComments(true);
+        setLastCommentTargetKey(target)
+        fetchComments(true)
     },
     { immediate: true }
-);
+)
 
 onMounted(() => {
     nextTick(() => {
-        tryAutoLoadMore();
-    });
-});
+        tryAutoLoadMore()
+    })
+})
 
 onUnmounted(() => {
-    cacheCurrentScrollPosition();
-    setLastCommentTargetKey(commentTargetKey.value);
-    clearScrollCheckRaf();
-});
+    cacheCurrentScrollPosition()
+    setLastCommentTargetKey(commentTargetKey.value)
+    clearScrollCheckRaf()
+})
 </script>
 
 <template>
@@ -1361,11 +1361,14 @@ onUnmounted(() => {
     background: rgba(255, 255, 255, 0.28);
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-left: 3px solid rgba(0, 0, 0, 0.28);
-    transition: all 0.2s;
+    transition-property: transform, border-color, box-shadow;
+    transition-duration: 0.2s;
+    transition-timing-function: ease;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    will-change: transform;
 
     &:hover {
-        background: rgba(255, 255, 255, 0.4);
+        background: rgba(255, 255, 255, 0.28);
         transform: translateY(-1px);
     }
 
@@ -1570,12 +1573,17 @@ onUnmounted(() => {
         gap: 8px;
     }
 
+    .floor-item,
+    .floor-item:hover,
+    .floor-item:focus-within {
+        background: rgba(176, 209, 217, 0.07);
+    }
+
     .floor-item {
         display: flex;
         align-items: flex-start;
         gap: 8px;
         padding: 6px 8px;
-        background: rgba(176, 209, 217, 0.07);
         border-left: 2px solid rgba(0, 0, 0, 0.2);
         border-radius: 0;
     }

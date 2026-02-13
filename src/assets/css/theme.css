@@ -392,38 +392,6 @@ body {
   background-color: rgba(255, 255, 255, 0.06) !important;
 }
 
-/* Personal FM action icons (prev/trash/like/next) */
-.dark .personal-fm .action-btn {
-  background: rgba(255, 255, 255, 0.08) !important;
-  color: var(--text) !important;
-}
-
-.dark .personal-fm .action-btn:hover {
-  background: rgba(255, 255, 255, 0.14) !important;
-}
-
-.dark .personal-fm .action-btn.prev,
-.dark .personal-fm .action-btn.next {
-  background: rgba(255, 255, 255, 0.26) !important;
-}
-
-.dark .personal-fm .action-btn.prev:hover,
-.dark .personal-fm .action-btn.next:hover {
-  background: rgba(255, 255, 255, 0.32) !important;
-}
-
-.dark .personal-fm .action-btn.like.active,
-.dark .personal-fm .action-btn.like:hover,
-.dark .personal-fm .action-btn.trash:hover {
-  background: rgba(255, 59, 48, 0.15) !important;
-  color: #ff3b30 !important;
-}
-
-/* Personal FM cover: keep consistent with light mode (no white border) */
-.dark .personal-fm .fm-cover img {
-  border: none !important;
-}
-
 .dark .classify-list .list-item::after {
   background-color: rgba(255, 255, 255, 0.06) !important;
 }
@@ -774,7 +742,38 @@ body {
 .playing-eq .bar:nth-child(3) { animation-duration: 0.95s; animation-delay: 0s; }
 .playing-eq .bar:nth-child(4) { animation-duration: 1.25s; animation-delay: 0.18s; }
 
-/* Comments (right panel) minimal dark styles */
+/* Comments (right panel) dark styles */
+.dark .arknights-comments {
+  background: var(--panel) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+}
+
+.dark .arknights-comments .frame-corner {
+  border-color: rgba(255, 255, 255, 0.78) !important;
+}
+
+.dark .arknights-comments .comments-header .header-frame {
+  background: rgba(30, 34, 38, 0.56) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .comments-header .header-title {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .comments-header .title-underline {
+  background: var(--text) !important;
+}
+
+.dark .arknights-comments .login-prompt .prompt-frame {
+  background: rgba(30, 34, 38, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .arknights-comments .login-prompt .prompt-text {
+  color: var(--muted-text) !important;
+}
+
 .dark .arknights-comments .section-title {
   color: var(--text) !important;
 }
@@ -788,8 +787,12 @@ body {
 }
 
 .dark .arknights-comments .comment-card {
-  background: rgba(30, 34, 38, 0.6) !important;
+  background-color: rgba(30, 34, 38, 0.82) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
+  transition-property: transform, border-color, box-shadow !important;
+  transition-duration: 0.2s !important;
+  transition-timing-function: ease !important;
+  will-change: transform;
 }
 
 .dark .arknights-comments .comment-card.hot-card {
@@ -797,7 +800,8 @@ body {
 }
 
 .dark .arknights-comments .comment-card:hover {
-  background: rgba(30, 34, 38, 0.8) !important;
+  background-color: rgba(30, 34, 38, 0.82) !important;
+  transform: translateY(-1px) !important;
 }
 
 .dark .arknights-comments .comment-meta .avatar-frame {
@@ -855,8 +859,13 @@ body {
   border-radius: 0 !important;
 }
 
+.dark .arknights-comments .floor-replies .floor-item,
+.dark .arknights-comments .floor-replies .floor-item:hover,
+.dark .arknights-comments .floor-replies .floor-item:focus-within {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
 .dark .arknights-comments .floor-replies .floor-item {
-  background: rgba(255, 255, 255, 0.06) !important;
   border-left-color: rgba(255, 255, 255, 0.24) !important;
   border-radius: 0 !important;
 }
@@ -917,9 +926,18 @@ body {
   color: #ff7b7b !important;
 }
 
-.dark .arknights-comments .loading-status {
-  background: rgba(30, 34, 38, 0.5) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
+.dark .arknights-comments .floor-replies .floor-error:hover {
+  color: #ff9d9d !important;
+}
+
+.dark .arknights-comments .comment-input-section .input-frame {
+  background: rgba(30, 34, 38, 0.52) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .comment-input-section .shortcut-hint,
+.dark .arknights-comments .inline-reply-box .reply-shortcut-hint {
+  color: var(--muted-text) !important;
 }
 
 .dark .arknights-comments .comment-input-section .comment-textarea,
@@ -928,9 +946,42 @@ body {
   color: var(--text) !important;
 }
 
+.dark .arknights-comments .comment-input-section .comment-textarea::placeholder,
+.dark .arknights-comments .inline-reply-box .reply-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+.dark .arknights-comments .comment-input-section .comment-textarea:focus,
+.dark .arknights-comments .inline-reply-box .reply-textarea:focus {
+  background: rgba(25, 27, 31, 0.86) !important;
+}
+
 .dark .arknights-comments .input-border,
 .dark .arknights-comments .reply-input-border {
   border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.dark .arknights-comments .comment-input-section .comment-textarea:focus + .input-border,
+.dark .arknights-comments .inline-reply-box .reply-textarea:focus + .reply-input-border {
+  border-color: rgba(255, 255, 255, 0.44) !important;
+}
+
+.dark .arknights-comments .comment-input-section .submit-button,
+.dark .arknights-comments .inline-reply-box .send-reply-btn {
+  background: var(--text) !important;
+  color: #000 !important;
+}
+
+.dark .arknights-comments .comment-input-section .submit-button:hover:not(:disabled),
+.dark .arknights-comments .inline-reply-box .send-reply-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.84) !important;
+  color: #000 !important;
+}
+
+.dark .arknights-comments .comment-input-section .submit-button:disabled,
+.dark .arknights-comments .inline-reply-box .send-reply-btn:disabled {
+  background: rgba(255, 255, 255, 0.24) !important;
+  color: rgba(255, 255, 255, 0.62) !important;
 }
 
 .dark .arknights-comments .cancel-reply-btn {
@@ -938,9 +989,76 @@ body {
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-.dark .arknights-comments .send-reply-btn {
-  background: var(--text) !important;
-  color: #000 !important;
+.dark .arknights-comments .cancel-reply-btn:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .inline-reply-box {
+  background: rgba(30, 34, 38, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .reply-header {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-left-color: rgba(255, 255, 255, 0.46) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .reply-prefix {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .reply-target {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .close-reply {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .close-reply:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.dark .arknights-comments .loading-status {
+  background: rgba(30, 34, 38, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .arknights-comments .loading-status .loading-indicator {
+  border-color: rgba(255, 255, 255, 0.26) !important;
+  border-top-color: var(--text) !important;
+}
+
+.dark .arknights-comments .loading-status .loading-text {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .no-more-status,
+.dark .arknights-comments .empty-status {
+  background: rgba(30, 34, 38, 0.45) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .arknights-comments .no-more-status .status-text,
+.dark .arknights-comments .empty-status .status-text {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .comment-text.copyable:hover {
+  background-color: transparent !important;
+}
+
+.dark .arknights-comments .comment-text .copy-button {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .comment-text .copy-button:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
+.dark .arknights-comments .comment-text .copy-icon {
+  color: var(--text) !important;
 }
 
 .dark .player-container .desktop-lyric-btn:not(.active) { opacity: 0.5 !important; }
