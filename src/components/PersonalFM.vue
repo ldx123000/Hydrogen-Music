@@ -81,17 +81,19 @@ import { usePlayerStore } from '../store/playerStore';
 import { useUserStore } from '../store/userStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { mapSongsPlayableStatus } from '../utils/songStatus';
-import { getMusicUrl, getLyric } from '../api/song';
-import { play, getFavoritePlaylistId } from '../utils/player';
+import { getLyric } from '../api/song';
+import { play, getFavoritePlaylistId, setSongLevel } from '../utils/player';
 import { updatePlaylist } from '../api/playlist';
 import { getLikelist } from '../api/user';
 import { likeMusic } from '../api/song';
 import { storeToRefs } from 'pinia';
+import { getPreferredQuality } from '../utils/quality';
+import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver';
 
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
 const libraryStore = useLibraryStore();
-const { songId, playing } = storeToRefs(playerStore);
+const { songId, playing, quality } = storeToRefs(playerStore);
 const { likelist } = storeToRefs(userStore);
 
 // 创建一个计算属性来实时判断当前歌曲是否被喜欢
@@ -228,11 +230,11 @@ const togglePlay = async () => {
     try {
         // 获取歌曲URL
         console.log('Getting music URL for:', currentSong.value.id);
-        const urlResponse = await getMusicUrl(currentSong.value.id, 'standard');
-        console.log('Music URL response:', urlResponse);
-
-        if (urlResponse && urlResponse.data && urlResponse.data[0] && urlResponse.data[0].url) {
-            const musicUrl = urlResponse.data[0].url;
+        const preferredQuality = getPreferredQuality(quality.value);
+        const trackInfo = await resolveTrackByQualityPreference(currentSong.value.id, preferredQuality);
+        console.log('Music URL response:', trackInfo);
+        if (trackInfo && trackInfo.url) {
+            const musicUrl = trackInfo.url;
             console.log('Playing music from URL:', musicUrl);
 
             // 创建一个临时的单曲列表用于FM播放（不影响用户的真实播放列表）
@@ -257,6 +259,7 @@ const togglePlay = async () => {
                 type: 'personalfm',
                 name: '私人漫游',
             };
+            setSongLevel(trackInfo.level, trackInfo);
 
             // 直接播放音乐
             play(musicUrl, true);

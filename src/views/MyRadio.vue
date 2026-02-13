@@ -2,8 +2,10 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDjSubList, getDjPrograms } from '../api/dj'
-import { getMusicUrl, getLyric } from '../api/song'
+import { getLyric } from '../api/song'
 import { usePlayerStore } from '../store/playerStore'
+import { getPreferredQuality } from '../utils/quality'
+import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
 
 const router = useRouter()
 const playerStore = usePlayerStore()
@@ -41,8 +43,9 @@ const playLatestProgram = async (radio) => {
     const mainSong = program?.mainSong
     if (!mainSong?.id) return
 
-    const urlRes = await getMusicUrl(mainSong.id, 'standard')
-    const url = urlRes?.data?.[0]?.url
+    const preferredQuality = getPreferredQuality(playerStore.quality)
+    const trackInfo = await resolveTrackByQualityPreference(mainSong.id, preferredQuality)
+    const url = trackInfo?.url
     if (!url) return
 
     // 封装成播放器歌曲结构
@@ -66,7 +69,8 @@ const playLatestProgram = async (radio) => {
     playerStore.listInfo = { id: rid, type: 'dj', name: radio?.name || '电台' }
 
     // 直接播放
-    const { play } = await import('../utils/player')
+    const { play, setSongLevel } = await import('../utils/player')
+    setSongLevel(trackInfo?.level, trackInfo)
     play(url, true)
 
     // 加载歌词（可能无歌词，忽略错误）

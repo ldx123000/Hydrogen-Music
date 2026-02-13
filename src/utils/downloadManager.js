@@ -2,9 +2,11 @@
 import { useLocalStore } from '../store/localStore'
 import { usePlayerStore } from '../store/playerStore'
 import { storeToRefs } from 'pinia'
-import { checkMusic, getMusicUrl, getLyric } from '../api/song'
+import { checkMusic, getLyric } from '../api/song'
 import { noticeOpen } from './dialog'
 import { scanMusic } from './locaMusic'
+import { getPreferredQuality } from './quality'
+import { resolveTrackByQualityPreference } from './musicUrlResolver'
 
 let isInitialized = false
 
@@ -24,7 +26,14 @@ export const initDownloadManager = () => {
         let id = downloadList.value[currentIndex].id
         checkMusic(id).then(async result => {
             if(result.success == true) {
-                getMusicUrl(id, quality.value).then(async songInfo => {
+                const preferredQuality = getPreferredQuality(quality.value)
+                resolveTrackByQualityPreference(id, preferredQuality).then(async trackInfo => {
+                    if (!trackInfo || !trackInfo.url) {
+                        noticeOpen("该歌曲无法下载！", 2)
+                        downloadList.value.splice(currentIndex, 1)
+                        downNext()
+                        return
+                    }
                     // 获取歌词（不阻塞音频下载；即使失败也继续）
                     let lyricPayload = null
                     try {
@@ -45,9 +54,9 @@ export const initDownloadManager = () => {
                     const album = (item.al && item.al.name) || (item.album && item.album.name) || null
 
                     let fileObj = {
-                        url: songInfo.data[0].url,
+                        url: trackInfo.url,
                         name: downloadList.value[currentIndex].name,
-                        type: songInfo.data[0].type,
+                        type: trackInfo.type,
                         id,
                         lyrics: lyricPayload,
                         coverUrl,

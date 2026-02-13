@@ -140,11 +140,35 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         if (!Number.isFinite(num)) return 8
         return Math.max(1, num)
     }
+    const defaultMusicLevel = 'lossless'
+    const availableMusicLevel = new Set([
+        'standard',
+        'higher',
+        'exhigh',
+        'lossless',
+        'hires',
+        'jyeffect',
+        'sky',
+        'dolby',
+        'jymaster',
+    ])
+
+    const normalizeMusicLevel = level => availableMusicLevel.has(level) ? level : defaultMusicLevel
+
+    const normalizeMusicSettings = (music = {}) => {
+        const normalized = { ...music }
+        normalized.searchAssistLimit = normalizeSearchAssistLimit(normalized.searchAssistLimit)
+        normalized.level = normalizeMusicLevel(normalized.level)
+        // 兼容历史版本：读取后清理旧迁移标记字段。
+        delete normalized.levelMigratedToLosslessV1
+        return normalized
+    }
 
     ipcMain.on('set-settings', (e, settings) => {
         const parsedSettings = JSON.parse(settings)
         if (!parsedSettings.music) parsedSettings.music = {}
-        parsedSettings.music.searchAssistLimit = normalizeSearchAssistLimit(parsedSettings.music.searchAssistLimit)
+        // 保存时仅做合法值归一化，并清理历史迁移字段。
+        parsedSettings.music = normalizeMusicSettings(parsedSettings.music)
         settingsStore.set('settings', parsedSettings)
         registerShortcuts(win)
     })
@@ -152,18 +176,19 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         const settings = await settingsStore.get('settings')
         if (settings) {
             if (!settings.music) settings.music = {}
-            settings.music.searchAssistLimit = normalizeSearchAssistLimit(settings.music.searchAssistLimit)
+            // 读取时仅做归一化（保留旧版本合法音质选择，并清理历史迁移字段）。
+            settings.music = normalizeMusicSettings(settings.music)
             settingsStore.set('settings', settings)
             return settings
         } else {
             let initSettings = {
                 music: {
-                    level: 'standard',
+                    level: defaultMusicLevel,
                     lyricSize: '20',
                     tlyricSize: '14',
                     rlyricSize: '12',
                     lyricInterlude: 13,
-                    searchAssistLimit: 8
+                    searchAssistLimit: 8,
                 },
                 local: {
                     videoFolder: null,

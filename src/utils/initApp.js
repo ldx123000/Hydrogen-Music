@@ -8,6 +8,7 @@ import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
 import { storeToRefs } from 'pinia'
+import { getPreferredQuality } from './quality'
 
 const userStore = useUserStore(pinia)
 const playerStore = usePlayerStore()
@@ -18,7 +19,7 @@ const { updateUser } = userStore
 export const initSettings = () => {
     windowApi.getSettings().then(settings => {
         const rawSearchAssistLimit = Number.parseInt(settings?.music?.searchAssistLimit, 10)
-        quality.value = settings.music.level
+        quality.value = getPreferredQuality(settings?.music?.level)
         lyricSize.value = settings.music.lyricSize
         tlyricSize.value = settings.music.tlyricSize
         rlyricSize.value = settings.music.rlyricSize

@@ -829,8 +829,8 @@ watch([playing, lyricShow], ([p, show]) => {
         <span class="song-quality" v-if="songList[currentIndex].type == 'local'">
             {{ songList[currentIndex].sampleRate }}KHz/{{ songList[currentIndex].bitsPerSample }}Bits/{{ songList[currentIndex].bitrate }}Kpbs
         </span>
-        <span class="song-quality" v-if="songList[currentIndex].level">
-            {{ songList[currentIndex].level.sr / 1000 }}KHz/{{ Math.round(songList[currentIndex].level.br / 1000) }}Kpbs/{{ songList[currentIndex].quality.toUpperCase() }}
+        <span class="song-quality" v-if="songList[currentIndex].level && songList[currentIndex].level.sr && songList[currentIndex].level.br">
+            {{ songList[currentIndex].level.sr / 1000 }}KHz/{{ Math.round(songList[currentIndex].level.br / 1000) }}Kpbs/{{ (songList[currentIndex].actualLevel || songList[currentIndex].quality || '').toUpperCase() }}
         </span>
         <div class="border border1"></div>
         <div class="border border2"></div>

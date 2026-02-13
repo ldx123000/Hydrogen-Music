@@ -2,7 +2,7 @@ import pinia from '../store/pinia'
 import { Howl, Howler } from 'howler'
 import { formatDuration } from './time';
 import { noticeOpen } from './dialog'
-import { checkMusic, getMusicUrl, likeMusic, getLyric } from '../api/song'
+import { checkMusic, likeMusic, getLyric } from '../api/song'
 import { getLikelist, getUserPlaylist } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
@@ -10,6 +10,8 @@ import { useLibraryStore } from '../store/libraryStore'
 import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
 import {watch} from "vue";
+import { getPreferredQuality } from './quality'
+import { resolveTrackByQualityPreference } from './musicUrlResolver'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -24,6 +26,13 @@ let loadLast = true
 let playModeOne = false //为true代表顺序播放已全部结束
 let refreshingStream = false
 let lastRefreshAttempt = 0
+const levelFieldMap = {
+    standard: 'l',
+    higher: 'm',
+    exhigh: 'h',
+    lossless: 'sq',
+    hires: 'hr',
+}
 
 watch(volume, (v) => {
   window.playerApi?.setVolume?.(v)
@@ -213,18 +222,17 @@ async function refreshStreamAndResume(eventType, error) {
     const resumePosition = getSafeCurrentSeek()
 
     try {
-        const preferredQuality = quality.value || currentSong.quality || 'standard'
-        const songInfo = await getMusicUrl(songId.value, preferredQuality)
-        const trackInfo = songInfo && songInfo.data && songInfo.data[0]
+        const preferredQuality = getPreferredQuality(quality.value)
+        const trackInfo = await resolveTrackByQualityPreference(songId.value, preferredQuality)
 
         if (!trackInfo || !trackInfo.url) {
-            console.error('刷新歌曲播放地址失败：未返回url', songInfo)
+            console.error('刷新歌曲播放地址失败：未返回url', trackInfo)
             noticeOpen('当前歌曲链接已失效，请尝试切换下一首', 2)
             return
         }
 
         try {
-            setSongLevel(trackInfo.level)
+            setSongLevel(trackInfo.level, trackInfo)
         } catch (err) {
             console.warn('更新歌曲音质信息失败:', err)
         }
@@ -564,13 +572,31 @@ export function addSong(id, index, autoplay, isLocal) {
     }
 }
 
-export function setSongLevel(level) {
-    if (level == 'standard') songList.value[currentIndex.value].level = songList.value[currentIndex.value].l
-    else if (level == 'higher') songList.value[currentIndex.value].level = songList.value[currentIndex.value].m
-    else if (level == 'exhigh') songList.value[currentIndex.value].level = songList.value[currentIndex.value].h
-    else if (level == 'lossless') songList.value[currentIndex.value].level = songList.value[currentIndex.value].sq
-    else if (level == 'hires') songList.value[currentIndex.value].level = songList.value[currentIndex.value].hr
-    songList.value[currentIndex.value].quality = level
+function buildLevelInfoFromStream(streamInfo = {}) {
+    const sr = Number(streamInfo?.sr)
+    const br = Number(streamInfo?.br)
+    if (!Number.isFinite(sr) || sr <= 0 || !Number.isFinite(br) || br <= 0) return null
+    const size = Number(streamInfo?.size)
+    return {
+        sr,
+        br,
+        size: Number.isFinite(size) && size > 0 ? size : 0,
+    }
+}
+
+export function setSongLevel(level, streamInfo = null) {
+    const currentSong = songList.value && songList.value[currentIndex.value]
+    if (!currentSong) return
+
+    const normalizedLevel = typeof level === 'string' && level ? level : 'unknown'
+    const levelField = levelFieldMap[normalizedLevel]
+    const mappedLevelInfo = levelField ? currentSong[levelField] : null
+    const streamLevelInfo = buildLevelInfoFromStream(streamInfo || {})
+
+    currentSong.level = mappedLevelInfo || streamLevelInfo || null
+    currentSong.actualLevel = normalizedLevel
+    // 保持旧字段兼容：quality 表示当前曲目实际返回档位，而非用户偏好。
+    currentSong.quality = normalizedLevel
 }
 export async function getLocalLyric(filePath) {
     const lyric = await windowApi.getLocalMusicLyric(filePath)
@@ -693,9 +719,19 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
     }
     await checkMusic(id).then(result => {
         if (result.success == true) {
-            getMusicUrl(id, quality.value).then(songInfo => {
-                play(songInfo.data[0].url, autoplay)
-                setSongLevel(songInfo.data[0].level)
+            const preferredQuality = getPreferredQuality(quality.value)
+            resolveTrackByQualityPreference(id, preferredQuality).then(trackInfo => {
+                if (!trackInfo || !trackInfo.url) {
+                    noticeOpen('当前歌曲无法播放', 2)
+                    clearInterval(musicProgress)
+                    playing.value = false
+                    currentMusic.value = null
+                    lyric.value = null
+                    playNext()
+                    return
+                }
+                play(trackInfo.url, autoplay)
+                setSongLevel(trackInfo.level, trackInfo)
             })
             getLyric(id).then(songLiric => {
                 lyric.value = songLiric

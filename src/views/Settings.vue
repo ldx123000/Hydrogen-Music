@@ -17,7 +17,7 @@ const userStore = useUserStore();
 const playerStore = usePlayerStore();
 
 const vipInfo = ref(null);
-const musicLevel = ref('standard');
+const musicLevel = ref('lossless');
 const musicLevelOptions = ref([
     {
         label: '标准',
@@ -38,6 +38,22 @@ const musicLevelOptions = ref([
     {
         label: 'Hi-Res',
         value: 'hires',
+    },
+    {
+        label: '高清环绕声',
+        value: 'jyeffect',
+    },
+    {
+        label: '沉浸环绕声',
+        value: 'sky',
+    },
+    {
+        label: '杜比全景声',
+        value: 'dolby',
+    },
+    {
+        label: '超清母带',
+        value: 'jymaster',
     },
 ]);
 const lyricSize = ref(20);
@@ -431,7 +447,7 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">音质选择</div>
                             <div class="option-operation">
-                                <Selector v-model="musicLevel" :options="musicLevelOptions"></Selector>
+                                <Selector v-model="musicLevel" :options="musicLevelOptions" :maxItems="9"></Selector>
                             </div>
                         </div>
 	                        <div class="option">
