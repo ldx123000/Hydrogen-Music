@@ -6,9 +6,10 @@
   import { useRouter } from 'vue-router';
   import { usePlayerStore } from '../store/playerStore'
   import { storeToRefs } from 'pinia'
+  import { getSongDisplayName } from '../utils/songName'
   const router = useRouter()
   const playerStore = usePlayerStore()
-  const { playing, progress, playMode, currentMusic, currentIndex, listInfo, songList, shuffledList, shuffleIndex, songId, widgetState, playlistWidgetShow, lyricShow } = storeToRefs(playerStore)
+  const { playing, progress, playMode, currentMusic, currentIndex, listInfo, songList, shuffledList, shuffleIndex, songId, widgetState, playlistWidgetShow, lyricShow, showSongTranslation } = storeToRefs(playerStore)
 
   const clearPlaylist = () => {
     playlistWidgetShow.value = false
@@ -117,7 +118,7 @@
               <span class="bar"></span>
               <span class="bar"></span>
             </div>
-            <span class="item-name">{{item.name  || item.localName}}</span>
+            <span class="item-name">{{getSongDisplayName(item, '', showSongTranslation)}}</span>
             <span class="item-separator"> - </span>
             <span class="item-author" @dblclick.stop @click="checkArtist(singer.id)" v-for="(singer, index) in item.ar">{{singer.name}}{{index == item.ar.length -1 ? '' : '/'}}</span>
           </div>

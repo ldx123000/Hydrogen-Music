@@ -159,6 +159,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         const normalized = { ...music }
         normalized.searchAssistLimit = normalizeSearchAssistLimit(normalized.searchAssistLimit)
         normalized.level = normalizeMusicLevel(normalized.level)
+        normalized.showSongTranslation = normalized.showSongTranslation !== false
         // 兼容历史版本：读取后清理旧迁移标记字段。
         delete normalized.levelMigratedToLosslessV1
         return normalized
@@ -189,6 +190,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                     rlyricSize: '12',
                     lyricInterlude: 13,
                     searchAssistLimit: 8,
+                    showSongTranslation: true,
                 },
                 local: {
                     videoFolder: null,

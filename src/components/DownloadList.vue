@@ -7,11 +7,12 @@
   import { useLocalStore } from '../store/localStore'
   import { initDownloadManager } from '../utils/downloadManager'
   import { storeToRefs } from 'pinia'
+  import { getSongDisplayName } from '../utils/songName'
   
   const localStore = useLocalStore()
   const { isFirstDownload, isDownloading, downloadList } = storeToRefs(localStore)
   const playerStore = usePlayerStore()
-  const { quality } =storeToRefs(playerStore)
+  const { quality, showSongTranslation } =storeToRefs(playerStore)
   const progress = ref(0)
   
   // 确保下载管理器已初始化
@@ -67,7 +68,7 @@
       <div class="item" @contextmenu.prevent="deleteItem(index)" v-for="(item, index) in downloadList">
         <span class="download-index">{{index + 1}}</span>
         <div class="download">
-          <div class="item-name">{{item.name}}</div>
+          <div class="item-name">{{getSongDisplayName(item, '', showSongTranslation)}}</div>
           <div class="download-progress">
             <VueSlider class="progress" v-if="index == 0" v-model="progress" :min="0" :max="100" :interval="1" :duration="0.5" :clickable="false" tooltip="none"></VueSlider>
             <div class="progress" v-show="index != 0"></div>

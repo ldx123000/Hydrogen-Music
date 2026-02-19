@@ -4,9 +4,10 @@
   import { songTime2, changeProgress } from '../utils/player';
   import { usePlayerStore } from '../store/playerStore';
   import { storeToRefs } from 'pinia';
+  import { getSongDisplayName } from '../utils/songName';
   const router = useRouter()
   const playerStore = usePlayerStore()
-  const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, localBase64Img, progress, time, playerShow } = storeToRefs(playerStore)
+  const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, localBase64Img, progress, time, playerShow, showSongTranslation } = storeToRefs(playerStore)
 
   const backHome = () => {
     if(widgetState.value) router.push('/')
@@ -32,7 +33,7 @@
           <img v-if="songList[currentIndex].type == 'local' && !localBase64Img" src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="">
         </div>
         <div class="music-info">
-          <span class="music-name">{{songList[currentIndex].name || songList[currentIndex].localName}}</span>
+          <span class="music-name">{{getSongDisplayName(songList[currentIndex], '', showSongTranslation)}}</span>
           <div class="music-time">
             <vue-slider id='widget-progress' class="music-progress" @click.stop="changeProgress(progress)"  v-model="progress" :min="0" :max="time" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
             <span class="remaining-time">{{songTime2(time - progress)}}</span>

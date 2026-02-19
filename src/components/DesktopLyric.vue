@@ -24,7 +24,7 @@
                 <div class="song-meta">
                     <div class="meta-row">
                         <span class="meta-label">TRACK</span>
-                        <span class="meta-content">{{ currentSong.name || currentSong.localName || 'UNKNOWN' }}</span>
+                        <span class="meta-content">{{ getSongDisplayName(currentSong, 'UNKNOWN') }}</span>
                     </div>
                     <div class="meta-row">
                         <span class="meta-label">ARTIST</span>
@@ -189,6 +189,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watchEffect } from 'vue';
+import { getSongDisplayName } from '../utils/songName';
 
 // 响应式数据
 const currentSong = ref(null);

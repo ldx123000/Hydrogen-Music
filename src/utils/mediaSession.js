@@ -3,6 +3,7 @@ import { watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { usePlayerStore } from '../store/playerStore'
 import { startMusic, pauseMusic, playNext, playLast, changeProgress } from './player'
+import { getSongDisplayName } from './songName'
 
 function getCurrentTrack(storeRefs) {
   const { songList, currentIndex } = storeRefs
@@ -30,7 +31,7 @@ export function initMediaSession() {
 
   const playerStore = usePlayerStore(pinia)
   const refs = storeToRefs(playerStore)
-  const { songList, currentIndex, playing, progress, time, localBase64Img } = refs
+  const { songList, currentIndex, playing, progress, time, localBase64Img, showSongTranslation } = refs
 
   // 平台与节流参数（封面仅换曲更新；进度略动态且限流）
   const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
@@ -95,7 +96,7 @@ export function initMediaSession() {
   const updateMetadata = () => {
     const cur = getCurrentTrack(refs)
     if (!cur) return
-    const title = cur.name || cur.localName || 'Hydrogen Music'
+    const title = getSongDisplayName(cur, 'Hydrogen Music', showSongTranslation.value)
     const artist = Array.isArray(cur.ar) ? cur.ar.map(a => a && a.name).filter(Boolean).join(', ') : (cur.artist || '')
     const album = (cur.al && cur.al.name) || cur.album || ''
     let artwork = getArtworkForTrack(cur, localBase64Img.value)
@@ -153,7 +154,7 @@ export function initMediaSession() {
 
   // Static strategy
   // 1) 仅在曲目切换时设置元数据并进度归零
-  watch([songList, currentIndex], () => updateMetadata(), { immediate: true })
+  watch([songList, currentIndex, showSongTranslation], () => updateMetadata(), { immediate: true })
   // 2) 仅在播放状态切换时刷新一次位置（不走每秒更新）
   watch(playing, () => { updatePlaybackState(); updatePositionThrottled({ force: true }) }, { immediate: true })
 

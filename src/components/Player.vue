@@ -12,6 +12,7 @@ import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
+import { getSongDisplayName } from '../utils/songName';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -88,6 +89,7 @@ const {
     currentLyricIndex, // 添加当前歌词索引
     isDesktopLyricOpen,
     coverBlur,
+    showSongTranslation,
 } = storeToRefs(playerStore);
 
 // 检查是否在FM模式
@@ -191,7 +193,7 @@ const toAddMusicVideo = () => {
     if (currentSong) {
         addMusicVideo.value = {
             id: songId.value,
-            name: currentSong.name,
+            name: getSongDisplayName(currentSong, '', showSongTranslation.value),
             dt: time.value,
         };
     }
@@ -248,7 +250,7 @@ const toggleDjSub = async isSubscribe => {
             <div class="player-info">
                 <div class="info-music">
                     <div class="music-name-lable" :class="{ 'music-name-lable-in': playerChangeSong }"></div>
-                    <span class="music-name" :class="{ 'music-name-in': playerChangeSong }">{{ songList?.[currentIndex]?.name || songList?.[currentIndex]?.localName || '加载中...' }}</span>
+                    <span class="music-name" :class="{ 'music-name-in': playerChangeSong }">{{ getSongDisplayName(songList?.[currentIndex], '加载中...', showSongTranslation) }}</span>
                 </div>
                 <div class="info-music">
                     <div class="music-author-lable" :class="{ 'music-author-lable-video': videoIsPlaying || coverBlur }"></div>

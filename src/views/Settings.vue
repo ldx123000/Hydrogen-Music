@@ -113,6 +113,7 @@ onActivated(() => {
         rlyricSize.value = settings.music.rlyricSize;
         lyricInterlude.value = settings.music.lyricInterlude;
         searchAssistLimit.value = normalizeSearchAssistLimit(settings.music.searchAssistLimit);
+        playerStore.showSongTranslation = settings?.music?.showSongTranslation !== false;
         videoFolder.value = settings.local.videoFolder;
         downloadFolder.value = settings.local.downloadFolder;
         downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder;
@@ -171,6 +172,7 @@ const setAppSettings = () => {
             rlyricSize: rlyricSize.value,
             lyricInterlude: lyricInterlude.value,
             searchAssistLimit: normalizeSearchAssistLimit(searchAssistLimit.value),
+            showSongTranslation: playerStore.showSongTranslation,
         },
         local: {
             videoFolder: videoFolder.value,
@@ -450,28 +452,41 @@ const clearFmRecent = () => {
                                 <Selector v-model="musicLevel" :options="musicLevelOptions" :maxItems="9"></Selector>
                             </div>
                         </div>
-	                        <div class="option">
-	                            <div class="option-name">开启背景封面模糊</div>
-	                            <div class="option-operation">
-	                                <div class="toggle" @click="setCoverBlur()">
-	                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.coverBlur }">{{ playerStore.coverBlur ? '已开启' : '已关闭' }}</div>
-	                                    <Transition name="toggle">
-	                                        <div class="toggle-on" v-show="playerStore.coverBlur"></div>
-	                                    </Transition>
-	                                </div>
-	                            </div>
-	                        </div>
-	                        <div class="option">
-	                            <div class="option-name">开启歌词模糊</div>
-	                            <div class="option-operation">
-	                                <div class="toggle" @click="setLyricBlur()">
-	                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricBlur }">{{ playerStore.lyricBlur ? '已开启' : '已关闭' }}</div>
-	                                    <Transition name="toggle">
-	                                        <div class="toggle-on" v-show="playerStore.lyricBlur"></div>
-	                                    </Transition>
-	                                </div>
-	                            </div>
-	                        </div>
+                        <div class="option">
+                            <div class="option-name">开启背景封面模糊</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="setCoverBlur()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.coverBlur }">{{ playerStore.coverBlur ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.coverBlur"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">开启歌词模糊</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="setLyricBlur()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricBlur }">{{ playerStore.lyricBlur ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.lyricBlur"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">显示歌曲翻译</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="playerStore.showSongTranslation = !playerStore.showSongTranslation">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.showSongTranslation }">
+                                        {{ playerStore.showSongTranslation ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.showSongTranslation"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
                         <div class="option">
                             <div class="option-name">搜索下拉条目数量</div>
                             <div class="option-operation">

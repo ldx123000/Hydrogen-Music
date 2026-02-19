@@ -12,7 +12,7 @@ import { getPreferredQuality } from './quality'
 
 const userStore = useUserStore(pinia)
 const playerStore = usePlayerStore()
-const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit } = storeToRefs(playerStore)
+const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const { updateUser } = userStore
 
@@ -25,6 +25,7 @@ export const initSettings = () => {
         rlyricSize.value = settings.music.rlyricSize
         lyricInterludeTime.value = settings.music.lyricInterlude
         searchAssistLimit.value = Number.isFinite(rawSearchAssistLimit) ? Math.max(1, rawSearchAssistLimit) : 8
+        showSongTranslation.value = settings?.music?.showSongTranslation !== false
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp

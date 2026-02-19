@@ -12,13 +12,14 @@ import { storeToRefs } from 'pinia'
 import {watch} from "vue";
 import { getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
+import { getSongDisplayName } from './songName'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
 const libraryStore = useLibraryStore(pinia)
 const playerStore = usePlayerStore(pinia)
 const { libraryInfo } = storeToRefs(libraryStore)
-const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex } = storeToRefs(playerStore)
+const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation } = storeToRefs(playerStore)
 
 let isProgress = false
 let musicProgress = null
@@ -26,6 +27,7 @@ let loadLast = true
 let playModeOne = false //为true代表顺序播放已全部结束
 let refreshingStream = false
 let lastRefreshAttempt = 0
+let streamRefreshToken = 0
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -36,6 +38,9 @@ const levelFieldMap = {
 
 watch(volume, (v) => {
   window.playerApi?.setVolume?.(v)
+})
+watch(showSongTranslation, () => {
+    updateWindowTitleDock()
 })
 
 // 统一更新窗口标题和（macOS）Dock菜单
@@ -49,7 +54,7 @@ function updateWindowTitleDock() {
             windowApi.setWindowTile('Hydrogen Music')
             return
         }
-        const sName = cur.name || cur.localName || 'Hydrogen Music'
+        const sName = getSongDisplayName(cur, 'Hydrogen Music', showSongTranslation.value)
         const aName = (cur.ar && cur.ar[0] && cur.ar[0].name) ? cur.ar[0].name : ''
 
         const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
@@ -216,14 +221,22 @@ async function refreshStreamAndResume(eventType, error) {
     if (!currentSong || currentSong.type === 'local') return
     if (!songId.value) return
 
+    const targetSongId = songId.value
+    const targetHowl = currentMusic.value
     refreshingStream = true
     lastRefreshAttempt = now
+    const token = ++streamRefreshToken
 
     const resumePosition = getSafeCurrentSeek()
 
     try {
         const preferredQuality = getPreferredQuality(quality.value)
-        const trackInfo = await resolveTrackByQualityPreference(songId.value, preferredQuality)
+        const trackInfo = await resolveTrackByQualityPreference(targetSongId, preferredQuality)
+
+        // 防止旧歌曲的异步刷新覆盖当前已切换的新歌曲。
+        if (token !== streamRefreshToken || songId.value !== targetSongId || currentMusic.value !== targetHowl) {
+            return
+        }
 
         if (!trackInfo || !trackInfo.url) {
             console.error('刷新歌曲播放地址失败：未返回url', trackInfo)
@@ -678,7 +691,7 @@ function processLocalLyricData() {
 }
 export async function getSongUrl(id, index, autoplay, isLocal) {
     // 名称与歌手的兜底处理（本地歌曲兼容）
-    const songName = songList.value[index].name || songList.value[index].localName || 'Hydrogen Music'
+    const songName = getSongDisplayName(songList.value[index], 'Hydrogen Music', showSongTranslation.value)
     const artistName = (songList.value[index].ar && songList.value[index].ar[0] && songList.value[index].ar[0].name) ? songList.value[index].ar[0].name : ''
 
     // 区分平台：mac 使用 Dock 菜单，Windows/Linux 更新窗口标题

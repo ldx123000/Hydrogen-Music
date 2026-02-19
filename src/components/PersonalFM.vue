@@ -58,7 +58,7 @@
                         </div>
 
                         <div class="fm-info">
-                            <h2 class="song-name">{{ currentSong.name }}</h2>
+                            <h2 class="song-name">{{ getSongDisplayName(currentSong, '', showSongTranslation) }}</h2>
                             <p class="artist-name">{{ currentSong.artists?.map(a => a.name).join(' / ') }}</p>
                             <p class="album-name">{{ currentSong.album?.name }}</p>
                         </div>
@@ -129,11 +129,12 @@ import { likeMusic } from '../api/song'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
+import { getSongDisplayName } from '../utils/songName'
 
 const playerStore = usePlayerStore()
 const userStore = useUserStore()
 const libraryStore = useLibraryStore()
-const { songId, playing, quality } = storeToRefs(playerStore)
+const { songId, playing, quality, showSongTranslation } = storeToRefs(playerStore)
 const { likelist } = storeToRefs(userStore)
 
 // 创建一个计算属性来实时判断当前歌曲是否被喜欢
@@ -464,6 +465,8 @@ const togglePlay = async () => {
                 {
                     id: currentSong.value.id,
                     name: currentSong.value.name,
+                    tns: currentSong.value.tns || currentSong.value.song?.tns || [],
+                    transNames: currentSong.value.transNames || currentSong.value.song?.transNames || [],
                     ar: currentSong.value.artists || [],
                     al: currentSong.value.album || {},
                     dt: currentSong.value.dt || currentSong.value.duration || 0,

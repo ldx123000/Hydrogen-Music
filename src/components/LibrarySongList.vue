@@ -1,93 +1,94 @@
 <script setup>
-import { computed, ref } from 'vue';
-import { RecycleScroller } from 'vue-virtual-scroller';
-import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
-import { songTime } from '../utils/player';
-import { nanoid } from 'nanoid';
-import { addToList, addSong, setShuffledList, addToNext, startMusic, pauseMusic } from '../utils/player';
-import { useRouter } from 'vue-router';
-import { useUserStore } from '../store/userStore';
-import { useLibraryStore } from '../store/libraryStore';
-import { usePlayerStore } from '../store/playerStore';
-import { useOtherStore } from '../store/otherStore';
-import { storeToRefs } from 'pinia';
-import { noticeOpen } from '../utils/dialog';
+import { computed, ref } from 'vue'
+import { RecycleScroller } from 'vue-virtual-scroller'
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
+import { songTime } from '../utils/player'
+import { nanoid } from 'nanoid'
+import { addToList, addSong, setShuffledList, addToNext, startMusic, pauseMusic } from '../utils/player'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '../store/userStore'
+import { useLibraryStore } from '../store/libraryStore'
+import { usePlayerStore } from '../store/playerStore'
+import { useOtherStore } from '../store/otherStore'
+import { storeToRefs } from 'pinia'
+import { noticeOpen } from '../utils/dialog'
+import { getSongDisplayName } from '../utils/songName'
 
-const router = useRouter();
-const userStore = useUserStore();
-const libraryStore = useLibraryStore();
-const { libraryInfo } = storeToRefs(libraryStore);
-const playerStore = usePlayerStore();
-const { songId, playMode, playing } = storeToRefs(playerStore);
-const otherStore = useOtherStore();
-const props = defineProps(['songlist', 'type']);
-const hoverNid = ref(null);
+const router = useRouter()
+const userStore = useUserStore()
+const libraryStore = useLibraryStore()
+const { libraryInfo } = storeToRefs(libraryStore)
+const playerStore = usePlayerStore()
+const { songId, playMode, playing, showSongTranslation } = storeToRefs(playerStore)
+const otherStore = useOtherStore()
+const props = defineProps(['songlist', 'type'])
+const hoverNid = ref(null)
 
 const getData = computed(() => {
     props.songlist.map(item => {
-        if (!item.nid) Object.assign(item, { nid: nanoid() });
-    });
-    return props.songlist;
-});
+        if (!item.nid) Object.assign(item, { nid: nanoid() })
+    })
+    return props.songlist
+})
 
 const checkArtist = artistId => {
-    router.push('/mymusic/artist/' + artistId);
-    playerStore.forbidLastRouter = true;
-};
+    router.push('/mymusic/artist/' + artistId)
+    playerStore.forbidLastRouter = true
+}
 const play = (song, index) => {
     if (!song.playable) {
-        noticeOpen(`当前歌曲无法播放${!!song.reason ? ', ' + song.reason : ''}`, 2);
-        return;
+        noticeOpen(`当前歌曲无法播放${!!song.reason ? ', ' + song.reason : ''}`, 2)
+        return
     }
     if (props.type == 'search') {
         // 搜索结果播放时：沿用“新增到现有播放列表并立即播放”的统一逻辑
-        addToNext(song, true);
-        return;
+        addToNext(song, true)
+        return
     }
-    addToList(router.currentRoute.value.name, props.songlist);
-    addSong(song.id, index, true);
-    if (playMode.value == 3) setShuffledList();
-};
+    addToList(router.currentRoute.value.name, props.songlist)
+    addSong(song.id, index, true)
+    if (playMode.value == 3) setShuffledList()
+}
 
 const togglePlay = (song, index) => {
     if (songId.value === song.id) {
         if (playing.value) {
-            pauseMusic();
+            pauseMusic()
         } else {
-            startMusic();
+            startMusic()
         }
-        return;
+        return
     }
-    play(song, index);
-};
+    play(song, index)
+}
 
 const openMenu = (e, item) => {
-    otherStore.contextMenuShow = true;
-    otherStore.selectedItem = item;
-    otherStore.selectedPlaylist = libraryInfo.value;
+    otherStore.contextMenuShow = true
+    otherStore.selectedItem = item
+    otherStore.selectedPlaylist = libraryInfo.value
 
-    if (otherStore.selectedPlaylist && otherStore.selectedPlaylist.creator && otherStore.selectedPlaylist.creator.userId == userStore.user.userId) otherStore.menuTree = otherStore.tree1;
-    else otherStore.menuTree = otherStore.tree2;
+    if (otherStore.selectedPlaylist && otherStore.selectedPlaylist.creator && otherStore.selectedPlaylist.creator.userId == userStore.user.userId) otherStore.menuTree = otherStore.tree1
+    else otherStore.menuTree = otherStore.tree2
 
-    const { clientX, clientY } = e;
-    const menuList = document.getElementById('menu');
-    const screenWidth = document.body.clientWidth;
-    const screenHeight = document.body.clientHeight;
+    const { clientX, clientY } = e
+    const menuList = document.getElementById('menu')
+    const screenWidth = document.body.clientWidth
+    const screenHeight = document.body.clientHeight
     if (screenWidth - clientX < 120) {
-        menuList.style.left = screenWidth - 120 + 'Px';
-        menuList.style.right = null;
+        menuList.style.left = screenWidth - 120 + 'Px'
+        menuList.style.right = null
     } else {
-        menuList.style.right = null;
-        menuList.style.left = clientX + 'Px';
+        menuList.style.right = null
+        menuList.style.left = clientX + 'Px'
     }
     if (screenHeight - clientY < 280) {
-        menuList.style.top = screenHeight - 280 + 'Px';
-        menuList.style.bottom = null;
+        menuList.style.top = screenHeight - 280 + 'Px'
+        menuList.style.bottom = null
     } else {
-        menuList.style.bottom = null;
-        menuList.style.top = clientY + 'Px';
+        menuList.style.bottom = null
+        menuList.style.top = clientY + 'Px'
     }
-};
+}
 </script>
 
 <template>
@@ -103,13 +104,16 @@ const openMenu = (e, item) => {
             >
                 <div class="item-title">
                     <div class="item-state">
-                        <button v-if="hoverNid === item.nid" class="item-play-btn" @click.stop="togglePlay(item, index)" :aria-label="(songId === item.id && playing) ? '暂停' : '播放'">
+                        <button v-if="hoverNid === item.nid" class="item-play-btn" @click.stop="togglePlay(item, index)" :aria-label="songId === item.id && playing ? '暂停' : '播放'">
                             <svg v-if="songId === item.id && playing" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
                                 <rect x="256" y="200" width="160" height="624" rx="32" fill="currentColor" />
                                 <rect x="608" y="200" width="160" height="624" rx="32" fill="currentColor" />
                             </svg>
                             <svg v-else viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z" fill="currentColor"></path>
+                                <path
+                                    d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z"
+                                    fill="currentColor"
+                                ></path>
                             </svg>
                         </button>
                         <template v-else>
@@ -123,7 +127,8 @@ const openMenu = (e, item) => {
                         </template>
                     </div>
                     <span class="item-name">
-                        <span>{{ item.name }}</span>
+                        <span class="item-name-text">{{ getSongDisplayName(item, '', showSongTranslation) }}</span>
+                        <span v-if="item.vipOnly" class="item-vip-tag">VIP</span>
                     </span>
                 </div>
                 <div class="item-other">
@@ -158,7 +163,7 @@ const openMenu = (e, item) => {
             background-color: rgba(0, 0, 0, 0.04);
         }
         .list-item {
-            height: 42Px;
+            height: 42px;
             padding: 12px 8px;
             display: flex;
             flex-direction: row;
@@ -200,7 +205,9 @@ const openMenu = (e, item) => {
                         padding: 0;
                         color: inherit;
                         cursor: pointer;
-                        transition: opacity 0.15s ease, transform 0.15s ease;
+                        transition:
+                            opacity 0.15s ease,
+                            transform 0.15s ease;
                         svg {
                             width: 18px;
                             height: 18px;
@@ -225,11 +232,21 @@ const openMenu = (e, item) => {
                     color: black;
                     overflow: hidden;
                     text-align: left;
-                    overflow: hidden;
                     display: -webkit-box;
                     -webkit-box-orient: vertical;
                     -webkit-line-clamp: 1;
                     word-break: break-all;
+                    .item-name-text {
+                        position: relative;
+                    }
+                    .item-vip-tag {
+                        flex: 0 0 auto;
+                        padding: 0 2px;
+                        border: 0.5px solid currentColor;
+                        font: 8px Bender-Bold;
+                        font-weight: 100;
+                        line-height: 1.2;
+                    }
                 }
             }
             .item-other {
@@ -278,20 +295,22 @@ const openMenu = (e, item) => {
             }
         }
         .list-item-vip {
-            .item-title .item-name span {
-                position: relative;
-                &::after {
-                    content: 'VIP';
-                    width: max-content;
-                    padding: 0 2px;
-                    border: 0.5px solid rgb(156, 156, 156);
-                    font: 8px Bender-Bold;
-                    font-weight: 100;
-                    position: absolute;
+            .item-title .item-name {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                min-width: 0;
+                .item-name-text {
                     display: block;
-                    top: 50%;
-                    transform: translate(50%, -50%);
-                    right: -20px;
+                    flex: 0 1 auto;
+                    min-width: 0;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    word-break: normal;
+                }
+                .item-vip-tag {
+                    flex: 0 0 auto;
                 }
             }
         }

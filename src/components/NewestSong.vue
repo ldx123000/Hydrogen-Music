@@ -5,10 +5,11 @@
   import { addToNext, startMusic, pauseMusic } from '../utils/player';
   import { usePlayerStore } from '../store/playerStore';
   import { storeToRefs } from 'pinia';
+  import { getSongDisplayName } from '../utils/songName';
 
   const router = useRouter()
   const playerStore = usePlayerStore()
-  const { songId, playing } = storeToRefs(playerStore)
+  const { songId, playing, showSongTranslation } = storeToRefs(playerStore)
   const newestSongList = ref()
 
   onActivated(() => {
@@ -55,7 +56,7 @@
                     <img v-lazy :src="getImgUrl(item)" alt="">
                 </div>
                 <div class="song-other">
-                    <div class="song-name">{{item.name}}</div>
+                    <div class="song-name">{{getSongDisplayName(item, '', showSongTranslation)}}</div>
                     <div class="song-author">
                         <span @click="checkArtist(singer.id)" v-for="(singer, index) in item.song.artists">{{singer.name}}{{index == item.song.artists.length -1 ? '' : '/'}}</span>
                     </div>

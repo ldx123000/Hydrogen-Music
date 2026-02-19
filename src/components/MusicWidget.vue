@@ -12,11 +12,12 @@
   import { usePlayerStore } from '../store/playerStore'
   import { useOtherStore } from '../store/otherStore'
   import { storeToRefs } from 'pinia'
+  import { getSongDisplayName } from '../utils/songName'
   const router = useRouter()
   const userStore = useUserStore()
   const playerStore = usePlayerStore()
   const otherStore = useOtherStore()
-  const { currentMusic, playing, progress, playMode, songList, songId, currentIndex, volume, time, playlistWidgetShow, lyricShow, localBase64Img, listInfo } =storeToRefs(playerStore)
+  const { currentMusic, playing, progress, playMode, songList, songId, currentIndex, volume, time, playlistWidgetShow, lyricShow, localBase64Img, listInfo, showSongTranslation } =storeToRefs(playerStore)
   
   // 检查是否在FM模式
   const isInFMMode = computed(() => {
@@ -118,7 +119,7 @@
             </div>
         </div>
         <div class="music-info-other">
-            <span class="music-name" :class="{'music-time-in': showMusicTime}">{{songList[currentIndex].name || songList[currentIndex].localName}}</span>
+            <span class="music-name" :class="{'music-time-in': showMusicTime}">{{getSongDisplayName(songList[currentIndex], '', showSongTranslation)}}</span>
             <div class="music-author">
                 <span @click="checkArtist(singer.id)" :class="['author', { disabled: isDjMode }]" v-for="(singer, index) in songList[currentIndex].ar">{{singer.name || ''}}{{index == songList[currentIndex].ar.length -1 ? '' : ' / '}}</span>
             </div>

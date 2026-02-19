@@ -1,6 +1,7 @@
 import { watch } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
+import { getSongDisplayName } from './songName';
 
 let lyricProgressInterval = null;
 let lyricIndexInterval = null; // 新增：用于计算歌词行号的定时器
@@ -11,6 +12,7 @@ let unwatchLyricsObjArr = null;
 let unwatchCurrentLyricIndex = null;
 let unwatchProgress = null;
 let unwatchLyric = null;
+let unwatchShowSongTranslation = null;
 
 const playerStore = usePlayerStore();
 const {
@@ -24,6 +26,7 @@ const {
     time,
     currentMusic, // 新增：需要访问 currentMusic 来获取播放进度
     lyric, // 新增：原始歌词数据
+    showSongTranslation,
 } = storeToRefs(playerStore);
 
 // 统一的多轨歌词解析：支持
@@ -250,7 +253,7 @@ const sendCurrentLyricData = () => {
             type: 'song-change',
             song: currentSong
                 ? {
-                      name: String(currentSong.name || currentSong.localName || '未知歌曲'),
+                      name: String(getSongDisplayName(currentSong, '未知歌曲', showSongTranslation.value)),
                       ar: Array.isArray(currentSong.ar) ? currentSong.ar.map(artist => ({ name: String(artist.name || '未知艺术家') })) : [{ name: '未知艺术家' }],
                       type: String(currentSong.type || 'online'),
                   }
@@ -464,6 +467,12 @@ export const initDesktopLyric = () => {
             }, 100);
         }
     });
+
+    unwatchShowSongTranslation = watch(() => showSongTranslation.value, () => {
+        if (isDesktopLyricOpen.value) {
+            sendCurrentLyricData();
+        }
+    });
 };
 
 // 销毁服务
@@ -477,4 +486,5 @@ export const destroyDesktopLyric = () => {
     if (unwatchCurrentLyricIndex) unwatchCurrentLyricIndex();
     if (unwatchProgress) unwatchProgress();
     if (unwatchLyric) unwatchLyric();
+    if (unwatchShowSongTranslation) unwatchShowSongTranslation();
 };
