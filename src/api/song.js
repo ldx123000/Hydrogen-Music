@@ -61,6 +61,22 @@ export function getPersonalFM() {
 }
 
 /**
+ * 按模式获取私人FM（用于救援补充）
+ * @param {object} options - 选项
+ * @param {string} options.mode - 模式：aidj/DEFAULT/FAMILIAR/EXPLORE/SCENE_RCMD
+ * @param {string} options.submode - 子模式（SCENE_RCMD 时可选）
+ * @param {number} options.limit - 取回数量
+ */
+export function getPersonalFMByMode({ mode = 'DEFAULT', submode, limit = 3 } = {}) {
+    return get('/personal/fm/mode', {
+        mode,
+        ...(submode ? { submode } : {}),
+        ...(limit !== undefined && limit !== null ? { limit } : {}),
+        timestamp: new Date().getTime(),
+    });
+}
+
+/**
  * 将歌曲移至垃圾桶（从私人FM中移除）
  * @param {string|number} id - 歌曲ID
  */

@@ -1480,6 +1480,23 @@ body {
   border-color: var(--border) !important;
 }
 
+/* Personal FM mode selected state: force white bg + black text in dark mode */
+.dark .personal-fm .fm-mode-btn.active,
+.dark .personal-fm .fm-submode-btn.active {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #111213 !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.dark .personal-fm .fm-mode-btn.active .mode-code,
+.dark .personal-fm .fm-mode-btn.active .mode-label,
+.dark .personal-fm .fm-submode-btn.active .mode-code,
+.dark .personal-fm .fm-submode-btn.active .mode-label {
+  color: #111213 !important;
+  opacity: 1 !important;
+}
+
 /* Login screens */
 .dark .login-page .mode-type {
   background-color: var(--layer) !important;

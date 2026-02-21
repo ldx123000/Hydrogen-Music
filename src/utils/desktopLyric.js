@@ -35,6 +35,9 @@ const {
 const regNewLine = /\n/;
 // 更宽松的时间标签：允许 : ： . ． 。 , ， ; ； / - _ 或空白作为分隔，支持 [mm sep ss] 与 [mm sep ss sep cc]
 const timeTag = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/g;
+const timeTagSingle = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/;
+const lrcMetadataTagLine = /^\s*\[(?:ar|ti|al|by|offset|re|ve|au|length|language|lang)\s*:[^\]]*\]\s*$/i;
+const lyricCreditLine = /^(?:作词|作曲|编曲|词|曲|制作人|监制|混音|母带|录音|和声|人声编辑|吉他|贝斯|鼓|弦乐|program(?:ming)?|producer|arranger|composer|lyricist|lyrics?|written by|music|vocal|mix(?:ed)?(?: by)?|master(?:ed)?(?: by)?)\s*[:：]/i;
 
 function parseTimeTag(tag) {
     const m = tag.match(/\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/);
@@ -45,7 +48,65 @@ function parseTimeTag(tag) {
     return mm * 60 + ss + ms / 1000;
 }
 
+function isIgnoredPreludeLine(text) {
+    if (!text || !text.trim()) return true;
+    return lrcMetadataTagLine.test(text.trim());
+}
+
+function isCreditLyricLine(text) {
+    if (!text || typeof text !== 'string') return false;
+    const normalized = text.trim();
+    if (!normalized) return false;
+    if (lrcMetadataTagLine.test(normalized)) return true;
+    return lyricCreditLine.test(normalized);
+}
+
+// 对“前言/署名类”行做归一化：只作为原歌词显示，不作为翻译/罗马音轨道。
+function normalizePreludeCredits(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+    const normalized = [];
+    for (const row of rows) {
+        if (!row || typeof row !== 'object') continue;
+        const lyricText = typeof row.lyric === 'string' ? row.lyric.trim() : '';
+        const isCredit = isCreditLyricLine(lyricText);
+        if (!isCredit) {
+            normalized.push(row);
+            continue;
+        }
+
+        const base = { ...row, lyric: lyricText, tlyric: '', rlyric: '' };
+        normalized.push(base);
+
+        // 本地多轨中，前言可能被误塞进 tlyric/rlyric，拆回“原歌词行”并清空副轨。
+        const extras = [row.tlyric, row.rlyric];
+        for (const extra of extras) {
+            const extraText = typeof extra === 'string' ? extra.trim() : '';
+            if (!extraText || !isCreditLyricLine(extraText)) continue;
+            normalized.push({ ...row, lyric: extraText, tlyric: '', rlyric: '' });
+        }
+    }
+    return normalized;
+}
+
+// 提取前言：仅保留原歌词中“首个时间标签之前”的非空文本，并过滤 LRC 元标签行
+function extractUntimedPreludeLines(olrc) {
+    if (!olrc || typeof olrc !== 'string') return [];
+    const lines = olrc.split(/\r?\n/);
+    const prelude = [];
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        if (typeof raw !== 'string') continue;
+        const normalized = i === 0 ? raw.replace(/^\uFEFF/, '') : raw;
+        if (timeTagSingle.test(normalized)) break;
+        const text = normalized.trim();
+        if (isIgnoredPreludeLine(text)) continue;
+        prelude.push(text);
+    }
+    return prelude;
+}
+
 function buildMultiTrack(olrc, tlrc, rlrc) {
+    const preludeLines = extractUntimedPreludeLines(olrc);
     const byTime = new Map(); // key: time(3位小数) -> { time, lyric, tlyric, rlyric, active }
 
     const feed = (text, fieldOrder = ['lyric', 'tlyric', 'rlyric'], directField = null) => {
@@ -95,7 +156,16 @@ function buildMultiTrack(olrc, tlrc, rlrc) {
         ];
     }
 
-    return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+    const timedRows = normalizePreludeCredits(Array.from(byTime.values()).sort((a, b) => a.time - b.time));
+    if (!preludeLines.length) return timedRows;
+    const preludeRows = preludeLines.map(text => ({
+        lyric: text,
+        tlyric: '',
+        rlyric: '',
+        time: 0,
+        active: true,
+    }));
+    return [...preludeRows, ...timedRows];
 }
 
 // 与原先在线歌词一致的处理逻辑（仅用于“在线”）
@@ -106,7 +176,8 @@ function buildMultiTrack(olrc, tlrc, rlrc) {
 // 与 timeTag 一致的全局移除/匹配表达式
 const regTimeTagGlobal = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/g;
 
-function lyricHandleOriginal(arr, tarr, rarr) {
+function lyricHandleOriginal(arr, tarr, rarr, olrcRaw = '') {
+    const preludeLines = extractUntimedPreludeLines(olrcRaw);
     // 将原/译/罗马音统一解析为 { time, text } 列表，按时间排序
     const parseList = (lines) => {
         if (!lines) return [];
@@ -157,17 +228,27 @@ function lyricHandleOriginal(arr, tarr, rarr) {
 
     const results = [];
     for (const o of oList) {
-        // 跳过“作词/作曲”等信息行
-        if (o.text.includes('作词') || o.text.includes('作曲')) continue;
         const obj = { lyric: o.text, tlyric: '', rlyric: '', time: o.time };
-        const t = findNearest(tList, o.time);
-        if (t && t.text) obj.tlyric = t.text;
-        const r = findNearest(rList, o.time);
-        if (r && r.text) obj.rlyric = r.text;
+        // 前言/署名类行只作为原歌词，不挂翻译/罗马音。
+        if (!isCreditLyricLine(o.text)) {
+            const t = findNearest(tList, o.time);
+            if (t && t.text) obj.tlyric = t.text;
+            const r = findNearest(rList, o.time);
+            if (r && r.text) obj.rlyric = r.text;
+        }
         if (obj.lyric) results.push(obj);
     }
 
-    return results;
+    const normalizedResults = normalizePreludeCredits(results);
+    if (!preludeLines.length) return normalizedResults;
+    const preludeRows = preludeLines.map(text => ({
+        lyric: text,
+        tlyric: '',
+        rlyric: '',
+        time: 0,
+        active: true,
+    }));
+    return [...preludeRows, ...normalizedResults];
 }
 
 // 处理原始歌词数据，更新 lyricsObjArr（在线：原逻辑；本地：多轨合并）
@@ -190,7 +271,8 @@ const processLyricData = () => {
                 : lyricHandleOriginal(
                     olrc.split(regNewLine),
                     tlrc ? tlrc.split(regNewLine) : null,
-                    rlrc ? rlrc.split(regNewLine) : null
+                    rlrc ? rlrc.split(regNewLine) : null,
+                    olrc
                   );
             playerStore.lyricsObjArr = processed;
         } else {

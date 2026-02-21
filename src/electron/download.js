@@ -337,6 +337,24 @@ function buildCombinedLrcText(lyricPayload, meta) {
     // 更宽松的时间标签解析：允许分隔符为 : ： . ． 。 , ， ; ； / - _ 或任意空白
     // 支持 [mm sep ss] 与 [mm sep ss sep cc] 形式（cc 可为 1-3 位，表示 10ms/1ms 精度）
     const timeTag = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,3}))?\]/g
+    const timeTagSingle = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,3}))?\]/
+    const lrcMetadataTagLine = /^\s*\[(?:ar|ti|al|by|offset|re|ve|au|length|language|lang)\s*:[^\]]*\]\s*$/i
+
+    const extractUntimedPreludeLines = (text) => {
+      const out = []
+      if (!text || typeof text !== 'string') return out
+      const lines = text.split(/\r?\n/)
+      for (const raw of lines) {
+        if (typeof raw !== 'string') continue
+        if (timeTagSingle.test(raw)) break
+        const line = raw.trim()
+        if (!line) continue
+        if (lrcMetadataTagLine.test(line)) continue
+        out.push(line)
+      }
+      return out
+    }
+
     const parseLines = (text) => {
       const map = new Map()
       if (!text || typeof text !== 'string') return map
@@ -345,7 +363,7 @@ function buildCombinedLrcText(lyricPayload, meta) {
         if (!raw) continue
         const tags = Array.from(raw.matchAll(timeTag))
         if (!tags || tags.length === 0) continue
-        const lyricText = raw.split(']').pop().trim()
+        const lyricText = raw.replace(timeTag, '').trim()
         if (!lyricText) continue
         for (const m of tags) {
           const mm = parseInt(m[1] || '0', 10)
@@ -353,12 +371,15 @@ function buildCombinedLrcText(lyricPayload, meta) {
           const ms = m[3] ? parseInt((m[3] + '00').slice(0, 3), 10) : 0
           const t = mm * 60 + ss + ms / 1000
           const key = t.toFixed(3)
-          map.set(key, lyricText)
+          const arr = map.get(key) || []
+          arr.push(lyricText)
+          map.set(key, arr)
         }
       }
       return map
     }
 
+    const preludeLines = extractUntimedPreludeLines(lyricPayload && lyricPayload.lrc)
     const oMap = parseLines(lyricPayload.lrc)
     const tMap = parseLines(lyricPayload.tlyric)
     const rMap = parseLines(lyricPayload.romalrc)
@@ -383,14 +404,17 @@ function buildCombinedLrcText(lyricPayload, meta) {
       if (Array.isArray(meta.artists) && meta.artists.length) out += `[ar:${meta.artists.join(' / ')}]\n`
       if (meta.album) out += `[al:${meta.album}]\n`
     }
+    for (const line of preludeLines) {
+      out += `${line}\n`
+    }
     for (const t of allTimes) {
       const key = t.toFixed(3)
-      const o = oMap.get(key)
-      const tr = tMap.get(key)
-      const r = rMap.get(key)
-      if (o) out += `${formatTag(t)}${o}\n`
-      if (tr) out += `${formatTag(t)}${tr}\n`
-      if (r) out += `${formatTag(t)}${r}\n`
+      const oList = oMap.get(key) || []
+      const trList = tMap.get(key) || []
+      const rList = rMap.get(key) || []
+      for (const o of oList) out += `${formatTag(t)}${o}\n`
+      for (const tr of trList) out += `${formatTag(t)}${tr}\n`
+      for (const r of rList) out += `${formatTag(t)}${r}\n`
     }
     return out
   } catch (e) {
