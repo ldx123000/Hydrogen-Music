@@ -1,23 +1,23 @@
 <script setup>
-import { ref, onActivated, watch } from 'vue';
-import { onBeforeRouteLeave, useRouter } from 'vue-router';
-import { logout } from '@/api/user';
-import { noticeOpen, dialogOpen } from '@/utils/dialog';
-import { initSettings } from '@/utils/initApp';
-import { getVipInfo } from '@/api/user';
-import { isLogin } from '@/utils/authority';
-import { useUserStore } from '@/store/userStore';
-import { usePlayerStore } from '@/store/playerStore';
-import Selector from '../components/Selector.vue';
-import UpdateDialog from '../components/UpdateDialog.vue';
-import { setTheme, getSavedTheme } from '@/utils/theme';
+import { ref, onActivated, watch } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { logout } from '@/api/user'
+import { noticeOpen, dialogOpen } from '@/utils/dialog'
+import { initSettings } from '@/utils/initApp'
+import { getVipInfo } from '@/api/user'
+import { isLogin } from '@/utils/authority'
+import { useUserStore } from '@/store/userStore'
+import { usePlayerStore } from '@/store/playerStore'
+import Selector from '../components/Selector.vue'
+import UpdateDialog from '../components/UpdateDialog.vue'
+import { setTheme, getSavedTheme } from '@/utils/theme'
 
-const router = useRouter();
-const userStore = useUserStore();
-const playerStore = usePlayerStore();
+const router = useRouter()
+const userStore = useUserStore()
+const playerStore = usePlayerStore()
 
-const vipInfo = ref(null);
-const musicLevel = ref('lossless');
+const vipInfo = ref(null)
+const musicLevel = ref('lossless')
 const musicLevelOptions = ref([
     {
         label: '标准',
@@ -55,14 +55,14 @@ const musicLevelOptions = ref([
         label: '超清母带',
         value: 'jymaster',
     },
-]);
-const lyricSize = ref(20);
-const tlyricSize = ref(13);
-const rlyricSize = ref(12);
-const lyricInterlude = ref(13);
-const searchAssistLimit = ref(8);
-const globalShortcuts = ref(false);
-const quitApp = ref('minimize');
+])
+const lyricSize = ref(20)
+const tlyricSize = ref(13)
+const rlyricSize = ref(12)
+const lyricInterlude = ref(13)
+const searchAssistLimit = ref(8)
+const globalShortcuts = ref(false)
+const quitApp = ref('minimize')
 const quitAppOptions = ref([
     {
         label: '最小化至托盘',
@@ -72,68 +72,68 @@ const quitAppOptions = ref([
         label: '直接退出',
         value: 'quit',
     },
-]);
-const theme = ref('system');
+])
+const theme = ref('system')
 const themeOptions = ref([
     { label: '跟随系统', value: 'system' },
     { label: '浅色', value: 'light' },
     { label: '深色', value: 'dark' },
-]);
-const downloadFolder = ref(null);
-const downloadCreateSongFolder = ref(false);
-const downloadSaveLyricFile = ref(false);
-const videoFolder = ref(null);
-const localFolder = ref([]);
-const shortcutsList = ref(null);
-const selectedShortcut = ref(null);
-const newShortcut = ref([]);
-const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
+])
+const downloadFolder = ref(null)
+const downloadCreateSongFolder = ref(false)
+const downloadSaveLyricFile = ref(false)
+const videoFolder = ref(null)
+const localFolder = ref([])
+const shortcutsList = ref(null)
+const selectedShortcut = ref(null)
+const newShortcut = ref([])
+const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!']
 
 // 更新相关状态
-const showUpdateDialog = ref(false);
-const newVersion = ref('');
+const showUpdateDialog = ref(false)
+const newVersion = ref('')
 
 const normalizeSearchAssistLimit = value => {
-    const num = Number.parseInt(value, 10);
-    if (!Number.isFinite(num)) return 8;
-    return Math.max(1, num);
-};
+    const num = Number.parseInt(value, 10)
+    if (!Number.isFinite(num)) return 8
+    return Math.max(1, num)
+}
 
 if (isLogin()) {
     getVipInfo().then(result => {
-        vipInfo.value = result.data;
-    });
+        vipInfo.value = result.data
+    })
 }
 onActivated(() => {
     windowApi.getSettings().then(settings => {
-        if (!settings) return;
-        musicLevel.value = settings.music.level;
-        lyricSize.value = settings.music.lyricSize;
-        tlyricSize.value = settings.music.tlyricSize;
-        rlyricSize.value = settings.music.rlyricSize;
-        lyricInterlude.value = settings.music.lyricInterlude;
-        searchAssistLimit.value = normalizeSearchAssistLimit(settings.music.searchAssistLimit);
-        playerStore.showSongTranslation = settings?.music?.showSongTranslation !== false;
-        videoFolder.value = settings.local.videoFolder;
-        downloadFolder.value = settings.local.downloadFolder;
-        downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder;
-        downloadSaveLyricFile.value = !!settings.local.downloadSaveLyricFile;
-        localFolder.value = settings.local.localFolder;
-        shortcutsList.value = settings.shortcuts;
-        globalShortcuts.value = settings.other.globalShortcuts;
-        quitApp.value = settings.other.quitApp;
-    });
+        if (!settings) return
+        musicLevel.value = settings.music.level
+        lyricSize.value = settings.music.lyricSize
+        tlyricSize.value = settings.music.tlyricSize
+        rlyricSize.value = settings.music.rlyricSize
+        lyricInterlude.value = settings.music.lyricInterlude
+        searchAssistLimit.value = normalizeSearchAssistLimit(settings.music.searchAssistLimit)
+        playerStore.showSongTranslation = settings?.music?.showSongTranslation !== false
+        videoFolder.value = settings.local.videoFolder
+        downloadFolder.value = settings.local.downloadFolder
+        downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder
+        downloadSaveLyricFile.value = !!settings.local.downloadSaveLyricFile
+        localFolder.value = settings.local.localFolder
+        shortcutsList.value = settings.shortcuts
+        globalShortcuts.value = settings.other.globalShortcuts
+        quitApp.value = settings.other.quitApp
+    })
 
     // Initialize theme selection
     try {
-        theme.value = getSavedTheme();
+        theme.value = getSavedTheme()
     } catch (_) {
-        theme.value = 'system';
+        theme.value = 'system'
     }
 
     // 设置更新事件监听器
-    setupUpdateListeners();
-});
+    setupUpdateListeners()
+})
 
 // 当从“首页/子页”切换到“主播放器界面”（widgetState: true -> false）时，
 // 如果当前仍处于设置路由，则自动保存设置（避免未发生路由切换导致 onBeforeRouteLeave 不触发）。
@@ -141,27 +141,27 @@ watch(
     () => playerStore.widgetState,
     (now, prev) => {
         try {
-            const isLeavingToPlayer = prev === true && now === false;
-            const inSettings = router.currentRoute.value?.name === 'settings';
+            const isLeavingToPlayer = prev === true && now === false
+            const inSettings = router.currentRoute.value?.name === 'settings'
             if (isLeavingToPlayer && inSettings) {
-                setAppSettings();
-                initSettings();
-                noticeOpen('设置已保存', 2);
+                setAppSettings()
+                initSettings()
+                noticeOpen('设置已保存', 2)
             }
         } catch (_) {
             // ignore
         }
     }
-);
+)
 
 // 设置更新监听器
 const setupUpdateListeners = () => {
     // 监听手动更新检查结果（不显示大窗弹出）
     windowApi.manualUpdateAvailable(version => {
-        newVersion.value = version;
+        newVersion.value = version
         // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
-    });
-};
+    })
+}
 
 const setAppSettings = () => {
     let settings = {
@@ -186,42 +186,42 @@ const setAppSettings = () => {
             globalShortcuts: globalShortcuts.value,
             quitApp: quitApp.value,
         },
-    };
-    windowApi.setSettings(JSON.stringify(settings));
-};
+    }
+    windowApi.setSettings(JSON.stringify(settings))
+}
 
 // apply theme immediately when user changes
-watch(theme, val => setTheme(val));
+watch(theme, val => setTheme(val))
 
 onBeforeRouteLeave((to, from, next) => {
-    setAppSettings();
-    initSettings();
-    next();
-    noticeOpen('设置已保存', 2);
-});
+    setAppSettings()
+    initSettings()
+    next()
+    noticeOpen('设置已保存', 2)
+})
 
 const routerChange = () => {
-    router.back();
-};
+    router.back()
+}
 
 const selectFolder = type => {
     if (type == 'download') {
         windowApi.openFile().then(path => {
-            downloadFolder.value = path;
-        });
+            downloadFolder.value = path
+        })
     } else if (type == 'local') {
         windowApi.openFile().then(path => {
-            if (path && localFolder.value.indexOf(path) == -1) localFolder.value.push(path);
-        });
+            if (path && localFolder.value.indexOf(path) == -1) localFolder.value.push(path)
+        })
     } else if (type == 'video') {
         windowApi.openFile().then(path => {
-            videoFolder.value = path;
-        });
+            videoFolder.value = path
+        })
     }
-};
+}
 const deleteLocalFolder = index => {
-    localFolder.value.splice(index, 1);
-};
+    localFolder.value.splice(index, 1)
+}
 
 const formatShortcutName = name => {
     return name
@@ -234,59 +234,59 @@ const formatShortcutName = name => {
         .replace('Numpad', '')
         .replace('num', '')
         .replace('CommandOrControl', 'Ctrl')
-        .replace('Control', 'Ctrl');
-};
+        .replace('Control', 'Ctrl')
+}
 const changeShortcut = (id, type) => {
     selectedShortcut.value = {
         id: id,
         type: type,
-    };
-    windowApi.unregisterShortcuts();
-};
+    }
+    windowApi.unregisterShortcuts()
+}
 /**
  * author: yesplaymusic
  */
 const updateShortcut = () => {
-    let shortcut = [];
+    let shortcut = []
     newShortcut.value.map(e => {
         if (e.keyCode >= 65 && e.keyCode <= 90) {
-            shortcut.push(e.code.replace('Key', ''));
+            shortcut.push(e.code.replace('Key', ''))
         } else if (['Control', 'Shift', 'Alt'].includes(e.key)) {
-            shortcut.push(e.key);
+            shortcut.push(e.key)
         } else if (e.keyCode >= 48 && e.keyCode <= 57) {
-            shortcut.push(e.code.replace('Digit', ''));
+            shortcut.push(e.code.replace('Digit', ''))
         } else if (e.keyCode >= 96 && e.keyCode <= 105) {
-            shortcut.push(e.code.replace('Numpad', 'num'));
+            shortcut.push(e.code.replace('Numpad', 'num'))
         } else if (e.keyCode >= 112 && e.keyCode <= 123) {
-            shortcut.push(e.code);
+            shortcut.push(e.code)
         } else if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-            shortcut.push(e.code.replace('Arrow', ''));
+            shortcut.push(e.code.replace('Arrow', ''))
         } else if (shortcutCharacter.includes(e.key)) {
-            shortcut.push(e.key);
+            shortcut.push(e.key)
         }
-    });
+    })
     const sortTable = {
         Control: 1,
         Shift: 2,
         Alt: 3,
-    };
+    }
     shortcut = shortcut.sort((a, b) => {
-        if (!sortTable[a] || !sortTable[b]) return 0;
+        if (!sortTable[a] || !sortTable[b]) return 0
         if (sortTable[a] - sortTable[b] <= -1) {
-            return -1;
+            return -1
         } else if (sortTable[a] - sortTable[b] >= 1) {
-            return 1;
+            return 1
         } else {
-            return 0;
+            return 0
         }
-    });
-    shortcut = shortcut.join('+');
-    return shortcut;
-};
+    })
+    shortcut = shortcut.join('+')
+    return shortcut
+}
 const inputShortcut = k => {
-    if (!selectedShortcut.value) return;
-    if (newShortcut.value.find(nk => nk.keyCode === k.keyCode)) return;
-    else newShortcut.value.push(k);
+    if (!selectedShortcut.value) return
+    if (newShortcut.value.find(nk => nk.keyCode === k.keyCode)) return
+    else newShortcut.value.push(k)
     if (
         (k.keyCode >= 65 && k.keyCode <= 90) ||
         (k.keyCode >= 48 && k.keyCode <= 57) ||
@@ -295,11 +295,11 @@ const inputShortcut = k => {
         ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(k.key) ||
         shortcutCharacter.includes(k.key)
     ) {
-        if (selectedShortcut.value.type) shortcutsList.value.find(sc => sc.id == selectedShortcut.value.id).globalShortcut = updateShortcut();
-        else shortcutsList.value.find(sc => sc.id == selectedShortcut.value.id).shortcut = updateShortcut();
-        newShortcut.value = [];
+        if (selectedShortcut.value.type) shortcutsList.value.find(sc => sc.id == selectedShortcut.value.id).globalShortcut = updateShortcut()
+        else shortcutsList.value.find(sc => sc.id == selectedShortcut.value.id).shortcut = updateShortcut()
+        newShortcut.value = []
     }
-};
+}
 const setDefaultShortcuts = () => {
     shortcutsList.value = [
         { id: 'play', name: '播放/暂停', shortcut: 'CommandOrControl+P', globalShortcut: 'CommandOrControl+Alt+P' },
@@ -309,106 +309,106 @@ const setDefaultShortcuts = () => {
         { id: 'volumeDown', name: '减少音量', shortcut: 'CommandOrControl+Down', globalShortcut: 'CommandOrControl+Alt+Down' },
         { id: 'processForward', name: '快进(3s)', shortcut: 'CommandOrControl+]', globalShortcut: 'CommandOrControl+Alt+]' },
         { id: 'processBack', name: '后退(3s)', shortcut: 'CommandOrControl+[', globalShortcut: 'CommandOrControl+Alt+[' },
-    ];
-};
+    ]
+}
 const clearMusicVideo = () => {
     windowApi.clearUnusedVideo().then(result => {
         if (result == 'noSavePath') {
-            noticeOpen('请先在设置中设置音乐视频缓存目录', 2);
-            return;
-        } else if (result) noticeOpen('清除完毕', 3);
-        else noticeOpen('删除失败', 3);
-    });
-};
+            noticeOpen('请先在设置中设置音乐视频缓存目录', 2)
+            return
+        } else if (result) noticeOpen('清除完毕', 3)
+        else noticeOpen('删除失败', 3)
+    })
+}
 const setMusicVideo = () => {
-    if (!playerStore.musicVideo) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openMusicVideo);
-    else openMusicVideo(true);
-};
+    if (!playerStore.musicVideo) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openMusicVideo)
+    else openMusicVideo(true)
+}
 const openMusicVideo = flag => {
-    if (flag) playerStore.musicVideo = !playerStore.musicVideo;
-};
+    if (flag) playerStore.musicVideo = !playerStore.musicVideo
+}
 const setLyricBlur = () => {
-    if (!playerStore.lyricBlur) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openLyricBlur);
-    else openLyricBlur(true);
-};
+    if (!playerStore.lyricBlur) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openLyricBlur)
+    else openLyricBlur(true)
+}
 const openLyricBlur = flag => {
-    if (flag) playerStore.lyricBlur = !playerStore.lyricBlur;
-};
+    if (flag) playerStore.lyricBlur = !playerStore.lyricBlur
+}
 
 const setCoverBlur = () => {
-    if (!playerStore.coverBlur) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openCoverBlur);
-    else openCoverBlur(true);
-};
+    if (!playerStore.coverBlur) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openCoverBlur)
+    else openCoverBlur(true)
+}
 const openCoverBlur = flag => {
-    if (flag) playerStore.coverBlur = !playerStore.coverBlur;
-};
+    if (flag) playerStore.coverBlur = !playerStore.coverBlur
+}
 const userLogout = async () => {
     if (isLogin()) {
         logout().then(async result => {
             if (result.code == 200) {
-                window.localStorage.clear();
-                userStore.user = null;
-                userStore.biliUser = null;
+                window.localStorage.clear()
+                userStore.user = null
+                userStore.biliUser = null
 
-                router.push('/');
-                noticeOpen('已退出账号', 2);
-            } else noticeOpen('退出登录失败', 2);
-        });
-    } else noticeOpen('您已退出账号', 2);
-};
+                router.push('/')
+                noticeOpen('已退出账号', 2)
+            } else noticeOpen('退出登录失败', 2)
+        })
+    } else noticeOpen('您已退出账号', 2)
+}
 const save = () => {
-    selectedShortcut.value = null;
-    setAppSettings();
-    initSettings();
-    noticeOpen('设置已保存', 2);
-};
+    selectedShortcut.value = null
+    setAppSettings()
+    initSettings()
+    noticeOpen('设置已保存', 2)
+}
 const toGithub = () => {
-    windowApi.toRegister('https://github.com/ldx123000/Hydrogen-Music');
-};
+    windowApi.toRegister('https://github.com/ldx123000/Hydrogen-Music')
+}
 
 // 检查更新功能
 const checkForUpdates = () => {
-    showUpdateDialog.value = true;
-    windowApi.checkForUpdate();
-};
+    showUpdateDialog.value = true
+    windowApi.checkForUpdate()
+}
 
 // 更新对话框事件处理
 const handleUpdateDownload = () => {
-    windowApi.downloadUpdate();
-};
+    windowApi.downloadUpdate()
+}
 
 const handleUpdateInstall = () => {
-    windowApi.installUpdate();
-};
+    windowApi.installUpdate()
+}
 
 const handleUpdateCancel = () => {
-    windowApi.cancelUpdate();
-};
+    windowApi.cancelUpdate()
+}
 
 const handleUpdateRetry = () => {
-    windowApi.checkForUpdate();
-};
+    windowApi.checkForUpdate()
+}
 
 const closeUpdateDialog = () => {
-    showUpdateDialog.value = false;
-};
+    showUpdateDialog.value = false
+}
 
 // 清空当前账号的“私人漫游”近期去重队列
 const getFmRecentKey = () => {
-    const uid = userStore?.user?.userId || 'guest';
-    return `hm.fm.recentPlayedQueue:${uid}`;
-};
+    const uid = userStore?.user?.userId || 'guest'
+    return `hm.fm.recentPlayedQueue:${uid}`
+}
 const clearFmRecent = () => {
     try {
-        localStorage.removeItem(getFmRecentKey());
+        localStorage.removeItem(getFmRecentKey())
         // 通知个人FM组件刷新其内存中的近期队列
-        window.dispatchEvent(new CustomEvent('fmClearRecent', { detail: { userId: userStore?.user?.userId || 'guest' } }));
-        noticeOpen('已清空当前账号的私人漫游缓存', 2);
+        window.dispatchEvent(new CustomEvent('fmClearRecent', { detail: { userId: userStore?.user?.userId || 'guest' } }))
+        noticeOpen('已清空当前账号的私人漫游缓存', 2)
     } catch (e) {
-        console.error('清空私人漫游缓存失败:', e);
-        noticeOpen('清空失败', 2);
+        console.error('清空私人漫游缓存失败:', e)
+        noticeOpen('清空失败', 2)
     }
-};
+}
 </script>
 
 <template>
@@ -690,7 +690,7 @@ const clearFmRecent = () => {
                 <div class="app-icon">
                     <img src="../assets/icon/icon.ico" alt="" />
                 </div>
-                <div class="version">V0.5.8</div>
+                <div class="version">V0.5.9</div>
                 <div class="update-check">
                     <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
                 </div>
