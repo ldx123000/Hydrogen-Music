@@ -368,6 +368,8 @@ const coverNavigating = ref(false)
 const coverTransitionDirection = ref('neutral')
 const queuedDirection = ref(null)
 const COVER_TRANSITION_FALLBACK_MS = 2500
+const COVER_RELEASE_RATIO_FALLBACK = 0.45
+const COVER_RELEASE_MIN_MS = 180
 const COVER_RELEASE_BUFFER_MS = 16
 const PANEL_INTRO_DURATION_MS = 1500
 const PANEL_INTRO_BUFFER_MS = 40
@@ -575,6 +577,19 @@ const getCoverTransitionDurationMs = () => {
     return durationMs
 }
 
+const getCoverReleaseDelayMs = () => {
+    const transitionDurationMs = getCoverTransitionDurationMs()
+    if (typeof window === 'undefined') return transitionDurationMs
+
+    const host = document.querySelector('.personal-fm')
+    const ratioValue = host ? window.getComputedStyle(host).getPropertyValue('--fm-cover-overlap-release-ratio') : ''
+    const ratio = Number.parseFloat((ratioValue || '').trim())
+    const safeRatio = Number.isFinite(ratio) && ratio > 0 && ratio <= 1 ? ratio : COVER_RELEASE_RATIO_FALLBACK
+    const ratioDelay = transitionDurationMs * safeRatio
+
+    return Math.max(COVER_RELEASE_MIN_MS, Math.min(transitionDurationMs, ratioDelay))
+}
+
 const queueCoverDirection = direction => {
     queuedDirection.value = direction
 }
@@ -639,7 +654,7 @@ const scheduleCoverRelease = () => {
         return
     }
 
-    const releaseDelay = getCoverTransitionDurationMs() + COVER_RELEASE_BUFFER_MS
+    const releaseDelay = getCoverReleaseDelayMs() + COVER_RELEASE_BUFFER_MS
     coverReleaseTimer = window.setTimeout(() => {
         coverReleaseTimer = null
         void releaseCoverNavigation()
@@ -1232,6 +1247,7 @@ const handleFmClearRecent = () => {
 }
 
 .fm-stage {
+    height: 100%;
     min-height: 100%;
     display: flex;
     justify-content: center;
@@ -1243,7 +1259,7 @@ const handleFmClearRecent = () => {
 .fm-panel {
     width: 100%;
     max-width: 100%;
-    min-height: 650px;
+    min-height: max(650px, 100%);
     padding: 24px 34px;
     box-sizing: border-box;
     position: relative;

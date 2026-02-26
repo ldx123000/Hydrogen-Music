@@ -1,90 +1,106 @@
 <script setup>
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { noticeOpen } from '../utils/dialog';
-import { usePlayerStore } from '../store/playerStore';
-import { searchHotDetail, searchSuggest } from '../api/other';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { noticeOpen } from '../utils/dialog'
+import { usePlayerStore } from '../store/playerStore'
+import { searchHotDetail, searchSuggest } from '../api/other'
 
-const DEFAULT_ASSIST_LIMIT = 8;
-const MIN_ASSIST_LIMIT = 1;
-const SUGGEST_DEBOUNCE_MS = 220;
+const DEFAULT_ASSIST_LIMIT = 8
+const MIN_ASSIST_LIMIT = 1
+const SUGGEST_DEBOUNCE_MS = 220
+const ASSIST_HOVER_ACTIVATE_DELAY_MS = 140
 
-const playerStore = usePlayerStore();
-const router = useRouter();
+const playerStore = usePlayerStore()
+const router = useRouter()
 
-const searchInput = ref(null);
-const assistBodyRef = ref(null);
-const searchKeyword = ref('');
-const searchShow = ref(false);
-const assistVisible = ref(false);
-const hotList = ref([]);
-const suggestList = ref([]);
-const activeAssistIndex = ref(-1);
-const isComposing = ref(false);
-const suppressMouseHover = ref(false);
-const loadingHot = ref(false);
-const loadingSuggest = ref(false);
-const hotLoaded = ref(false);
-const debounceTimer = ref(null);
-const requestSeq = ref(0);
+const searchInput = ref(null)
+const assistBodyRef = ref(null)
+const searchKeyword = ref('')
+const searchShow = ref(false)
+const assistVisible = ref(false)
+const hotList = ref([])
+const suggestList = ref([])
+const activeAssistIndex = ref(-1)
+const isComposing = ref(false)
+const suppressMouseHover = ref(false)
+const loadingHot = ref(false)
+const loadingSuggest = ref(false)
+const hotLoaded = ref(false)
+const debounceTimer = ref(null)
+const hoverActivateTimer = ref(null)
+const hoverPendingIndex = ref(-1)
+const requestSeq = ref(0)
 
 function normalizeAssistLimit(value) {
-    const num = Number.parseInt(value, 10);
-    if (!Number.isFinite(num)) return DEFAULT_ASSIST_LIMIT;
-    return Math.max(MIN_ASSIST_LIMIT, num);
+    const num = Number.parseInt(value, 10)
+    if (!Number.isFinite(num)) return DEFAULT_ASSIST_LIMIT
+    return Math.max(MIN_ASSIST_LIMIT, num)
 }
 
-const assistLimit = computed(() => normalizeAssistLimit(playerStore.searchAssistLimit));
-const isSuggestMode = computed(() => JTrim(searchKeyword.value) !== '');
+const assistLimit = computed(() => normalizeAssistLimit(playerStore.searchAssistLimit))
+const isSuggestMode = computed(() => JTrim(searchKeyword.value) !== '')
 const currentList = computed(() => {
-    const list = isSuggestMode.value ? suggestList.value : hotList.value;
-    return list.slice(0, assistLimit.value);
-});
-const currentTitle = computed(() => (isSuggestMode.value ? 'SUGGESTIONS' : 'HOT SEARCH'));
-const currentEmptyText = computed(() => (isSuggestMode.value ? 'NO SUGGESTION' : 'NO HOT SEARCH'));
-const currentLoading = computed(() => (isSuggestMode.value ? loadingSuggest.value : loadingHot.value));
+    const list = isSuggestMode.value ? suggestList.value : hotList.value
+    return list.slice(0, assistLimit.value)
+})
+const currentTitle = computed(() => (isSuggestMode.value ? 'SUGGESTIONS' : 'HOT SEARCH'))
+const currentEmptyText = computed(() => (isSuggestMode.value ? 'NO SUGGESTION' : 'NO HOT SEARCH'))
+const currentLoading = computed(() => (isSuggestMode.value ? loadingSuggest.value : loadingHot.value))
 
 function clearDebounceTimer() {
     if (debounceTimer.value) {
-        clearTimeout(debounceTimer.value);
-        debounceTimer.value = null;
+        clearTimeout(debounceTimer.value)
+        debounceTimer.value = null
     }
 }
 
+function clearHoverActivateTimer() {
+    if (hoverActivateTimer.value) {
+        clearTimeout(hoverActivateTimer.value)
+        hoverActivateTimer.value = null
+    }
+}
+
+function clearHoverPendingState() {
+    clearHoverActivateTimer()
+    hoverPendingIndex.value = -1
+}
+
 function resetAssistActiveIndex() {
-    activeAssistIndex.value = -1;
+    clearHoverPendingState()
+    activeAssistIndex.value = -1
 }
 
 function resetMouseHoverSuppression() {
-    suppressMouseHover.value = false;
+    suppressMouseHover.value = false
 }
 
 function JTrim(s) {
-    return String(s || '').replace(/(^\s*)|(\s*$)/g, '');
+    return String(s || '').replace(/(^\s*)|(\s*$)/g, '')
 }
 
 function normalizeSuggestKey(keyword) {
-    return JTrim(keyword).toLocaleLowerCase();
+    return JTrim(keyword).toLocaleLowerCase()
 }
 
 function appendSuggestItem(list, keywordSet, keyword, type, source) {
-    const word = JTrim(keyword);
-    if (!word) return;
-    const normalized = normalizeSuggestKey(word);
-    if (!normalized || keywordSet.has(normalized)) return;
+    const word = JTrim(keyword)
+    if (!word) return
+    const normalized = normalizeSuggestKey(word)
+    if (!normalized || keywordSet.has(normalized)) return
 
-    keywordSet.add(normalized);
+    keywordSet.add(normalized)
     list.push({
         order: list.length + 1,
         keyword: word,
         type,
         source,
-    });
+    })
 }
 
 function parseWebSuggestItems(data) {
-    const result = data?.result || {};
-    const groupOrder = Array.isArray(result.order) && result.order.length ? result.order : ['songs', 'artists', 'playlists', 'albums'];
+    const result = data?.result || {}
+    const groupOrder = Array.isArray(result.order) && result.order.length ? result.order : ['songs', 'artists', 'playlists', 'albums']
     const parsers = {
         songs: {
             list: Array.isArray(result.songs) ? result.songs : [],
@@ -106,148 +122,163 @@ function parseWebSuggestItems(data) {
             type: 10,
             getKeyword: item => item?.name,
         },
-    };
+    }
 
-    const items = [];
+    const items = []
     for (let i = 0; i < groupOrder.length; i++) {
-        const group = parsers[groupOrder[i]];
-        if (!group) continue;
+        const group = parsers[groupOrder[i]]
+        if (!group) continue
         for (let j = 0; j < group.list.length; j++) {
             items.push({
                 keyword: group.getKeyword(group.list[j]),
                 type: group.type,
-            });
+            })
         }
     }
-    return items;
+    return items
 }
 
 async function setActiveAssistIndex(index, align = 'nearest') {
-    const listLength = currentList.value.length;
+    const listLength = currentList.value.length
     if (!assistVisible.value || listLength === 0) {
-        resetAssistActiveIndex();
-        return;
+        resetAssistActiveIndex()
+        return
     }
 
-    const normalizedIndex = Math.min(listLength - 1, Math.max(0, index));
-    activeAssistIndex.value = normalizedIndex;
+    const normalizedIndex = Math.min(listLength - 1, Math.max(0, index))
+    activeAssistIndex.value = normalizedIndex
 
-    await nextTick();
+    await nextTick()
 
-    const body = assistBodyRef.value;
-    if (!body) return;
-    const items = body.querySelectorAll('.assist-item');
-    const targetItem = items[normalizedIndex];
-    if (!targetItem) return;
+    const body = assistBodyRef.value
+    if (!body) return
+    const items = body.querySelectorAll('.assist-item')
+    const targetItem = items[normalizedIndex]
+    if (!targetItem) return
 
     const clampScrollTop = value => {
-        const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
-        const clamped = Math.min(maxScrollTop, Math.max(0, value));
+        const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight)
+        const clamped = Math.min(maxScrollTop, Math.max(0, value))
 
-        if (clamped <= 0.5) return 0;
-        if (Math.abs(clamped - maxScrollTop) <= 0.5) return maxScrollTop;
-        return Math.round(clamped);
-    };
-
-    const currentTop = body.scrollTop || 0;
-    const currentBottom = currentTop + body.clientHeight;
-    const targetTop = targetItem.offsetTop;
-    const targetBottom = targetTop + targetItem.offsetHeight;
-    const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
-
-    let nextTop = currentTop;
-    if (align === 'start') {
-        nextTop = normalizedIndex === 0 ? 0 : targetTop;
-    } else if (align === 'end') {
-        nextTop = normalizedIndex === listLength - 1 ? maxScrollTop : targetBottom - body.clientHeight;
-    } else {
-        if (targetTop < currentTop) nextTop = targetTop;
-        else if (targetBottom > currentBottom) nextTop = targetBottom - body.clientHeight;
+        if (clamped <= 0.5) return 0
+        if (Math.abs(clamped - maxScrollTop) <= 0.5) return maxScrollTop
+        return Math.round(clamped)
     }
 
-    const normalizedTop = clampScrollTop(nextTop);
+    const currentTop = body.scrollTop || 0
+    const currentBottom = currentTop + body.clientHeight
+    const targetTop = targetItem.offsetTop
+    const targetBottom = targetTop + targetItem.offsetHeight
+    const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight)
+
+    let nextTop = currentTop
+    if (align === 'start') {
+        nextTop = normalizedIndex === 0 ? 0 : targetTop
+    } else if (align === 'end') {
+        nextTop = normalizedIndex === listLength - 1 ? maxScrollTop : targetBottom - body.clientHeight
+    } else {
+        if (targetTop < currentTop) nextTop = targetTop
+        else if (targetBottom > currentBottom) nextTop = targetBottom - body.clientHeight
+    }
+
+    const normalizedTop = clampScrollTop(nextTop)
     if (Math.abs(normalizedTop - currentTop) > 0.5) {
-        body.scrollTop = normalizedTop;
+        body.scrollTop = normalizedTop
     }
 }
 
 function moveAssistSelection(direction) {
-    if (!assistVisible.value || currentLoading.value || currentList.value.length === 0) return;
-    suppressMouseHover.value = true;
+    if (!assistVisible.value || currentLoading.value || currentList.value.length === 0) return
+    clearHoverPendingState()
+    suppressMouseHover.value = true
 
     if (activeAssistIndex.value === -1) {
-        const listLength = currentList.value.length;
-        const nextIndex = direction > 0 ? 0 : listLength - 1;
-        void setActiveAssistIndex(nextIndex, 'nearest');
-        return;
+        const listLength = currentList.value.length
+        const nextIndex = direction > 0 ? 0 : listLength - 1
+        void setActiveAssistIndex(nextIndex, 'nearest')
+        return
     }
 
-    const listLength = currentList.value.length;
-    let nextIndex = activeAssistIndex.value + direction;
-    let align = 'nearest';
+    const listLength = currentList.value.length
+    let nextIndex = activeAssistIndex.value + direction
+    let align = 'nearest'
 
     if (nextIndex >= listLength) {
-        nextIndex = 0;
-        align = 'start';
+        nextIndex = 0
+        align = 'start'
     } else if (nextIndex < 0) {
-        nextIndex = listLength - 1;
-        align = 'end';
+        nextIndex = listLength - 1
+        align = 'end'
     }
 
-    void setActiveAssistIndex(nextIndex, align);
+    void setActiveAssistIndex(nextIndex, align)
 }
 
 function handleArrowDown() {
-    if (isComposing.value) return;
-    moveAssistSelection(1);
+    if (isComposing.value) return
+    moveAssistSelection(1)
 }
 
 function handleArrowUp() {
-    if (isComposing.value) return;
-    moveAssistSelection(-1);
+    if (isComposing.value) return
+    moveAssistSelection(-1)
 }
 
 function handleAssistEnter(event) {
-    if (isComposing.value) return;
+    if (isComposing.value) return
 
     if (assistVisible.value && activeAssistIndex.value >= 0) {
-        const item = currentList.value[activeAssistIndex.value];
+        const item = currentList.value[activeAssistIndex.value]
         if (item) {
-            event.preventDefault();
-            clickAssistItem(item);
-            return;
+            event.preventDefault()
+            clickAssistItem(item)
+            return
         }
     }
 
-    searchInfo();
+    searchInfo()
 }
 
 function handleAssistItemMouseEnter(index) {
-    if (suppressMouseHover.value) return;
-    if (currentLoading.value || currentList.value.length === 0) return;
-    if (index < 0 || index >= currentList.value.length) return;
-    activeAssistIndex.value = index;
+    if (suppressMouseHover.value) return
+    if (currentLoading.value || currentList.value.length === 0) return
+    if (index < 0 || index >= currentList.value.length) return
+    if (index === activeAssistIndex.value) {
+        clearHoverPendingState()
+        return
+    }
+    if (hoverPendingIndex.value === index) return
+
+    clearHoverActivateTimer()
+    hoverPendingIndex.value = index
+    hoverActivateTimer.value = setTimeout(() => {
+        hoverActivateTimer.value = null
+        const canActivate = !suppressMouseHover.value && !currentLoading.value && hoverPendingIndex.value === index && index >= 0 && index < currentList.value.length
+
+        if (canActivate) activeAssistIndex.value = index
+        if (hoverPendingIndex.value === index) hoverPendingIndex.value = -1
+    }, ASSIST_HOVER_ACTIVATE_DELAY_MS)
 }
 
 function handleAssistMouseMove(event) {
-    const item = event.target?.closest?.('.assist-item');
-    if (suppressMouseHover.value) suppressMouseHover.value = false;
-    if (!item) return;
+    const item = event.target?.closest?.('.assist-item')
+    if (suppressMouseHover.value) suppressMouseHover.value = false
+    if (!item) return
 
-    const rawIndex = Number.parseInt(item.dataset.index, 10);
+    const rawIndex = Number.parseInt(item.dataset.index, 10)
     if (Number.isFinite(rawIndex) && rawIndex >= 0 && rawIndex < currentList.value.length) {
-        activeAssistIndex.value = rawIndex;
+        handleAssistItemMouseEnter(rawIndex)
     }
 }
 
 async function fetchHotList() {
-    if (hotLoaded.value || loadingHot.value) return;
+    if (hotLoaded.value || loadingHot.value) return
 
-    resetAssistActiveIndex();
-    loadingHot.value = true;
+    resetAssistActiveIndex()
+    loadingHot.value = true
     try {
-        const data = await searchHotDetail();
-        const list = Array.isArray(data?.data) ? data.data : [];
+        const data = await searchHotDetail()
+        const list = Array.isArray(data?.data) ? data.data : []
         hotList.value = list
             .map((item, index) => ({
                 order: index + 1,
@@ -255,28 +286,28 @@ async function fetchHotList() {
                 iconType: item?.iconType || 0,
                 content: item?.content || '',
             }))
-            .filter(item => item.keyword);
-        hotLoaded.value = true;
+            .filter(item => item.keyword)
+        hotLoaded.value = true
     } catch (_) {
-        hotList.value = [];
-        hotLoaded.value = true;
+        hotList.value = []
+        hotLoaded.value = true
     } finally {
-        loadingHot.value = false;
+        loadingHot.value = false
     }
 }
 
 async function fetchSuggestList(keyword) {
-    const value = JTrim(keyword);
+    const value = JTrim(keyword)
     if (!value) {
-        resetAssistActiveIndex();
-        suggestList.value = [];
-        loadingSuggest.value = false;
-        return;
+        resetAssistActiveIndex()
+        suggestList.value = []
+        loadingSuggest.value = false
+        return
     }
 
-    resetAssistActiveIndex();
-    const seq = ++requestSeq.value;
-    loadingSuggest.value = true;
+    resetAssistActiveIndex()
+    const seq = ++requestSeq.value
+    loadingSuggest.value = true
 
     try {
         const [mobileResult, webResult] = await Promise.allSettled([
@@ -288,125 +319,126 @@ async function fetchSuggestList(keyword) {
                 keywords: value,
                 type: 'web',
             }),
-        ]);
-        if (seq != requestSeq.value) return;
+        ])
+        if (seq != requestSeq.value) return
 
-        const keywordSet = new Set();
-        const list = [];
+        const keywordSet = new Set()
+        const list = []
 
         if (mobileResult.status === 'fulfilled') {
-            const allMatch = Array.isArray(mobileResult.value?.result?.allMatch) ? mobileResult.value.result.allMatch : [];
+            const allMatch = Array.isArray(mobileResult.value?.result?.allMatch) ? mobileResult.value.result.allMatch : []
             for (let i = 0; i < allMatch.length; i++) {
-                appendSuggestItem(list, keywordSet, allMatch[i]?.keyword, allMatch[i]?.type || 0, 'mobile');
+                appendSuggestItem(list, keywordSet, allMatch[i]?.keyword, allMatch[i]?.type || 0, 'mobile')
             }
         }
 
         if (webResult.status === 'fulfilled') {
-            const webItems = parseWebSuggestItems(webResult.value);
+            const webItems = parseWebSuggestItems(webResult.value)
             for (let i = 0; i < webItems.length; i++) {
-                appendSuggestItem(list, keywordSet, webItems[i].keyword, webItems[i].type, 'web');
+                appendSuggestItem(list, keywordSet, webItems[i].keyword, webItems[i].type, 'web')
             }
         }
 
-        suggestList.value = list;
+        suggestList.value = list
     } catch (_) {
-        if (seq != requestSeq.value) return;
-        suggestList.value = [];
+        if (seq != requestSeq.value) return
+        suggestList.value = []
     } finally {
-        if (seq == requestSeq.value) loadingSuggest.value = false;
+        if (seq == requestSeq.value) loadingSuggest.value = false
     }
 }
 
 function handleSearchInput() {
-    clearDebounceTimer();
-    resetAssistActiveIndex();
-    resetMouseHoverSuppression();
-    const keyword = JTrim(searchKeyword.value);
+    clearDebounceTimer()
+    resetAssistActiveIndex()
+    resetMouseHoverSuppression()
+    const keyword = JTrim(searchKeyword.value)
 
     if (!keyword) {
-        requestSeq.value += 1;
-        loadingSuggest.value = false;
-        suggestList.value = [];
-        if (assistVisible.value) fetchHotList();
-        return;
+        requestSeq.value += 1
+        loadingSuggest.value = false
+        suggestList.value = []
+        if (assistVisible.value) fetchHotList()
+        return
     }
 
     debounceTimer.value = setTimeout(() => {
-        fetchSuggestList(keyword);
-    }, SUGGEST_DEBOUNCE_MS);
+        fetchSuggestList(keyword)
+    }, SUGGEST_DEBOUNCE_MS)
 }
 
 function searchFoucs(event, state) {
     if (state === 'focus') {
-        event.target.placeholder = '';
-        searchShow.value = true;
-        assistVisible.value = true;
-        resetAssistActiveIndex();
-        resetMouseHoverSuppression();
-        windowApi.unregisterShortcuts();
+        event.target.placeholder = ''
+        searchShow.value = true
+        assistVisible.value = true
+        resetAssistActiveIndex()
+        resetMouseHoverSuppression()
+        windowApi.unregisterShortcuts()
 
-        if (JTrim(searchKeyword.value)) handleSearchInput();
-        else fetchHotList();
+        if (JTrim(searchKeyword.value)) handleSearchInput()
+        else fetchHotList()
     } else {
-        clearDebounceTimer();
-        resetAssistActiveIndex();
-        resetMouseHoverSuppression();
-        isComposing.value = false;
-        windowApi.registerShortcuts();
-        event.target.placeholder = 'SEARCH';
-        searchShow.value = false;
-        assistVisible.value = false;
+        clearDebounceTimer()
+        resetAssistActiveIndex()
+        resetMouseHoverSuppression()
+        isComposing.value = false
+        windowApi.registerShortcuts()
+        event.target.placeholder = 'SEARCH'
+        searchShow.value = false
+        assistVisible.value = false
     }
 }
 
 const searchInfo = (keyword = searchKeyword.value, byAssist = false) => {
-    const value = JTrim(keyword);
+    const value = JTrim(keyword)
     if (value != '') {
-        searchKeyword.value = value;
-        router.push({ name: 'search', query: { keywords: value } }).catch(() => {});
+        searchKeyword.value = value
+        router.push({ name: 'search', query: { keywords: value } }).catch(() => {})
 
-        if (byAssist && searchInput.value) searchInput.value.blur();
+        if (byAssist && searchInput.value) searchInput.value.blur()
 
         if (!playerStore.widgetState) {
-            playerStore.widgetState = true;
-            playerStore.lyricShow = false;
-            if (playerStore.videoIsPlaying) playerStore.videoIsPlaying = false;
+            playerStore.widgetState = true
+            playerStore.lyricShow = false
+            if (playerStore.videoIsPlaying) playerStore.videoIsPlaying = false
         }
     } else {
-        noticeOpen('输入不能为空', 2);
+        noticeOpen('输入不能为空', 2)
     }
-};
+}
 
 function clickAssistItem(item) {
-    resetAssistActiveIndex();
-    resetMouseHoverSuppression();
-    searchInfo(item.keyword, true);
+    resetAssistActiveIndex()
+    resetMouseHoverSuppression()
+    searchInfo(item.keyword, true)
 }
 
 function displayIndex(index) {
-    return String(index + 1).padStart(2, '0');
+    return String(index + 1).padStart(2, '0')
 }
 
 watch(isSuggestMode, () => {
-    resetAssistActiveIndex();
-});
+    resetAssistActiveIndex()
+})
 
 watch(currentLoading, loading => {
-    if (loading) resetAssistActiveIndex();
-});
+    if (loading) resetAssistActiveIndex()
+})
 
 watch(currentList, list => {
     if (!Array.isArray(list) || list.length === 0) {
-        resetAssistActiveIndex();
-        return;
+        resetAssistActiveIndex()
+        return
     }
 
-    if (activeAssistIndex.value >= list.length) resetAssistActiveIndex();
-});
+    if (activeAssistIndex.value >= list.length) resetAssistActiveIndex()
+})
 
 onUnmounted(() => {
-    clearDebounceTimer();
-});
+    clearDebounceTimer()
+    clearHoverPendingState()
+})
 </script>
 
 <template>
@@ -684,8 +716,8 @@ $boderPosition: -1px;
                 font: 12px SourceHanSansCN-Bold;
                 color: var(--assist-item-text);
                 transition:
-                    color 0.2s,
-                    background-size 0.2s;
+                    color 0.28s ease,
+                    background-size 0.32s cubic-bezier(0.22, 1, 0.36, 1);
                 background-image: linear-gradient(90deg, var(--assist-hover-fill), var(--assist-hover-fill));
                 background-repeat: no-repeat;
                 background-size: 0 100%;
@@ -753,8 +785,8 @@ $boderPosition: -1px;
     width: 160px;
 }
 
-:global(html.dark) .search-container .search-assist,
-:global(.dark) .search-container .search-assist {
+:global(html.dark .search-container .search-assist),
+:global(.dark .search-container .search-assist) {
     --assist-bg: var(--panel);
     --assist-border: var(--border);
     --assist-corner: var(--text);
@@ -763,7 +795,7 @@ $boderPosition: -1px;
     --assist-line: rgba(255, 255, 255, 0.24);
     --assist-item-text: var(--text);
     --assist-item-divider: rgba(255, 255, 255, 0.1);
-    --assist-hover-fill: rgba(255, 255, 255, 0.18);
+    --assist-hover-fill: rgba(255, 255, 255, 0.7);
     --assist-hover-text: #0f1114;
     --assist-status: var(--muted-text);
     --assist-shadow: var(--shadow);
@@ -773,31 +805,53 @@ $boderPosition: -1px;
     box-shadow: var(--assist-shadow) !important;
     backdrop-filter: blur(10px) !important;
 }
-:global(html.dark) .search-container .search-assist .assist-corner,
-:global(.dark) .search-container .search-assist .assist-corner {
+:global(html.dark .search-container .search-assist .assist-corner),
+:global(.dark .search-container .search-assist .assist-corner) {
     border-color: var(--assist-corner) !important;
 }
-:global(html.dark) .search-container .search-assist .assist-header .assist-line,
-:global(.dark) .search-container .search-assist .assist-header .assist-line {
+:global(html.dark .search-container .search-assist .assist-header .assist-line),
+:global(.dark .search-container .search-assist .assist-header .assist-line) {
     background: linear-gradient(90deg, var(--assist-line), transparent) !important;
 }
-:global(html.dark) .search-container .search-assist .assist-header .assist-count,
-:global(html.dark) .search-container .search-assist .assist-body .assist-status,
-:global(html.dark) .search-container .search-assist .assist-body .assist-item .assist-index,
-:global(.dark) .search-container .search-assist .assist-header .assist-count,
-:global(.dark) .search-container .search-assist .assist-body .assist-status,
-:global(.dark) .search-container .search-assist .assist-body .assist-item .assist-index {
+:global(html.dark .search-container .search-assist .assist-header .assist-count),
+:global(html.dark .search-container .search-assist .assist-body .assist-status),
+:global(html.dark .search-container .search-assist .assist-body .assist-item .assist-index),
+:global(.dark .search-container .search-assist .assist-header .assist-count),
+:global(.dark .search-container .search-assist .assist-body .assist-status),
+:global(.dark .search-container .search-assist .assist-body .assist-item .assist-index) {
     color: var(--assist-muted) !important;
 }
-:global(html.dark) .search-container .search-assist .assist-body .assist-item,
-:global(.dark) .search-container .search-assist .assist-body .assist-item {
+:global(html.dark .search-container .search-assist .assist-body .assist-item),
+:global(.dark .search-container .search-assist .assist-body .assist-item) {
     color: var(--assist-item-text) !important;
     border-bottom-color: var(--assist-item-divider) !important;
     background-image: linear-gradient(90deg, var(--assist-hover-fill), var(--assist-hover-fill)) !important;
 }
-:global(html.dark) .search-container .search-assist .assist-body .assist-item:hover,
-:global(.dark) .search-container .search-assist .assist-body .assist-item:hover {
+:global(html.dark .search-container .search-assist .assist-body .assist-item:hover),
+:global(html.dark .search-container .search-assist .assist-body .assist-item:hover *),
+:global(.dark .search-container .search-assist .assist-body .assist-item:hover),
+:global(.dark .search-container .search-assist .assist-body .assist-item:hover *) {
     color: var(--assist-hover-text) !important;
+    -webkit-text-fill-color: var(--assist-hover-text) !important;
+}
+:global(html.dark .search-container .search-assist .assist-body .assist-item.assist-item-active),
+:global(html.dark .search-container .search-assist .assist-body .assist-item.assist-item-active *),
+:global(.dark .search-container .search-assist .assist-body .assist-item.assist-item-active),
+:global(.dark .search-container .search-assist .assist-body .assist-item.assist-item-active *) {
+    color: var(--assist-hover-text) !important;
+    -webkit-text-fill-color: var(--assist-hover-text) !important;
+}
+:global(html.dark .search-container .search-assist .assist-body.assist-body-keyboard .assist-item:hover:not(.assist-item-active)),
+:global(html.dark .search-container .search-assist .assist-body.assist-body-keyboard .assist-item:hover:not(.assist-item-active) *),
+:global(.dark .search-container .search-assist .assist-body.assist-body-keyboard .assist-item:hover:not(.assist-item-active)),
+:global(.dark .search-container .search-assist .assist-body.assist-body-keyboard .assist-item:hover:not(.assist-item-active) *) {
+    color: var(--assist-item-text) !important;
+    -webkit-text-fill-color: var(--assist-item-text) !important;
+}
+:global(html.dark .search-container .search-assist .assist-body.assist-body-keyboard .assist-item:hover:not(.assist-item-active) .assist-index),
+:global(.dark .search-container .search-assist .assist-body.assist-body-keyboard .assist-item:hover:not(.assist-item-active) .assist-index) {
+    color: var(--assist-muted) !important;
+    -webkit-text-fill-color: var(--assist-muted) !important;
 }
 
 .assist-fade-enter-active,

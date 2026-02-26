@@ -10,7 +10,7 @@ import PersonalFM from '../components/PersonalFM.vue'
 
 <style scoped lang="scss">
 .personal-fm-page {
-  height: 100%;
+  height: calc(100% - 110Px);
   width: 100%;
 }
 </style>
