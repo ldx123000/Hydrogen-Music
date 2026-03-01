@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onActivated, watch, nextTick } from 'vue';
+import { ref, computed, onActivated, onDeactivated, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router';
 import { isLogin } from '../utils/authority';
 import { noticeOpen } from '../utils/dialog';
@@ -19,8 +19,8 @@ import { storeToRefs } from 'pinia';
 const playerStore = usePlayerStore();
 const localStore = useLocalStore();
 const libraryStore = useLibraryStore();
-const { updateLibraryDetail, updateArtistTopSong, updateArtistAlbum, updateArtistsMV } = libraryStore;
-const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, needTimestamp } = storeToRefs(libraryStore);
+const { updateLibraryDetail, updateArtistTopSong, updateArtistAlbum, updateArtistsMV, waitForPlaylistHydration, saveDetailScroll, getDetailScroll } = libraryStore;
+const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, needTimestamp, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate } = storeToRefs(libraryStore);
 
 const router = useRouter();
 const isAlbum = ref(false);
@@ -31,40 +31,229 @@ const introduceDetailShowDelay = ref(false);
 
 const canGoBack = ref(false);
 const canGoForward = ref(false);
+const historyNavPending = ref(false);
+const pendingScrollPolicy = ref('none');
+const pendingTargetFullPath = ref('');
+const normalizeRouteName = routeName => {
+    const normalized = String(routeName || '');
+    if (!normalized) return '';
+    return normalized.startsWith('~') ? normalized.slice(1) : normalized;
+};
+const isRestorableLibraryRouteName = routeName => {
+    const normalized = normalizeRouteName(routeName);
+    return normalized == 'playlist' || normalized == 'album' || normalized == 'artist';
+};
+const getLibraryScroller = () => document.getElementById('libraryScroll');
+const setLibraryScrollTop = (targetTop, scroller = null) => {
+    const targetScroller = scroller || getLibraryScroller();
+    if (!targetScroller) return false;
+    const parsedTop = Number(targetTop);
+    const normalizedTop = Number.isFinite(parsedTop) ? Math.max(0, parsedTop) : 0;
+    targetScroller.scrollTop = normalizedTop;
+    return true;
+};
+const readCurrentLibraryScrollTop = () => {
+    const scroller = getLibraryScroller();
+    if (!scroller) return null;
+    const top = Number(scroller.scrollTop);
+    if (!Number.isFinite(top)) return 0;
+    return Math.max(0, top);
+};
+const normalizeScrollTop = targetTop => {
+    const parsedTop = Number(targetTop);
+    if (!Number.isFinite(parsedTop)) return 0;
+    return Math.max(0, parsedTop);
+};
+const waitForAnimationFrame = () => {
+    return new Promise(resolve => {
+        const frame = window.requestAnimationFrame || (cb => setTimeout(cb, 16));
+        frame(() => resolve());
+    });
+};
+const waitForLibraryScroller = async (maxRetry = 8) => {
+    for (let i = 0; i < maxRetry; i++) {
+        await nextTick();
+        const scroller = getLibraryScroller();
+        if (scroller) return scroller;
+        await waitForAnimationFrame();
+    }
+    return null;
+};
+const saveCurrentDetailScroll = routeLike => {
+    const route = routeLike || router.currentRoute.value;
+    const routeName = normalizeRouteName(route?.name);
+    const fullPath = String(route?.fullPath || '');
+    if (!isRestorableLibraryRouteName(routeName) || !fullPath) return false;
+
+    const top = readCurrentLibraryScrollTop();
+    if (top === null) return false;
+    lastLibraryScrollTop.value = top;
+    saveDetailScroll(fullPath, top);
+    return true;
+};
+const markHistoryNavigationPending = () => {
+    historyNavPending.value = true;
+};
+const setPendingScrollPolicyForRoute = toRoute => {
+    const targetRoute = toRoute || router.currentRoute.value;
+    const targetRouteName = normalizeRouteName(targetRoute?.name);
+    const targetFullPath = String(targetRoute?.fullPath || '');
+    pendingTargetFullPath.value = targetFullPath;
+
+    if (!isRestorableLibraryRouteName(targetRouteName)) {
+        pendingScrollPolicy.value = 'none';
+        historyNavPending.value = false;
+        return;
+    }
+
+    const lastFullPath = String(lastLibraryRoute.value?.fullPath || '');
+    const shouldRestoreLast = !!restoreLibraryScrollOnActivate.value && !!lastFullPath && targetFullPath == lastFullPath;
+    if (shouldRestoreLast) {
+        pendingScrollPolicy.value = 'restore-last';
+        historyNavPending.value = false;
+        return;
+    }
+
+    if (historyNavPending.value) {
+        pendingScrollPolicy.value = 'restore-history';
+        historyNavPending.value = false;
+        restoreLibraryScrollOnActivate.value = false;
+        return;
+    }
+
+    pendingScrollPolicy.value = 'reset-top';
+    historyNavPending.value = false;
+    restoreLibraryScrollOnActivate.value = false;
+};
+const applyScrollTopForRoute = async (targetTop, routeLike = null, options = {}) => {
+    const { reapplyAfterHydration = false, skipReapplyIfUserScrolled = true } = options;
+    const route = routeLike || router.currentRoute.value;
+    const routeName = normalizeRouteName(route?.name);
+    const routeId = String(route?.params?.id || '');
+    const targetFullPath = String(route?.fullPath || '');
+    const normalizedTargetTop = normalizeScrollTop(targetTop);
+
+    const scroller = await waitForLibraryScroller(8);
+    const applied = setLibraryScrollTop(normalizedTargetTop, scroller);
+    if (!applied) return false;
+    const initialAppliedTop = (() => {
+        const firstTop = Number(scroller?.scrollTop);
+        if (!Number.isFinite(firstTop)) return normalizedTargetTop;
+        return Math.max(0, firstTop);
+    })();
+
+    if (routeName == 'playlist' && routeId && reapplyAfterHydration) {
+        await waitForPlaylistHydration(routeId);
+        const currentFullPath = String(router.currentRoute.value?.fullPath || '');
+        if (!targetFullPath || currentFullPath != targetFullPath) return false;
+        const hydratedScroller = await waitForLibraryScroller(8);
+        if (!hydratedScroller) return false;
+        const latestFullPath = String(router.currentRoute.value?.fullPath || '');
+        if (!targetFullPath || latestFullPath != targetFullPath) return false;
+
+        if (skipReapplyIfUserScrolled) {
+            const currentTop = readCurrentLibraryScrollTop();
+            if (currentTop !== null && Math.abs(currentTop - initialAppliedTop) > 2) return true;
+        }
+        setLibraryScrollTop(normalizedTargetTop, hydratedScroller);
+    }
+    return true;
+};
 const updateNavState = () => {
     const state = router?.options?.history?.state;
     canGoBack.value = !!state?.back;
     canGoForward.value = !!state?.forward;
 };
 
+const applyPendingScrollPolicy = async () => {
+    const currentRoute = router.currentRoute.value;
+    const currentRouteName = normalizeRouteName(currentRoute?.name);
+    const currentFullPath = String(currentRoute?.fullPath || '');
+    if (!isRestorableLibraryRouteName(currentRouteName)) return;
+
+    const lastFullPath = String(lastLibraryRoute.value?.fullPath || '');
+    const shouldRestoreLast = !!restoreLibraryScrollOnActivate.value && !!lastFullPath && currentFullPath == lastFullPath;
+    const activePolicy = shouldRestoreLast ? 'restore-last' : pendingScrollPolicy.value;
+    if (activePolicy == 'none') return;
+
+    if (pendingTargetFullPath.value && currentFullPath != pendingTargetFullPath.value && activePolicy != 'restore-last') return;
+
+    if (activePolicy == 'restore-last') {
+        const restored = await applyScrollTopForRoute(lastLibraryScrollTop.value, currentRoute, {
+            reapplyAfterHydration: true,
+            skipReapplyIfUserScrolled: true,
+        });
+        if (!restored) return;
+        restoreLibraryScrollOnActivate.value = false;
+        pendingScrollPolicy.value = 'none';
+        pendingTargetFullPath.value = '';
+        return;
+    }
+
+    if (activePolicy == 'restore-history') {
+        const rememberedTop = getDetailScroll(currentFullPath);
+        const targetTop = rememberedTop === null ? 0 : rememberedTop;
+        const restored = await applyScrollTopForRoute(targetTop, currentRoute, {
+            reapplyAfterHydration: rememberedTop !== null && targetTop > 0,
+            skipReapplyIfUserScrolled: true,
+        });
+        if (!restored) return;
+        pendingScrollPolicy.value = 'none';
+        pendingTargetFullPath.value = '';
+        return;
+    }
+
+    if (activePolicy == 'reset-top') {
+        const reset = await applyScrollTopForRoute(0, currentRoute, {
+            reapplyAfterHydration: false,
+        });
+        if (!reset) return;
+        pendingScrollPolicy.value = 'none';
+        pendingTargetFullPath.value = '';
+    }
+};
+
 libraryTypeCheck(router.currentRoute.value.name);
 
 onBeforeRouteLeave((to, from, next) => {
+    saveCurrentDetailScroll(from);
+    const toRouteName = normalizeRouteName(to.name);
+    if (!isRestorableLibraryRouteName(toRouteName)) {
+        historyNavPending.value = false;
+        pendingScrollPolicy.value = 'none';
+        pendingTargetFullPath.value = '';
+    }
     if (to.name == 'mymusic') {
         if (!isLogin()) router.push('/login');
         libraryInfo.value = null;
     }
     libraryTypeCheck(to.name);
     next();
-    document.getElementById('libraryScroll').scrollTop = 0;
 });
 
 onBeforeRouteUpdate(async (to, from, next) => {
-    await updateLibraryDetail(to.params.id, to.name);
+    saveCurrentDetailScroll(from);
+    setPendingScrollPolicyForRoute(to);
+
+    const normalizedToName = normalizeRouteName(to.name);
+    const detailLoadOptions = normalizedToName == 'playlist' ? { deferRemaining: true } : {};
+    await updateLibraryDetail(to.params.id, normalizedToName, detailLoadOptions);
     libraryTypeCheck(to.name);
     artistPageType.value = 0;
     libraryAlbum.value = null;
     libraryMV.value = null;
     next();
-    document.getElementById('libraryScroll').scrollTop = 0;
+    await applyPendingScrollPolicy();
 });
 
 const routerChange = operation => {
     if (operation) {
         if (!canGoForward.value) return;
+        markHistoryNavigationPending();
         router.forward();
     } else {
         if (!canGoBack.value) return;
+        markHistoryNavigationPending();
         router.back();
     }
 };
@@ -87,7 +276,7 @@ function libraryTypeCheck(pageName) {
 //计算歌单总时长(分)
 const totalTime = computed(() => {
     let total = 0;
-    const songList = librarySongs.value;
+    const songList = librarySongs.value || [];
     songList.forEach(song => {
         total += song.dt;
     });
@@ -213,9 +402,21 @@ const checkArtist = artistId => {
     router.push('/mymusic/artist/' + artistId);
     playerStore.forbidLastRouter = true;
 };
+const waitCurrentPlaylistHydration = async () => {
+    if (normalizeRouteName(router.currentRoute.value.name) != 'playlist') return;
+    if (!libraryInfo.value || !libraryInfo.value.id) return;
+    await waitForPlaylistHydration(libraryInfo.value.id);
+};
+
+const playAllSafe = async () => {
+    await waitCurrentPlaylistHydration();
+    playAll('other', librarySongs.value || []);
+};
+
 //下载本歌单/专辑全部歌曲
-const downloadAll = () => {
-    localStore.updateDownloadList(librarySongs.value);
+const downloadAll = async () => {
+    await waitCurrentPlaylistHydration();
+    localStore.updateDownloadList(librarySongs.value || []);
 };
 
 watch(
@@ -223,12 +424,27 @@ watch(
     async () => {
         await nextTick();
         updateNavState();
+        if (pendingScrollPolicy.value == 'none') setPendingScrollPolicyForRoute(router.currentRoute.value);
+        await applyPendingScrollPolicy();
     },
     { immediate: true }
 );
 
-onActivated(() => {
+onActivated(async () => {
     updateNavState();
+    if (pendingScrollPolicy.value == 'none') setPendingScrollPolicyForRoute(router.currentRoute.value);
+    await applyPendingScrollPolicy();
+});
+onMounted(async () => {
+    window.addEventListener('popstate', markHistoryNavigationPending);
+    if (pendingScrollPolicy.value == 'none') setPendingScrollPolicyForRoute(router.currentRoute.value);
+    await applyPendingScrollPolicy();
+});
+onDeactivated(() => {
+    saveCurrentDetailScroll(router.currentRoute.value);
+});
+onBeforeUnmount(() => {
+    window.removeEventListener('popstate', markHistoryNavigationPending);
 });
 
 const onAfterEnter = () => (introduceDetailShowDelay.value = true);
@@ -386,10 +602,10 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                             data-v-ef3af43f=""
                         ></path>
                     </svg>
-                    <span @click="playAll('other', librarySongs)">播放全部</span>
+                    <span @click="playAllSafe()">播放全部</span>
                 </div>
                 <div class="playall-line"></div>
-                <span @click="playAll('other', librarySongs)" class="playall-en">PLAYALL</span>
+                <span @click="playAllSafe()" class="playall-en">PLAYALL</span>
             </div>
         </div>
 

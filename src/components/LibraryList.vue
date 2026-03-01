@@ -3,18 +3,24 @@
   import { onBeforeRouteLeave, useRouter } from 'vue-router'
   import { useLibraryStore } from '../store/libraryStore'
   import { usePlayerStore } from '../store/playerStore';
-  import { useLocalStore } from '../store/localStore';
   import { useOtherStore } from '../store/otherStore';
   import { storeToRefs } from 'pinia'
   const libraryStore = useLibraryStore()
-  const { libraryList, libraryInfo, listType1, listType2 } = storeToRefs(libraryStore)
+  const { libraryList, libraryInfo, listType1, listType2, lastLibraryRoute, restoreLibraryScrollOnActivate } = storeToRefs(libraryStore)
   const playerStore = usePlayerStore()
-  const localStore = useLocalStore()
   const otherStore = useOtherStore()
+  const normalizeRouteName = routeName => {
+    const normalized = String(routeName || '')
+    if (!normalized) return ''
+    return normalized.startsWith('~') ? normalized.slice(1) : normalized
+  }
+  const isRestorableLibraryRouteName = routeName => {
+    const normalized = normalizeRouteName(routeName)
+    return normalized == 'playlist' || normalized == 'album' || normalized == 'artist'
+  }
   
   const scrollTop = ref()
   const currentSelected = ref(null)
-  const lastRouter = ref(null)
   const router = useRouter()
   const showDetail = async (selectedId, item) => {
     if(listType1.value == 0) router.push('/mymusic/playlist/' + item.id)
@@ -33,23 +39,30 @@
 
   onActivated(() => {
     const isMyMusicRoot = router.currentRoute.value && router.currentRoute.value.name == 'mymusic'
-    if(isMyMusicRoot && lastRouter.value && libraryInfo.value && !playerStore.forbidLastRouter) router.push(lastRouter.value)
-    if(isMyMusicRoot && lastRouter.value && lastRouter.value.name == 'local' && localStore.currentSelectedSongs && !playerStore.forbidLastRouter) router.push(lastRouter.value.fullPath)
+    const lastRouteName = normalizeRouteName(lastLibraryRoute.value?.name)
+    const shouldRestoreLibraryDetail = isMyMusicRoot && isRestorableLibraryRouteName(lastRouteName) && lastLibraryRoute.value && libraryInfo.value && !playerStore.forbidLastRouter
+    if (shouldRestoreLibraryDetail) {
+      restoreLibraryScrollOnActivate.value = true
+      router.push(lastLibraryRoute.value.fullPath)
+    } else {
+      restoreLibraryScrollOnActivate.value = false
+    }
     if(document.getElementById('libraryListScroll'))
       document.getElementById('libraryListScroll').scrollTop = scrollTop.value || 0
   })
   onBeforeRouteLeave((to, from, next) => {
-    if(!from.params.id && from.name != 'rec') {
-      lastRouter.value = null
-      libraryInfo.value = null
-    } else {
-      lastRouter.value = from.fullPath
-    }
-    if(from.name == 'localFiles' || from.name == 'localAlbum' || from.name == 'localArtist')
-      lastRouter.value = {
-        name: 'local',
+    const fromRouteName = normalizeRouteName(from.name)
+    if(isRestorableLibraryRouteName(fromRouteName)) {
+      lastLibraryRoute.value = {
+        name: fromRouteName,
         fullPath: from.fullPath
       }
+    } else {
+      lastLibraryRoute.value = null
+    }
+    if(!from.params.id && from.name != 'rec') {
+      libraryInfo.value = null
+    }
 
     if(document.getElementById('libraryListScroll'))
       scrollTop.value = document.getElementById('libraryListScroll').scrollTop

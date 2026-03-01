@@ -1,4 +1,5 @@
 <script setup>
+  import { computed } from 'vue'
   import { useRouter } from 'vue-router'
   import LibraryType from '../components/LibraryType.vue'
   import LibraryList from '../components/LibraryList.vue'
@@ -11,12 +12,18 @@
   import { storeToRefs } from 'pinia'
   const router = useRouter()
   const libraryStore = useLibraryStore()
-  const { listType1, listType2, libraryChangeAnimation } = storeToRefs(libraryStore)
+  const { listType1, listType2, libraryInfo, lastLibraryRoute, libraryChangeAnimation } = storeToRefs(libraryStore)
   const userStore = useUserStore()
   const { user } = storeToRefs(userStore)
   const playerStore = usePlayerStore()
   const localStore = useLocalStore()
   const { downloadedMusicFolder, localMusicFolder, localMusicClassify, downloadedFolderSettings, localFolderSettings } = storeToRefs(localStore)
+  const shouldShowNone = computed(() => {
+    const isMyMusicRoot = router.currentRoute.value.fullPath == '/mymusic'
+    const hasRestorableLibraryRoute = !!lastLibraryRoute.value && (lastLibraryRoute.value.name == 'playlist' || lastLibraryRoute.value.name == 'album' || lastLibraryRoute.value.name == 'artist')
+    const canRestoreLibraryDetail = hasRestorableLibraryRoute && !!libraryInfo.value && !playerStore.forbidLastRouter
+    return isMyMusicRoot && !canRestoreLibraryDetail
+  })
 
 </script>
 
@@ -40,7 +47,7 @@
           </keep-alive>
         </router-view>
         <Transition name="fade">
-          <div class="library-container" v-show="(router.currentRoute.value.fullPath == '/mymusic')">
+          <div class="library-container" v-if="shouldShowNone">
             <div class="library-nodata">
                 <div class="line1"></div>
                 <span class="tip">NONE</span>

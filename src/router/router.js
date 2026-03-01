@@ -65,7 +65,7 @@ const routes = [
                 beforeEnter: async (to, from, next) => {
                     const needReload = !libraryInfo.value || from.name != 'playlist' || hasDifferentLibraryId(to, from)
                     try {
-                        if (needReload) await updateLibraryDetail(to.params.id, to.name)
+                        if (needReload) await updateLibraryDetail(to.params.id, to.name, { deferRemaining: true })
                     } finally {
                         next()
                     }
@@ -81,8 +81,6 @@ const routes = [
                         if (needReload) await updateLibraryDetail(to.params.id, to.name)
                     } finally {
                         next()
-                        if(document.getElementById('libraryScroll'))
-                            document.getElementById('libraryScroll').scrollTop = 0
                     }
                 }
             },

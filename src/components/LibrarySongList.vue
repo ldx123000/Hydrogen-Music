@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { RecycleScroller } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { songTime } from '../utils/player'
-import { nanoid } from 'nanoid'
 import { addToList, addSong, setShuffledList, addToNext, startMusic, pauseMusic } from '../utils/player'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../store/userStore'
@@ -22,13 +21,31 @@ const playerStore = usePlayerStore()
 const { songId, playMode, playing, showSongTranslation } = storeToRefs(playerStore)
 const otherStore = useOtherStore()
 const props = defineProps(['songlist', 'type'])
-const hoverNid = ref(null)
+const hoverRowKey = ref(null)
+const rowKeyBySong = new WeakMap()
+let rowKeySeed = 0
 
-const getData = computed(() => {
-    props.songlist.map(item => {
-        if (!item.nid) Object.assign(item, { nid: nanoid() })
-    })
-    return props.songlist
+const resolveRowKey = (song, songIndex) => {
+    if (song && typeof song == 'object') {
+        let cached = rowKeyBySong.get(song)
+        if (!cached) {
+            rowKeySeed += 1
+            const stableId = String(song.id ?? 'unknown')
+            cached = `library-song-${stableId}-${rowKeySeed}`
+            rowKeyBySong.set(song, cached)
+        }
+        return cached
+    }
+    return `library-song-fallback-${String(song?.id ?? 'unknown')}-${songIndex}`
+}
+
+const scrollerItems = computed(() => {
+    const songs = Array.isArray(props.songlist) ? props.songlist : []
+    return songs.map((song, songIndex) => ({
+        rowKey: resolveRowKey(song, songIndex),
+        songIndex,
+        song,
+    }))
 })
 
 const checkArtist = artistId => {
@@ -93,19 +110,19 @@ const openMenu = (e, item) => {
 
 <template>
     <div class="library-content">
-        <RecycleScroller v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="getData" :item-size="44" key-field="nid" v-slot="{ item, index }">
+        <RecycleScroller v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="44" key-field="rowKey" v-slot="{ item }">
             <div
                 class="list-item"
-                :class="{ 'list-item-playing': songId == item.id, 'list-item-disabled': item.playable !== undefined && !item.playable, 'list-item-vip': item.vipOnly }"
-                @mouseenter="hoverNid = item.nid"
-                @mouseleave="hoverNid = null"
-                @dblclick="play(item, index)"
-                @contextmenu="openMenu($event, item)"
+                :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': item.song.playable !== undefined && !item.song.playable, 'list-item-vip': item.song.vipOnly }"
+                @mouseenter="hoverRowKey = item.rowKey"
+                @mouseleave="hoverRowKey = null"
+                @dblclick="play(item.song, item.songIndex)"
+                @contextmenu="openMenu($event, item.song)"
             >
                 <div class="item-title">
                     <div class="item-state">
-                        <button v-if="hoverNid === item.nid" class="item-play-btn" @click.stop="togglePlay(item, index)" :aria-label="songId === item.id && playing ? '暂停' : '播放'">
-                            <svg v-if="songId === item.id && playing" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                        <button v-if="hoverRowKey === item.rowKey" class="item-play-btn" @click.stop="togglePlay(item.song, item.songIndex)" :aria-label="songId === item.song.id && playing ? '暂停' : '播放'">
+                            <svg v-if="songId === item.song.id && playing" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
                                 <rect x="256" y="200" width="160" height="624" rx="32" fill="currentColor" />
                                 <rect x="608" y="200" width="160" height="624" rx="32" fill="currentColor" />
                             </svg>
@@ -117,25 +134,25 @@ const openMenu = (e, item) => {
                             </svg>
                         </button>
                         <template v-else>
-                            <div class="playing-eq" v-show="songId == item.id" :class="{ 'is-paused': !playing }" aria-hidden="true">
+                            <div class="playing-eq" v-show="songId == item.song.id" :class="{ 'is-paused': !playing }" aria-hidden="true">
                                 <span class="bar"></span>
                                 <span class="bar"></span>
                                 <span class="bar"></span>
                                 <span class="bar"></span>
                             </div>
-                            <div class="item-num" v-show="!(songId == item.id)">{{ index + 1 }}</div>
+                            <div class="item-num" v-show="!(songId == item.song.id)">{{ item.songIndex + 1 }}</div>
                         </template>
                     </div>
                     <span class="item-name">
-                        <span class="item-name-text">{{ getSongDisplayName(item, '', showSongTranslation) }}</span>
-                        <span v-if="item.vipOnly" class="item-vip-tag">VIP</span>
+                        <span class="item-name-text">{{ getSongDisplayName(item.song, '', showSongTranslation) }}</span>
+                        <span v-if="item.song.vipOnly" class="item-vip-tag">VIP</span>
                     </span>
                 </div>
                 <div class="item-other">
-                    <div class="item-author" v-if="item.ar">
-                        <span class="item-singer" @click="checkArtist(singer.id)" v-for="(singer, index) in item.ar">{{ singer.name }}{{ index == item.ar.length - 1 ? '' : '/' }}</span>
+                    <div class="item-author" v-if="item.song.ar">
+                        <span class="item-singer" @click="checkArtist(singer.id)" v-for="(singer, index) in item.song.ar">{{ singer.name }}{{ index == item.song.ar.length - 1 ? '' : '/' }}</span>
                     </div>
-                    <span class="item-time">{{ songTime(item.dt || item.duration) }}</span>
+                    <span class="item-time">{{ songTime(item.song.dt || item.song.duration) }}</span>
                 </div>
             </div>
         </RecycleScroller>

@@ -72,6 +72,87 @@ function updateWindowTitleDock() {
 let currentTiming = null
 let videoCheckInterval = null
 let closedVideoMemory = new Set() // 记录用户主动关闭视频的歌曲ID
+const NORMAL_PLAY_MODES = Object.freeze([0, 1, 2, 3])
+let preFmPlayMode = null
+
+function isPersonalFMContext() {
+    return !!(listInfo.value && listInfo.value.type === 'personalfm')
+}
+
+function normalizePlayMode(mode, inFM = isPersonalFMContext()) {
+    const parsedMode = Number(mode)
+    const isValidMode = Number.isInteger(parsedMode) && NORMAL_PLAY_MODES.includes(parsedMode)
+    const currentSafeMode = Number.isInteger(playMode.value) && NORMAL_PLAY_MODES.includes(playMode.value) ? playMode.value : 0
+    const safeMode = isValidMode ? parsedMode : currentSafeMode
+    if (inFM) return safeMode === 2 ? 2 : 3
+    return safeMode
+}
+
+function syncPlayModeExternalState(mode) {
+    windowApi.changeTrayMusicPlaymode(mode)
+
+    // 通知 MPRIS 循环模式
+    switch (mode) {
+        case 0: // 顺序播放
+        case 3: // 随机播放
+            window.playerApi.switchRepeatMode('off')
+            break
+        case 1: // 列表循环
+            window.playerApi.switchRepeatMode('on')
+            break
+        case 2: // 单曲循环
+            window.playerApi.switchRepeatMode('one')
+            break
+    }
+
+    // 通知 MPRIS 随机状态
+    window.playerApi.switchShuffle(mode === 3)
+}
+
+function applyPlayMode(mode, options = {}) {
+    const inFM = Object.prototype.hasOwnProperty.call(options, 'inFM') ? options.inFM : isPersonalFMContext()
+    const syncExternal = options.syncExternal !== false
+    const nextMode = normalizePlayMode(mode, inFM)
+    playMode.value = nextMode
+
+    if (currentMusic.value && typeof currentMusic.value.loop === 'function') {
+        currentMusic.value.loop(nextMode == 2)
+    }
+    if (nextMode == 3) {
+        if (Array.isArray(songList.value) && songList.value.length > 0) {
+            setShuffledList()
+        } else {
+            shuffledList.value = []
+            shuffleIndex.value = 0
+        }
+    } else {
+        shuffledList.value = null
+        shuffleIndex.value = null
+    }
+
+    if (syncExternal) syncPlayModeExternalState(nextMode)
+    return nextMode
+}
+watch(
+    () => (listInfo.value && listInfo.value.type) ? listInfo.value.type : null,
+    (nextType, prevType) => {
+        const enteringPersonalFM = nextType === 'personalfm' && prevType !== 'personalfm'
+        const leavingPersonalFM = prevType === 'personalfm' && nextType !== 'personalfm'
+
+        if (enteringPersonalFM) {
+            preFmPlayMode = normalizePlayMode(playMode.value, false)
+            const nextFmMode = playMode.value == 2 ? 2 : 3
+            applyPlayMode(nextFmMode, { inFM: true })
+            return
+        }
+
+        if (leavingPersonalFM) {
+            const restoreMode = preFmPlayMode === null ? normalizePlayMode(playMode.value, false) : preFmPlayMode
+            preFmPlayMode = null
+            applyPlayMode(restoreMode, { inFM: false })
+        }
+    }
+)
 
 /**
  * 基于当前歌曲ID检查并加载对应的视频
@@ -950,45 +1031,11 @@ export function changeProgressByDragEnd(toTime) {
 }
 // ------------
 export function changePlayMode() {
-    // FM模式下的特殊切换逻辑：只在模式2（单曲循环）和模式3（随机播放）之间切换
-    if (listInfo.value && listInfo.value.type === 'personalfm') {
-        if (playMode.value == 2) {
-            playMode.value = 3  // 从单曲循环切换到随机播放（播放下一首漫游音乐）
-        } else {
-            playMode.value = 2  // 从随机播放（或其他模式）切换到单曲循环
-        }
-    } else {
-        // 非FM模式下的原有逻辑
-        if (playMode.value != 3) playMode.value += 1
-        else playMode.value = 0
+    if (isPersonalFMContext()) {
+        applyPlayMode(playMode.value == 2 ? 3 : 2, { inFM: true })
+        return
     }
-
-    if (playMode.value == 2) currentMusic.value.loop(true) //循环模式
-    else currentMusic.value.loop(false)
-    if (playMode.value == 3) {
-        setShuffledList()
-    } else {
-        shuffledList.value = null
-        shuffleIndex.value = null
-    }
-    windowApi.changeTrayMusicPlaymode(playMode.value)
-
-  // 通知 MPRIS 循环模式
-  switch (playMode.value) {
-    case 0: // 顺序播放
-    case 3: // 随机播放
-      window.playerApi.switchRepeatMode('off')
-      break
-    case 1: // 列表循环
-      window.playerApi.switchRepeatMode('on')
-      break
-    case 2: // 单曲循环
-      window.playerApi.switchRepeatMode('one')
-      break
-  }
-
-  // 通知 MPRIS 随机状态
-  window.playerApi.switchShuffle(playMode.value === 3)
+    applyPlayMode(playMode.value != 3 ? playMode.value + 1 : 0, { inFM: false })
 }
 
 export function playAll(listType, list) {
@@ -1413,15 +1460,7 @@ windowApi.lastOrNextMusic((event, option) => {
     else if (option == 'next') playNext()
 })
 windowApi.changeMusicPlaymode((event, mode) => {
-    if (playMode.value != mode) playMode.value = mode
-    if (playMode.value == 2) currentMusic.value.loop(true) //循环模式
-    else currentMusic.value.loop(false)
-    if (playMode.value == 3) {
-        setShuffledList()
-    } else {
-        shuffledList.value = null
-        shuffleIndex.value = null
-    }
+    applyPlayMode(mode)
 })
 windowApi.volumeUp(() => {
     if (volume.value + 0.1 < 1) volume.value += 0.1
@@ -1489,15 +1528,11 @@ window.playerApi.onRepeat(() => {
 
 // 随机播放切换
 window.playerApi.onShuffle(() => {
-  if (playMode.value !== 3) {
-    playMode.value = 3
-    setShuffledList()
-  } else {
-    playMode.value = 0
-    shuffledList.value = null
-    shuffleIndex.value = null
+  if (isPersonalFMContext()) {
+    applyPlayMode(playMode.value === 2 ? 3 : 2, { inFM: true })
+    return
   }
-  window.playerApi.switchShuffle(playMode.value === 3)
+  applyPlayMode(playMode.value !== 3 ? 3 : 0, { inFM: false })
 })
 
 window.playerApi.onVolumeChanged((v) => {

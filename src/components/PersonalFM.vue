@@ -1074,11 +1074,6 @@ onMounted(() => {
         refreshFM()
     }
 
-    // 确保FM模式使用正确的播放模式
-    if (playerStore.playMode !== 2 && playerStore.playMode !== 3) {
-        playerStore.playMode = 2
-    }
-
     // 监听播放器控制事件
     window.addEventListener('fmPlayModeResponse', handleFMPlayModeResponse)
     window.addEventListener('fmPreviousResponse', handleFMPreviousResponse)

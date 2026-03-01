@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { getHistoryRecommendSongDates } from '../api/playlist';
 import { useLibraryStore } from '../store/libraryStore';
@@ -17,6 +17,10 @@ const loadingDates = ref(false);
 const loadingSongs = ref(false);
 const initialized = ref(false);
 const syncingFromRoute = ref(false);
+const dateDropdownOpen = ref(false);
+const dropdownRef = ref(null);
+const dateOptionRefs = ref([]);
+const activeOptionIndex = ref(-1);
 
 const todayDate = computed(() => {
     const now = new Date();
@@ -39,10 +43,130 @@ const dateOptions = computed(() => {
     if (!shouldInsertTodayOption.value) return historyDates.value;
     return [todayDate.value, ...historyDates.value];
 });
+const isDateDropdownDisabled = computed(() => loadingDates.value || loadingSongs.value || !dateOptions.value.length);
+const selectedDateLabel = computed(() => {
+    if (!dateOptions.value.length) return '暂无可选日期';
+    if (!selectedDate.value) return '请选择日期';
+    return formatDateLabel(selectedDate.value);
+});
+const activeDateOptionId = computed(() => {
+    const activeDate = dateOptions.value[activeOptionIndex.value];
+    if (!activeDate) return undefined;
+    return getDateOptionId(activeDate);
+});
 
 const hasDateOption = date => {
     if (!date) return false;
     return dateOptions.value.includes(date);
+};
+
+const getDateOptionId = date => `rec-date-option-${String(date).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+const getDateIndex = date => dateOptions.value.findIndex(item => item == date);
+
+const closeDateDropdown = () => {
+    dateDropdownOpen.value = false;
+};
+
+const scrollActiveOptionIntoView = () => {
+    const activeOption = dateOptionRefs.value[activeOptionIndex.value];
+    if (activeOption && typeof activeOption.scrollIntoView == 'function') {
+        activeOption.scrollIntoView({ block: 'nearest' });
+    }
+};
+
+const openDateDropdown = async () => {
+    if (isDateDropdownDisabled.value) return;
+    dateDropdownOpen.value = true;
+    const selectedIndex = getDateIndex(selectedDate.value);
+    activeOptionIndex.value = selectedIndex >= 0 ? selectedIndex : 0;
+    await nextTick();
+    scrollActiveOptionIntoView();
+};
+
+const toggleDateDropdown = async () => {
+    if (dateDropdownOpen.value) {
+        closeDateDropdown();
+        return;
+    }
+    await openDateDropdown();
+};
+
+const setDateOptionRef = (element, index) => {
+    if (!element) return;
+    dateOptionRefs.value[index] = element;
+};
+
+const setActiveOptionIndex = index => {
+    activeOptionIndex.value = index;
+};
+
+const selectDateOption = date => {
+    if (!hasDateOption(date) || isDateDropdownDisabled.value) return;
+    selectedDate.value = date;
+    activeOptionIndex.value = getDateIndex(date);
+    closeDateDropdown();
+};
+
+const handleClickOutside = event => {
+    if (!dateDropdownOpen.value || !dropdownRef.value) return;
+    if (!dropdownRef.value.contains(event.target)) {
+        closeDateDropdown();
+    }
+};
+
+const handleDateDropdownKeydown = async event => {
+    if (isDateDropdownDisabled.value) return;
+    const options = dateOptions.value;
+    if (!options.length) return;
+
+    if (event.key == 'Tab') {
+        closeDateDropdown();
+        return;
+    }
+
+    if (event.key == 'Escape') {
+        if (!dateDropdownOpen.value) return;
+        event.preventDefault();
+        closeDateDropdown();
+        return;
+    }
+
+    if (event.key == 'ArrowDown') {
+        event.preventDefault();
+        if (!dateDropdownOpen.value) {
+            await openDateDropdown();
+            return;
+        }
+        const nextIndex = activeOptionIndex.value + 1 >= options.length ? 0 : activeOptionIndex.value + 1;
+        activeOptionIndex.value = nextIndex;
+        await nextTick();
+        scrollActiveOptionIntoView();
+        return;
+    }
+
+    if (event.key == 'ArrowUp') {
+        event.preventDefault();
+        if (!dateDropdownOpen.value) {
+            await openDateDropdown();
+            return;
+        }
+        const nextIndex = activeOptionIndex.value - 1 < 0 ? options.length - 1 : activeOptionIndex.value - 1;
+        activeOptionIndex.value = nextIndex;
+        await nextTick();
+        scrollActiveOptionIntoView();
+        return;
+    }
+
+    if (event.key == 'Enter' || event.key == ' ') {
+        event.preventDefault();
+        if (!dateDropdownOpen.value) {
+            await openDateDropdown();
+            return;
+        }
+        const targetDate = options[activeOptionIndex.value] || options[0];
+        if (targetDate) selectDateOption(targetDate);
+    }
 };
 
 const normalizeDateList = result => {
@@ -125,7 +249,29 @@ watch(
     }
 );
 
+watch(dateOptions, options => {
+    dateOptionRefs.value = [];
+    if (!options.length) {
+        activeOptionIndex.value = -1;
+        closeDateDropdown();
+        return;
+    }
+    const selectedIndex = getDateIndex(selectedDate.value);
+    if (selectedIndex >= 0) {
+        activeOptionIndex.value = selectedIndex;
+        return;
+    }
+    if (activeOptionIndex.value < 0 || activeOptionIndex.value >= options.length) {
+        activeOptionIndex.value = 0;
+    }
+});
+
+watch(isDateDropdownDisabled, disabled => {
+    if (disabled) closeDateDropdown();
+});
+
 onMounted(async () => {
+    window.addEventListener('click', handleClickOutside);
     await loadHistoryDates();
     applyDateFromRouteQuery();
 
@@ -136,6 +282,14 @@ onMounted(async () => {
     await loadRecommendSongs(selectedDate.value);
     initialized.value = true;
 });
+
+onUnmounted(() => {
+    window.removeEventListener('click', handleClickOutside);
+});
+
+onDeactivated(() => {
+    closeDateDropdown();
+});
 </script>
 
 <template>
@@ -144,11 +298,39 @@ onMounted(async () => {
             <h1>每日推荐歌曲</h1>
             <span class="rec-subtitle">根据你的音乐口味生成，每天6:00更新</span>
             <div class="rec-option rec-option-date">
-                <label class="rec-date-picker">
-                    <select v-model="selectedDate" :disabled="loadingDates || loadingSongs">
-                        <option v-for="date in dateOptions" :key="date" :value="date">{{ formatDateLabel(date) }}</option>
-                    </select>
-                </label>
+                <div class="rec-date-picker" ref="dropdownRef" @keydown="handleDateDropdownKeydown">
+                    <button
+                        class="rec-date-trigger"
+                        :class="{ 'is-open': dateDropdownOpen }"
+                        type="button"
+                        :disabled="isDateDropdownDisabled"
+                        aria-haspopup="listbox"
+                        :aria-expanded="dateDropdownOpen ? 'true' : 'false'"
+                        @click="toggleDateDropdown"
+                    >
+                        <span class="rec-date-trigger-label">{{ selectedDateLabel }}</span>
+                        <span class="rec-date-trigger-arrow" aria-hidden="true">▾</span>
+                    </button>
+                    <transition name="rec-date-dropdown">
+                        <div v-if="dateDropdownOpen" class="rec-date-dropdown" role="listbox" :aria-activedescendant="activeDateOptionId">
+                            <button
+                                v-for="(date, index) in dateOptions"
+                                :id="getDateOptionId(date)"
+                                :key="date"
+                                :ref="element => setDateOptionRef(element, index)"
+                                class="rec-date-option"
+                                :class="{ 'is-active': index == activeOptionIndex, 'is-selected': date == selectedDate }"
+                                type="button"
+                                role="option"
+                                :aria-selected="date == selectedDate ? 'true' : 'false'"
+                                @mouseenter="setActiveOptionIndex(index)"
+                                @click="selectDateOption(date)"
+                            >
+                                {{ formatDateLabel(date) }}
+                            </button>
+                        </div>
+                    </transition>
+                </div>
             </div>
             <div class="rec-option rec-option-action">
                 <button class="play-all" @click="playAll('rec', libraryStore.librarySongs)">播放全部</button>
@@ -166,6 +348,11 @@ onMounted(async () => {
     --rec-muted: var(--muted-text);
     --rec-border: var(--border);
     --rec-panel: var(--panel);
+    --rec-select-bg: rgba(255, 255, 255, 0.35);
+    --rec-select-dropdown-bg: #e4f0f0;
+    --rec-select-text: #000000;
+    --rec-select-active-bg: #000000;
+    --rec-select-active-text: #ffffff;
     padding-top: 40px;
     height: 100%;
     overflow: auto;
@@ -239,29 +426,114 @@ onMounted(async () => {
     }
     .rec-date-picker {
         font: 14px SourceHanSansCN-Bold;
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        span {
-            color: var(--rec-muted);
-        }
-        select {
+        display: inline-block;
+        position: relative;
+        min-width: 220px;
+        .rec-date-trigger {
+            width: 100%;
             min-width: 220px;
             height: 34px;
             padding: 0 10px;
             border: 1px solid var(--rec-border);
-            background-color: var(--rec-panel);
+            background-color: var(--rec-select-bg);
             font: 13px SourceHanSansCN-Bold;
-            color: var(--rec-text);
+            color: var(--rec-select-text) !important;
             outline: none;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            -webkit-appearance: none;
+            appearance: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            cursor: pointer;
+            transition: border-color 0.16s ease;
             &:focus {
+                border-color: var(--rec-text);
+            }
+            &:focus-visible {
+                border-color: var(--rec-text);
+            }
+            &.is-open {
                 border-color: var(--rec-text);
             }
             &:disabled {
                 opacity: 0.6;
                 cursor: not-allowed;
             }
+            .rec-date-trigger-label {
+                flex: 1 1 auto;
+                min-width: 0;
+                text-align: center;
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+                color: inherit !important;
+            }
+            .rec-date-trigger-arrow {
+                flex: 0 0 auto;
+                transition: transform 0.2s ease;
+                color: inherit !important;
+            }
+            &.is-open .rec-date-trigger-arrow {
+                transform: rotate(180deg);
+            }
         }
+        .rec-date-dropdown {
+            width: 100%;
+            max-height: 220px;
+            overflow-y: auto;
+            border: 1px solid var(--rec-border);
+            border-top: none;
+            background-color: var(--rec-select-dropdown-bg);
+            position: absolute;
+            left: 0;
+            top: calc(100% + 1px);
+            z-index: 5;
+            border-radius: 0 !important;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+            .rec-date-option {
+                width: 100%;
+                min-height: 34px;
+                border: none;
+                padding: 0 10px;
+                background-color: var(--rec-select-dropdown-bg);
+                background-image: linear-gradient(90deg, var(--rec-select-active-bg), var(--rec-select-active-bg));
+                background-repeat: repeat-y;
+                background-position: -220px 0;
+                color: var(--rec-select-text) !important;
+                text-align: center;
+                font: 13px SourceHanSansCN-Bold;
+                outline: none;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                -webkit-appearance: none;
+                appearance: none;
+                display: inline-flex;
+                justify-content: center;
+                align-items: center;
+                cursor: pointer;
+                transition: background-position 0.2s, color 0.2s;
+                &:hover,
+                &:focus-visible,
+                &.is-active,
+                &.is-selected {
+                    background-position: 0 0;
+                    color: var(--rec-select-active-text) !important;
+                }
+            }
+        }
+    }
+    .rec-date-dropdown-enter-active,
+    .rec-date-dropdown-leave-active {
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        transform-origin: top;
+    }
+    .rec-date-dropdown-enter-from,
+    .rec-date-dropdown-leave-to {
+        opacity: 0;
+        transform: translateY(-4px);
     }
     .rec-status {
         margin-bottom: 14px;
@@ -269,5 +541,14 @@ onMounted(async () => {
         font: 13px SourceHanSansCN-Bold;
         color: var(--rec-muted);
     }
+}
+
+:global(html.dark .rec-container),
+:global(.dark .rec-container) {
+    --rec-select-bg: #000000;
+    --rec-select-dropdown-bg: #000000;
+    --rec-select-text: #ffffff;
+    --rec-select-active-bg: #ffffff;
+    --rec-select-active-text: #000000;
 }
 </style>
