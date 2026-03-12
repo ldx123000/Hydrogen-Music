@@ -29,48 +29,32 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.on('window-min', () => {
         win.minimize()
     })
-    // 保存窗口的原始状态
-    let savedBounds = null
-    let isWindowMaximized = false
+    const sendWindowMaximizedState = () => {
+        if (win.isDestroyed() || win.webContents.isDestroyed()) return
+        win.webContents.send('window-maximized-changed', win.isMaximized())
+    }
+
+    ipcMain.removeHandler('window-is-maximized')
+    ipcMain.handle('window-is-maximized', () => win.isMaximized())
 
     ipcMain.on('window-max', () => {
-        if (isWindowMaximized) {
-            // macOS 上 restore() 可能不可靠，手动设置窗口大小和位置
-            if (savedBounds) {
-                win.setBounds(savedBounds)
-            } else {
-                // 如果没有保存的边界，使用默认大小
-                win.setBounds({
-                    x: 170,
-                    y: 162,
-                    width: 1024,
-                    height: 672
-                })
-            }
-            isWindowMaximized = false
+        if (win.isMaximized()) {
+            win.unmaximize()
         } else {
-            // 保存当前窗口状态
-            savedBounds = win.getBounds()
             win.maximize()
-            isWindowMaximized = true
         }
     })
 
-    // 监听窗口状态变化事件
     win.on('maximize', () => {
-        if (!isWindowMaximized) {
-            isWindowMaximized = true
-        }
+        sendWindowMaximizedState()
     })
 
     win.on('unmaximize', () => {
-        if (isWindowMaximized) {
-            isWindowMaximized = false
-        }
+        sendWindowMaximizedState()
     })
 
     win.on('restore', () => {
-        isWindowMaximized = false
+        sendWindowMaximizedState()
     })
     ipcMain.on('window-close', async () => {
         const settings = await settingsStore.get('settings')

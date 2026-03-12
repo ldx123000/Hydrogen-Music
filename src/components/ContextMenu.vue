@@ -25,6 +25,39 @@
   const justNewPlaylist = ref(false)
   const newPlaylistTitle = ref(null)
 
+  const isPlaylistUpdateSuccess = result => !!(result && (
+    (result.status === 200 && result.body && result.body.code === 200) ||
+    result.code === 200 ||
+    result.status === 200
+  ))
+
+  const getPlaylistDisplayName = playlist => {
+    const rawName = playlist?.name ?? playlist?.title ?? ''
+    const playlistName = typeof rawName == 'string' ? rawName.trim() : String(rawName || '').trim()
+    const isFavoritePlaylist = playlist?.id == userStore.favoritePlaylistId
+      || Number(playlist?.specialType) === 5
+      || playlistName === '我喜欢的音乐'
+      || playlistName.endsWith('喜欢的音乐')
+
+    if (isFavoritePlaylist) return '我喜欢的音乐'
+    return playlistName || '歌单'
+  }
+
+  const normalizePlaylistTarget = playlistTarget => {
+    if (playlistTarget && typeof playlistTarget == 'object') {
+      return {
+        id: playlistTarget.id,
+        name: getPlaylistDisplayName(playlistTarget),
+      }
+    }
+
+    const matchedPlaylist = (libraryStore.playlistUserCreated || []).find(item => item.id == playlistTarget)
+    return {
+      id: playlistTarget,
+      name: matchedPlaylist ? getPlaylistDisplayName(matchedPlaylist) : '歌单',
+    }
+  }
+
   // 确保在打开“添加到歌单”弹窗时，已加载用户歌单列表
   const ensureUserPlaylistsLoaded = async () => {
     try {
@@ -73,11 +106,7 @@
       const result = await updatePlaylist(params)
       
       // 根据实际返回格式判断成功
-      const isSuccess = result && (
-        (result.status === 200 && result.body && result.body.code === 200) ||
-        result.code === 200 ||
-        result.status === 200
-      )
+      const isSuccess = isPlaylistUpdateSuccess(result)
       
       if(isSuccess) {
         // 从当前歌曲列表中移除该歌曲
@@ -93,7 +122,8 @@
         await updateCurrentPlaylistIfViewing()
         
         updatePlaylistCache()
-        noticeOpen('删除成功', 2)
+        const isFavoritePlaylist = userStore.favoritePlaylistId && otherStore.selectedPlaylist.id == userStore.favoritePlaylistId
+        noticeOpen(isFavoritePlaylist ? '已取消喜欢' : '删除成功', 2)
       } else {
         noticeOpen('删除失败', 2)
       }
@@ -156,7 +186,7 @@
         console.log('从我喜欢的音乐删除歌曲，同步更新喜欢列表...')
         
         // 从本地喜欢列表中移除该歌曲
-        if (userStore.likelist && userStore.likelist.includes(otherStore.selectedItem.id)) {
+        if (Array.isArray(userStore.likelist) && userStore.likelist.includes(otherStore.selectedItem.id)) {
           const likeIndex = userStore.likelist.indexOf(otherStore.selectedItem.id)
           userStore.likelist.splice(likeIndex, 1)
         }
@@ -164,7 +194,7 @@
         // 异步获取最新的喜欢列表以确保数据最终一致
         try {
           const res = await getLikelist(userStore.user.userId)
-          userStore.updateLikelist(res.ids)
+          userStore.updateLikelist(res?.ids)
           console.log('喜欢列表已同步更新')
         } catch (error) {
           console.error('同步喜欢列表失败:', error)
@@ -222,9 +252,10 @@
     if(id == 10) { windowApi.openLocalFolder(otherStore.selectedItem.dirPath);return; }
   }
   const createAndAdd = () => {
-    if(newPlaylistTitle.value != '' || newPlaylistTitle.value != null || newPlaylistTitle.value != undefined) {
+    const playlistName = String(newPlaylistTitle.value || '').trim()
+    if(playlistName) {
       let params = {
-        name: newPlaylistTitle.value,
+        name: playlistName,
         privacy: (isPrivacy.value ? 10 : 0),
       }
       createPlaylist(params).then(result => {
@@ -238,8 +269,7 @@
             noticeOpen('添加成功', 2)
             return
           }
-          addToMyPlaylist(result.id)
-          updatePlaylistCache()
+          addToMyPlaylist({ id: result.id, name: playlistName })
         } else {
           noticeOpen('创建歌单错误', 2)
         }
@@ -254,15 +284,17 @@
     }
     createActive.value = false
   }
-  const addToMyPlaylist = (id) => {
+  const addToMyPlaylist = playlistTarget => {
+      const playlist = normalizePlaylistTarget(playlistTarget)
       let params = {
         op: 'add',
-        pid: id,
+        pid: playlist.id,
         tracks: otherStore.selectedItem.id
       }
       updatePlaylist(params).then(result => {
-        if(result.status == 200) {
+        if(isPlaylistUpdateSuccess(result)) {
           updatePlaylistCache()
+          noticeOpen(`已添加到${playlist.name}`, 2)
         }else {
           noticeOpen('添加至歌单错误', 2)
         }
@@ -304,7 +336,7 @@
               <div class="create-confirm" @click="createAndAdd()">完成</div>
               <div class="create-cancel" @click="createCancel()">取消</div>
             </div>
-            <div class="list" @click="addToMyPlaylist(item.id)" v-show="!justNewPlaylist" v-for="(item, index) in libraryStore.playlistUserCreated">
+            <div class="list" @click="addToMyPlaylist(item)" v-show="!justNewPlaylist" v-for="(item, index) in libraryStore.playlistUserCreated">
               <div class="list-img">
                 <img :src="(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl) + '?param=150y150'" alt="">
               </div>

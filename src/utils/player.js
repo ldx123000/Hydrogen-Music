@@ -3,6 +3,7 @@ import { Howl, Howler } from 'howler'
 import { formatDuration } from './time';
 import { noticeOpen } from './dialog'
 import { checkMusic, likeMusic, getLyric } from '../api/song'
+import { updatePlaylist } from '../api/playlist'
 import { getLikelist, getUserPlaylist } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
@@ -74,6 +75,13 @@ let videoCheckInterval = null
 let closedVideoMemory = new Set() // 记录用户主动关闭视频的歌曲ID
 const NORMAL_PLAY_MODES = Object.freeze([0, 1, 2, 3])
 let preFmPlayMode = null
+const DEFAULT_FAVORITE_PLAYLIST_NAME = '我喜欢的音乐'
+const LIKE_SYNC_RETRY_DELAY = 280
+const LIKE_SYNC_RETRY_LIMIT = 2
+const LIKE_REQUEST_COOLDOWN_MS = 1200
+let likeActionToken = 0
+let likeRequestQueue = Promise.resolve()
+let nextLikeRequestAvailableAt = 0
 
 function isPersonalFMContext() {
     return !!(listInfo.value && listInfo.value.type === 'personalfm')
@@ -1073,10 +1081,165 @@ function getRandomInt(min, max) { // 获取min到max的一个随机数，包含m
     return Math.floor(Math.random() * (max - min + 1) + min)
 }
 
+function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function cloneLikelist(likelist = userStore.likelist) {
+    return Array.isArray(likelist) ? likelist.slice() : []
+}
+
+export function getLikeActionErrorMessage(result, fallback = '未知错误') {
+    return result?.body?.message || result?.body?.msg || result?.message || result?.msg || fallback
+}
+
+export function isSongLiked(songId, likelist = userStore.likelist) {
+    const targetSongId = String(songId ?? '')
+    if (!targetSongId || !Array.isArray(likelist)) return false
+    return likelist.some(id => String(id) === targetSongId)
+}
+
+export function applyOptimisticLikeState(songId, like, likelist = userStore.likelist) {
+    const nextLikelist = cloneLikelist(likelist)
+    const likedIndex = nextLikelist.findIndex(id => String(id) === String(songId))
+
+    if (like) {
+        if (likedIndex === -1) nextLikelist.unshift(songId)
+        return nextLikelist
+    }
+
+    if (likedIndex !== -1) nextLikelist.splice(likedIndex, 1)
+    return nextLikelist
+}
+
+export function createLikeActionToken() {
+    likeActionToken += 1
+    return likeActionToken
+}
+
+export function isActiveLikeActionToken(token) {
+    return token === likeActionToken
+}
+
+async function fetchLikelistSnapshot() {
+    if (!userStore.user?.userId) return null
+    const response = await getLikelist(userStore.user.userId)
+    return Array.isArray(response?.ids) ? response.ids.slice() : null
+}
+
+export async function queueLikeRequest(actionToken, requestFactory) {
+    const runTask = async () => {
+        const waitMs = Math.max(0, nextLikeRequestAvailableAt - Date.now())
+        if (waitMs > 0) await wait(waitMs)
+        if (!isActiveLikeActionToken(actionToken)) return { skipped: true }
+
+        let hasRequested = false
+        try {
+            const result = await requestFactory()
+            hasRequested = true
+            return result
+        } finally {
+            if (hasRequested) {
+                nextLikeRequestAvailableAt = Date.now() + LIKE_REQUEST_COOLDOWN_MS
+            }
+        }
+    }
+
+    const queuedTask = likeRequestQueue.then(runTask, runTask)
+    likeRequestQueue = queuedTask.catch(() => null)
+    return queuedTask
+}
+
+async function resolveLikelistAfterLikeAction(songId, like, fallbackLikelist) {
+    let latestSnapshot = null
+
+    for (let attempt = 0; attempt < LIKE_SYNC_RETRY_LIMIT; attempt++) {
+        try {
+            const snapshot = await fetchLikelistSnapshot()
+            if (Array.isArray(snapshot)) {
+                latestSnapshot = snapshot
+                if (isSongLiked(songId, snapshot) === !!like) return snapshot
+            }
+        } catch (error) {
+            console.error('刷新喜欢列表失败:', error)
+        }
+
+        if (attempt < LIKE_SYNC_RETRY_LIMIT - 1) {
+            await wait(LIKE_SYNC_RETRY_DELAY)
+        }
+    }
+
+    if (Array.isArray(latestSnapshot)) {
+        return applyOptimisticLikeState(songId, like, latestSnapshot)
+    }
+
+    return cloneLikelist(fallbackLikelist)
+}
+
+function normalizeFavoritePlaylistMeta(playlist) {
+    const playlistId = playlist?.id ?? null
+    if (!playlistId) return null
+
+    const rawName = playlist?.name ?? playlist?.title ?? ''
+    const playlistName = typeof rawName == 'string' ? rawName.trim() : String(rawName || '').trim()
+    const isFavoritePlaylist = Number(playlist?.specialType) === 5
+        || playlistName === DEFAULT_FAVORITE_PLAYLIST_NAME
+        || playlistName.endsWith('喜欢的音乐')
+
+    return {
+        id: playlistId,
+        name: isFavoritePlaylist ? DEFAULT_FAVORITE_PLAYLIST_NAME : (playlistName || DEFAULT_FAVORITE_PLAYLIST_NAME),
+    }
+}
+
+function cacheFavoritePlaylistMeta(playlist) {
+    const meta = normalizeFavoritePlaylistMeta(playlist)
+    if (!meta) return null
+    userStore.updateFavoritePlaylistMeta(meta)
+    return meta
+}
+
+export function resolveFavoritePlaylistMeta(playlists) {
+    const playlistList = Array.isArray(playlists) ? playlists : []
+    if (playlistList.length == 0) return null
+
+    const userId = userStore.user?.userId
+    const ownedPlaylists = playlistList.filter(playlist => !userId || playlist?.creator?.userId === userId)
+    const candidatePlaylists = ownedPlaylists.length > 0 ? ownedPlaylists : playlistList
+
+    const favoritePlaylist = candidatePlaylists.find(playlist => Number(playlist?.specialType) === 5)
+        || candidatePlaylists.find(playlist => {
+            const playlistName = typeof playlist?.name == 'string' ? playlist.name : ''
+            return playlistName === DEFAULT_FAVORITE_PLAYLIST_NAME || playlistName.endsWith('喜欢的音乐')
+        })
+        || candidatePlaylists[0]
+
+    return normalizeFavoritePlaylistMeta(favoritePlaylist)
+}
+
 export async function getFavoritePlaylistId() {
-    // 如果已经缓存了播放列表ID，直接返回
-    if (userStore.favoritePlaylistId) {
-        return userStore.favoritePlaylistId
+    const cachedId = userStore.favoritePlaylistId
+    const cachedName = typeof userStore.favoritePlaylistName == 'string' ? userStore.favoritePlaylistName.trim() : ''
+
+    if (cachedId && cachedName) {
+        return {
+            id: cachedId,
+            name: cachedName,
+        }
+    }
+
+    const cachedFavoritePlaylist = resolveFavoritePlaylistMeta(libraryStore.playlistUserCreated)
+    if (cachedFavoritePlaylist) return cacheFavoritePlaylistMeta(cachedFavoritePlaylist)
+
+    if (cachedId) {
+        return {
+            id: cachedId,
+            name: cachedName || DEFAULT_FAVORITE_PLAYLIST_NAME,
+        }
+    }
+
+    if (!userStore.user?.userId) {
+        return cachedName ? { id: null, name: cachedName } : null
     }
 
     try {
@@ -1089,42 +1252,93 @@ export async function getFavoritePlaylistId() {
 
         const result = await getUserPlaylist(params)
         if (result && result.playlist && result.playlist.length > 0) {
-            // 找到用户创建的第一个播放列表（通常是"我喜欢的音乐"）
-            const favoritePlaylist = result.playlist.find(playlist =>
-                playlist.creator.userId === userStore.user.userId &&
-                playlist.specialType === 5 // 网易云音乐中"我喜欢的音乐"的特殊类型
-            )
-
-            if (favoritePlaylist) {
-                userStore.updateFavoritePlaylistId(favoritePlaylist.id)
-                return favoritePlaylist.id
-            }
-
-            // 如果没找到特殊类型，尝试通过名称匹配
-            const playlistByName = result.playlist.find(playlist =>
-                playlist.creator.userId === userStore.user.userId &&
-                (playlist.name.includes('我喜欢') || playlist.name.includes('喜欢的音乐'))
-            )
-
-            if (playlistByName) {
-                userStore.updateFavoritePlaylistId(playlistByName.id)
-                return playlistByName.id
-            }
-
-            // 最后回退到用户创建的第一个播放列表
-            const firstCreatedPlaylist = result.playlist.find(playlist =>
-                playlist.creator.userId === userStore.user.userId
-            )
-
-            if (firstCreatedPlaylist) {
-                userStore.updateFavoritePlaylistId(firstCreatedPlaylist.id)
-                return firstCreatedPlaylist.id
-            }
+            const favoritePlaylist = resolveFavoritePlaylistMeta(result.playlist)
+            if (favoritePlaylist) return cacheFavoritePlaylistMeta(favoritePlaylist)
         }
     } catch (error) {
     }
 
+    if (cachedName) return { id: cachedId || null, name: cachedName }
+    if (cachedId) return { id: cachedId, name: DEFAULT_FAVORITE_PLAYLIST_NAME }
     return null
+}
+
+export async function getFavoritePlaylistNoticeText(like) {
+    if (!like) return '已取消喜欢'
+
+    const favoritePlaylist = await getFavoritePlaylistId()
+    return `已添加到${favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}`
+}
+
+export function isPlaylistTrackOperationSuccess(result) {
+    return !!(result && (
+        (result.status === 200 && result.body && result.body.code === 200) ||
+        result.code === 200 ||
+        result.status === 200
+    ))
+}
+
+export async function updateFavoritePlaylistTrack(songId, like) {
+    const favoritePlaylist = await getFavoritePlaylistId()
+    if (!favoritePlaylist?.id) {
+        return {
+            success: false,
+            result: null,
+            favoritePlaylist: null,
+            message: '未找到我喜欢的音乐歌单',
+        }
+    }
+
+    const params = {
+        op: like ? 'add' : 'del',
+        pid: favoritePlaylist.id,
+        tracks: songId,
+        timestamp: new Date().getTime(),
+    }
+
+    const result = await updatePlaylist(params)
+    return {
+        success: isPlaylistTrackOperationSuccess(result),
+        result,
+        favoritePlaylist,
+        message: getLikeActionErrorMessage(result, '未知错误'),
+    }
+}
+
+export async function syncLikelistAfterLikeAction({ songId, like, actionToken, fallbackLikelist, refreshFavoritePlaylist = true } = {}) {
+    const nextLikelist = await resolveLikelistAfterLikeAction(songId, like, fallbackLikelist)
+    if (!isActiveLikeActionToken(actionToken)) return cloneLikelist(nextLikelist)
+
+    userStore.updateLikelist(nextLikelist)
+    if (refreshFavoritePlaylist) await updateFavoritePlaylistIfViewing()
+    return nextLikelist
+}
+
+function finalizeLikeActionSideEffects() {
+    otherStore.addPlaylistShow = false
+    libraryStore.needTimestamp.push('/playlist/detail')
+    libraryStore.needTimestamp.push('/playlist/track/all')
+
+    let noCacheTimer = null
+    if (noCacheTimer) clearTimeout(noCacheTimer)
+    noCacheTimer = setTimeout(() => {
+        const detailIndex = libraryStore.needTimestamp.indexOf('/playlist/detail')
+        const trackIndex = libraryStore.needTimestamp.indexOf('/playlist/track/all')
+        if (detailIndex !== -1) libraryStore.needTimestamp.splice(detailIndex, 1)
+        if (trackIndex !== -1) libraryStore.needTimestamp.splice(trackIndex, 1)
+        clearTimeout(noCacheTimer)
+    }, 130000)
+
+    try {
+        if (libraryStore.listType1 == 0 && libraryStore.listType2 == 0) {
+            const myPlaylistElement = document.getElementById('myPlaylist')
+            if (myPlaylistElement) {
+                myPlaylistElement.click()
+            }
+        }
+    } catch (e) {
+        console.error('点击myPlaylist失败，忽略:', e)
+    }
 }
 
 export async function likeSong(like) {
@@ -1143,65 +1357,60 @@ export async function likeSong(like) {
         return
     }
 
-    if (!userStore.likelist) {
+    if (!Array.isArray(userStore.likelist)) {
         console.error('likeSong失败: 喜欢列表未加载')
         noticeOpen("操作失败：喜欢列表未加载，请稍后重试", 2)
         return
     }
 
+    const actionToken = createLikeActionToken()
+
     try {
         console.log('调用官方 /like API, songId:', songIdValue, 'like:', like, 'userId:', userStore.user.userId)
-        const result = await likeMusic(songIdValue, like)
+        const result = await queueLikeRequest(actionToken, () => likeMusic(songIdValue, like))
+        if (result?.skipped) return
         console.log('likeMusic 返回结果:', result)
 
         if (result && result.code == 200) {
+            if (!isActiveLikeActionToken(actionToken)) return
             console.log('官方 /like API 成功')
-            await updateLikelistAfterSuccess()
-            otherStore.addPlaylistShow = false
-            libraryStore.needTimestamp.push('/playlist/detail')
-            libraryStore.needTimestamp.push('/playlist/track/all')
-
-            let noCacheTimer = null
-            if (noCacheTimer) clearTimeout(noCacheTimer)
-            noCacheTimer = setTimeout(() => {
-                const detailIndex = libraryStore.needTimestamp.indexOf('/playlist/detail')
-                const trackIndex = libraryStore.needTimestamp.indexOf('/playlist/track/all')
-                if (detailIndex !== -1) libraryStore.needTimestamp.splice(detailIndex, 1)
-                if (trackIndex !== -1) libraryStore.needTimestamp.splice(trackIndex, 1)
-                clearTimeout(noCacheTimer)
-            }, 130000)
-
-            try {
-                if (libraryStore.listType1 == 0 && libraryStore.listType2 == 0) {
-                    const myPlaylistElement = document.getElementById('myPlaylist')
-                    if (myPlaylistElement) {
-                        myPlaylistElement.click()
-                    }
-                }
-            } catch (e) {
-                console.error('点击myPlaylist失败，忽略:', e)
-            }
+            const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
+            userStore.updateLikelist(fallbackLikelist)
+            noticeOpen(await getFavoritePlaylistNoticeText(like), 2)
+            await syncLikelistAfterLikeAction({
+                songId: songIdValue,
+                like,
+                actionToken,
+                fallbackLikelist,
+            })
+            if (!isActiveLikeActionToken(actionToken)) return
+            finalizeLikeActionSideEffects()
         } else {
-            console.error('官方 /like API 失败:', result)
-            const errorMsg = result?.message || result?.msg || '未知错误'
-            noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
+            console.warn('官方 /like API 失败，尝试使用歌单 tracks:', getLikeActionErrorMessage(result))
+            const fallbackResult = await updateFavoritePlaylistTrack(songIdValue, like)
+            if (fallbackResult.success) {
+                if (!isActiveLikeActionToken(actionToken)) return
+                const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
+                userStore.updateLikelist(fallbackLikelist)
+                noticeOpen(like ? `已添加到${fallbackResult.favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}` : '已取消喜欢', 2)
+                await syncLikelistAfterLikeAction({
+                    songId: songIdValue,
+                    like,
+                    actionToken,
+                    fallbackLikelist,
+                })
+                if (!isActiveLikeActionToken(actionToken)) return
+                finalizeLikeActionSideEffects()
+            } else {
+                console.error('歌单 tracks 降级也失败:', fallbackResult.result || fallbackResult.message)
+                const errorMsg = fallbackResult.message || getLikeActionErrorMessage(result)
+                noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
+            }
         }
     } catch (error) {
         console.error('调用 /like API 异常:', error)
         const errorMsg = error?.response?.data?.message || error?.message || '网络错误'
         noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
-    }
-}
-
-async function updateLikelistAfterSuccess() {
-    try {
-        const res = await getLikelist(userStore.user.userId)
-        userStore.likelist = res.ids
-
-        // 如果当前正在查看"我喜欢的音乐"歌单，实时更新歌单内容
-        await updateFavoritePlaylistIfViewing()
-    } catch (error) {
-        console.error('更新喜欢列表失败:', error)
     }
 }
 

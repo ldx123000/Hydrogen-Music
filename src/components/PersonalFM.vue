@@ -163,10 +163,9 @@ import { getRecommendSongs } from '../api/playlist'
 import { usePlayerStore } from '../store/playerStore'
 import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
+import { noticeOpen } from '../utils/dialog'
 import { mapSongsPlayableStatus } from '../utils/songStatus'
-import { play, getFavoritePlaylistId, setSongLevel } from '../utils/player'
-import { updatePlaylist } from '../api/playlist'
-import { getLikelist } from '../api/user'
+import { applyOptimisticLikeState, createLikeActionToken, getFavoritePlaylistNoticeText, getLikeActionErrorMessage, isActiveLikeActionToken, play, queueLikeRequest, setSongLevel, syncLikelistAfterLikeAction, updateFavoritePlaylistTrack } from '../utils/player'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
@@ -892,6 +891,9 @@ const updateFavoritePlaylistIfViewing = async () => {
 
 const likeSong = async () => {
     if (!currentSong.value) return
+    if (!Array.isArray(likelist.value)) return
+
+    const actionToken = createLikeActionToken()
 
     try {
         // 使用计算属性来判断当前的操作是“喜欢”还是“取消喜欢”
@@ -900,38 +902,43 @@ const likeSong = async () => {
 
         // 1) 优先使用官方 /like 接口
         try {
-            const result = await likeMusic(currentSong.value.id, isLiked)
+            const result = await queueLikeRequest(actionToken, () => likeMusic(currentSong.value.id, isLiked))
+            if (result?.skipped) return
             if (result && result.code === 200) {
-                const res = await getLikelist(userStore.user.userId)
-                userStore.updateLikelist(res.ids)
-                await updateFavoritePlaylistIfViewing()
+                if (!isActiveLikeActionToken(actionToken)) return
+                const fallbackLikelist = applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
+                userStore.updateLikelist(fallbackLikelist)
+                noticeOpen(await getFavoritePlaylistNoticeText(isLiked), 2)
+                await syncLikelistAfterLikeAction({
+                    songId: currentSong.value.id,
+                    like: isLiked,
+                    actionToken,
+                    fallbackLikelist,
+                })
                 return
             }
-            throw new Error('likeMusic 返回异常')
+            throw new Error(getLikeActionErrorMessage(result, 'likeMusic 返回异常'))
         } catch (apiErr) {
             console.warn('PersonalFM likeMusic 失败，尝试使用歌单 tracks:', apiErr.message)
         }
 
         // 2) 降级：使用“我喜欢的音乐”歌单 tracks
         try {
-            const favoritePlaylistId = await getFavoritePlaylistId()
-            if (favoritePlaylistId) {
-                const params = {
-                    op: isLiked ? 'add' : 'del',
-                    pid: favoritePlaylistId,
-                    tracks: currentSong.value.id,
-                    timestamp: new Date().getTime(),
-                }
-                const result = await updatePlaylist(params)
-                const isSuccess = result && ((result.status === 200 && result.body && result.body.code === 200) || result.code === 200 || result.status === 200)
-                if (isSuccess) {
-                    const res = await getLikelist(userStore.user.userId)
-                    userStore.updateLikelist(res.ids)
-                    await updateFavoritePlaylistIfViewing()
-                    return
-                }
+            const fallbackResult = await updateFavoritePlaylistTrack(currentSong.value.id, isLiked)
+            if (fallbackResult.success) {
+                if (!isActiveLikeActionToken(actionToken)) return
+                const fallbackLikelist = applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
+                userStore.updateLikelist(fallbackLikelist)
+                noticeOpen(isLiked ? `已添加到${fallbackResult.favoritePlaylist?.name || '我喜欢的音乐'}` : '已取消喜欢', 2)
+                await syncLikelistAfterLikeAction({
+                    songId: currentSong.value.id,
+                    like: isLiked,
+                    actionToken,
+                    fallbackLikelist,
+                })
+                return
             }
-            throw new Error('歌单 tracks 返回异常')
+            throw new Error(fallbackResult.message || '歌单 tracks 返回异常')
         } catch (playlistError) {
             console.error('PersonalFM 歌单 tracks 也失败:', playlistError)
         }

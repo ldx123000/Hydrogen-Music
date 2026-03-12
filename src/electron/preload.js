@@ -9,6 +9,16 @@ function windowMax() {
 function windowClose() {
     ipcRenderer.send('window-close')
 }
+function getWindowMaximizedState() {
+    return ipcRenderer.invoke('window-is-maximized')
+}
+function onWindowMaximizedChange(callback) {
+    const listener = (_event, isMaximized) => callback?.(Boolean(isMaximized))
+    ipcRenderer.on('window-maximized-changed', listener)
+    return () => {
+        ipcRenderer.removeListener('window-maximized-changed', listener)
+    }
+}
 function toRegister(url) {
     ipcRenderer.send('to-register', url)
 }
@@ -179,6 +189,8 @@ contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
     windowMax,
     windowClose,
+    getWindowMaximizedState,
+    onWindowMaximizedChange,
     toRegister,
     beforeQuit,
     exitApp,

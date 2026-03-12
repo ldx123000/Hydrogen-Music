@@ -348,6 +348,9 @@ const userLogout = async () => {
             if (result.code == 200) {
                 window.localStorage.clear()
                 userStore.user = null
+                userStore.likelist = null
+                userStore.favoritePlaylistId = null
+                userStore.favoritePlaylistName = null
                 userStore.biliUser = null
 
                 router.push('/')

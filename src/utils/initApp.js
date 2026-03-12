@@ -1,6 +1,6 @@
 import pinia from '../store/pinia'
 import { isLogin, clearLoginCookies } from '../utils/authority'
-import { loadLastSong } from './player'
+import { loadLastSong, resolveFavoritePlaylistMeta } from './player'
 import { scanMusic } from './locaMusic'
 import { initDownloadManager } from './downloadManager'
 import { getUserProfile, getLikelist, getUserPlaylist } from '../api/user'
@@ -51,10 +51,10 @@ export const initSettings = () => {
 export const getUserLikelist = () => {
     if(userStore.user.userId)
         getLikelist(userStore.user.userId).then(result => {
-            userStore.likelist = result.ids
+            userStore.updateLikelist(result?.ids)
         })
     else {
-        userStore.likelist = []
+        userStore.updateLikelist([])
     }
 }
 
@@ -69,34 +69,8 @@ export const initFavoritePlaylist = async () => {
             }
             
             const result = await getUserPlaylist(params)
-            if (result && result.playlist && result.playlist.length > 0) {
-                // 找到用户的"我喜欢的音乐"播放列表
-                const favoritePlaylist = result.playlist.find(playlist => 
-                    playlist.creator.userId === userStore.user.userId && 
-                    playlist.specialType === 5
-                )
-                
-                if (favoritePlaylist) {
-                    userStore.updateFavoritePlaylistId(favoritePlaylist.id)
-                } else {
-                    // 回退到名称匹配或第一个创建的播放列表
-                    const playlistByName = result.playlist.find(playlist => 
-                        playlist.creator.userId === userStore.user.userId && 
-                        (playlist.name.includes('我喜欢') || playlist.name.includes('喜欢的音乐'))
-                    )
-                    
-                    if (playlistByName) {
-                        userStore.updateFavoritePlaylistId(playlistByName.id)
-                    } else {
-                        const firstCreatedPlaylist = result.playlist.find(playlist => 
-                            playlist.creator.userId === userStore.user.userId
-                        )
-                        if (firstCreatedPlaylist) {
-                            userStore.updateFavoritePlaylistId(firstCreatedPlaylist.id)
-                        }
-                    }
-                }
-            }
+            const favoritePlaylist = resolveFavoritePlaylistMeta(result?.playlist)
+            userStore.updateFavoritePlaylistMeta(favoritePlaylist)
         } catch (error) {
             console.error('初始化喜欢音乐播放列表失败:', error)
         }
@@ -133,6 +107,7 @@ export const init = () => {
             userStore.user = null
             userStore.likelist = null
             userStore.favoritePlaylistId = null
+            userStore.favoritePlaylistName = null
             // 即使登录失效，也要恢复播放状态
             loadLastSong()
         })

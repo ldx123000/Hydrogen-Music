@@ -24,6 +24,8 @@
     .notice-container{
         padding: 3Px 0;
         width: 0;
+        max-width: calc(100vw - 32Px);
+        box-sizing: border-box;
         background-image: url('../assets/img/halftone.png');
         background-size: 40%;
         background-repeat: repeat;
@@ -36,9 +38,13 @@
             100%{width: 300Px;padding: 3Px 30Px;transform: scale(1);}
         }
         .notic-text{
+            display: block;
+            width: 100%;
             font: 13Px SourceHanSansCN-Bold;
             color: white;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .notice-border{
             width: 3Px;

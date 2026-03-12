@@ -121,7 +121,7 @@ watch(djRid, () => {
 });
 
 const checkIsLike = computed(() => id => {
-    return userStore.likelist.includes(id);
+    return Array.isArray(userStore.likelist) && userStore.likelist.includes(id);
 });
 
 // 智能判断当前歌曲有哪些类型的歌词
@@ -541,7 +541,7 @@ const toggleDjSub = async isSubscribe => {
                 <template v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local'">
                     <svg
                         t="1668786418014"
-                        v-if="userStore.likelist"
+                        v-if="Array.isArray(userStore.likelist)"
                         @click="likeSong(true)"
                         v-show="!checkIsLike(songId)"
                         class="icon like-icon"
@@ -559,7 +559,7 @@ const toggleDjSub = async isSubscribe => {
                     </svg>
                     <svg
                         t="1668786896650"
-                        v-if="userStore.likelist"
+                        v-if="Array.isArray(userStore.likelist)"
                         @click="likeSong(false)"
                         v-show="checkIsLike(songId)"
                         class="icon like-icon liked"
@@ -581,7 +581,7 @@ const toggleDjSub = async isSubscribe => {
                     <!-- 电台收藏/取消收藏 -->
                     <svg
                         t="1668786418014"
-                        v-if="userStore.likelist"
+                        v-if="Array.isArray(userStore.likelist)"
                         @click="toggleDjSub(true)"
                         v-show="!djSubed"
                         class="icon like-icon"
@@ -599,7 +599,7 @@ const toggleDjSub = async isSubscribe => {
                     </svg>
                     <svg
                         t="1668786896650"
-                        v-if="userStore.likelist"
+                        v-if="Array.isArray(userStore.likelist)"
                         @click="toggleDjSub(false)"
                         v-show="djSubed"
                         class="icon like-icon liked"

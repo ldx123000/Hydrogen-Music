@@ -35,6 +35,8 @@ function triggerAutoLogout(reason) {
     const userStore = useUserStore(pinia);
     userStore.user = null;
     userStore.likelist = null;
+    userStore.favoritePlaylistId = null;
+    userStore.favoritePlaylistName = null;
 
     // 友好提示
     const message = reason || '登录状态已失效，已自动退出，请重新登录';
