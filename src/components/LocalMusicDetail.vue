@@ -1,9 +1,11 @@
 <script setup>
-  import { ref, computed } from 'vue'
+  import { ref, computed, nextTick, watch } from 'vue'
   import { useRouter, onBeforeRouteUpdate} from 'vue-router';
   import { nanoid } from 'nanoid'
   import { songTime2 } from '../utils/player';
   import { addLocalMusicTOList, setShuffledList } from '../utils/player'
+  import { matchLocalSongFilter, normalizeSongFilterKeyword } from '../utils/songFilter';
+  import SongFilterInput from './SongFilterInput.vue';
   import { useLocalStore } from '../store/localStore';
   import { usePlayerStore } from '../store/playerStore';
   import { useOtherStore } from '../store/otherStore';
@@ -15,27 +17,45 @@
   const playerStore = usePlayerStore()
   const { songId, playMode, playing } =storeToRefs(playerStore)
   const otherStore = useOtherStore()
+  const localSearchKeyword = ref('')
+
+  const resetLocalResultScroll = async () => {
+    await nextTick()
+    const localList = document.getElementById('local-list')
+    if (localList) localList.scrollTop = 0
+  }
 
   onBeforeRouteUpdate((to, from, next) => {
+    localSearchKeyword.value = ''
     updateLocalMusicDetail(to.name, to.query, to.params.id)
     currentType.value = to.name
     next()
-    if(document.getElementById('local-list'))
-      document.getElementById('local-list').scrollTop = 0
+    void resetLocalResultScroll()
   })
   const routerChange = (operation) => {
       if(operation) router.forward()
       else router.back()
   }
-  const getData = computed(() => {
-    currentSelectedSongs.value.map((item) => {
-      if(!item.nid)
-        Object.assign(item, {nid: nanoid()})
-    })
-    return currentSelectedSongs.value
+  const filteredSongEntries = computed(() => {
+    const songs = Array.isArray(currentSelectedSongs.value) ? currentSelectedSongs.value : []
+    const keyword = normalizeSongFilterKeyword(localSearchKeyword.value)
+
+    return songs
+      .map((item, sourceIndex) => {
+        if(!item.nid)
+          Object.assign(item, {nid: nanoid()})
+        return {
+          song: item,
+          sourceIndex,
+          rowKey: item.nid || `${String(item.id ?? 'local')}-${sourceIndex}`,
+        }
+      })
+      .filter(entry => !keyword || matchLocalSongFilter(entry.song, keyword))
   })
-  const play = (id, index) => {
-    addLocalMusicTOList(router.currentRoute.value.name, currentSelectedSongs.value, id, index)
+  const hasLocalSearchKeyword = computed(() => normalizeSongFilterKeyword(localSearchKeyword.value) !== '')
+  const showLocalSearchEmpty = computed(() => hasLocalSearchKeyword.value && filteredSongEntries.value.length == 0)
+  const play = (item, sourceIndex) => {
+    addLocalMusicTOList(router.currentRoute.value.name, currentSelectedSongs.value || [], item.id, sourceIndex)
     if(playMode.value == 3) setShuffledList()
   }
   const openMenu = (e, item) => {
@@ -62,6 +82,13 @@
       menuList.style.top = clientY + 'Px'
     }
   }
+
+  watch(
+    () => localSearchKeyword.value,
+    () => {
+      void resetLocalResultScroll()
+    }
+  )
 </script>
 <template>
   <div class="local-music-detail">
@@ -79,43 +106,44 @@
         </div>
         <span class="local-music-title">{{ currentSelectedInfo.name }}</span>
       </div>
-      <div id="local-list" class="local-music-list">
-      <!-- <RecycleScroller
-        id="local-list"
-        class="local-music-list"
-        :items="getData"
-        :item-size="61"
-        key-field="nid"
-        v-slot="{ item, index }"
-      > -->
-        <div class="list-item" :class="{'list-item-playing': songId == item.id}" @dblclick="play(item.id, index)" @contextmenu="openMenu($event,item)" v-for="(item, index) in currentSelectedSongs">
-          <div class="item-title">
-            <div class="item-state">
-                <div class="playing-eq" v-show="(songId == item.id)" :class="{ 'is-paused': !playing }" aria-hidden="true">
-                  <span class="bar"></span>
-                  <span class="bar"></span>
-                  <span class="bar"></span>
-                  <span class="bar"></span>
+      <div class="local-music-body">
+        <div class="local-search-bar">
+          <SongFilterInput v-model="localSearchKeyword" placeholder="搜索当前列表内的歌曲 / 歌手"></SongFilterInput>
+        </div>
+        <div id="local-list" class="local-music-list">
+          <div class="local-search-empty" v-if="showLocalSearchEmpty">
+            <span class="empty-title">未找到相关歌曲</span>
+          </div>
+          <template v-else>
+            <div class="list-item" :key="entry.rowKey" :class="{'list-item-playing': songId == entry.song.id}" @dblclick="play(entry.song, entry.sourceIndex)" @contextmenu="openMenu($event,entry.song)" v-for="entry in filteredSongEntries">
+              <div class="item-title">
+                <div class="item-state">
+                    <div class="playing-eq" v-show="(songId == entry.song.id)" :class="{ 'is-paused': !playing }" aria-hidden="true">
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                      <span class="bar"></span>
+                    </div>
+                    <div class="item-num" v-show="!(songId == entry.song.id)">{{entry.sourceIndex + 1}}</div>
                 </div>
-                <div class="item-num" v-show="!(songId == item.id)">{{index + 1}}</div>
-            </div>
-            <div class="item-info">
-              <span class="item-name">{{item.common.title || item.common.localTitle}}</span>
-              <div class="item-format">
-                <div class="file-type">{{item.format.container}}</div>
-                <span class="format">{{item.format.sampleRate / 1000}}KHz/{{item.format.bitsPerSample}}Bits/{{Math.round(item.format.bitrate / 1000)}}Kpbs</span>
+                <div class="item-info">
+                  <span class="item-name">{{entry.song.common.title || entry.song.common.localTitle}}</span>
+                  <div class="item-format">
+                    <div class="file-type">{{entry.song.format.container}}</div>
+                    <span class="format">{{entry.song.format.sampleRate / 1000}}KHz/{{entry.song.format.bitsPerSample}}Bits/{{Math.round(entry.song.format.bitrate / 1000)}}Kpbs</span>
+                  </div>
+                </div>
+              </div>
+              <div class="item-other">
+                <div class="item-author">
+                  <span class="item-singer" v-if="entry.song.common.artists && entry.song.common.artists[0] != '其他'" v-for="(singer, index) in entry.song.common.artists">{{singer}}{{index == entry.song.common.artists.length -1 ? '' : '/'}}</span>
+                </div>
+                <span class="item-time">{{songTime2(entry.song.format.duration)}}</span>
               </div>
             </div>
-          </div>
-          <div class="item-other">
-            <div class="item-author">
-              <span class="item-singer" v-if="item.common.artists && item.common.artists[0] != '其他'" v-for="(singer, index) in item.common.artists">{{singer}}{{index == item.common.artists.length -1 ? '' : '/'}}</span>
-            </div>
-            <span class="item-time">{{songTime2(item.format.duration)}}</span>
-          </div>
+          </template>
         </div>
-      <!-- </RecycleScroller> -->
-    </div>
+      </div>
     </div>
   </div>
 </template>
@@ -130,6 +158,8 @@
     .local-music-container{
       width: 100%;
       height: 100%;
+      display: flex;
+      flex-direction: column;
       .view-control{
         margin-left: -8Px;
         height: 32Px;
@@ -187,128 +217,159 @@
           user-select: text;
         }
       }
-      .local-music-list{
-        width: 100%;
-        height: calc(100% - 221Px);
-        overflow: auto;
-        user-select: text;
-        &::-webkit-scrollbar {
-          width: 5px;
-          height: 10px;
-          background-color: rgba(0, 0, 0, 0);
-        }
-        &::-webkit-scrollbar-thumb {
-          background-color: rgba(0, 0, 0, 0.0);
-        }
-        &::-webkit-scrollbar-track {
-          display: none;
-        }
-        &:hover::-webkit-scrollbar-thumb{
-          background-color: rgba(0, 0, 0, 0.04);
-        }
-        .list-item{
-          padding: 12Px 8Px;
+      .local-music-body{
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12Px;
+        padding-top: 12Px;
+        .local-search-bar{
           display: flex;
-          flex-direction: row;
-          justify-content: space-between;
-          align-items: center;
-          transition: 0.2s;
-          &:hover{
-            cursor: default;
-            background-color: rgba(0, 0, 0, 0.045);
+          justify-content: flex-start;
+          :deep(.song-filter-input){
+            width: min(360px, 100%);
           }
-          .item-title{
-            width: 50%;
+        }
+        .local-music-list{
+          width: 100%;
+          flex: 1;
+          min-height: 0;
+          overflow: auto;
+          user-select: text;
+          &::-webkit-scrollbar {
+            width: 5px;
+            height: 10px;
+            background-color: rgba(0, 0, 0, 0);
+          }
+          &::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.0);
+          }
+          &::-webkit-scrollbar-track {
+            display: none;
+          }
+          &:hover::-webkit-scrollbar-thumb{
+            background-color: rgba(0, 0, 0, 0.04);
+          }
+          .local-search-empty{
+            height: 100%;
+            padding: 24Px;
+            border: 1Px solid var(--border);
+            background: var(--layer);
+            backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            .empty-title{
+              font: 16Px SourceHanSansCN-Bold;
+              color: var(--text);
+            }
+          }
+          .list-item{
+            padding: 12Px 8Px;
             display: flex;
             flex-direction: row;
+            justify-content: space-between;
             align-items: center;
-            svg{
-              width: 14Px;
-              height: 14Px;
+            transition: 0.2s;
+            &:hover{
+              cursor: default;
+              background-color: rgba(0, 0, 0, 0.045);
             }
-            .playing-eq {
-              width: 14Px;
-              height: 14Px;
-            }
-            .item-state{
-              width: 26Px;
-              .item-num{
-                font: 14Px Geometos;
-                color: rgb(127, 127, 127);
+            .item-title{
+              width: 50%;
+              display: flex;
+              flex-direction: row;
+              align-items: center;
+              svg{
+                width: 14Px;
+                height: 14Px;
+              }
+              .playing-eq {
+                width: 14Px;
+                height: 14Px;
+              }
+              .item-state{
+                width: 26Px;
+                .item-num{
+                  font: 14Px Geometos;
+                  color: rgb(127, 127, 127);
+                }
+              }
+              .item-info{
+                margin-left: 14Px;
+                width: calc(100% - 26Px - 14Px);
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: flex-start;
+                .item-name{
+                  font: 15Px SourceHanSansCN-Bold;
+                  color: black;
+                  overflow: hidden;
+                  text-align: left;
+                  overflow: hidden;
+                  display: -webkit-box;
+                  -webkit-box-orient: vertical;
+                  -webkit-line-clamp: 1;
+                  word-break: break-all;
+                }
+                .item-format{
+                  display: flex;
+                  flex-direction: row;
+                  align-items: center;
+                  .file-type{
+                    margin-right: 6Px;
+                    padding: 0 2Px;
+                    border: 0.5Px solid rgba(249, 190, 46, 1);
+                    font: 8Px Bender-Bold;
+                    color: rgba(249, 190, 46, 1);
+                  }
+                  .format{
+                    font: 10Px Bender-Bold;
+                    color: black;
+                  }
+                }
               }
             }
-            .item-info{
+            .item-other{
               margin-left: 14Px;
-              width: calc(100% - 26Px - 14Px);
+              width: 45%;
               display: flex;
-              flex-direction: column;
-              justify-content: center;
-              align-items: flex-start;
-              .item-name{
-                font: 15Px SourceHanSansCN-Bold;
-                color: black;
-                overflow: hidden;
+              flex-direction: row;
+              justify-content: space-between;
+              span{
+                  font: 14Px SourceHanSansCN-Bold;
+                  color: black;
+              }
+              .item-author{
+                width: 70%;
                 text-align: left;
                 overflow: hidden;
                 display: -webkit-box;
                 -webkit-box-orient: vertical;
                 -webkit-line-clamp: 1;
                 word-break: break-all;
+                .item-singer{
+                  transition: 0.1s;
+                  &:hover{
+                    cursor: pointer;
+                    opacity: 0.6;
+                  }
+                }
               }
-              .item-format{
-                display: flex;
-                flex-direction: row;
-                align-items: center;
-                .file-type{
-                  margin-right: 6Px;
-                  padding: 0 2Px;
-                  border: 0.5Px solid rgba(249, 190, 46, 1);
-                  font: 8Px Bender-Bold;
-                  color: rgba(249, 190, 46, 1);
-                }
-                .format{
-                  font: 10Px Bender-Bold;
-                  color: black;
-                }
+              .item-time{
+                width: 30%;
               }
             }
           }
-          .item-other{
-            margin-left: 14Px;
-            width: 45%;
-            display: flex;
-            flex-direction: row;
-            justify-content: space-between;
-            span{
-                font: 14Px SourceHanSansCN-Bold;
-                color: black;
-            }
-            .item-author{
-              width: 70%;
-              text-align: left;
-              overflow: hidden;
-              display: -webkit-box;
-              -webkit-box-orient: vertical;
-              -webkit-line-clamp: 1;
-              word-break: break-all;
-              .item-singer{
-                transition: 0.1s;
-                &:hover{
-                  cursor: pointer;
-                  opacity: 0.6;
-                }
-              }
-            }
-            .item-time{
-              width: 30%;
-            }
+          .list-item:last-child{
+              margin-bottom: 10Px;
           }
-        }
-        .list-item:last-child{
-            margin-bottom: 10Px;
-        }
-        .list-item-playing{
-            background-color: rgba(0, 0, 0, 0.045);
+          .list-item-playing{
+              background-color: rgba(0, 0, 0, 0.045);
+          }
         }
       }
     }

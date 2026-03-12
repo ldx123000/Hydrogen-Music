@@ -20,7 +20,24 @@ const { libraryInfo } = storeToRefs(libraryStore)
 const playerStore = usePlayerStore()
 const { songId, playMode, playing, showSongTranslation } = storeToRefs(playerStore)
 const otherStore = useOtherStore()
-const props = defineProps(['songlist', 'type'])
+const props = defineProps({
+    songlist: {
+        type: Array,
+        default: () => [],
+    },
+    type: {
+        type: String,
+        default: '',
+    },
+    queueSonglist: {
+        type: Array,
+        default: null,
+    },
+    sourceIndexes: {
+        type: Array,
+        default: null,
+    },
+})
 const hoverRowKey = ref(null)
 const rowKeyBySong = new WeakMap()
 let rowKeySeed = 0
@@ -41,12 +58,15 @@ const resolveRowKey = (song, songIndex) => {
 
 const scrollerItems = computed(() => {
     const songs = Array.isArray(props.songlist) ? props.songlist : []
+    const sourceIndexes = Array.isArray(props.sourceIndexes) ? props.sourceIndexes : []
     return songs.map((song, songIndex) => ({
         rowKey: resolveRowKey(song, songIndex),
         songIndex,
+        sourceIndex: Number.isInteger(sourceIndexes[songIndex]) ? sourceIndexes[songIndex] : songIndex,
         song,
     }))
 })
+const queueSongs = computed(() => (Array.isArray(props.queueSonglist) ? props.queueSonglist : props.songlist))
 
 const checkArtist = artistId => {
     router.push('/mymusic/artist/' + artistId)
@@ -62,7 +82,7 @@ const play = (song, index) => {
         addToNext(song, true)
         return
     }
-    addToList(router.currentRoute.value.name, props.songlist)
+    addToList(router.currentRoute.value.name, queueSongs.value || [])
     addSong(song.id, index, true)
     if (playMode.value == 3) setShuffledList()
 }
@@ -116,12 +136,12 @@ const openMenu = (e, item) => {
                 :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': item.song.playable !== undefined && !item.song.playable, 'list-item-vip': item.song.vipOnly }"
                 @mouseenter="hoverRowKey = item.rowKey"
                 @mouseleave="hoverRowKey = null"
-                @dblclick="play(item.song, item.songIndex)"
+                @dblclick="play(item.song, item.sourceIndex)"
                 @contextmenu="openMenu($event, item.song)"
             >
                 <div class="item-title">
                     <div class="item-state">
-                        <button v-if="hoverRowKey === item.rowKey" class="item-play-btn" @click.stop="togglePlay(item.song, item.songIndex)" :aria-label="songId === item.song.id && playing ? '暂停' : '播放'">
+                        <button v-if="hoverRowKey === item.rowKey" class="item-play-btn" @click.stop="togglePlay(item.song, item.sourceIndex)" :aria-label="songId === item.song.id && playing ? '暂停' : '播放'">
                             <svg v-if="songId === item.song.id && playing" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
                                 <rect x="256" y="200" width="160" height="624" rx="32" fill="currentColor" />
                                 <rect x="608" y="200" width="160" height="624" rx="32" fill="currentColor" />
@@ -140,7 +160,7 @@ const openMenu = (e, item) => {
                                 <span class="bar"></span>
                                 <span class="bar"></span>
                             </div>
-                            <div class="item-num" v-show="!(songId == item.song.id)">{{ item.songIndex + 1 }}</div>
+                            <div class="item-num" v-show="!(songId == item.song.id)">{{ item.sourceIndex + 1 }}</div>
                         </template>
                     </div>
                     <span class="item-name">

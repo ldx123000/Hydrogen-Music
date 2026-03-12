@@ -8,9 +8,11 @@ import { subAlbum } from '../api/album';
 import { subArtist } from '../api/artist';
 import { formatTime } from '../utils/time';
 import { playAll } from '../utils/player';
+import { matchCloudSongFilter, normalizeSongFilterKeyword } from '../utils/songFilter';
 import LibrarySongList from './LibrarySongList.vue';
 import LibraryAlbumList from './LibraryAlbumList.vue';
 import LibraryMVList from '../components/LibraryMVList.vue';
+import SongFilterInput from './SongFilterInput.vue';
 import { usePlayerStore } from '../store/playerStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { useLocalStore } from '../store/localStore';
@@ -20,7 +22,7 @@ const playerStore = usePlayerStore();
 const localStore = useLocalStore();
 const libraryStore = useLibraryStore();
 const { updateLibraryDetail, updateArtistTopSong, updateArtistAlbum, updateArtistsMV, waitForPlaylistHydration, saveDetailScroll, getDetailScroll } = libraryStore;
-const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, needTimestamp, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate } = storeToRefs(libraryStore);
+const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, needTimestamp, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration } = storeToRefs(libraryStore);
 
 const router = useRouter();
 const isAlbum = ref(false);
@@ -28,6 +30,7 @@ const isSinger = ref(false);
 const isSongList = ref(false);
 const introduceDetailShow = ref(false);
 const introduceDetailShowDelay = ref(false);
+const playlistSearchKeyword = ref('');
 
 const canGoBack = ref(false);
 const canGoForward = ref(false);
@@ -164,6 +167,49 @@ const updateNavState = () => {
     canGoBack.value = !!state?.back;
     canGoForward.value = !!state?.forward;
 };
+const resetPlaylistSearch = () => {
+    playlistSearchKeyword.value = '';
+};
+const resetPlaylistResultScroll = async () => {
+    await nextTick();
+    setLibraryScrollTop(0);
+};
+const currentLibraryRouteName = computed(() => normalizeRouteName(router.currentRoute.value.name));
+const isPlaylistRoute = computed(() => currentLibraryRouteName.value == 'playlist');
+const normalizedPlaylistSearchKeyword = computed(() => normalizeSongFilterKeyword(playlistSearchKeyword.value));
+const hasPlaylistSearchKeyword = computed(() => normalizedPlaylistSearchKeyword.value !== '');
+const playlistFilterEntries = computed(() => {
+    const songs = Array.isArray(librarySongs.value) ? librarySongs.value : [];
+    return songs
+        .map((song, sourceIndex) => ({ song, sourceIndex }))
+        .filter(entry => !isPlaylistRoute.value || !hasPlaylistSearchKeyword.value || matchCloudSongFilter(entry.song, normalizedPlaylistSearchKeyword.value));
+});
+const visibleLibrarySongs = computed(() => {
+    if (!isPlaylistRoute.value) return Array.isArray(librarySongs.value) ? librarySongs.value : [];
+    return playlistFilterEntries.value.map(entry => entry.song);
+});
+const visibleLibrarySourceIndexes = computed(() => {
+    if (!isPlaylistRoute.value || !hasPlaylistSearchKeyword.value) return null;
+    return playlistFilterEntries.value.map(entry => entry.sourceIndex);
+});
+const playlistHydrationLoaded = computed(() => {
+    const loaded = Number(playlistHydration.value?.loaded || 0);
+    return Number.isFinite(loaded) ? Math.max(0, loaded) : 0;
+});
+const playlistHydrationTotal = computed(() => {
+    const total = Number(playlistHydration.value?.total || 0);
+    const normalizedTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
+    return Math.max(normalizedTotal, playlistHydrationLoaded.value);
+});
+const showPlaylistSearchEmpty = computed(() => isPlaylistRoute.value && hasPlaylistSearchKeyword.value && visibleLibrarySongs.value.length == 0);
+const isPlaylistSearchLoading = computed(() => showPlaylistSearchEmpty.value && playlistHydration.value?.status == 'loading');
+const isPlaylistSearchFailed = computed(() => showPlaylistSearchEmpty.value && playlistHydration.value?.status == 'failed');
+const playlistEmptyTitle = computed(() => (isPlaylistSearchLoading.value ? '正在加载更多歌曲...' : '未找到相关歌曲'));
+const playlistEmptyDescription = computed(() => {
+    if (isPlaylistSearchLoading.value) return `已加载 ${playlistHydrationLoaded.value} / ${playlistHydrationTotal.value} 首歌曲`;
+    if (isPlaylistSearchFailed.value) return '剩余歌曲加载失败，结果可能不完整';
+    return '';
+});
 
 const applyPendingScrollPolicy = async () => {
     const currentRoute = router.currentRoute.value;
@@ -217,6 +263,7 @@ libraryTypeCheck(router.currentRoute.value.name);
 
 onBeforeRouteLeave((to, from, next) => {
     saveCurrentDetailScroll(from);
+    resetPlaylistSearch();
     const toRouteName = normalizeRouteName(to.name);
     if (!isRestorableLibraryRouteName(toRouteName)) {
         historyNavPending.value = false;
@@ -233,6 +280,7 @@ onBeforeRouteLeave((to, from, next) => {
 
 onBeforeRouteUpdate(async (to, from, next) => {
     saveCurrentDetailScroll(from);
+    resetPlaylistSearch();
     setPendingScrollPolicyForRoute(to);
 
     const normalizedToName = normalizeRouteName(to.name);
@@ -420,6 +468,14 @@ const downloadAll = async () => {
 };
 
 watch(
+    () => playlistSearchKeyword.value,
+    () => {
+        if (!isPlaylistRoute.value) return;
+        void resetPlaylistResultScroll();
+    }
+);
+
+watch(
     () => router.currentRoute.value.fullPath,
     async () => {
         await nextTick();
@@ -501,60 +557,65 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                         </div>
                         <span class="introduce-num" v-if="!isSinger">共{{ libraryInfo.trackCount || libraryInfo.size }}首 - {{ totalTime }}分钟</span>
                         <span class="introduce-num" v-if="isSinger">{{ libraryInfo.musicSize }}首歌 · {{ libraryInfo.albumSize }}张专辑 · {{ libraryInfo.mvSize }}个MV</span>
-                        <div class="library-operation" v-if="isLogin()">
-                            <div class="operation-collection" v-show="(playlistUserCreated || []).findIndex(song => song.id == libraryInfo.id) == -1" @click="librarySub(libraryInfo.id)">
-                                <svg
-                                    v-show="!libraryInfo.followed"
-                                    t="1669112450805"
-                                    class="collect-icon"
-                                    viewBox="0 0 1024 1024"
-                                    version="1.1"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    p-id="2261"
-                                    width="200"
-                                    height="200"
-                                >
-                                    <path d="M98 480.86h829.99v63.79H98z" p-id="2262"></path>
-                                    <path d="M481.48 98.15h63.79V927h-63.79z" p-id="2263"></path>
-                                </svg>
-                                <svg
-                                    v-show="libraryInfo.followed"
-                                    t="1670744716630"
-                                    class="collected-icon"
-                                    viewBox="0 0 1024 1024"
-                                    version="1.1"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    p-id="2167"
-                                    width="200"
-                                    height="200"
-                                >
-                                    <path
-                                        d="M392.533333 806.4L85.333333 503.466667l59.733334-59.733334 247.466666 247.466667L866.133333 213.333333l59.733334 59.733334L392.533333 806.4z"
-                                        fill="#444444"
-                                        p-id="2168"
-                                    ></path>
-                                </svg>
-                                <span>{{ libraryInfo.followed ? '已收藏' : '收藏' }}</span>
-                            </div>
-                            <div class="operation-download" v-if="!isSinger">
-                                <svg
-                                    t="1669030443895"
-                                    class="download-icon"
-                                    viewBox="0 0 1024 1024"
-                                    version="1.1"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    p-id="10347"
-                                    width="200"
-                                    height="200"
-                                    data-v-7f63928d=""
-                                >
-                                    <path
-                                        d="M921.6 563.2c-9.6-9.6-25.6-9.6-35.2 0L544 896l0-822.4c0-12.8-9.6-22.4-25.6-22.4s-25.6 9.6-25.6 22.4L492.8 896l-342.4-339.2c-9.6-9.6-25.6-9.6-35.2 0-9.6 9.6-9.6 22.4 0 32l384 377.6c6.4 6.4 12.8 6.4 19.2 6.4 0 0 0 0 0 0 3.2 0 3.2 0 6.4 0 0 0 0 0 3.2 0 3.2 0 6.4-3.2 9.6-6.4l380.8-371.2C931.2 588.8 931.2 572.8 921.6 563.2z"
-                                        p-id="10348"
+                        <div class="library-operation">
+                            <template v-if="isLogin()">
+                                <div class="operation-collection operation-item" v-show="(playlistUserCreated || []).findIndex(song => song.id == libraryInfo.id) == -1" @click="librarySub(libraryInfo.id)">
+                                    <svg
+                                        v-show="!libraryInfo.followed"
+                                        t="1669112450805"
+                                        class="collect-icon"
+                                        viewBox="0 0 1024 1024"
+                                        version="1.1"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        p-id="2261"
+                                        width="200"
+                                        height="200"
+                                    >
+                                        <path d="M98 480.86h829.99v63.79H98z" p-id="2262"></path>
+                                        <path d="M481.48 98.15h63.79V927h-63.79z" p-id="2263"></path>
+                                    </svg>
+                                    <svg
+                                        v-show="libraryInfo.followed"
+                                        t="1670744716630"
+                                        class="collected-icon"
+                                        viewBox="0 0 1024 1024"
+                                        version="1.1"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        p-id="2167"
+                                        width="200"
+                                        height="200"
+                                    >
+                                        <path
+                                            d="M392.533333 806.4L85.333333 503.466667l59.733334-59.733334 247.466666 247.466667L866.133333 213.333333l59.733334 59.733334L392.533333 806.4z"
+                                            fill="#444444"
+                                            p-id="2168"
+                                        ></path>
+                                    </svg>
+                                    <span>{{ libraryInfo.followed ? '已收藏' : '收藏' }}</span>
+                                </div>
+                                <div class="operation-download operation-item" v-if="!isSinger">
+                                    <svg
+                                        t="1669030443895"
+                                        class="download-icon"
+                                        viewBox="0 0 1024 1024"
+                                        version="1.1"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        p-id="10347"
+                                        width="200"
+                                        height="200"
                                         data-v-7f63928d=""
-                                    ></path>
-                                </svg>
-                                <span @click="downloadAll()">下载</span>
+                                    >
+                                        <path
+                                            d="M921.6 563.2c-9.6-9.6-25.6-9.6-35.2 0L544 896l0-822.4c0-12.8-9.6-22.4-25.6-22.4s-25.6 9.6-25.6 22.4L492.8 896l-342.4-339.2c-9.6-9.6-25.6-9.6-35.2 0-9.6 9.6-9.6 22.4 0 32l384 377.6c6.4 6.4 12.8 6.4 19.2 6.4 0 0 0 0 0 0 3.2 0 3.2 0 6.4 0 0 0 0 0 3.2 0 3.2 0 6.4-3.2 9.6-6.4l380.8-371.2C931.2 588.8 931.2 572.8 921.6 563.2z"
+                                            p-id="10348"
+                                            data-v-7f63928d=""
+                                        ></path>
+                                    </svg>
+                                    <span @click="downloadAll()">下载</span>
+                                </div>
+                            </template>
+                            <div class="operation-search" v-if="isPlaylistRoute">
+                                <SongFilterInput v-model="playlistSearchKeyword" compact show-icon placeholder="SEARCH"></SongFilterInput>
                             </div>
                         </div>
                     </div>
@@ -609,9 +670,25 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             </div>
         </div>
 
-        <LibrarySongList :songlist="librarySongs" class="library-content" :class="{ 'library-content2': artistPageType == 0 && isSinger }" v-show="artistPageType == 0"></LibrarySongList>
-        <LibraryAlbumList :albumlist="libraryAlbum" class="library-content3" v-show="artistPageType == 1"></LibraryAlbumList>
-        <LibraryMVList :mvlist="libraryMV" class="library-content3" v-show="artistPageType == 2"></LibraryMVList>
+        <div class="library-content-shell">
+            <div class="library-content-panel">
+                <template v-if="artistPageType == 0">
+                    <div class="library-search-empty" v-if="showPlaylistSearchEmpty">
+                        <span class="empty-title">{{ playlistEmptyTitle }}</span>
+                        <span class="empty-subtitle" v-if="playlistEmptyDescription">{{ playlistEmptyDescription }}</span>
+                    </div>
+                    <LibrarySongList
+                        v-else
+                        :songlist="visibleLibrarySongs"
+                        :queue-songlist="hasPlaylistSearchKeyword ? librarySongs : null"
+                        :source-indexes="visibleLibrarySourceIndexes"
+                        class="library-content"
+                    ></LibrarySongList>
+                </template>
+                <LibraryAlbumList :albumlist="libraryAlbum" class="library-content3" v-else-if="artistPageType == 1"></LibraryAlbumList>
+                <LibraryMVList :mvlist="libraryMV" class="library-content3" v-else-if="artistPageType == 2"></LibraryMVList>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -622,6 +699,8 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
     --ld-secondary: rgb(78, 78, 78);
     --ld-line: rgb(154, 154, 154);
     --ld-border: #000000;
+    --ld-side-width: 130px;
+    --ld-search-width: 130px;
     --ld-btn-bg: #000000;
     --ld-btn-text: #ffffff;
     --ld-btn-hover-bg: rgb(40, 40, 40);
@@ -633,6 +712,8 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
 
     width: 100%;
     height: calc(100% - 22px);
+    display: flex;
+    flex-direction: column;
     .view-control {
         margin-left: -8px;
         height: 32px;
@@ -672,7 +753,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
         position: relative;
         justify-content: space-between;
         .introduce {
-            width: calc(100% - 130px);
+            width: calc(100% - var(--ld-side-width));
             display: flex;
             flex-direction: row;
             .introduce-img {
@@ -715,6 +796,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     word-break: break-all;
                 }
                 .info-other {
+                    width: 100%;
                     display: flex;
                     flex-direction: column;
                     span {
@@ -742,8 +824,15 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                         margin-top: 10px;
                         display: flex;
                         flex-direction: row;
-                        div {
+                        flex-wrap: nowrap;
+                        align-items: center;
+                        width: 100%;
+                        min-height: 34px;
+                        position: relative;
+                        padding-right: calc(var(--ld-search-width) - var(--ld-side-width) + 14px);
+                        .operation-item {
                             margin-right: 20px;
+                            flex: 0 0 auto;
                             display: flex;
                             flex-direction: row;
                             align-items: center;
@@ -762,12 +851,29 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                 color: var(--ld-text);
                             }
                         }
+                        .operation-search {
+                            position: absolute;
+                            top: 50%;
+                            right: calc(-1 * var(--ld-side-width));
+                            transform: translateY(-50%);
+                            display: flex;
+                            align-items: center;
+                            justify-content: flex-end;
+                            width: var(--ld-search-width);
+                            :deep(.song-filter-input) {
+                                width: 100%;
+                                max-width: 100%;
+                            }
+                            :deep(.song-filter-input .filter-input) {
+                                text-align: center;
+                            }
+                        }
                     }
                 }
             }
         }
         .introduce-other {
-            width: 130px;
+            width: var(--ld-side-width);
             div {
                 width: 100%;
                 height: 16px;
@@ -976,18 +1082,43 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             }
         }
     }
-    .library-content {
-        height: calc(100% - 203px);
-        overflow: auto;
-        &::-webkit-scrollbar {
-            display: none;
-        }
+    .library-content-shell {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding-top: 12px;
     }
-    .library-content2 {
-        height: calc(100% - 236px);
+    .library-content-panel {
+        flex: 1;
+        min-height: 0;
     }
+    .library-content,
     .library-content3 {
-        height: calc(100% - 198px);
+        height: 100%;
+        overflow: hidden;
+    }
+    .library-search-empty {
+        height: 100%;
+        border: 1px solid var(--ld-border);
+        background: var(--layer);
+        backdrop-filter: blur(12px);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        padding: 24px;
+        text-align: center;
+        .empty-title {
+            font: 16px SourceHanSansCN-Bold;
+            color: var(--ld-text);
+        }
+        .empty-subtitle {
+            font: 11px SourceHanSansCN-Bold;
+            color: var(--ld-muted);
+            letter-spacing: 0.2px;
+        }
     }
 }
 </style>
