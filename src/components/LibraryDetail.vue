@@ -8,7 +8,7 @@ import { subAlbum } from '../api/album';
 import { subArtist } from '../api/artist';
 import { formatTime } from '../utils/time';
 import { playAll } from '../utils/player';
-import { matchCloudSongFilter, normalizeSongFilterKeyword } from '../utils/songFilter';
+import { matchAlbumFilter, matchCloudSongFilter, matchMVFilter, normalizeSongFilterKeyword } from '../utils/songFilter';
 import LibrarySongList from './LibrarySongList.vue';
 import LibraryAlbumList from './LibraryAlbumList.vue';
 import LibraryMVList from '../components/LibraryMVList.vue';
@@ -30,7 +30,7 @@ const isSinger = ref(false);
 const isSongList = ref(false);
 const introduceDetailShow = ref(false);
 const introduceDetailShowDelay = ref(false);
-const playlistSearchKeyword = ref('');
+const songSearchKeyword = ref('');
 
 const canGoBack = ref(false);
 const canGoForward = ref(false);
@@ -167,30 +167,50 @@ const updateNavState = () => {
     canGoBack.value = !!state?.back;
     canGoForward.value = !!state?.forward;
 };
-const resetPlaylistSearch = () => {
-    playlistSearchKeyword.value = '';
+const resetSongSearch = () => {
+    songSearchKeyword.value = '';
 };
-const resetPlaylistResultScroll = async () => {
+const resetSongSearchResultScroll = async () => {
     await nextTick();
     setLibraryScrollTop(0);
 };
 const currentLibraryRouteName = computed(() => normalizeRouteName(router.currentRoute.value.name));
 const isPlaylistRoute = computed(() => currentLibraryRouteName.value == 'playlist');
-const normalizedPlaylistSearchKeyword = computed(() => normalizeSongFilterKeyword(playlistSearchKeyword.value));
-const hasPlaylistSearchKeyword = computed(() => normalizedPlaylistSearchKeyword.value !== '');
-const playlistFilterEntries = computed(() => {
+const isAlbumRoute = computed(() => currentLibraryRouteName.value == 'album');
+const isArtistTopSongRoute = computed(() => currentLibraryRouteName.value == 'artist' && artistPageType.value == 0);
+const isArtistAlbumRoute = computed(() => currentLibraryRouteName.value == 'artist' && artistPageType.value == 1);
+const isArtistMVRoute = computed(() => currentLibraryRouteName.value == 'artist' && artistPageType.value == 2);
+const showSongSearch = computed(() => isPlaylistRoute.value || isAlbumRoute.value || isArtistTopSongRoute.value || isArtistAlbumRoute.value || isArtistMVRoute.value);
+const normalizedSongSearchKeyword = computed(() => normalizeSongFilterKeyword(songSearchKeyword.value));
+const hasSongSearchKeyword = computed(() => normalizedSongSearchKeyword.value !== '');
+const songFilterEntries = computed(() => {
     const songs = Array.isArray(librarySongs.value) ? librarySongs.value : [];
     return songs
         .map((song, sourceIndex) => ({ song, sourceIndex }))
-        .filter(entry => !isPlaylistRoute.value || !hasPlaylistSearchKeyword.value || matchCloudSongFilter(entry.song, normalizedPlaylistSearchKeyword.value));
+        .filter(entry => !showSongSearch.value || !hasSongSearchKeyword.value || matchCloudSongFilter(entry.song, normalizedSongSearchKeyword.value));
 });
 const visibleLibrarySongs = computed(() => {
-    if (!isPlaylistRoute.value) return Array.isArray(librarySongs.value) ? librarySongs.value : [];
-    return playlistFilterEntries.value.map(entry => entry.song);
+    if (!showSongSearch.value) return Array.isArray(librarySongs.value) ? librarySongs.value : [];
+    return songFilterEntries.value.map(entry => entry.song);
 });
 const visibleLibrarySourceIndexes = computed(() => {
-    if (!isPlaylistRoute.value || !hasPlaylistSearchKeyword.value) return null;
-    return playlistFilterEntries.value.map(entry => entry.sourceIndex);
+    if (!showSongSearch.value || !hasSongSearchKeyword.value) return null;
+    return songFilterEntries.value.map(entry => entry.sourceIndex);
+});
+const visibleArtistAlbums = computed(() => {
+    const albums = Array.isArray(libraryAlbum.value) ? libraryAlbum.value : [];
+    if (!isArtistAlbumRoute.value || !hasSongSearchKeyword.value) return albums;
+    return albums.filter(album => matchAlbumFilter(album, normalizedSongSearchKeyword.value));
+});
+const visibleArtistMVs = computed(() => {
+    const mvs = Array.isArray(libraryMV.value) ? libraryMV.value : [];
+    if (!isArtistMVRoute.value || !hasSongSearchKeyword.value) return mvs;
+    return mvs.filter(mv => matchMVFilter(mv, normalizedSongSearchKeyword.value));
+});
+const currentSearchResultCount = computed(() => {
+    if (isArtistAlbumRoute.value) return visibleArtistAlbums.value.length;
+    if (isArtistMVRoute.value) return visibleArtistMVs.value.length;
+    return visibleLibrarySongs.value.length;
 });
 const playlistHydrationLoaded = computed(() => {
     const loaded = Number(playlistHydration.value?.loaded || 0);
@@ -201,13 +221,18 @@ const playlistHydrationTotal = computed(() => {
     const normalizedTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
     return Math.max(normalizedTotal, playlistHydrationLoaded.value);
 });
-const showPlaylistSearchEmpty = computed(() => isPlaylistRoute.value && hasPlaylistSearchKeyword.value && visibleLibrarySongs.value.length == 0);
-const isPlaylistSearchLoading = computed(() => showPlaylistSearchEmpty.value && playlistHydration.value?.status == 'loading');
-const isPlaylistSearchFailed = computed(() => showPlaylistSearchEmpty.value && playlistHydration.value?.status == 'failed');
-const playlistEmptyTitle = computed(() => (isPlaylistSearchLoading.value ? '正在加载更多歌曲...' : '未找到相关歌曲'));
-const playlistEmptyDescription = computed(() => {
-    if (isPlaylistSearchLoading.value) return `已加载 ${playlistHydrationLoaded.value} / ${playlistHydrationTotal.value} 首歌曲`;
-    if (isPlaylistSearchFailed.value) return '剩余歌曲加载失败，结果可能不完整';
+const showSongSearchEmpty = computed(() => showSongSearch.value && hasSongSearchKeyword.value && currentSearchResultCount.value == 0);
+const isSongSearchLoading = computed(() => isPlaylistRoute.value && showSongSearchEmpty.value && playlistHydration.value?.status == 'loading');
+const isSongSearchFailed = computed(() => isPlaylistRoute.value && showSongSearchEmpty.value && playlistHydration.value?.status == 'failed');
+const songSearchEmptyTitle = computed(() => {
+    if (isSongSearchLoading.value) return '正在加载更多歌曲...';
+    if (isArtistAlbumRoute.value) return '未找到相关专辑';
+    if (isArtistMVRoute.value) return '未找到相关MV';
+    return '未找到相关歌曲';
+});
+const songSearchEmptyDescription = computed(() => {
+    if (isSongSearchLoading.value) return `已加载 ${playlistHydrationLoaded.value} / ${playlistHydrationTotal.value} 首歌曲`;
+    if (isSongSearchFailed.value) return '剩余歌曲加载失败，结果可能不完整';
     return '';
 });
 
@@ -263,7 +288,7 @@ libraryTypeCheck(router.currentRoute.value.name);
 
 onBeforeRouteLeave((to, from, next) => {
     saveCurrentDetailScroll(from);
-    resetPlaylistSearch();
+    resetSongSearch();
     const toRouteName = normalizeRouteName(to.name);
     if (!isRestorableLibraryRouteName(toRouteName)) {
         historyNavPending.value = false;
@@ -280,7 +305,7 @@ onBeforeRouteLeave((to, from, next) => {
 
 onBeforeRouteUpdate(async (to, from, next) => {
     saveCurrentDetailScroll(from);
-    resetPlaylistSearch();
+    resetSongSearch();
     setPendingScrollPolicyForRoute(to);
 
     const normalizedToName = normalizeRouteName(to.name);
@@ -468,10 +493,10 @@ const downloadAll = async () => {
 };
 
 watch(
-    () => playlistSearchKeyword.value,
+    () => songSearchKeyword.value,
     () => {
-        if (!isPlaylistRoute.value) return;
-        void resetPlaylistResultScroll();
+        if (!showSongSearch.value) return;
+        void resetSongSearchResultScroll();
     }
 );
 
@@ -614,8 +639,8 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                     <span @click="downloadAll()">下载</span>
                                 </div>
                             </template>
-                            <div class="operation-search" v-if="isPlaylistRoute">
-                                <SongFilterInput v-model="playlistSearchKeyword" compact show-icon placeholder="SEARCH"></SongFilterInput>
+                            <div class="operation-search" v-if="showSongSearch">
+                                <SongFilterInput v-model="songSearchKeyword" compact show-icon placeholder="SEARCH"></SongFilterInput>
                             </div>
                         </div>
                     </div>
@@ -673,20 +698,30 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
         <div class="library-content-shell">
             <div class="library-content-panel">
                 <template v-if="artistPageType == 0">
-                    <div class="library-search-empty" v-if="showPlaylistSearchEmpty">
-                        <span class="empty-title">{{ playlistEmptyTitle }}</span>
-                        <span class="empty-subtitle" v-if="playlistEmptyDescription">{{ playlistEmptyDescription }}</span>
+                    <div class="library-search-empty" v-if="showSongSearchEmpty">
+                        <span class="empty-title">{{ songSearchEmptyTitle }}</span>
+                        <span class="empty-subtitle" v-if="songSearchEmptyDescription">{{ songSearchEmptyDescription }}</span>
                     </div>
                     <LibrarySongList
                         v-else
                         :songlist="visibleLibrarySongs"
-                        :queue-songlist="hasPlaylistSearchKeyword ? librarySongs : null"
+                        :queue-songlist="hasSongSearchKeyword ? librarySongs : null"
                         :source-indexes="visibleLibrarySourceIndexes"
                         class="library-content"
                     ></LibrarySongList>
                 </template>
-                <LibraryAlbumList :albumlist="libraryAlbum" class="library-content3" v-else-if="artistPageType == 1"></LibraryAlbumList>
-                <LibraryMVList :mvlist="libraryMV" class="library-content3" v-else-if="artistPageType == 2"></LibraryMVList>
+                <template v-else-if="artistPageType == 1">
+                    <div class="library-search-empty" v-if="showSongSearchEmpty">
+                        <span class="empty-title">{{ songSearchEmptyTitle }}</span>
+                    </div>
+                    <LibraryAlbumList v-else :albumlist="visibleArtistAlbums" class="library-content3"></LibraryAlbumList>
+                </template>
+                <template v-else-if="artistPageType == 2">
+                    <div class="library-search-empty" v-if="showSongSearchEmpty">
+                        <span class="empty-title">{{ songSearchEmptyTitle }}</span>
+                    </div>
+                    <LibraryMVList v-else :mvlist="visibleArtistMVs" class="library-content3"></LibraryMVList>
+                </template>
             </div>
         </div>
     </div>
@@ -1100,15 +1135,11 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
     }
     .library-search-empty {
         height: 100%;
-        border: 1px solid var(--ld-border);
-        background: var(--layer);
-        backdrop-filter: blur(12px);
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        gap: 8px;
-        padding: 24px;
+        gap: 6px;
         text-align: center;
         .empty-title {
             font: 16px SourceHanSansCN-Bold;

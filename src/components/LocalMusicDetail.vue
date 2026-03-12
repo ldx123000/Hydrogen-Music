@@ -108,7 +108,7 @@
       </div>
       <div class="local-music-body">
         <div class="local-search-bar">
-          <SongFilterInput v-model="localSearchKeyword" placeholder="搜索当前列表内的歌曲 / 歌手"></SongFilterInput>
+          <SongFilterInput v-model="localSearchKeyword" compact show-icon placeholder="SEARCH"></SongFilterInput>
         </div>
         <div id="local-list" class="local-music-list">
           <div class="local-search-empty" v-if="showLocalSearchEmpty">
@@ -226,9 +226,13 @@
         padding-top: 12Px;
         .local-search-bar{
           display: flex;
-          justify-content: flex-start;
+          justify-content: center;
           :deep(.song-filter-input){
-            width: min(360px, 100%);
+            width: 130px;
+            max-width: 100%;
+          }
+          :deep(.song-filter-input .filter-input){
+            text-align: center;
           }
         }
         .local-music-list{
@@ -253,10 +257,6 @@
           }
           .local-search-empty{
             height: 100%;
-            padding: 24Px;
-            border: 1Px solid var(--border);
-            background: var(--layer);
-            backdrop-filter: blur(12px);
             display: flex;
             justify-content: center;
             align-items: center;

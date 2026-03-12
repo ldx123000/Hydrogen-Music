@@ -40,6 +40,33 @@ function buildLocalSongSearchTexts(song = {}) {
     return texts;
 }
 
+function buildAlbumSearchTexts(album = {}) {
+    const texts = [];
+    appendText(texts, album?.name);
+    appendTextList(texts, album?.alias);
+    appendTextList(texts, album?.transNames);
+    appendText(texts, album?.artist?.name);
+    appendTextList(
+        texts,
+        Array.isArray(album?.artists) ? album.artists.map(artist => artist?.name) : []
+    );
+    return texts;
+}
+
+function buildMVSearchTexts(mv = {}) {
+    const texts = [];
+    appendText(texts, mv?.name);
+    appendTextList(texts, mv?.alias);
+    appendText(texts, mv?.artistName);
+    appendText(texts, mv?.artistNames);
+    appendText(texts, mv?.artist?.name);
+    appendTextList(
+        texts,
+        Array.isArray(mv?.artists) ? mv.artists.map(artist => artist?.name) : []
+    );
+    return texts;
+}
+
 function matchTexts(texts, keyword) {
     const normalizedKeyword = normalizeSearchValue(keyword);
     if (!normalizedKeyword) return true;
@@ -56,4 +83,12 @@ export function matchCloudSongFilter(song, keyword) {
 
 export function matchLocalSongFilter(song, keyword) {
     return matchTexts(buildLocalSongSearchTexts(song), keyword);
+}
+
+export function matchAlbumFilter(album, keyword) {
+    return matchTexts(buildAlbumSearchTexts(album), keyword);
+}
+
+export function matchMVFilter(mv, keyword) {
+    return matchTexts(buildMVSearchTexts(mv), keyword);
 }

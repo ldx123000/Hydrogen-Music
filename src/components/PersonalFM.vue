@@ -82,7 +82,7 @@
                                     @click="handleCoverSlotClick(item)"
                                 >
                                     <template v-if="item.song && !item.isPlaceholder">
-                                        <img :src="item.song.album?.picUrl || '/src/assets/default-cover.png'" :alt="item.song.name || 'FM Cover'" />
+                                        <img :src="getFmSongCover(item.song) || '/src/assets/default-cover.png'" :alt="item.song.name || 'FM Cover'" />
                                         <div v-if="item.role === 'center'" class="fm-play-overlay">
                                             <svg v-if="!isPlaying" width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M8 5v14l11-7z" />
@@ -102,8 +102,8 @@
 
                         <div class="fm-info">
                             <h2 class="song-name">{{ getSongDisplayName(currentSong, '', showSongTranslation) }}</h2>
-                            <p class="artist-name">{{ currentSong.artists?.map(a => a.name).join(' / ') }}</p>
-                            <p class="album-name">{{ currentSong.album?.name }}</p>
+                            <p class="artist-name">{{ getFmSongArtistsText(currentSong) }}</p>
+                            <p class="album-name">{{ getFmSongAlbumName(currentSong) }}</p>
                         </div>
                     </div>
 
@@ -241,6 +241,113 @@ function normalizeSongId(id) {
     return String(id)
 }
 
+function getPrimarySongId(song) {
+    if (!song || typeof song != 'object') return null
+    if (song.id !== undefined && song.id !== null && song.id !== '') return song.id
+    if (song.songId !== undefined && song.songId !== null && song.songId !== '') return song.songId
+    if (song.trackId !== undefined && song.trackId !== null && song.trackId !== '') return song.trackId
+    const nestedSong = song.song
+    if (nestedSong && typeof nestedSong == 'object') {
+        if (nestedSong.id !== undefined && nestedSong.id !== null && nestedSong.id !== '') return nestedSong.id
+        if (nestedSong.songId !== undefined && nestedSong.songId !== null && nestedSong.songId !== '') return nestedSong.songId
+        if (nestedSong.trackId !== undefined && nestedSong.trackId !== null && nestedSong.trackId !== '') return nestedSong.trackId
+    }
+    return null
+}
+
+function getFmSongArtists(song) {
+    if (!song || typeof song != 'object') return []
+    if (Array.isArray(song.artists) && song.artists.length > 0) return song.artists
+    if (Array.isArray(song.ar) && song.ar.length > 0) return song.ar
+    const nestedSong = song.song
+    if (nestedSong && typeof nestedSong == 'object') {
+        if (Array.isArray(nestedSong.artists) && nestedSong.artists.length > 0) return nestedSong.artists
+        if (Array.isArray(nestedSong.ar) && nestedSong.ar.length > 0) return nestedSong.ar
+    }
+    return []
+}
+
+function hasSongMetaObject(value) {
+    return !!(value && typeof value == 'object' && !Array.isArray(value) && Object.keys(value).length > 0)
+}
+
+function getFmSongAlbum(song) {
+    if (!song || typeof song != 'object') return null
+    if (hasSongMetaObject(song.album)) return song.album
+    if (hasSongMetaObject(song.al)) return song.al
+    const nestedSong = song.song
+    if (nestedSong && typeof nestedSong == 'object') {
+        if (hasSongMetaObject(nestedSong.album)) return nestedSong.album
+        if (hasSongMetaObject(nestedSong.al)) return nestedSong.al
+    }
+    return null
+}
+
+function getFmSongCover(song) {
+    if (!song || typeof song != 'object') return null
+    if (song.coverUrl) return song.coverUrl
+    if (song.al?.picUrl) return song.al.picUrl
+    if (song.album?.picUrl) return song.album.picUrl
+    if (song.blurPicUrl) return song.blurPicUrl
+    if (song.img1v1Url) return song.img1v1Url
+    const nestedSong = song.song
+    if (nestedSong && typeof nestedSong == 'object') {
+        if (nestedSong.coverUrl) return nestedSong.coverUrl
+        if (nestedSong.al?.picUrl) return nestedSong.al.picUrl
+        if (nestedSong.album?.picUrl) return nestedSong.album.picUrl
+        if (nestedSong.blurPicUrl) return nestedSong.blurPicUrl
+        if (nestedSong.img1v1Url) return nestedSong.img1v1Url
+    }
+    return null
+}
+
+function getFmSongArtistsText(song) {
+    return getFmSongArtists(song)
+        .map(artist => artist?.name || '')
+        .filter(Boolean)
+        .join(' / ')
+}
+
+function getFmSongAlbumName(song) {
+    return song?.album?.name || song?.al?.name || song?.song?.album?.name || song?.song?.al?.name || ''
+}
+
+function normalizeFmSong(song) {
+    if (!song || typeof song != 'object') return null
+
+    const primaryId = getPrimarySongId(song)
+    const normalizedId = normalizeSongId(primaryId)
+    if (!normalizedId) return null
+
+    const artists = getFmSongArtists(song).map(artist => ({ ...(artist || {}) }))
+    const rawAlbum = getFmSongAlbum(song)
+    const album = rawAlbum && typeof rawAlbum == 'object' ? { ...rawAlbum } : {}
+    const coverUrl = getFmSongCover(song)
+
+    if (coverUrl && !album.picUrl) album.picUrl = coverUrl
+
+    const parsedDuration = Number(song.dt ?? song.duration ?? song.song?.dt ?? song.song?.duration ?? 0)
+    const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 0
+    const tns = Array.isArray(song.tns) ? [...song.tns] : Array.isArray(song.song?.tns) ? [...song.song.tns] : []
+    const transNames = Array.isArray(song.transNames) ? [...song.transNames] : Array.isArray(song.song?.transNames) ? [...song.song.transNames] : []
+
+    return {
+        ...song,
+        id: primaryId,
+        name: song.name || song.song?.name || '',
+        artists,
+        ar: artists,
+        album,
+        al: album,
+        dt: duration,
+        duration,
+        coverUrl: coverUrl || null,
+        tns,
+        transNames,
+        type: song.type || 'fm',
+    }
+}
+
 function loadPersistentRecent() {
     // 清空并加载“近期播放队列”（按账号隔离）
     recentPlayedQueue.length = 0
@@ -304,7 +411,8 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
     let filteredByPool = 0
     let invalid = 0
     for (const s of songs) {
-        const id = normalizeSongId(s && (s.id || s.songId || s.trackId))
+        const normalizedSong = normalizeFmSong(s)
+        const id = normalizeSongId(normalizedSong?.id)
         if (!id) {
             invalid++
             continue
@@ -319,7 +427,7 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
             continue
         }
         fmPoolIds.add(id)
-        deduped.push(s)
+        deduped.push(normalizedSong)
     }
     if (deduped.length) fmSongs.value.push(...deduped)
     const stats = {
@@ -339,7 +447,7 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
 function takeNextFromPool() {
     while (fmSongs.value.length > 0) {
         const s = fmSongs.value.shift()
-        const id = normalizeSongId(s && (s.id || s.songId || s.trackId))
+        const id = normalizeSongId(s && s.id)
         if (id) fmPoolIds.delete(id)
         // 若近期播放过，则跳过，继续取下一首
         if (id && recentPlayedSet.has(id)) continue
@@ -693,18 +801,16 @@ const togglePlay = async () => {
         if (trackInfo && trackInfo.url) {
             const musicUrl = trackInfo.url
             console.log('Playing music from URL:', musicUrl)
+            const normalizedCurrentSong = normalizeFmSong(currentSong.value)
+            if (!normalizedCurrentSong) {
+                console.error('Invalid current FM song shape:', currentSong.value)
+                return
+            }
 
             // 创建一个临时的单曲列表用于FM播放（不影响用户的真实播放列表）
             const fmSongList = [
                 {
-                    id: currentSong.value.id,
-                    name: currentSong.value.name,
-                    tns: currentSong.value.tns || currentSong.value.song?.tns || [],
-                    transNames: currentSong.value.transNames || currentSong.value.song?.transNames || [],
-                    ar: currentSong.value.artists || [],
-                    al: currentSong.value.album || {},
-                    dt: currentSong.value.dt || currentSong.value.duration || 0,
-                    duration: currentSong.value.dt || currentSong.value.duration || 0,
+                    ...normalizedCurrentSong,
                     type: 'fm',
                 },
             ]
