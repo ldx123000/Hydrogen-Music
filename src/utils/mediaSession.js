@@ -27,15 +27,20 @@ function getArtworkForTrack(track, localBase64) {
 }
 
 export function initMediaSession() {
-  if (!(typeof navigator !== 'undefined' && navigator.mediaSession)) return
+  if (typeof navigator === 'undefined') return
+
+  const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
+  const isMac = /Mac/i.test(platform)
+  const isWindows = /Win/i.test(platform)
+
+  // Windows deliberately skips system media controls.
+  if (!(navigator.mediaSession && !isWindows)) return
 
   const playerStore = usePlayerStore(pinia)
   const refs = storeToRefs(playerStore)
   const { songList, currentIndex, playing, progress, time, localBase64Img, showSongTranslation } = refs
 
   // 平台与节流参数（封面仅换曲更新；进度略动态且限流）
-  const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
-  const isMac = /Mac/i.test(platform)
   const POS_MIN_INTERVAL = 1000 // macOS 更保守，Windows/其他约 1s
   const POS_MIN_DELTA = 0.8 // 小于 ~0.8s 的微小变化不推送
   // 切歌后短时间内更积极同步（爆发窗口）

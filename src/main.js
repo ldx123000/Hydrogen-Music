@@ -27,12 +27,14 @@ app.mount('#app')
 
 // 延迟到空闲时再注册 MediaSession，避免阻塞首屏
 const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 500))
-idle(async () => {
-  try {
-    const { initMediaSession } = await import('./utils/mediaSession')
-    initMediaSession()
-  } catch (_) {}
-})
+if (window.process?.platform !== 'win32') {
+  idle(async () => {
+    try {
+      const { initMediaSession } = await import('./utils/mediaSession')
+      initMediaSession()
+    } catch (_) {}
+  })
+}
 
 // Prevent default browser file open on drag/drop globally
 window.addEventListener('dragover', (e) => {

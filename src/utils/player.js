@@ -44,6 +44,34 @@ watch(showSongTranslation, () => {
     updateWindowTitleDock()
 })
 
+function hasCurrentSongSelected() {
+    const list = Array.isArray(songList.value) ? songList.value : []
+    const idx = Number.isInteger(currentIndex.value) ? currentIndex.value : -1
+    return idx >= 0 && idx < list.length && Boolean(list[idx])
+}
+
+function syncWindowsTaskbarPlaybackState() {
+    try {
+        if (window.process?.platform !== 'win32') return
+        const hasCurrentSong = hasCurrentSongSelected()
+        windowApi.updatePlaylistStatus({
+            hasCurrentSong,
+            hasPrevious: hasCurrentSong,
+            hasNext: hasCurrentSong,
+        })
+    } catch (_) {
+        // ignore
+    }
+}
+
+watch(
+    () => [Array.isArray(songList.value) ? songList.value.length : 0, currentIndex.value, songId.value],
+    () => {
+        syncWindowsTaskbarPlaybackState()
+    },
+    { immediate: true }
+)
+
 // 统一更新窗口标题和（macOS）Dock菜单
 function updateWindowTitleDock() {
     try {
@@ -98,6 +126,7 @@ function normalizePlayMode(mode, inFM = isPersonalFMContext()) {
 
 function syncPlayModeExternalState(mode) {
     windowApi.changeTrayMusicPlaymode(mode)
+    syncWindowsTaskbarPlaybackState()
 
     // 通知 MPRIS 循环模式
     switch (mode) {
@@ -279,9 +308,11 @@ export function loadLastSong() {
                 songList.value = list.songList
                 shuffledList.value = list.shuffledList
             }
+            syncWindowsTaskbarPlaybackState()
             if (songList.value) {
                 // 恢复播放状态时，需要先设置歌曲ID
                 setId(songList.value[currentIndex.value].id, currentIndex.value)
+                syncWindowsTaskbarPlaybackState()
 
                 if (songList.value[currentIndex.value].type == 'local') getSongUrl(songList.value[currentIndex.value].id, currentIndex.value, false, true)
                 else getSongUrl(songList.value[currentIndex.value].id, currentIndex.value, false, false)
@@ -409,7 +440,7 @@ export function play(url, autoplay, resumeSeek = null) {
 
             // 原有的播放结束逻辑（非FM模式）
             if (playMode.value == 0 && currentIndex.value < songList.value.length - 1) { playNext(); return } //顺序播放
-            if (playMode.value == 0 && currentIndex.value == songList.value.length - 1) { playing.value = false; playModeOne = true; windowApi.playOrPauseMusicCheck(playing.value); return } //顺序播放结束暂停状态
+            if (playMode.value == 0 && currentIndex.value == songList.value.length - 1) { playing.value = false; playModeOne = true; windowApi.playOrPauseMusicCheck(playing.value); syncWindowsTaskbarPlaybackState(); return } //顺序播放结束暂停状态
             if (playMode.value == 1) { playNext(); return } //列表循环
             if (playMode.value == 3) { playNext() } //随机播放(为列表循环)
             if (playMode.value == 2) { clearLycAnimation() } // 单曲循环播放结束时清除歌词动画
@@ -445,6 +476,7 @@ export function play(url, autoplay, resumeSeek = null) {
         startProgress()
         playing.value = true
         windowApi.playOrPauseMusicCheck(playing.value)
+        syncWindowsTaskbarPlaybackState()
         // 切歌/播放开始时统一更新窗口标题与（macOS）Dock 菜单
         updateWindowTitleDock()
     })
@@ -452,6 +484,7 @@ export function play(url, autoplay, resumeSeek = null) {
         clearInterval(musicProgress)
         playing.value = false
         windowApi.playOrPauseMusicCheck(playing.value)
+        syncWindowsTaskbarPlaybackState()
         currentMusic.value.fade(volume.value, 0, 200)
     })
 }
@@ -509,6 +542,7 @@ export function addToList(listType, songlist) {
         type: listType
     }
     songList.value = songlist.slice(0, songlist.length + 1)
+    syncWindowsTaskbarPlaybackState()
     savePlaylist()
 }
 
@@ -554,6 +588,7 @@ export function addLocalMusicTOList(listType, localMusicList, playId, playIndex)
     }
 
     songList.value = localMusicHandle(localMusicList, false)
+    syncWindowsTaskbarPlaybackState()
     addSong(playId, playIndex, true, true)
     savePlaylist()
 }
@@ -652,6 +687,7 @@ export function addSong(id, index, autoplay, isLocal) {
         playerChangeSong.value = true
     }
     setId(id, index)
+    syncWindowsTaskbarPlaybackState()
 
     // 切歌时清理视频状态（新的统一视频检查函数会处理加载）
     unloadMusicVideo()
@@ -1694,6 +1730,7 @@ windowApi.musicProcessControl((event, mode) => {
 })
 windowApi.playOrPauseMusicCheck(playing.value)
 windowApi.changeTrayMusicPlaymode(playMode.value)
+syncWindowsTaskbarPlaybackState()
 windowApi.beforeQuit(() => {
     //关闭之前清除下载管理中的状态
     windowApi.downloadPause('shutdown')

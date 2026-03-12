@@ -3,57 +3,148 @@ const path = require('path')
 
 module.exports = function InitTray(win, app, iconPath) {
     let tray = null
+    let contextMenu = null
+    const canUseWindowsThumbar = process.platform === 'win32'
     let winIsShow = false
+    let hasLoggedWindowsThumbarFailure = false
+    let hasCurrentSong = false
+    let hasPrevious = false
+    let hasNext = false
+    let isPlaying = false
 
-    // 创建按钮图标，确保图标清晰可见
+    const sendPlayerCommand = (channel, payload) => {
+        if (!win || win.isDestroyed()) return
+        if (!win.webContents || win.webContents.isDestroyed()) return
+        if (typeof payload === 'undefined') win.webContents.send(channel)
+        else win.webContents.send(channel, payload)
+    }
+
     const createButtonIcon = (iconName) => {
-        const iconPath = path.resolve(__dirname, `../assets/icon/${iconName}.png`)
-        const icon = nativeImage.createFromPath(iconPath)
-        // 确保图标尺寸合适，Windows推荐16x16
+        const buttonIconPath = path.resolve(__dirname, `../assets/icon/${iconName}.png`)
+        const icon = nativeImage.createFromPath(buttonIconPath)
         return icon.resize({ width: 16, height: 16 })
     }
 
-    let Buttons = [
-        {
-            icon: createButtonIcon('last'),
-            tooltip: '上一首',
-            flags: ['enabled'], // 明确启用状态
+    const windowsThumbarIcons = canUseWindowsThumbar
+        ? {
+            last: createButtonIcon('last'),
+            play: createButtonIcon('play'),
+            pause: createButtonIcon('pause'),
+            next: createButtonIcon('next'),
+        }
+        : null
+
+    const createWindowsThumbarButton = ({ icon, tooltip, channel, payload, disabled = false, hidden = false }) => {
+        const button = {
+            icon,
+            tooltip,
             click() {
-                win.webContents.send('music-song-control', 'last')
-            }
-        },
-        {
-            icon: createButtonIcon('play'),
-            tooltip: '播放',
-            flags: ['enabled'], // 明确启用状态
-            click() {
-                win.webContents.send('music-playing-control')
-            }
-        },
-        {
-            icon: createButtonIcon('pause'),
-            tooltip: '暂停',
-            flags: ['hidden'], // 初始隐藏
-            click() {
-                win.webContents.send('music-playing-control')
-            }
-        },
-        {
-            icon: createButtonIcon('next'),
-            tooltip: '下一首',
-            flags: ['enabled'], // 明确启用状态
-            click() {
-                win.webContents.send('music-song-control', 'next')
+                sendPlayerCommand(channel, payload)
             }
         }
-    ]
+        if (hidden) button.flags = ['hidden']
+        else if (disabled) button.flags = ['disabled']
+        return button
+    }
+
+    const buildWindowsThumbarButtons = () => {
+        if (!canUseWindowsThumbar) return []
+
+        return [
+            createWindowsThumbarButton({
+                icon: windowsThumbarIcons.last,
+                tooltip: '上一首',
+                channel: 'music-song-control',
+                payload: 'last',
+                disabled: !hasCurrentSong,
+            }),
+            createWindowsThumbarButton({
+                icon: windowsThumbarIcons.play,
+                tooltip: '播放',
+                channel: 'music-playing-control',
+                disabled: !hasCurrentSong,
+                hidden: isPlaying,
+            }),
+            createWindowsThumbarButton({
+                icon: windowsThumbarIcons.pause,
+                tooltip: '暂停',
+                channel: 'music-playing-control',
+                disabled: !hasCurrentSong,
+                hidden: !isPlaying,
+            }),
+            createWindowsThumbarButton({
+                icon: windowsThumbarIcons.next,
+                tooltip: '下一首',
+                channel: 'music-song-control',
+                payload: 'next',
+                disabled: !hasCurrentSong,
+            })
+        ]
+    }
+
+    const refreshWindowsThumbar = () => {
+        if (!canUseWindowsThumbar || !winIsShow) return
+        const updatedButtons = buildWindowsThumbarButtons()
+        const applied = win.setThumbarButtons(updatedButtons)
+        if (applied === false && !hasLoggedWindowsThumbarFailure) {
+            hasLoggedWindowsThumbarFailure = true
+            console.warn('Windows thumbar update rejected by Electron/Windows')
+        }
+    }
+
     win.on('show', () => {
-        // Windows-only feature: Thumbnail toolbar buttons
-        if (process.platform === 'win32') {
-            win.setThumbarButtons(Buttons)
-        }
         winIsShow = true
+        refreshWindowsThumbar()
     })
+    win.on('hide', () => {
+        winIsShow = false
+    })
+    win.on('closed', () => {
+        winIsShow = false
+    })
+
+    const syncTrayMenuPlaybackState = () => {
+        if (!contextMenu) return
+
+        const playItem = contextMenu.getMenuItemById('tray-play')
+        const pauseItem = contextMenu.getMenuItemById('tray-pause')
+        const lastItem = contextMenu.getMenuItemById('tray-last')
+        const nextItem = contextMenu.getMenuItemById('tray-next')
+
+        if (playItem) {
+            playItem.visible = !isPlaying
+            playItem.enabled = hasCurrentSong
+        }
+        if (pauseItem) {
+            pauseItem.visible = isPlaying
+            pauseItem.enabled = hasCurrentSong
+        }
+        if (lastItem) lastItem.enabled = hasPrevious
+        if (nextItem) nextItem.enabled = hasNext
+    }
+
+    ipcMain.on('music-playing-check', (e, playing) => {
+        isPlaying = Boolean(playing)
+        syncTrayMenuPlaybackState()
+        refreshWindowsThumbar()
+    })
+
+    ipcMain.on('music-playlist-status', (e, payload = {}) => {
+        hasCurrentSong = Boolean(payload.hasCurrentSong)
+        hasPrevious = Boolean(payload.hasPrevious)
+        hasNext = Boolean(payload.hasNext)
+        syncTrayMenuPlaybackState()
+        refreshWindowsThumbar()
+    })
+
+    ipcMain.on('music-playmode-tray-change', (e, mode) => {
+        if (!contextMenu) return
+        for (let i = 0; i <= 3; i += 1) {
+            const item = contextMenu.getMenuItemById(`tray-playmode-${i}`)
+            if (item) item.checked = i === mode
+        }
+    })
+
     app.whenReady().then(() => {
         // 根据平台选择不同的托盘图标
         let trayIconPath;
@@ -72,61 +163,69 @@ module.exports = function InitTray(win, app, iconPath) {
         }
 
         tray = new Tray(image);
-        const contextMenu = Menu.buildFromTemplate([
+        contextMenu = Menu.buildFromTemplate([
             {
+                id: 'tray-play',
                 label: '播放',
                 click: () => {
-                    win.webContents.send('music-playing-control')
+                    sendPlayerCommand('music-playing-control')
                 }
             },
             {
+                id: 'tray-pause',
                 label: '暂停',
                 visible: false,
                 click: () => {
-                    win.webContents.send('music-playing-control')
+                    sendPlayerCommand('music-playing-control')
                 }
             },
             {
+                id: 'tray-last',
                 label: '上一首',
                 click: () => {
-                    win.webContents.send('music-song-control', 'last')
+                    sendPlayerCommand('music-song-control', 'last')
                 }
             },
             {
+                id: 'tray-next',
                 label: '下一首',
                 click: () => {
-                    win.webContents.send('music-song-control', 'next')
+                    sendPlayerCommand('music-song-control', 'next')
                 }
             },
             {
                 label: '播放模式',
                 submenu: [
                     {
+                        id: 'tray-playmode-0',
                         label: '顺序播放',
                         type: 'radio',
                         click: () => {
-                            win.webContents.send('music-playmode-control', 0)
+                            sendPlayerCommand('music-playmode-control', 0)
                         },
                     },
                     {
+                        id: 'tray-playmode-1',
                         label: '列表循环',
                         type: 'radio',
                         click: () => {
-                            win.webContents.send('music-playmode-control', 1)
+                            sendPlayerCommand('music-playmode-control', 1)
                         },
                     },
                     {
+                        id: 'tray-playmode-2',
                         label: '单曲循环',
                         type: 'radio',
                         click: () => {
-                            win.webContents.send('music-playmode-control', 2)
+                            sendPlayerCommand('music-playmode-control', 2)
                         },
                     },
                     {
+                        id: 'tray-playmode-3',
                         label: '随机播放',
                         type: 'radio',
                         click: () => {
-                            win.webContents.send('music-playmode-control', 3)
+                            sendPlayerCommand('music-playmode-control', 3)
                         }
                     },
                 ]
@@ -134,7 +233,7 @@ module.exports = function InitTray(win, app, iconPath) {
             {
                 label: '退出',
                 click: () => {
-                    win.webContents.send('player-save')
+                    sendPlayerCommand('player-save')
                 }
             }
         ])
@@ -143,59 +242,7 @@ module.exports = function InitTray(win, app, iconPath) {
         tray.on('double-click', function () {
             win.show();
         });
-        ipcMain.on('music-playmode-tray-change', (e, mode) => {
-            contextMenu.items[4].submenu.items[0].checked = false
-            contextMenu.items[4].submenu.items[1].checked = false
-            contextMenu.items[4].submenu.items[2].checked = false
-            contextMenu.items[4].submenu.items[3].checked = false
-            contextMenu.items[4].submenu.items[mode].checked = true
-        })
-        ipcMain.on('music-playing-check', (e, playing) => {
-            if (playing) {
-                // 播放状态：显示暂停按钮，隐藏播放按钮
-                contextMenu.items[0].visible = false
-                contextMenu.items[1].visible = true
-                Buttons[1].flags = ['hidden']
-                Buttons[2].flags = ['enabled'] // 暂停按钮启用
-            }
-            else {
-                // 暂停状态：显示播放按钮，隐藏暂停按钮
-                contextMenu.items[0].visible = true
-                contextMenu.items[1].visible = false
-                Buttons[1].flags = ['enabled'] // 播放按钮启用
-                Buttons[2].flags = ['hidden']
-            }
-
-            // 确保上一首和下一首按钮始终启用
-            Buttons[0].flags = ['enabled']
-            Buttons[3].flags = ['enabled']
-
-            // 更新Windows缩略图按钮
-            if (winIsShow && process.platform === 'win32') {
-                win.setThumbarButtons(Buttons)
-            }
-        })
-
-        // 监听播放列表状态，动态启用/禁用按钮
-        ipcMain.on('music-playlist-status', (e, { hasNext, hasPrevious, hasCurrentSong }) => {
-            // 根据播放列表状态更新按钮
-            Buttons[0].flags = hasPrevious ? ['enabled'] : ['disabled'] // 上一首
-            Buttons[3].flags = hasNext ? ['enabled'] : ['disabled'] // 下一首
-
-            // 如果没有当前歌曲，禁用播放/暂停按钮
-            if (!hasCurrentSong) {
-                Buttons[1].flags = ['disabled']
-                Buttons[2].flags = ['disabled']
-            }
-
-            // 更新上下文菜单的启用状态
-            contextMenu.items[2].enabled = hasPrevious // 上一首菜单项
-            contextMenu.items[3].enabled = hasNext // 下一首菜单项
-
-            // 更新Windows缩略图按钮
-            if (winIsShow && process.platform === 'win32') {
-                win.setThumbarButtons(Buttons)
-            }
-        })
+        syncTrayMenuPlaybackState()
+        refreshWindowsThumbar()
     })
 }
