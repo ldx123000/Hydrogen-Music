@@ -63,8 +63,10 @@ if (buildResult.status !== 0) {
   process.exit(buildResult.status || 1);
 }
 
-const outputDir = path.join('release', packageJson.version);
-const reportResult = runNodeScript(sizeReportScript, [outputDir]);
-if (reportResult.status !== 0) {
-  process.exit(reportResult.status || 1);
+if (require('fs').existsSync(sizeReportScript)) {
+  const outputDir = path.join('release', packageJson.version);
+  const reportResult = runNodeScript(sizeReportScript, [outputDir]);
+  if (reportResult.status !== 0) {
+    process.exit(reportResult.status || 1);
+  }
 }

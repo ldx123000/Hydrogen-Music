@@ -54,6 +54,13 @@ const BASE_FILE_PATTERNS = [
   '!src/assets/fonts{,/**/*}',
   '!**/node_modules/**/*.d.ts',
   '!**/node_modules/**/*.map',
+  '!**/node_modules/sharp/vendor/**/include{,/**/*}',
+  '!**/node_modules/sharp/src{,/**/*}',
+  '!**/node_modules/sharp/install{,/**/*}',
+  '!**/node_modules/sharp/binding.gyp',
+  '!**/node_modules/sharp/lib/index.d.ts',
+  '!**/node_modules/sharp/node_modules/node-addon-api{,/**/*}',
+  '!**/node_modules/sharp/node_modules/.bin{,/**/*}',
   ...NODE_MODULE_PRUNE_DIRS.flatMap((name) => [
     `!**/node_modules/**/${name}`,
     `!**/node_modules/**/${name}/**`,

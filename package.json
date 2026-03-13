@@ -14,8 +14,7 @@
     "preview": "vite preview",
     "start": "nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",
     "_dist": "vite build && node scripts/build.js -p always",
-    "dist": "vite build && node scripts/build.js -p never",
-    "size-report": "node scripts/size-report.cjs"
+    "dist": "vite build && node scripts/build.js -p never"
   },
   "dependencies": {
     "@neteasecloudmusicapienhanced/api": "^4.29.11",
@@ -24,35 +23,35 @@
     "electron-store": "^11.0.2",
     "electron-updater": "^6.6.2",
     "electron-win-state": "^1.1.22",
-    "fs-extra": "^11.3.2",
-    "howler": "^2.2.4",
     "ffmpeg-static": "^5.2.0",
-    "js-cookie": "^3.0.5",
-    "js-md5": "^0.8.3",
+    "fs-extra": "^11.3.2",
     "mpris-service": "^2.1.2",
-    "music-metadata": "^11.9.0",
-    "node-id3": "^0.2.9",
     "metaflac-js": "^1.0.5",
-    "sharp": "^0.32.6",
+    "music-metadata": "^11.9.0",
     "nanoid": "^5.1.6",
-    "pinia": "^3.0.3",
-    "pinia-plugin-persistedstate": "^4.5.0",
-    "plyr": "^3.8.3",
-    "qrcode": "^1.5.4",
-    "terser": "^5.44.0",
-    "vue": "^3.5.22",
-    "vue-router": "^4.6.0",
-    "vue-slider-component": "^4.1.0-beta.6",
-    "vue-virtual-scroller": "^2.0.0-beta.8"
+    "node-id3": "^0.2.9",
+    "sharp": "^0.32.6"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
     "electron": "^38.3.0",
     "electron-builder": "^26.1.0",
     "electron-rebuild": "^3.2.9",
+    "howler": "^2.2.4",
+    "js-cookie": "^3.0.5",
+    "js-md5": "^0.8.3",
     "nodemon": "^3.1.10",
+    "pinia": "^3.0.3",
+    "pinia-plugin-persistedstate": "^4.5.0",
+    "plyr": "^3.8.3",
+    "qrcode": "^1.5.4",
+    "terser": "^5.44.0",
     "sass": "^1.93.2",
     "vite": "^7.1.10",
-    "rollup": "npm:@rollup/wasm-node@^4.52.5"
+    "rollup": "npm:@rollup/wasm-node@^4.52.5",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.0",
+    "vue-slider-component": "^4.1.0-beta.6",
+    "vue-virtual-scroller": "^2.0.0-beta.8"
   }
 }
