@@ -6,58 +6,12 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [vue()],
   base: './',
-  manifest: true,
   build: {
     target: 'es2018', // 更新到ES2018以支持async generator functions
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
         'desktop-lyric': resolve(__dirname, 'desktop-lyric.html')
-      },
-      output: {
-        // 手动代码分割，优化加载性能
-        manualChunks: (id) => {
-          // Vue 生态系统
-          if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) {
-            return 'vendor-vue'
-          }
-          // UI 组件库
-          if (id.includes('plyr') || id.includes('vue-slider-component') || id.includes('vue-virtual-scroller')) {
-            return 'vendor-ui'
-          }
-          // 工具库
-          if (id.includes('axios') || id.includes('howler') || id.includes('js-cookie') || 
-              id.includes('js-md5') || id.includes('nanoid')) {
-            return 'vendor-utils'
-          }
-          // 网易云音乐API
-          if (id.includes('NeteaseCloudMusicApi') || id.includes('@neteasecloudmusicapienhanced/api')) {
-            return 'vendor-music-api'
-          }
-          // 其他第三方库
-          if (id.includes('node_modules')) {
-            return 'vendor-misc'
-          }
-        },
-        // 优化文件名
-        chunkFileNames: (chunkInfo) => {
-          const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop().replace('.vue', '') : 'chunk'
-          return `js/${facadeModuleId}-[hash].js`
-        },
-        assetFileNames: (assetInfo) => {
-          const info = assetInfo.name.split('.')
-          const ext = info[info.length - 1]
-          if (/\.(mp4|webm|ogg|mp3|wav|flac|aac)(\?.*)?$/i.test(assetInfo.name)) {
-            return `media/[name]-[hash].${ext}`
-          }
-          if (/\.(png|jpe?g|gif|svg)(\?.*)?$/i.test(assetInfo.name)) {
-            return `images/[name]-[hash].${ext}`
-          }
-          if (/\.(woff2?|eot|ttf|otf)(\?.*)?$/i.test(assetInfo.name)) {
-            return `fonts/[name]-[hash].${ext}`
-          }
-          return `assets/[name]-[hash].${ext}`
-        }
       }
     },
     // 启用更激进的压缩

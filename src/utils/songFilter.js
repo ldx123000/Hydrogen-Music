@@ -73,22 +73,50 @@ function matchTexts(texts, keyword) {
     return texts.some(text => text.includes(normalizedKeyword));
 }
 
+function buildSearchText(builder, payload = {}) {
+    return builder(payload).join('\n');
+}
+
 export function normalizeSongFilterKeyword(value) {
     return normalizeSearchValue(value);
 }
 
+export function buildCloudSongSearchText(song = {}) {
+    return buildSearchText(buildCloudSongSearchTexts, song);
+}
+
+export function buildLocalSongSearchText(song = {}) {
+    return buildSearchText(buildLocalSongSearchTexts, song);
+}
+
+export function buildAlbumSearchText(album = {}) {
+    return buildSearchText(buildAlbumSearchTexts, album);
+}
+
+export function buildMVSearchText(mv = {}) {
+    return buildSearchText(buildMVSearchTexts, mv);
+}
+
+export function matchSearchText(searchText, keyword) {
+    const normalizedKeyword = normalizeSearchValue(keyword);
+    if (!normalizedKeyword) return true;
+    const normalizedText = normalizeSearchValue(searchText);
+    if (!normalizedText) return false;
+    return normalizedText.includes(normalizedKeyword);
+}
+
 export function matchCloudSongFilter(song, keyword) {
-    return matchTexts(buildCloudSongSearchTexts(song), keyword);
+    return matchSearchText(buildCloudSongSearchText(song), keyword);
 }
 
 export function matchLocalSongFilter(song, keyword) {
-    return matchTexts(buildLocalSongSearchTexts(song), keyword);
+    return matchSearchText(buildLocalSongSearchText(song), keyword);
 }
 
 export function matchAlbumFilter(album, keyword) {
-    return matchTexts(buildAlbumSearchTexts(album), keyword);
+    return matchSearchText(buildAlbumSearchText(album), keyword);
 }
 
 export function matchMVFilter(mv, keyword) {
-    return matchTexts(buildMVSearchTexts(mv), keyword);
+    return matchSearchText(buildMVSearchText(mv), keyword);
 }

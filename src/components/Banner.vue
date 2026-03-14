@@ -2,6 +2,7 @@
   import {  ref, onActivated } from 'vue'
   import { onBeforeRouteLeave } from 'vue-router';
   import { getBanner } from '../api/other';
+  const bannerSessionCache = new Map()
   const emit = defineEmits(['open-breaking-news'])
   const timer1 = ref(null)
   const timer2 = ref(null)
@@ -13,18 +14,22 @@
   const bannerTimer1 = ref(false)
   const bannerTimer2 = ref(false)
   const bannerList = ref([{}])
-    //获取轮播图，0为pc端轮播图,此处选择的是ipad端
+  //获取轮播图，0为pc端轮播图,此处选择的是ipad端
+  async function loadData(type) {
+      if (bannerSessionCache.has(type)) {
+          bannerList.value = bannerSessionCache.get(type)
+          return
+      }
+      const bannerData = await getBanner(type)
+      const banners = Array.isArray(bannerData?.banners) ? bannerData.banners : [{}]
+      bannerSessionCache.set(type, banners)
+      bannerList.value = banners
+  }
 
-    loadData(3)
-
-    async function loadData(type) {
-        const bannerData = await getBanner(type)
-        bannerList.value = bannerData.banners
-    }
-
-    onActivated(() => {
-        bannerStart()
-    })
+  onActivated(async () => {
+      await loadData(3)
+      bannerStart()
+  })
 
     onBeforeRouteLeave(() => {
         clearInterval(timer1.value)

@@ -12,7 +12,7 @@ if (isCreateMpris) {
 }
 
 
-const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron')
+const { app, BrowserWindow, globalShortcut, Menu, ipcMain, session } = require('electron')
 const path = require('path')
 
 
@@ -21,6 +21,48 @@ let lyricWindow = null
 let forceQuit = false;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
 let manualUpdateCheckInProgress = false;
+let ncmApiReadyResolved = false;
+let ncmApiReadyPayload = null;
+const ncmApiReadyWaiters = [];
+
+function resolveNcmApiReady(payload) {
+    if (ncmApiReadyResolved) return;
+    ncmApiReadyResolved = true;
+    ncmApiReadyPayload = payload;
+    while (ncmApiReadyWaiters.length > 0) {
+        const waiter = ncmApiReadyWaiters.shift();
+        try {
+            waiter(payload);
+        } catch (_) {}
+    }
+}
+
+function waitForNcmApiReady() {
+    if (ncmApiReadyResolved) return Promise.resolve(ncmApiReadyPayload);
+    return new Promise(resolve => {
+        ncmApiReadyWaiters.push(resolve);
+    });
+}
+
+async function getNcmApiCookieString() {
+    if (!session || !session.defaultSession) return ''
+
+    const cookieUrls = ['http://localhost:36530', 'http://127.0.0.1:36530']
+    const cookieMap = new Map()
+
+    for (const url of cookieUrls) {
+        try {
+            const cookies = await session.defaultSession.cookies.get({ url })
+            cookies.forEach(({ name, value }) => {
+                if (!name || value === undefined || value === null) return
+                cookieMap.set(name, value)
+            })
+        } catch (_) {}
+    }
+
+    if (cookieMap.size == 0) return ''
+    return Array.from(cookieMap.entries()).map(([name, value]) => `${name}=${value}`).join('; ')
+}
 
 //electron单例
 const gotTheLock = app.requestSingleInstanceLock()
@@ -57,15 +99,21 @@ if (!gotTheLock) {
     process.on('uncaughtException', (err) => {
       console.error('捕获到未处理异常:', err)
     })
-    //api初始化
-    try {
-      await startNeteaseMusicApi();  // 等待 API 启动
-      console.log('Netease API 已就绪');
-      createWindow();                 // API 启动后再创建窗口
-    } catch (err) {
-      console.error('Netease API 启动失败:', err);
-      app.quit();                     // 启动失败退出
-    }
+    createWindow()
+    startNeteaseMusicApi()
+      .then((result) => {
+        const payload = result && typeof result == 'object'
+          ? { ready: !!result.ready, ...(result.error ? { error: result.error } : {}) }
+          : { ready: true }
+        if (payload.ready) console.log('Netease API 已就绪')
+        else console.warn('Netease API 未就绪:', payload.error || 'unknown error')
+        resolveNcmApiReady(payload)
+      })
+      .catch((err) => {
+        const errorMessage = err && err.message ? err.message : 'unknown error'
+        console.error('Netease API 启动失败:', err);
+        resolveNcmApiReady({ ready: false, error: errorMessage })
+      })
     app.on('activate', () => {
       // 在macOS上，当点击dock图标并且没有其他窗口打开时，
       // 应该重新创建一个窗口。
@@ -85,6 +133,12 @@ if (!gotTheLock) {
     // 与 src/electron/ipcMain.js 中的处理并存，仅用于设置标记
     ipcMain.on('check-for-update', () => {
         manualUpdateCheckInProgress = true
+    })
+    ipcMain.handle('ncm-api-ready-state', async () => {
+        return waitForNcmApiReady()
+    })
+    ipcMain.handle('ncm-api-cookie-string', async () => {
+        return getNcmApiCookieString()
     })
 
     app.on('window-all-closed', () => {
@@ -220,7 +274,12 @@ const createWindow = () => {
     } else {
         win.loadFile(indexHtml)
     }
-    win.once('ready-to-show', () => {
+
+    let hasShownMainWindow = false
+    let postShowInitialized = false
+    const showMainWindow = () => {
+        if (!win || win.isDestroyed() || hasShownMainWindow) return
+        hasShownMainWindow = true
         win.show()
         // 微调 macOS 交通灯位置以匹配自定义布局高度
         try {
@@ -228,6 +287,11 @@ const createWindow = () => {
                 win.setTrafficLightPosition({ x: 12, y: 10 })
             }
         } catch (_) {}
+    }
+
+    const initPostShowFeatures = () => {
+        if (postShowInitialized) return
+        postShowInitialized = true
         if (process.resourcesPath.indexOf(path.join('node_modules')) == -1) {
             // macOS: 禁用内置自动更新，改为手动检查（GitHub API）
             if (process.platform === 'darwin') {
@@ -290,7 +354,31 @@ const createWindow = () => {
             // 自动检查更新（非 macOS）
             autoUpdater.checkForUpdatesAndNotify()
         }
+    }
+
+    win.once('ready-to-show', () => {
+        showMainWindow()
+        initPostShowFeatures()
     })
+    win.webContents.once('did-finish-load', () => {
+        showMainWindow()
+        initPostShowFeatures()
+    })
+    win.webContents.on('render-process-gone', (_event, details) => {
+        console.error('主窗口渲染进程异常退出:', details)
+    })
+    win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+        if (level >= 2) {
+            console.error(`Renderer console [${level}] ${sourceId}:${line} ${message}`)
+        }
+    })
+    setTimeout(() => {
+        if (!hasShownMainWindow) {
+            console.warn('主窗口未触发 ready-to-show，使用超时兜底显示')
+            showMainWindow()
+            initPostShowFeatures()
+        }
+    }, 2500)
     winstate.manage(win)
     win.on('close', async (event) => {
         if (forceQuit) {

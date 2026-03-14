@@ -97,6 +97,7 @@ export const useOtherStore = defineStore('otherStore', {
           currentVideoId: null,
           videoIsFull: false,
           searchResult: {},
+          searchRequestToken: 0,
           toUpdate: false,
           newVersion: null,
         }
@@ -189,26 +190,69 @@ export const useOtherStore = defineStore('otherStore', {
                 return false;
             }
         },
-        getSearchInfo(keywords) {
-            let types = [1, 10, 100, 1000, 1004]
-            types.forEach(type => {
-                let params = {
-                    keywords: keywords,
-                    type: type,
+        async getSearchInfo(keywords) {
+            const requestToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+            this.searchRequestToken = requestToken
+
+            const requestConfigs = [
+                { type: 1, key: 'searchSongs' },
+                { type: 10, key: 'searchAlbums' },
+                { type: 100, key: 'searchArtists', limit: 10 },
+                { type: 1000, key: 'searchPlaylists', limit: 10 },
+                { type: 1004, key: 'searchMvs', limit: 10 },
+            ]
+
+            const results = await Promise.allSettled(requestConfigs.map(config => {
+                const params = {
+                    keywords,
+                    type: config.type,
                 }
-                if(type == 100) params.limit = 10
-                if(type == 1000) params.limit = 10
-                if(type == 1004) params.limit = 10
-                search(params).then(data => {
-                    if(type == 1) {
-                        this.searchResult.searchSongs = mapSongsPlayableStatus(data.result.songs)
-                    }
-                    if(type == 10) this.searchResult.searchAlbums = data.result.albums
-                    if(type == 100) this.searchResult.searchArtists = data.result.artists
-                    if(type == 1000) this.searchResult.searchPlaylists = data.result.playlists
-                    if(type == 1004) this.searchResult.searchMvs = data.result.mvs
-                })
-            });
+                if (config.limit) params.limit = config.limit
+                return search(params)
+            }))
+
+            if (this.searchRequestToken !== requestToken) return
+
+            const nextSearchResult = {
+                searchSongs: [],
+                searchAlbums: [],
+                searchArtists: [],
+                searchPlaylists: [],
+                searchMvs: [],
+            }
+
+            results.forEach((result, index) => {
+                if (result.status !== 'fulfilled') return
+                const data = result.value
+                const config = requestConfigs[index]
+                if (!config || !data?.result) return
+
+                if (config.key === 'searchSongs') {
+                    nextSearchResult.searchSongs = mapSongsPlayableStatus(data.result.songs || [])
+                    return
+                }
+
+                if (config.key === 'searchAlbums') {
+                    nextSearchResult.searchAlbums = data.result.albums || []
+                    return
+                }
+
+                if (config.key === 'searchArtists') {
+                    nextSearchResult.searchArtists = data.result.artists || []
+                    return
+                }
+
+                if (config.key === 'searchPlaylists') {
+                    nextSearchResult.searchPlaylists = data.result.playlists || []
+                    return
+                }
+
+                if (config.key === 'searchMvs') {
+                    nextSearchResult.searchMvs = data.result.mvs || []
+                }
+            })
+
+            this.searchResult = nextSearchResult
         }
     },
 })

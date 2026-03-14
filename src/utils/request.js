@@ -21,6 +21,145 @@ const request = axios.create({
     withCredentials: true,
     timeout: 10000,
 });
+const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+const NCM_API_READY_TIMEOUT_MS = 10000
+const NCM_API_COOKIE_CACHE_TTL_MS = 1200
+let ncmApiReadyPromise = null
+let ncmApiCookieCache = {
+  value: '',
+  expiresAt: 0,
+}
+let ncmApiCookiePromise = null
+
+function waitWithTimeout(promise, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('ncm-api-ready-timeout'))
+    }, timeoutMs)
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timer)
+        reject(error)
+      })
+  })
+}
+
+function ensureNcmApiReady() {
+  if (ncmApiReadyPromise) return ncmApiReadyPromise
+
+  if (typeof windowApi === 'undefined' || typeof windowApi.whenNcmApiReady !== 'function') {
+    ncmApiReadyPromise = Promise.resolve({ ready: true, skipped: true })
+    return ncmApiReadyPromise
+  }
+
+  ncmApiReadyPromise = waitWithTimeout(windowApi.whenNcmApiReady(), NCM_API_READY_TIMEOUT_MS)
+    .then((payload) => {
+      const readyState = payload && typeof payload === 'object' ? payload : { ready: true }
+      if (!readyState.ready) {
+        ncmApiReadyPromise = null
+      }
+      return readyState
+    })
+    .catch((error) => ({
+      ready: false,
+      error: error && error.message ? error.message : 'ncm-api-ready-failed',
+    }))
+    .then((readyState) => {
+      if (!readyState || !readyState.ready) {
+        ncmApiReadyPromise = null
+      }
+      return readyState
+    })
+
+  return ncmApiReadyPromise
+}
+
+function normalizeCookieString(cookieString) {
+  return String(cookieString || '').trim()
+}
+
+function parseCookieString(cookieString) {
+  const cookieMap = new Map()
+  const cookieText = normalizeCookieString(cookieString)
+  if (!cookieText) return cookieMap
+
+  cookieText.split(';').forEach((segment) => {
+    const cookiePart = String(segment || '').trim()
+    if (!cookiePart) return
+
+    const separatorIndex = cookiePart.indexOf('=')
+    if (separatorIndex <= 0) return
+
+    const name = cookiePart.slice(0, separatorIndex).trim()
+    const value = cookiePart.slice(separatorIndex + 1).trim()
+    if (!name || !value) return
+    cookieMap.set(name, value)
+  })
+
+  return cookieMap
+}
+
+function mergeCookieStrings(...cookieStrings) {
+  const mergedCookieMap = new Map()
+
+  cookieStrings.forEach((cookieString) => {
+    parseCookieString(cookieString).forEach((value, key) => {
+      mergedCookieMap.set(key, value)
+    })
+  })
+
+  if (mergedCookieMap.size == 0) return ''
+  return Array.from(mergedCookieMap.entries()).map(([key, value]) => `${key}=${value}`).join('; ')
+}
+
+function buildAuthCookieString() {
+  return AUTH_COOKIE_KEYS
+    .map((key) => {
+      const value = getCookie(key)
+      return value ? `${key}=${value}` : ''
+    })
+    .filter(Boolean)
+    .join('; ')
+}
+
+function resetNcmApiCookieCache() {
+  ncmApiCookieCache = {
+    value: '',
+    expiresAt: 0,
+  }
+}
+
+async function getNcmApiCookieString() {
+  const now = Date.now()
+  if (ncmApiCookieCache.expiresAt > now) {
+    return ncmApiCookieCache.value
+  }
+
+  if (ncmApiCookiePromise) return ncmApiCookiePromise
+
+  if (typeof windowApi === 'undefined' || typeof windowApi.getNcmApiCookieString !== 'function') {
+    return ''
+  }
+
+  ncmApiCookiePromise = Promise.resolve(windowApi.getNcmApiCookieString())
+    .then((cookieString) => normalizeCookieString(cookieString))
+    .catch(() => '')
+    .then((cookieString) => {
+      ncmApiCookieCache = {
+        value: cookieString,
+        expiresAt: Date.now() + NCM_API_COOKIE_CACHE_TTL_MS,
+      }
+      ncmApiCookiePromise = null
+      return cookieString
+    })
+
+  return ncmApiCookiePromise
+}
 
 // 防抖：避免同一时间多次触发自动退出
 let autoLoggingOut = false;
@@ -50,15 +189,20 @@ function triggerAutoLogout(reason) {
 }
 
 // 请求拦截器
-request.interceptors.request.use(function (config) {
+request.interceptors.request.use(async function (config) {
+  await ensureNcmApiReady()
   config.params = config.params || {}
 
   if (enhancedApi && config.useEnhancedApi) {
     return config;
   }
   
-  if(config.url != '/login/qr/check' && isLogin() && !config.params.cookie)
-    config.params.cookie = `MUSIC_U=${getCookie('MUSIC_U')};`;
+  if(config.url != '/login/qr/check') {
+    const authCookieString = isLogin() ? buildAuthCookieString() : ''
+    const apiCookieString = await getNcmApiCookieString()
+    const mergedCookieString = mergeCookieStrings(apiCookieString, authCookieString, config.params.cookie)
+    if (mergedCookieString) config.params.cookie = mergedCookieString
+  }
   if(libraryStore.needTimestamp.indexOf(config.url) != -1) {
     config.params.timestamp = new Date().getTime()
   }
@@ -95,13 +239,17 @@ request.interceptors.response.use(function (response) {
     const url = error?.config?.url || ''
     const status = error?.response?.status
     const msg = error?.response?.data?.message || error?.response?.data?.msg
+    const code = error?.response?.data?.code
+
+    if (code === -460) {
+      resetNcmApiCookieCache()
+    }
 
     // 若后端以HTTP身份错误返回，直接触发自动登出
     if (status === 401 || status === 403) {
       triggerAutoLogout('登录已过期，请重新登录');
     } else {
       // 后端也可能以200以外的状态携带业务code
-      const code = error?.response?.data?.code
       const text = error?.response?.data?.msg || error?.response?.data?.message || ''
       if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
         triggerAutoLogout('登录状态已失效，已自动退出');

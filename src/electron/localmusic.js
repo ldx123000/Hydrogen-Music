@@ -1,5 +1,5 @@
 const { ipcMain }= require('electron')
-const getDirTree = require('./dirTree')
+const scanLocalMusicTree = require('./dirTree')
 const Store = require('electron-store').default;
 
 
@@ -31,9 +31,10 @@ module.exports = function LocalFiles(win, app) {
             }
             let count = 0
             for (let i = 0; i < baseUrl.length; i++) {
-                dirTree.push(await getDirTree(baseUrl[i], 'dir'))
-                metadata.push(await getDirTree(baseUrl[i], 'data', win))
-                count += metadata[i].count
+                const result = await scanLocalMusicTree(baseUrl[i], win)
+                dirTree.push(result.dirTree)
+                metadata.push(result.metadata)
+                count += Number(result.count || 0)
             }
             sendLocalFiles(dirTree, metadata, type, count)
             count = null

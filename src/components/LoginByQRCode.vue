@@ -1,5 +1,5 @@
 <script setup>
-  import { onUnmounted, ref, watch } from 'vue'
+  import { onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
   import { onBeforeRouteLeave } from 'vue-router'
   import QRCode from 'qrcode'
   import DataCheckAnimaton from './DataCheckAnimaton.vue'
@@ -19,19 +19,39 @@
   const statusTitleEN = ref('QRCODE')
   const checkQRInterval = ref(null)
   const loadingQr = ref(false)
+  const pollingActive = ref(false)
+  const pollingInFlight = ref(false)
+  const loginCompleted = ref(false)
 
   const clearTimer = () => {
     if (checkQRInterval.value) {
-      clearInterval(checkQRInterval.value)
+      clearTimeout(checkQRInterval.value)
       checkQRInterval.value = null
     }
+    pollingActive.value = false
+  }
+
+  const scheduleNextPoll = (delay = 1000) => {
+    if (!pollingActive.value || loginCompleted.value) return
+
+    if (checkQRInterval.value) {
+      clearTimeout(checkQRInterval.value)
+    }
+
+    checkQRInterval.value = setTimeout(async () => {
+      checkQRInterval.value = null
+      await checkQRcode()
+      if (!pollingActive.value || loginCompleted.value) return
+      if (qrStatus.value === 800 || qrStatus.value === 803) return
+      scheduleNextPoll()
+    }, delay)
   }
 
   const startPolling = () => {
+    if (loginCompleted.value) return
     clearTimer()
-    checkQRInterval.value = setInterval(() => {
-      checkQRcode()
-    }, 1000)
+    pollingActive.value = true
+    scheduleNextPoll()
   }
 
   const generateFallbackQrImg = async (key) => {
@@ -51,7 +71,9 @@
   const loadData = async () => {
     if (loadingQr.value) return
 
+    clearTimer()
     loadingQr.value = true
+    loginCompleted.value = false
     qrcodeImg.value = ''
     qrStatus.value = 801
     statusTitle.value = '请使用网易云音乐扫码'
@@ -83,6 +105,7 @@
   }
 
   const checkQR = () => {
+    if (loginCompleted.value) return
     clearTimer()
 
     if (firstLoadMode.value === 1 || !qrKey.value || !qrcodeImg.value) {
@@ -117,23 +140,29 @@
   })
 
   const checkQRcode = () => {
-    if (!qrKey.value) return
+    if (!qrKey.value || loginCompleted.value || pollingInFlight.value) return
+
+    pollingInFlight.value = true
 
     checkQRcodeStatus(qrKey.value).then(result => {
       if (result?.code === 800) {
         qrStatus.value = 800
+        clearTimer()
       } else if (result?.code === 801) {
         qrStatus.value = 801
       } else if (result?.code === 802) {
         qrStatus.value = 802
       } else if (result?.code === 803) {
         qrStatus.value = 803
+        loginCompleted.value = true
         clearTimer()
         loginHandle(result, 'qr')
         emits('jumpTo')
       }
     }).catch(() => {
       // 轮询失败保持静默，避免频繁打断
+    }).finally(() => {
+      pollingInFlight.value = false
     })
   }
 
@@ -147,6 +176,16 @@
   if (firstLoadMode.value === 0) {
     loadData()
   }
+
+  onActivated(() => {
+    if (firstLoadMode.value === 0 && !loginCompleted.value && qrKey.value && qrcodeImg.value && qrStatus.value !== 800) {
+      startPolling()
+    }
+  })
+
+  onDeactivated(() => {
+    clearTimer()
+  })
 
   onBeforeRouteLeave(() => {
     clearTimer()

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
+import OverflowMarquee from './base/OverflowMarquee.vue';
 import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player';
 import { getDjDetail, subDj } from '../api/dj';
 import { useUserStore } from '../store/userStore';
@@ -99,6 +100,7 @@ const isInFMMode = computed(() => {
 
 // 是否为电台(DJ)模式
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
+const currentSongDisplayName = computed(() => getSongDisplayName(songList.value?.[currentIndex.value], '加载中...', showSongTranslation.value));
 
 // 当前电台订阅状态与rid
 const djSubed = ref(false);
@@ -250,7 +252,13 @@ const toggleDjSub = async isSubscribe => {
             <div class="player-info">
                 <div class="info-music">
                     <div class="music-name-lable" :class="{ 'music-name-lable-in': playerChangeSong }"></div>
-                    <span class="music-name" :class="{ 'music-name-in': playerChangeSong }">{{ getSongDisplayName(songList?.[currentIndex], '加载中...', showSongTranslation) }}</span>
+                    <OverflowMarquee
+                        class="music-name"
+                        :class="{ 'music-name-in': playerChangeSong }"
+                        :text="currentSongDisplayName"
+                        :active="!playerChangeSong && !widgetState"
+                        :start-delay-ms="900"
+                    ></OverflowMarquee>
                 </div>
                 <div class="info-music">
                     <div class="music-author-lable" :class="{ 'music-author-lable-video': videoIsPlaying || coverBlur }"></div>

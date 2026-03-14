@@ -88,7 +88,8 @@
     () => otherStore.addPlaylistShow,
     async (show) => {
       if (show) await ensureUserPlaylistsLoaded()
-    }
+    },
+    { immediate: true }
   )
 
   const addToPlaylist = () => {

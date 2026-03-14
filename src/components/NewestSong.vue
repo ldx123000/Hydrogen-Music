@@ -11,14 +11,17 @@
   const playerStore = usePlayerStore()
   const { songId, playing, showSongTranslation } = storeToRefs(playerStore)
   const newestSongList = ref()
+  let newestSongLoaded = false
 
   onActivated(() => {
+      if (newestSongLoaded && Array.isArray(newestSongList.value) && newestSongList.value.length > 0) return
       //参数:limit限制数量，默认为10
       loadData(10)
   })
   async function loadData(limit) {
     const listData = await getNewestSong(limit)
     newestSongList.value = listData.result
+    newestSongLoaded = true
   }
   const getImgUrl = (item) => {
     let img = item.picUrl || item.blurPicUrl

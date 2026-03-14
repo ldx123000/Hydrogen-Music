@@ -1,10 +1,9 @@
 <script setup>
   import { ref, computed, nextTick, watch } from 'vue'
   import { useRouter, onBeforeRouteUpdate} from 'vue-router';
-  import { nanoid } from 'nanoid'
   import { songTime2 } from '../utils/player';
   import { addLocalMusicTOList, setShuffledList } from '../utils/player'
-  import { matchLocalSongFilter, normalizeSongFilterKeyword } from '../utils/songFilter';
+  import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
   import SongFilterInput from './SongFilterInput.vue';
   import { useLocalStore } from '../store/localStore';
   import { usePlayerStore } from '../store/playerStore';
@@ -18,6 +17,10 @@
   const { songId, playMode, playing } =storeToRefs(playerStore)
   const otherStore = useOtherStore()
   const localSearchKeyword = ref('')
+  const currentLocalScope = computed(() => {
+    if (currentType.value == 'localAlbum' || currentType.value == 'localArtist') return 'local'
+    return currentSelectedInfo.value?.scope || 'local'
+  })
 
   const resetLocalResultScroll = async () => {
     await nextTick()
@@ -41,16 +44,12 @@
     const keyword = normalizeSongFilterKeyword(localSearchKeyword.value)
 
     return songs
-      .map((item, sourceIndex) => {
-        if(!item.nid)
-          Object.assign(item, {nid: nanoid()})
-        return {
-          song: item,
-          sourceIndex,
-          rowKey: item.nid || `${String(item.id ?? 'local')}-${sourceIndex}`,
-        }
-      })
-      .filter(entry => !keyword || matchLocalSongFilter(entry.song, keyword))
+      .map((item, sourceIndex) => ({
+        song: item,
+        sourceIndex,
+        rowKey: String(item?.id ?? `local-${sourceIndex}`),
+      }))
+      .filter(entry => !keyword || matchSearchText(localStore.getSongSearchText(entry.song, currentLocalScope.value), keyword))
   })
   const hasLocalSearchKeyword = computed(() => normalizeSongFilterKeyword(localSearchKeyword.value) !== '')
   const showLocalSearchEmpty = computed(() => hasLocalSearchKeyword.value && filteredSongEntries.value.length == 0)

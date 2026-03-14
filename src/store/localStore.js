@@ -1,6 +1,17 @@
 import { defineStore } from "pinia";
 import { noticeOpen } from "../utils/dialog";
 
+const createLookupIndexState = () => ({
+    localFoldersByName: {},
+    downloadedFoldersByName: {},
+    albumsById: {},
+    artistsById: {},
+    songSearchByScope: {
+        local: {},
+        downloaded: {},
+    },
+})
+
 export const useLocalStore = defineStore('localStore', {
     state: () => {
         return {
@@ -24,6 +35,7 @@ export const useLocalStore = defineStore('localStore', {
             isRefreshLocalFile: false,
 
             quitApp: null,
+            lookupIndex: createLookupIndexState(),
         }
     },
     actions: {
@@ -77,34 +89,77 @@ export const useLocalStore = defineStore('localStore', {
         async getImgBase64(fileUrl) {
             return await windowApi.getLocalMusicImage(fileUrl)
         },
+        updateLookupIndex(type, indexData = {}) {
+            const nextLookupIndex = {
+                ...this.lookupIndex,
+                songSearchByScope: {
+                    ...this.lookupIndex.songSearchByScope,
+                    [type]: indexData.songSearchById || {},
+                },
+            }
+
+            if (type == 'downloaded') {
+                nextLookupIndex.downloadedFoldersByName = indexData.foldersByName || {}
+            }
+
+            if (type == 'local') {
+                nextLookupIndex.localFoldersByName = indexData.foldersByName || {}
+                nextLookupIndex.albumsById = indexData.albumsById || {}
+                nextLookupIndex.artistsById = indexData.artistsById || {}
+            }
+
+            this.lookupIndex = nextLookupIndex
+        },
+        getSongSearchText(song, scope = null) {
+            const songId = String(song?.id || '')
+            if (!songId) return ''
+
+            if (scope && this.lookupIndex.songSearchByScope?.[scope]?.[songId]) {
+                return this.lookupIndex.songSearchByScope[scope][songId]
+            }
+
+            return this.lookupIndex.songSearchByScope?.local?.[songId]
+                || this.lookupIndex.songSearchByScope?.downloaded?.[songId]
+                || ''
+        },
         updateLocalMusicDetail(type, query, id) {
             this.currentType = type
+            this.currentSelectedFilePicUrl = null
             if(type == 'localFiles') {
-                if(query.type == 'downloaded')
-                    this.getFolderSongs(this.downloadedFiles, query.name)
-                if(query.type == 'local')
-                    this.getFolderSongs(this.localMusicList, query.name)
+                const folderScope = query?.type == 'downloaded' ? 'downloaded' : 'local'
+                const folderEntry = folderScope == 'downloaded'
+                    ? this.lookupIndex.downloadedFoldersByName?.[query?.name]
+                    : this.lookupIndex.localFoldersByName?.[query?.name]
+
+                this.currentSelectedInfo = {
+                    name: folderEntry?.name || query?.name || null,
+                    dirPath: folderEntry?.dirPath || null,
+                    scope: folderScope,
+                }
+                this.currentSelectedSongs = Array.isArray(folderEntry?.songs) ? folderEntry.songs : []
             }
             if(type == 'localAlbum') {
-                const index = (this.localMusicClassify.albums || []).findIndex((item) => item.id == id)
+                const albumEntry = this.lookupIndex.albumsById?.[String(id)] || null
                 this.currentSelectedInfo = {
-                    id: this.localMusicClassify.albums[index].id,
-                    name: this.localMusicClassify.albums[index].name
+                    id: albumEntry?.id || id,
+                    name: albumEntry?.name || null,
+                    scope: 'local',
                 }
-                this.currentSelectedSongs = this.localMusicClassify.albums[index].songs
-                if(this.currentSelectedSongs)
+                this.currentSelectedSongs = Array.isArray(albumEntry?.songs) ? albumEntry.songs : []
+                if(Array.isArray(this.currentSelectedSongs) && this.currentSelectedSongs.length > 0)
                     this.getImgBase64(this.currentSelectedSongs[0].common.fileUrl).then(res => {
                         this.currentSelectedFilePicUrl = res
                     })
             }
             if(type == 'localArtist') {
-                const index = (this.localMusicClassify.artists || []).findIndex((item) => item.id == id)
+                const artistEntry = this.lookupIndex.artistsById?.[String(id)] || null
                 this.currentSelectedInfo = {
-                    id: this.localMusicClassify.artists[index].id,
-                    name: this.localMusicClassify.artists[index].name
+                    id: artistEntry?.id || id,
+                    name: artistEntry?.name || null,
+                    scope: 'local',
                 }
-                this.currentSelectedSongs = this.localMusicClassify.artists[index].songs
-                if(this.currentSelectedSongs)
+                this.currentSelectedSongs = Array.isArray(artistEntry?.songs) ? artistEntry.songs : []
+                if(Array.isArray(this.currentSelectedSongs) && this.currentSelectedSongs.length > 0)
                     this.getImgBase64(this.currentSelectedSongs[0].common.fileUrl).then(res => {
                         this.currentSelectedFilePicUrl = res
                     })

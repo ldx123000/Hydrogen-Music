@@ -106,8 +106,6 @@ module.exports = {
   mac: {
     category: 'public.app-category.music',
     icon: './src/assets/icon/icon.icns',
-    bundleVersion: '${version}',
-    bundleShortVersion: '${version}',
     target: ['dmg'],
     artifactName: 'Hydrogen.Music-${version}-${arch}.${ext}',
   },

@@ -1,20 +1,21 @@
 <script setup>
+import { defineAsyncComponent, onMounted } from 'vue';
 import Home from './views/Home.vue';
 import Title from './components/Title.vue';
 import SearchInput from './components/SearchInput.vue';
 import WindowControl from './components/WindowControl.vue';
 import MusicWidget from './components/MusicWidget.vue';
-import MusicPlayer from './views/MusicPlayer.vue';
-import VideoPlayer from './components/VideoPlayer.vue';
-import ContextMenu from './components/ContextMenu.vue';
-import GlobalDialog from './components/GlobalDialog.vue';
-import GlobalNotice from './components/GlobalNotice.vue';
-import Update from './components/Update.vue';
 import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
+
+const MusicPlayer = defineAsyncComponent(() => import('./views/MusicPlayer.vue'));
+const VideoPlayer = defineAsyncComponent(() => import('./components/VideoPlayer.vue'));
+const ContextMenu = defineAsyncComponent(() => import('./components/ContextMenu.vue'));
+const GlobalDialog = defineAsyncComponent(() => import('./components/GlobalDialog.vue'));
+const GlobalNotice = defineAsyncComponent(() => import('./components/GlobalNotice.vue'));
+const Update = defineAsyncComponent(() => import('./components/Update.vue'));
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
@@ -63,13 +64,13 @@ const handleTitleBarDoubleClick = () => {
         </div>
     </Transition>
     <div class="contextMune">
-        <ContextMenu></ContextMenu>
+        <ContextMenu v-if="otherStore.contextMenuShow || otherStore.addPlaylistShow"></ContextMenu>
     </div>
     <div class="globalDialog">
-        <GlobalDialog></GlobalDialog>
+        <GlobalDialog v-if="otherStore.dialogShow"></GlobalDialog>
     </div>
     <div class="globalNotice">
-        <GlobalNotice></GlobalNotice>
+        <GlobalNotice v-if="otherStore.noticeShow"></GlobalNotice>
     </div>
     <Transition name="fade">
         <div class="update" v-if="otherStore.toUpdate">

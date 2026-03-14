@@ -17,8 +17,10 @@
   const recTitle = ref('')
   const recTitleEN = ref('')
   const recommendationList = ref([{}])
+  let recommendationLoaded = false
 
   onActivated(() => {
+    if (recommendationLoaded && Array.isArray(recommendationList.value) && recommendationList.value.length > 0) return
     /**
      * 第一个参数为推荐歌手的国家,第二个为推荐歌单请求数量，第三个为最新专辑的国家，
      * 最后为当前列表的类型
@@ -69,6 +71,7 @@
             return indexs.includes(index)
         });;
     }
+    recommendationLoaded = true
     // console.log(recommendationList.value)
   }
 

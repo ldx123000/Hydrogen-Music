@@ -137,6 +137,12 @@ function updateError(callback) {
 function checkForUpdate() {
     ipcRenderer.send('check-for-update')
 }
+function whenNcmApiReady() {
+    return ipcRenderer.invoke('ncm-api-ready-state')
+}
+function getNcmApiCookieString() {
+    return ipcRenderer.invoke('ncm-api-cookie-string')
+}
 function downloadUpdate() {
     ipcRenderer.send('download-update')
 }
@@ -241,6 +247,8 @@ contextBridge.exposeInMainWorld('windowApi', {
     updateDownloaded,
     updateError,
     checkForUpdate,
+    whenNcmApiReady,
+    getNcmApiCookieString,
     downloadUpdate,
     installUpdate,
     cancelUpdate,

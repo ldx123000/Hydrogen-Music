@@ -130,7 +130,7 @@ const openMenu = (e, item) => {
 
 <template>
     <div class="library-content">
-        <RecycleScroller v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="44" key-field="rowKey" v-slot="{ item }">
+        <RecycleScroller v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="42" key-field="rowKey" v-slot="{ item }">
             <div
                 class="list-item"
                 :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': item.song.playable !== undefined && !item.song.playable, 'list-item-vip': item.song.vipOnly }"
@@ -141,7 +141,13 @@ const openMenu = (e, item) => {
             >
                 <div class="item-title">
                     <div class="item-state">
-                        <button v-if="hoverRowKey === item.rowKey" class="item-play-btn" @click.stop="togglePlay(item.song, item.sourceIndex)" :aria-label="songId === item.song.id && playing ? '暂停' : '播放'">
+                        <button
+                            class="item-play-btn"
+                            :class="{ 'state-visible': hoverRowKey === item.rowKey }"
+                            @click.stop="togglePlay(item.song, item.sourceIndex)"
+                            :aria-label="songId === item.song.id && playing ? '暂停' : '播放'"
+                            :tabindex="hoverRowKey === item.rowKey ? 0 : -1"
+                        >
                             <svg v-if="songId === item.song.id && playing" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
                                 <rect x="256" y="200" width="160" height="624" rx="32" fill="currentColor" />
                                 <rect x="608" y="200" width="160" height="624" rx="32" fill="currentColor" />
@@ -153,15 +159,13 @@ const openMenu = (e, item) => {
                                 ></path>
                             </svg>
                         </button>
-                        <template v-else>
-                            <div class="playing-eq" v-show="songId == item.song.id" :class="{ 'is-paused': !playing }" aria-hidden="true">
-                                <span class="bar"></span>
-                                <span class="bar"></span>
-                                <span class="bar"></span>
-                                <span class="bar"></span>
-                            </div>
-                            <div class="item-num" v-show="!(songId == item.song.id)">{{ item.sourceIndex + 1 }}</div>
-                        </template>
+                        <div class="playing-eq" :class="{ 'is-paused': !playing, 'state-visible': hoverRowKey !== item.rowKey && songId == item.song.id }" aria-hidden="true">
+                            <span class="bar"></span>
+                            <span class="bar"></span>
+                            <span class="bar"></span>
+                            <span class="bar"></span>
+                        </div>
+                        <div class="item-num" :class="{ 'state-visible': hoverRowKey !== item.rowKey && songId != item.song.id }">{{ item.sourceIndex + 1 }}</div>
                     </div>
                     <span class="item-name">
                         <span class="item-name-text">{{ getSongDisplayName(item.song, '', showSongTranslation) }}</span>
@@ -185,6 +189,7 @@ const openMenu = (e, item) => {
     .library-song-list {
         height: 100%;
         overflow: auto;
+        overflow-anchor: none;
         &::-webkit-scrollbar {
             width: 5px;
             height: 10px;
@@ -227,6 +232,24 @@ const openMenu = (e, item) => {
                 }
                 .item-state {
                     width: 26px;
+                    height: 22px;
+                    position: relative;
+                    flex: 0 0 26px;
+                    .item-play-btn,
+                    .playing-eq,
+                    .item-num {
+                        position: absolute;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        opacity: 0;
+                        visibility: hidden;
+                        transition: opacity 0.12s ease;
+                    }
+                    .state-visible {
+                        opacity: 1;
+                        visibility: visible;
+                    }
                     .item-play-btn {
                         width: 22px;
                         height: 22px;
@@ -242,18 +265,22 @@ const openMenu = (e, item) => {
                         padding: 0;
                         color: inherit;
                         cursor: pointer;
+                        pointer-events: none;
                         transition:
-                            opacity 0.15s ease,
+                            opacity 0.12s ease,
                             transform 0.15s ease;
                         svg {
                             width: 18px;
                             height: 18px;
                         }
+                        &.state-visible {
+                            pointer-events: auto;
+                        }
                         &:hover {
                             opacity: 0.7;
                         }
                         &:active {
-                            transform: scale(0.9);
+                            transform: translate(-50%, -50%) scale(0.9);
                         }
                     }
                     .item-num {

@@ -5,6 +5,7 @@
   import VueSlider from 'vue-slider-component'
   import '../assets/css/slider.css'
   import PlayList from './PlayList.vue'
+  import OverflowMarquee from './base/OverflowMarquee.vue'
 
   import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player'
   import { getDjDetail, subDj } from '../api/dj'
@@ -17,7 +18,7 @@
   const userStore = useUserStore()
   const playerStore = usePlayerStore()
   const otherStore = useOtherStore()
-  const { currentMusic, playing, progress, playMode, songList, songId, currentIndex, volume, time, playlistWidgetShow, lyricShow, localBase64Img, listInfo, showSongTranslation } =storeToRefs(playerStore)
+  const { currentMusic, playing, progress, playMode, songList, songId, currentIndex, volume, time, playlistWidgetShow, lyricShow, localBase64Img, listInfo, showSongTranslation, widgetState } =storeToRefs(playerStore)
   
   // 检查是否在FM模式
   const isInFMMode = computed(() => {
@@ -44,6 +45,7 @@
 
   watch(djRid, () => { djSubed.value = false; if (djRid.value) loadDjSubStatus() })
   const showMusicTime = ref(false)
+  const currentSongDisplayName = computed(() => getSongDisplayName(songList.value?.[currentIndex.value], '', showSongTranslation.value))
 
   watch(() => volume.value, () => {
     currentMusic.value.volume(volume.value)
@@ -119,7 +121,14 @@
             </div>
         </div>
         <div class="music-info-other">
-            <span class="music-name" :class="{'music-time-in': showMusicTime}">{{getSongDisplayName(songList[currentIndex], '', showSongTranslation)}}</span>
+            <OverflowMarquee
+                class="music-name"
+                :class="{'music-time-in': showMusicTime}"
+                :text="currentSongDisplayName"
+                :active="widgetState"
+                :overflow-threshold-px="0"
+                :start-delay-ms="900"
+            ></OverflowMarquee>
             <div class="music-author">
                 <span @click="checkArtist(singer.id)" :class="['author', { disabled: isDjMode }]" v-for="(singer, index) in songList[currentIndex].ar">{{singer.name || ''}}{{index == songList[currentIndex].ar.length -1 ? '' : ' / '}}</span>
             </div>
@@ -264,17 +273,21 @@
             .music-name,.music-author{
                 text-align: left;
                 overflow: hidden;
-                display: -webkit-box;
-                -webkit-box-orient: vertical;
-                -webkit-line-clamp: 1;
-                word-break: break-all;
+                width: 100%;
+                min-width: 0;
             }
             .music-name{
+                display: block;
+                white-space: nowrap;
                 font: 14Px SourceHanSansCN-Bold;
                 font-weight: bold;
                 color: var(--text);
             }
             .music-author{
+                display: -webkit-box;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 1;
+                word-break: break-all;
                 font: 10Px SourceHanSansCN-Bold;
                 color: var(--muted-text);
                 .author{

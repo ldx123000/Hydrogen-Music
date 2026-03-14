@@ -102,8 +102,17 @@
 
                         <div class="fm-info">
                             <h2 class="song-name">{{ getSongDisplayName(currentSong, '', showSongTranslation) }}</h2>
-                            <p class="artist-name">{{ getFmSongArtistsText(currentSong) }}</p>
-                            <p class="album-name">{{ getFmSongAlbumName(currentSong) }}</p>
+                            <p class="artist-name">
+                                <template v-for="(artist, index) in currentSongArtists" :key="artist?.id || artist?.name || index">
+                                    <span class="artist-link" :class="{ clickable: canOpenArtist(artist) }" @click="openArtist(artist)">
+                                        {{ artist?.name || '' }}
+                                    </span>
+                                    <span v-if="index != currentSongArtists.length - 1" class="artist-separator">/</span>
+                                </template>
+                            </p>
+                            <p class="album-name" :class="{ clickable: canOpenAlbum(currentSongAlbum) }" @click="openAlbum(currentSongAlbum)">
+                                {{ getFmSongAlbumName(currentSong) }}
+                            </p>
                         </div>
                     </div>
 
@@ -158,6 +167,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, onActivated, onDeactivated, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { getPersonalFM, getPersonalFMByMode, fmTrash, getLyric, likeMusic } from '../api/song'
 import { getRecommendSongs } from '../api/playlist'
 import { usePlayerStore } from '../store/playerStore'
@@ -165,12 +175,24 @@ import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
 import { noticeOpen } from '../utils/dialog'
 import { mapSongsPlayableStatus } from '../utils/songStatus'
-import { applyOptimisticLikeState, createLikeActionToken, getFavoritePlaylistNoticeText, getLikeActionErrorMessage, isActiveLikeActionToken, play, queueLikeRequest, setSongLevel, syncLikelistAfterLikeAction, updateFavoritePlaylistTrack } from '../utils/player'
+import {
+    applyOptimisticLikeState,
+    createLikeActionToken,
+    getFavoritePlaylistNoticeText,
+    getLikeActionErrorMessage,
+    isActiveLikeActionToken,
+    play,
+    queueLikeRequest,
+    setSongLevel,
+    syncLikelistAfterLikeAction,
+    updateFavoritePlaylistTrack,
+} from '../utils/player'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
 import { getSongDisplayName } from '../utils/songName'
 
+const router = useRouter()
 const playerStore = usePlayerStore()
 const userStore = useUserStore()
 const libraryStore = useLibraryStore()
@@ -184,6 +206,8 @@ const isCurrentSongLiked = computed(() => {
     }
     return likelist.value.includes(currentSong.value.id)
 })
+const currentSongArtists = computed(() => getFmSongArtists(currentSong.value))
+const currentSongAlbum = computed(() => getFmSongAlbum(currentSong.value))
 
 const fmSongs = ref([])
 const playedSongs = ref([]) // 已播放的歌曲历史（用于前后切换浏览）
@@ -310,6 +334,42 @@ function getFmSongArtistsText(song) {
 
 function getFmSongAlbumName(song) {
     return song?.album?.name || song?.al?.name || song?.song?.album?.name || song?.song?.al?.name || ''
+}
+
+function getArtistId(artist) {
+    if (!artist || typeof artist != 'object') return null
+    if (artist.id !== undefined && artist.id !== null && artist.id !== '') return artist.id
+    if (artist.artistId !== undefined && artist.artistId !== null && artist.artistId !== '') return artist.artistId
+    return null
+}
+
+function getAlbumId(album) {
+    if (!album || typeof album != 'object') return null
+    if (album.id !== undefined && album.id !== null && album.id !== '') return album.id
+    if (album.albumId !== undefined && album.albumId !== null && album.albumId !== '') return album.albumId
+    return null
+}
+
+function canOpenArtist(artist) {
+    return !!getArtistId(artist)
+}
+
+function canOpenAlbum(album) {
+    return !!getAlbumId(album)
+}
+
+function openArtist(artist) {
+    const artistId = getArtistId(artist)
+    if (!artistId) return
+    playerStore.forbidLastRouter = true
+    router.push('/mymusic/artist/' + artistId)
+}
+
+function openAlbum(album) {
+    const albumId = getAlbumId(album)
+    if (!albumId) return
+    playerStore.forbidLastRouter = true
+    router.push('/mymusic/album/' + albumId)
 }
 
 function normalizeFmSong(song) {
@@ -691,10 +751,8 @@ const getCoverReleaseDelayMs = () => {
     const host = document.querySelector('.personal-fm')
     const ratioValue = host ? window.getComputedStyle(host).getPropertyValue('--fm-cover-overlap-release-ratio') : ''
     const ratio = Number.parseFloat((ratioValue || '').trim())
-    const safeRatio = Number.isFinite(ratio) && ratio > 0 && ratio <= 1 ? ratio : COVER_RELEASE_RATIO_FALLBACK
-    const ratioDelay = transitionDurationMs * safeRatio
 
-    return Math.max(COVER_RELEASE_MIN_MS, Math.min(transitionDurationMs, ratioDelay))
+    return Math.max(COVER_RELEASE_MIN_MS, transitionDurationMs)
 }
 
 const queueCoverDirection = direction => {
@@ -1307,7 +1365,7 @@ const handleFmClearRecent = () => {
     --fm-ghost-btn-bg: rgba(0, 0, 0, 0.06);
     --fm-ghost-btn-hover-bg: rgba(0, 0, 0, 0.12);
     --fm-mode-bg: rgba(255, 255, 255, 0.42);
-    --fm-mode-hover-bg: rgba(255, 255, 255, 0.56);
+    --fm-mode-hover-bg: var(--fm-mode-bg);
     --fm-mode-panel-bg: rgba(255, 255, 255, 0.64);
     --fm-mode-panel-bg-soft: rgba(255, 255, 255, 0.3);
     --fm-mode-active-bg: var(--fm-primary-btn-bg);
@@ -1719,6 +1777,13 @@ const handleFmClearRecent = () => {
         }
     }
 
+    &.active:hover:not(:disabled) {
+        transform: none;
+        background: var(--fm-mode-active-bg);
+        color: var(--fm-mode-active-text) !important;
+        border-color: var(--fm-mode-active-border);
+    }
+
     &:disabled {
         opacity: 0.58;
         cursor: not-allowed;
@@ -1882,12 +1947,33 @@ const handleFmClearRecent = () => {
         font: 14px SourceHanSansCN-Bold;
         color: var(--fm-muted) !important;
         margin: 0 0 4px 0;
+
+        .artist-link {
+            transition: color 0.2s ease;
+
+            &.clickable {
+                cursor: pointer;
+
+                &:hover {
+                    color: var(--fm-text) !important;
+                }
+            }
+        }
     }
 
     .album-name {
         font: 12px SourceHanSansCN-Bold;
         color: var(--fm-subtle) !important;
         margin: 0;
+
+        &.clickable {
+            cursor: pointer;
+            transition: color 0.2s ease;
+
+            &:hover {
+                color: var(--fm-text) !important;
+            }
+        }
     }
 }
 

@@ -5,6 +5,7 @@ import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum }
 import { getArtistMV } from '../api/mv'
 import { getSongDetail } from '../api/song'
 import { mapSongsPlayableStatus } from "../utils/songStatus";
+import { buildAlbumSearchText, buildCloudSongSearchText, buildMVSearchText } from "../utils/songFilter";
 
 const PLAYLIST_PAGE_SIZE = 100
 const PLAYLIST_HYDRATION_CONCURRENCY = 4
@@ -15,6 +16,13 @@ const createPlaylistHydrationState = ({ id = null, total = 0, loaded = 0, status
     loaded,
     status,
 })
+const createSearchIndexState = () => ({
+    songs: {},
+    albums: {},
+    mvs: {},
+})
+
+const getSearchEntryKey = (entry, fallbackKey = '0') => String(entry?.id ?? fallbackKey)
 
 export const useLibraryStore = defineStore('libraryStore', {
     state: () => {
@@ -40,6 +48,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             librarySongs: null,
             libraryAlbum: null,
             libraryMV: null,
+            searchIndexById: createSearchIndexState(),
             needTimestamp: [],
             libraryChangeAnimation: false,
         }
@@ -66,6 +75,58 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.playlistHydration = createPlaylistHydrationState()
             this.playlistHydrationToken = null
             this.playlistHydrationPromise = null
+        },
+        resetSearchIndex(section = null) {
+            if (!section) {
+                this.searchIndexById = createSearchIndexState()
+                return
+            }
+            this.searchIndexById = {
+                ...this.searchIndexById,
+                [section]: {},
+            }
+        },
+        indexLibrarySongs(songs, { append = false } = {}) {
+            const nextSongsIndex = append ? { ...(this.searchIndexById?.songs || {}) } : {}
+            const targetSongs = Array.isArray(songs) ? songs : []
+            targetSongs.forEach((song, index) => {
+                nextSongsIndex[getSearchEntryKey(song, `song-${index}`)] = buildCloudSongSearchText(song)
+            })
+            this.searchIndexById = {
+                ...this.searchIndexById,
+                songs: nextSongsIndex,
+            }
+        },
+        indexLibraryAlbums(albums) {
+            const nextAlbumsIndex = {}
+            const targetAlbums = Array.isArray(albums) ? albums : []
+            targetAlbums.forEach((album, index) => {
+                nextAlbumsIndex[getSearchEntryKey(album, `album-${index}`)] = buildAlbumSearchText(album)
+            })
+            this.searchIndexById = {
+                ...this.searchIndexById,
+                albums: nextAlbumsIndex,
+            }
+        },
+        indexLibraryMVs(mvs) {
+            const nextMvsIndex = {}
+            const targetMvs = Array.isArray(mvs) ? mvs : []
+            targetMvs.forEach((mv, index) => {
+                nextMvsIndex[getSearchEntryKey(mv, `mv-${index}`)] = buildMVSearchText(mv)
+            })
+            this.searchIndexById = {
+                ...this.searchIndexById,
+                mvs: nextMvsIndex,
+            }
+        },
+        getSongSearchText(song, fallbackKey = '0') {
+            return this.searchIndexById?.songs?.[getSearchEntryKey(song, fallbackKey)] || buildCloudSongSearchText(song)
+        },
+        getAlbumSearchText(album, fallbackKey = '0') {
+            return this.searchIndexById?.albums?.[getSearchEntryKey(album, fallbackKey)] || buildAlbumSearchText(album)
+        },
+        getMVSearchText(mv, fallbackKey = '0') {
+            return this.searchIndexById?.mvs?.[getSearchEntryKey(mv, fallbackKey)] || buildMVSearchText(mv)
         },
         trimDetailScrollMemory() {
             if (!this.detailScrollMemory || typeof this.detailScrollMemory != 'object') {
@@ -166,6 +227,7 @@ export const useLibraryStore = defineStore('libraryStore', {
         },
         async updateLibraryDetail(id, routerName, options = {}) {
             this.changeAnimation()
+            this.resetSearchIndex()
             if (routerName != 'playlist') this.resetPlaylistHydration()
             if (routerName == 'playlist') await this.updatePlaylistDetail(id, options)
             if (routerName == 'album') await this.updateAlbumDetail(id)
@@ -207,6 +269,7 @@ export const useLibraryStore = defineStore('libraryStore', {
 
                 this.libraryInfo = playlist
                 this.librarySongs = firstBatchSongs
+                this.indexLibrarySongs(firstBatchSongs)
                 if (this.libraryInfo) this.libraryInfo.followed = !!playlistDynamicResult?.subscribed
 
                 if (totalTracks <= loadedTracks) {
@@ -236,6 +299,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                             for (let i = 0; i < remainingSongs.length; i++) {
                                 currentSongs.push(remainingSongs[i])
                             }
+                            this.indexLibrarySongs(remainingSongs, { append: true })
                         }
                         this.playlistHydration = createPlaylistHydrationState({
                             id: playlistId,
@@ -293,6 +357,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                     if (!song.al.picUrl && albumCover) song.al.picUrl = albumCover
                     return song
                 })
+                this.indexLibrarySongs(this.librarySongs)
                 this.libraryInfo.followed = results[1].isSub
                 this.libraryChangeAnimation = false
             })
@@ -313,6 +378,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 
                 // 使用详情API返回的完整歌曲数据
                 this.librarySongs = mapSongsPlayableStatus(songDetailResult.songs)
+                this.indexLibrarySongs(this.librarySongs)
                 this.libraryChangeAnimation = false
             })
         },
@@ -331,6 +397,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 
                 // 使用详情API返回的完整歌曲数据
                 this.librarySongs = mapSongsPlayableStatus(songDetailResult.songs)
+                this.indexLibrarySongs(this.librarySongs)
             })
         },
         //获取歌手专辑，并更新Store数据
@@ -343,6 +410,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             }
             await getArtistAlbum(params).then(result => {
                 this.libraryAlbum = result.hotAlbums
+                this.indexLibraryAlbums(this.libraryAlbum)
             })
         },
         //获取歌手MV，并更新Store数据
@@ -355,6 +423,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             }
             await getArtistMV(params).then(result => {
                 this.libraryMV = result.mvs
+                this.indexLibraryMVs(this.libraryMV)
             })
         },
         async updateRecommendSongs(date) {
@@ -365,6 +434,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 const songs = date ? historySongs : dailySongs
 
                 this.librarySongs = mapSongsPlayableStatus(songs) || []
+                this.indexLibrarySongs(this.librarySongs)
             })
         },
     },

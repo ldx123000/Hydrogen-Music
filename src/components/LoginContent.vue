@@ -1,5 +1,5 @@
 <script setup>
-  import { computed, onActivated, ref, watch } from 'vue'
+  import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import LoginByQRCode from './LoginByQRCode.vue'
   import LoginByAccount from './LoginByAccount.vue'
@@ -10,6 +10,7 @@
   const loginByQR = ref(null)
   const loginByAC = ref(null)
   const jumpPage = ref(false)
+  const jumpTimer = ref(null)
 
   // 0: 二维码 1: 账号登录（邮箱/手机）
   const loginMode = ref(0)
@@ -56,11 +57,16 @@
 
   // 登录成功后动画并跳转
   const jumpTo = () => {
+    loginByQR.value?.clearTimer()
+    if (jumpTimer.value) {
+      clearTimeout(jumpTimer.value)
+      jumpTimer.value = null
+    }
     jumpPage.value = true
-    const jumpDelay = setTimeout(() => {
+    jumpTimer.value = setTimeout(() => {
       router.push('/mymusic')
       jumpPage.value = false
-      clearTimeout(jumpDelay)
+      jumpTimer.value = null
     }, 3000)
   }
 
@@ -77,6 +83,18 @@
     syncModeFromRoute()
     if (isQrMode.value) {
       loginByQR.value?.checkQR()
+    }
+  })
+
+  onDeactivated(() => {
+    loginByQR.value?.clearTimer()
+  })
+
+  onUnmounted(() => {
+    loginByQR.value?.clearTimer()
+    if (jumpTimer.value) {
+      clearTimeout(jumpTimer.value)
+      jumpTimer.value = null
     }
   })
 </script>

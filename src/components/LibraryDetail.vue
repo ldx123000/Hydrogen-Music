@@ -8,7 +8,7 @@ import { subAlbum } from '../api/album';
 import { subArtist } from '../api/artist';
 import { formatTime } from '../utils/time';
 import { playAll } from '../utils/player';
-import { matchAlbumFilter, matchCloudSongFilter, matchMVFilter, normalizeSongFilterKeyword } from '../utils/songFilter';
+import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
 import LibrarySongList from './LibrarySongList.vue';
 import LibraryAlbumList from './LibraryAlbumList.vue';
 import LibraryMVList from '../components/LibraryMVList.vue';
@@ -187,7 +187,7 @@ const songFilterEntries = computed(() => {
     const songs = Array.isArray(librarySongs.value) ? librarySongs.value : [];
     return songs
         .map((song, sourceIndex) => ({ song, sourceIndex }))
-        .filter(entry => !showSongSearch.value || !hasSongSearchKeyword.value || matchCloudSongFilter(entry.song, normalizedSongSearchKeyword.value));
+        .filter(entry => !showSongSearch.value || !hasSongSearchKeyword.value || matchSearchText(libraryStore.getSongSearchText(entry.song, `song-${entry.sourceIndex}`), normalizedSongSearchKeyword.value));
 });
 const visibleLibrarySongs = computed(() => {
     if (!showSongSearch.value) return Array.isArray(librarySongs.value) ? librarySongs.value : [];
@@ -200,12 +200,12 @@ const visibleLibrarySourceIndexes = computed(() => {
 const visibleArtistAlbums = computed(() => {
     const albums = Array.isArray(libraryAlbum.value) ? libraryAlbum.value : [];
     if (!isArtistAlbumRoute.value || !hasSongSearchKeyword.value) return albums;
-    return albums.filter(album => matchAlbumFilter(album, normalizedSongSearchKeyword.value));
+    return albums.filter((album, index) => matchSearchText(libraryStore.getAlbumSearchText(album, `album-${index}`), normalizedSongSearchKeyword.value));
 });
 const visibleArtistMVs = computed(() => {
     const mvs = Array.isArray(libraryMV.value) ? libraryMV.value : [];
     if (!isArtistMVRoute.value || !hasSongSearchKeyword.value) return mvs;
-    return mvs.filter(mv => matchMVFilter(mv, normalizedSongSearchKeyword.value));
+    return mvs.filter((mv, index) => matchSearchText(libraryStore.getMVSearchText(mv, `mv-${index}`), normalizedSongSearchKeyword.value));
 });
 const currentSearchResultCount = computed(() => {
     if (isArtistAlbumRoute.value) return visibleArtistAlbums.value.length;
@@ -746,7 +746,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
     --ld-overlay-corner: rgba(247, 247, 247, 0.9);
 
     width: 100%;
-    height: calc(100% - 22px);
+    height: 100%;
     display: flex;
     flex-direction: column;
     .view-control {
