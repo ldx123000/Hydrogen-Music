@@ -1,11 +1,12 @@
 <script setup>
-import { defineAsyncComponent, onMounted } from 'vue';
+import { defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import Home from './views/Home.vue';
 import Title from './components/Title.vue';
 import SearchInput from './components/SearchInput.vue';
 import WindowControl from './components/WindowControl.vue';
 import MusicWidget from './components/MusicWidget.vue';
-import { initDesktopLyric } from './utils/desktopLyric';
+import { destroyDesktopLyric, initDesktopLyric } from './utils/desktopLyric';
+import { destroyLyricRuntime, initLyricRuntime } from './composables/usePlayerRuntime';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -21,7 +22,13 @@ const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
 
 onMounted(() => {
+    initLyricRuntime();
     initDesktopLyric();
+});
+
+onUnmounted(() => {
+    destroyDesktopLyric();
+    destroyLyricRuntime();
 });
 
 windowApi.checkUpdate((event, version) => {

@@ -21,17 +21,9 @@ watch(rightPanelMode, (newMode, oldMode) => {
         // 从评论区切换到歌词时，强制刷新歌词组件
         lyricKey.value++;
         
-        // 确保 lyricShow 状态正确，并触发歌词位置同步
+        // 确保 lyricShow 状态正确，具体定位交给歌词运行时和组件挂载流程处理
         nextTick(() => {
             playerStore.lyricShow = true;
-            // 触发当前歌词索引的重新设置，确保组件能同步到正确位置
-            if (playerStore.currentLyricIndex >= 0) {
-                const currentIndex = playerStore.currentLyricIndex;
-                playerStore.currentLyricIndex = -1;
-                setTimeout(() => {
-                    playerStore.currentLyricIndex = currentIndex;
-                }, 50);
-            }
         });
     }
 });

@@ -858,6 +858,7 @@ const togglePlay = async () => {
         console.log('Music URL response:', trackInfo)
         if (trackInfo && trackInfo.url) {
             const musicUrl = trackInfo.url
+            const targetSongId = currentSong.value.id
             console.log('Playing music from URL:', musicUrl)
             const normalizedCurrentSong = normalizeFmSong(currentSong.value)
             if (!normalizedCurrentSong) {
@@ -882,6 +883,9 @@ const togglePlay = async () => {
                 type: 'personalfm',
                 name: '私人漫游',
             }
+            playerStore.lyric = null
+            playerStore.lyricsObjArr = null
+            playerStore.currentLyricIndex = -1
             setSongLevel(trackInfo.level, trackInfo)
 
             // 直接播放音乐
@@ -890,7 +894,7 @@ const togglePlay = async () => {
             // 获取歌词
             try {
                 const lyricResponse = await getLyric(currentSong.value.id)
-                if (lyricResponse && lyricResponse.lrc) {
+                if (playerStore.songId === targetSongId && lyricResponse && lyricResponse.lrc) {
                     playerStore.lyric = lyricResponse
                 }
             } catch (lyricError) {

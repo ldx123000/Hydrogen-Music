@@ -14,6 +14,7 @@ import {watch} from "vue";
 import { getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSongDisplayName } from './songName'
+import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -741,83 +742,11 @@ export async function getLocalLyric(filePath) {
     if (lyric) return lyric
     else return false
 }
-
-// 处理本地歌词数据，支持滚动播放
-function processLocalLyricData() {
-    if (!lyric.value || !lyric.value.lrc || !lyric.value.lrc.lyric) {
-        lyricsObjArr.value = []
-        return
-    }
-
-    try {
-        const regNewLine = /\n/
-        // 更宽松的 LRC 时间标签：允许 : ： . ． 。 , ， ; ； / - _ 或空白作为分隔
-        const regTime = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/g
-
-        // 时间解析函数（返回秒，保留毫秒）
-        const parseTime = (timeStr) => {
-            const m = timeStr.match(/\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/)
-            if (!m) return 0
-            const min = parseInt(m[1]) || 0
-            const sec = parseInt(m[2]) || 0
-            const ms = m[3] ? parseInt((m[3] + '00').slice(0, 3)) : 0
-            return min * 60 + sec + ms / 1000
-        }
-
-        if (lyric.value.lrc.lyric.indexOf('[') !== -1) {
-            // 有时间标签的LRC歌词，支持同一时间多行（原文/翻译/罗马音）
-            const lines = lyric.value.lrc.lyric.split(regNewLine)
-            const byTime = new Map() // key: time(固定3位小数字符串) -> { time, lyric, tlyric, rlyric, active }
-
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i]
-                if (!line || line.trim() === '') continue
-                const tags = Array.from(line.matchAll(regTime))
-                if (!tags || tags.length === 0) continue
-                const text = line.split(']').pop().trim()
-                if (!text) continue
-
-                for (const tag of tags) {
-                    const t = parseTime(tag[0])
-                    const key = t.toFixed(3)
-                    if (!byTime.has(key)) {
-                        byTime.set(key, { time: t, lyric: '', tlyric: '', rlyric: '', active: true })
-                    }
-                    const obj = byTime.get(key)
-                    if (!obj.lyric) obj.lyric = text
-                    else if (!obj.tlyric) obj.tlyric = text
-                    else if (!obj.rlyric) obj.rlyric = text
-                    // 若超过三行，后续行忽略（保持三轨）
-                }
-            }
-
-            const processed = Array.from(byTime.values()).sort((a, b) => a.time - b.time)
-            lyricsObjArr.value = processed
-        } else {
-            // 纯文本歌词
-            const lines = lyric.value.lrc.lyric.split(regNewLine)
-            const processedLyrics = []
-
-            lines.forEach(line => {
-                if (line.trim() === '') return
-                processedLyrics.push({
-                    lyric: line.trim(),
-                    time: 0,
-                    active: true
-                })
-            })
-
-            lyricsObjArr.value = processedLyrics
-        }
-    } catch (error) {
-        console.error('处理本地歌词数据出错:', error)
-        lyricsObjArr.value = []
-    }
-}
 export async function getSongUrl(id, index, autoplay, isLocal) {
     // 名称与歌手的兜底处理（本地歌曲兼容）
     const songName = getSongDisplayName(songList.value[index], 'Hydrogen Music', showSongTranslation.value)
     const artistName = (songList.value[index].ar && songList.value[index].ar[0] && songList.value[index].ar[0].name) ? songList.value[index].ar[0].name : ''
+    const targetSongId = id
 
     // 区分平台：mac 使用 Dock 菜单，Windows/Linux 更新窗口标题
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
@@ -831,6 +760,10 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         windowApi.setWindowTile(title)
     }
 
+    lyric.value = null
+    lyricsObjArr.value = null
+    currentLyricIndex.value = -1
+
     if (isLocal) {
         windowApi.getLocalMusicImage(songList.value[currentIndex.value].url).then(base64 => {
             localBase64Img.value = base64
@@ -840,14 +773,14 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         const localPath = songList.value[currentIndex.value].url
         const fileUrl = windowApi?.toFileUrl ? windowApi.toFileUrl(localPath) : localPath
         play(fileUrl, autoplay)
-        lyric.value = null
-        lyricsObjArr.value = null
         //获取本地歌词
         const localLyric = await getLocalLyric(songList.value[currentIndex.value].url)
+        if (songId.value !== targetSongId) return
         if (localLyric) {
             lyric.value = { lrc: { lyric: localLyric } }
-            // 处理歌词数据，支持滚动播放
-            processLocalLyricData()
+        } else {
+            // 用空歌词对象标记“已完成本地歌词探测但确实没有歌词”，避免一直停留在加载态
+            lyric.value = { lrc: { lyric: '' } }
         }
         if (!lyricShow.value && !widgetState.value) {
             lyricShow.value = true
@@ -872,6 +805,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
                 setSongLevel(trackInfo.level, trackInfo)
             })
             getLyric(id).then(songLiric => {
+                if (songId.value !== targetSongId) return
                 lyric.value = songLiric
             })
         } else {
@@ -1010,43 +944,6 @@ const clearLycAnimation = () => {
         clearTimeout(forbidDelayTimer)
     }, 600);
 }
-// 同步歌词索引到指定时间点（用于拖动/跳转时的即时更新）
-function updateLyricIndexForSeek(seekSeconds) {
-    try {
-        if (!Array.isArray(lyricsObjArr.value) || lyricsObjArr.value.length === 0) return
-        const s = Number(seekSeconds)
-        if (!Number.isFinite(s)) return
-
-        const arr = lyricsObjArr.value
-        // 容差与桌面歌词逻辑保持一致，避免边界闪烁
-        const t = s + 0.2
-
-        // 二分查找，找到最后一个 time <= t 的索引
-        let l = 0
-        let r = arr.length - 1
-        let ans = -1
-        while (l <= r) {
-            const m = (l + r) >> 1
-            const mt = Number(arr[m]?.time || 0)
-            if (mt <= t) {
-                ans = m
-                l = m + 1
-            } else {
-                r = m - 1
-            }
-        }
-
-        // 保底处理：若未找到，置为0；若超过最后一行，置为最后一行
-        if (ans < 0) ans = 0
-        if (ans > arr.length - 1) ans = arr.length - 1
-
-        if (currentLyricIndex && currentLyricIndex.value !== ans) {
-            currentLyricIndex.value = ans
-        }
-    } catch (e) {
-        // 安全兜底：任何异常不影响主流程
-    }
-}
 export function changeProgress(toTime) {
     if (!widgetState.value && lyricShow.value && lyricEle.value) clearLycAnimation()
     if (videoIsPlaying.value) {
@@ -1055,7 +952,7 @@ export function changeProgress(toTime) {
     // 先更新进度与歌词索引，再执行实际 seek，确保 UI 与索引同步
     if (typeof toTime === 'number' && Number.isFinite(toTime)) {
         progress.value = toTime
-        updateLyricIndexForSeek(toTime)
+        syncLyricIndexForSeek(toTime)
     }
     currentMusic.value.seek(toTime)
     // 静态策略下，仅在显式 seek 时通知一次系统进度
