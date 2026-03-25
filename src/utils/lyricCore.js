@@ -292,7 +292,7 @@ export function buildLyricsTimeline(lyricPayload, { songDurationSec = 0, isLocal
     const normalizedDuration = Math.max(0, Math.trunc(Number(songDurationSec) || 0));
     const translatedLyricText = lyricPayload.tlyric?.lyric || '';
     const romanizedLyricText = lyricPayload.romalrc?.lyric || '';
-    const hasTimeTag = originalLyricText.indexOf('[') !== -1;
+    const hasTimeTag = timeTagSingle.test(originalLyricText);
 
     if (!hasTimeTag) {
         return buildPureTextTimeline(originalLyricText, normalizedDuration);

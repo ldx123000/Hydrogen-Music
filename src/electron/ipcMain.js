@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { parseFile } = require('music-metadata')
 const { spawn } = require('child_process')
+const { loadLocalLyricPayload } = require('./localLyrics')
 let ffmpegPath = null
 try {
     ffmpegPath = require('ffmpeg-static')
@@ -468,115 +469,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
 	    //获取本地歌词
 	    ipcMain.handle('get-local-music-lyric', async (e, filePath) => {
-        // async function getLyricByFile(filePath) {
-        //     return new Promise((resolve, reject) => {
-        //         jsmediatags.read(filePath, {
-        //             onSuccess: (tag) => {
-        //                 resolve(tag)
-        //             },
-        //             onError: (error) => {
-        //                 
-        //                 reject(error)
-        //             }
-        //         });
-        //     })
-        // }
-	        // return await getLyricByFile(filePath)
-	        const str = filePath.split(path.sep)
-	        const folderPath = filePath.substring(0, filePath.length - str[str.length - 1].length - 1)
-	        const fileName = path.basename(filePath, path.extname(filePath))
-	        async function readLyric(file) {
-	            try {
-	                return fs.readFileSync(file, 'utf8')
-	            } catch (_) {
-	                return false
-	            }
-	        }
-	        function lyricHandle(data) {
-	            const lines = data.split(/\r?\n/)
-	            let lyricArr = ''
-	            lines.forEach((line) => {
-	                if (line) lyricArr += line + '\n'
-	            })
-	            return lyricArr
-	        }
-
-	        // 同时收集“内嵌歌词”和“同名 .lrc/.txt”作为候选，优先返回带时间标的歌词（保证滚动同步）
-	        const candidates = []
-	        const pushCandidate = (val) => {
-	            if (!val) return
-	            if (Array.isArray(val)) {
-	                val.forEach(v => pushCandidate(v))
-	                return
-	            }
-	            if (typeof val === 'string') {
-	                const s = val.trim()
-	                if (s) candidates.push(s)
-	                return
-	            }
-	            if (Buffer.isBuffer(val)) {
-	                const s = val.toString('utf8').trim()
-	                if (s) candidates.push(s)
-	                return
-	            }
-	            if (typeof val === 'object' && typeof val.text === 'string') {
-	                const s = val.text.trim()
-	                if (s) candidates.push(s)
-	            }
-	        }
-	        const timeTag = /\[\d{1,3}\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*\d{1,2}(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*\d{1,3})?\]/m
-
-	        // 1) 尝试从音频内嵌标签读取歌词（可能是无时间标 USLT/LYRICS，也可能是带时间标的 LRC）
-	        try {
-	            const metadata = await parseFile(filePath, { duration: false, skipCovers: true }).catch(() => null)
-	            if (metadata) {
-	                if (metadata.common && Array.isArray(metadata.common.lyrics)) pushCandidate(metadata.common.lyrics)
-
-	                const natives = metadata.native || {}
-	                const wantIds = new Set([
-	                    'lyrics',
-	                    'unsyncedlyrics',
-	                    'unsynchronisedlyrics',
-	                    'uslt',
-	                    'sylt',
-	                    'lrc',
-	                    'lyrics_lrc',
-	                    'syncedlyrics',
-	                    'lyric',
-	                    'lyricstext',
-	                    '©lyr',
-	                    '----:com.apple.itunes:lyrics'
-	                ])
-	                for (const type of Object.keys(natives)) {
-	                    const entries = natives[type] || []
-	                    for (const tag of entries) {
-	                        const id = String(tag && tag.id || '').toLowerCase()
-	                        if (id.includes('lyric') || id.includes('lrc') || wantIds.has(id)) pushCandidate(tag && tag.value)
-	                    }
-	                }
-	            }
-	        } catch (_) { /* ignore parse errors */ }
-
-	        // 2) 加入同名侧车歌词文件（很多本地歌曲只有 .lrc 才有时间标）
-	        try {
-	            const lrcPath = path.join(folderPath, fileName + '.lrc')
-	            if (await fileIsExists(lrcPath)) {
-	                const res = await readLyric(lrcPath)
-	                if (res) pushCandidate(res)
-	            }
-	            const txtPath = path.join(folderPath, fileName + '.txt')
-	            if (await fileIsExists(txtPath)) {
-	                const res = await readLyric(txtPath)
-	                if (res) pushCandidate(res)
-	            }
-	        } catch (_) { /* ignore */ }
-
-	        const timed = candidates.find(s => timeTag.test(s))
-	        const chosen = (timed || candidates[0] || '').trim()
-	        if (chosen) return lyricHandle(chosen)
-               
-
-        return false
+        return loadLocalLyricPayload(filePath)
     })
     ipcMain.on('copy-txt', (e, txt) => {
         clipboard.writeText(txt)

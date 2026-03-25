@@ -740,8 +740,8 @@ export function setSongLevel(level, streamInfo = null) {
 }
 export async function getLocalLyric(filePath) {
     const lyric = await windowApi.getLocalMusicLyric(filePath)
-    if (lyric) return lyric
-    else return false
+    if (lyric && typeof lyric === 'object') return lyric
+    return false
 }
 export async function getSongUrl(id, index, autoplay, isLocal) {
     // 名称与歌手的兜底处理（本地歌曲兼容）
@@ -778,7 +778,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         const localLyric = await getLocalLyric(songList.value[currentIndex.value].url)
         if (songId.value !== targetSongId) return
         if (localLyric) {
-            lyric.value = { lrc: { lyric: localLyric } }
+            lyric.value = localLyric
         } else {
             // 用空歌词对象标记“已完成本地歌词探测但确实没有歌词”，避免一直停留在加载态
             lyric.value = { lrc: { lyric: '' } }

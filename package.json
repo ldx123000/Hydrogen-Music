@@ -25,6 +25,7 @@
     "electron-win-state": "^1.1.22",
     "ffmpeg-static": "^5.2.0",
     "fs-extra": "^11.3.2",
+    "iconv-lite": "^0.6.3",
     "mpris-service": "^2.1.2",
     "metaflac-js": "^1.0.5",
     "music-metadata": "^11.9.0",
