@@ -11,6 +11,7 @@
   import { useUserStore } from '../store/userStore';
   import { getLikelist } from '../api/user';
   import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
+  import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
   import { storeToRefs } from 'pinia';
   const router = useRouter()
   const libraryStore = useLibraryStore()
@@ -18,7 +19,7 @@
   const otherStore = useOtherStore()
   const playerStore = usePlayerStore()
   const userStore = useUserStore()
-  const { librarySongs, listType1, listType2, needTimestamp } = storeToRefs(libraryStore)
+  const { librarySongs, listType1, listType2 } = storeToRefs(libraryStore)
 
   const isPrivacy = ref(false)
   const createActive = ref(false)
@@ -137,15 +138,7 @@
   const updatePlaylistCache = () => {
     otherStore.addPlaylistShow = false
     createActive.value = false
-    needTimestamp.value.push('/playlist/detail')
-    needTimestamp.value.push('/playlist/track/all')
-    let noCacheTimer = null
-    if(noCacheTimer) clearTimeout(noCacheTimer)
-      noCacheTimer = setTimeout(() => {
-        needTimestamp.value.splice(needTimestamp.value.indexOf('/playlist/detail'), 1)
-        needTimestamp.value.splice(needTimestamp.value.indexOf('/playlist/track/all'), 1)
-        clearTimeout(noCacheTimer)
-      }, 130000);
+    schedulePlaylistCacheInvalidation()
     try {
       if(listType1.value == 0 && listType2.value == 0) {
         const myPlaylistElement = document.getElementById('myPlaylist')

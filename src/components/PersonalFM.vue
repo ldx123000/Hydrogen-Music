@@ -187,6 +187,7 @@ import {
     syncLikelistAfterLikeAction,
     updateFavoritePlaylistTrack,
 } from '../utils/player'
+import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
@@ -1083,6 +1084,8 @@ const likeSong = async () => {
                     actionToken,
                     fallbackLikelist,
                 })
+                if (!isActiveLikeActionToken(actionToken)) return
+                schedulePlaylistCacheInvalidation()
                 return
             }
             throw new Error(getLikeActionErrorMessage(result, 'likeMusic 返回异常'))
@@ -1104,6 +1107,8 @@ const likeSong = async () => {
                     actionToken,
                     fallbackLikelist,
                 })
+                if (!isActiveLikeActionToken(actionToken)) return
+                schedulePlaylistCacheInvalidation()
                 return
             }
             throw new Error(fallbackResult.message || '歌单 tracks 返回异常')

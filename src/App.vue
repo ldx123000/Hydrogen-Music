@@ -53,7 +53,7 @@ const handleTitleBarDoubleClick = () => {
         <SearchInput class="widget-search"></SearchInput>
     </div>
     <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
-        <WindowControl class="window-control"></WindowControl>
+        <WindowControl></WindowControl>
     </div>
     <Transition name="widget">
         <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">

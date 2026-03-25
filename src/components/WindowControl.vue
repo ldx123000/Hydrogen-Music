@@ -1,9 +1,14 @@
 <script setup>
-import { ref, onBeforeUnmount, onMounted } from 'vue';
+import { ref, onBeforeUnmount, onMounted, useAttrs } from 'vue';
+
+defineOptions({
+    inheritAttrs: false,
+});
 
 const isMacOS = ref(false);
 const isWindowMaximized = ref(false);
 let removeWindowMaximizedListener = null;
+const attrs = useAttrs();
 
 onMounted(() => {
     // 检测是否为 macOS
@@ -38,10 +43,7 @@ function windowControl(option) {
 
 <template>
     <!-- macOS 使用原生交通灯，不在渲染层自绘 -->
-    <template v-if="isMacOS"></template>
-
-    <!-- Windows/Linux 风格的窗口控制按钮 -->
-    <div v-else class="window-control windows">
+    <div v-if="!isMacOS" class="window-control windows" v-bind="attrs">
         <div @click="windowControl(1)" class="minimize">
             <svg t="1668091020963" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1210" width="200" height="200">
                 <path d="M65.23884 456.152041 958.760137 456.152041l0 111.695918L65.23884 567.847959 65.23884 456.152041z" p-id="1211"></path>

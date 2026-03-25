@@ -367,9 +367,9 @@ const createWindow = () => {
     win.webContents.on('render-process-gone', (_event, details) => {
         console.error('主窗口渲染进程异常退出:', details)
     })
-    win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-        if (level >= 2) {
-            console.error(`Renderer console [${level}] ${sourceId}:${line} ${message}`)
+    win.webContents.on('console-message', (details) => {
+        if (details.level === 'warning' || details.level === 'error') {
+            console.error(`Renderer console [${details.level}] ${details.sourceId}:${details.lineNumber} ${details.message}`)
         }
     })
     setTimeout(() => {

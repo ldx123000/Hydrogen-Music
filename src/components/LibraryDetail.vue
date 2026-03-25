@@ -8,6 +8,7 @@ import { subAlbum } from '../api/album';
 import { subArtist } from '../api/artist';
 import { formatTime } from '../utils/time';
 import { playAll } from '../utils/player';
+import { scheduleAlbumSublistCacheInvalidation, scheduleArtistSublistCacheInvalidation } from '../utils/cacheInvalidation';
 import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
 import LibrarySongList from './LibrarySongList.vue';
 import LibraryAlbumList from './LibraryAlbumList.vue';
@@ -22,7 +23,7 @@ const playerStore = usePlayerStore();
 const localStore = useLocalStore();
 const libraryStore = useLibraryStore();
 const { updateLibraryDetail, updateArtistTopSong, updateArtistAlbum, updateArtistsMV, waitForPlaylistHydration, saveDetailScroll, getDetailScroll } = libraryStore;
-const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, needTimestamp, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration } = storeToRefs(libraryStore);
+const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration } = storeToRefs(libraryStore);
 
 const router = useRouter();
 const isAlbum = ref(false);
@@ -386,24 +387,12 @@ const subHandle = id => {
         (type1 = 0), (type2 = 1);
     }
     if (isAlbum.value) {
-        needTimestamp.value.push('/album/sublist');
+        scheduleAlbumSublistCacheInvalidation();
         (type1 = 1), (type2 = 0);
-        let noCacheTimer = null;
-        if (noCacheTimer) clearTimeout(noCacheTimer);
-        noCacheTimer = setTimeout(() => {
-            needTimestamp.value.splice(needTimestamp.value.indexOf('/album/sublist'), 1);
-            clearTimeout(noCacheTimer);
-        }, 130000);
     }
     if (isSinger.value) {
         (type1 = 1), (type2 = 1);
-        needTimestamp.value.push('/artist/sublist');
-        let noCacheTimer = null;
-        if (noCacheTimer) clearTimeout(noCacheTimer);
-        noCacheTimer = setTimeout(() => {
-            needTimestamp.value.splice(needTimestamp.value.indexOf('/artist/sublist'), 1);
-            clearTimeout(noCacheTimer);
-        }, 130000);
+        scheduleArtistSublistCacheInvalidation();
     }
 
     if (libraryInfo.value.followed) {

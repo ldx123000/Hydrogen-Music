@@ -15,6 +15,7 @@ import { getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSongDisplayName } from './songName'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
+import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -1249,18 +1250,7 @@ export async function syncLikelistAfterLikeAction({ songId, like, actionToken, f
 
 function finalizeLikeActionSideEffects() {
     otherStore.addPlaylistShow = false
-    libraryStore.needTimestamp.push('/playlist/detail')
-    libraryStore.needTimestamp.push('/playlist/track/all')
-
-    let noCacheTimer = null
-    if (noCacheTimer) clearTimeout(noCacheTimer)
-    noCacheTimer = setTimeout(() => {
-        const detailIndex = libraryStore.needTimestamp.indexOf('/playlist/detail')
-        const trackIndex = libraryStore.needTimestamp.indexOf('/playlist/track/all')
-        if (detailIndex !== -1) libraryStore.needTimestamp.splice(detailIndex, 1)
-        if (trackIndex !== -1) libraryStore.needTimestamp.splice(trackIndex, 1)
-        clearTimeout(noCacheTimer)
-    }, 130000)
+    schedulePlaylistCacheInvalidation()
 
     try {
         if (libraryStore.listType1 == 0 && libraryStore.listType2 == 0) {

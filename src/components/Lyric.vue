@@ -50,6 +50,11 @@ let interludeDeferStartTimer = null;
 let initMax = null;
 let initOffset = null;
 let size = null;
+let lyricRevealToken = 0;
+
+const LYRIC_FONT_READY_TIMEOUT_MS = 900;
+const LYRIC_LAYOUT_STABLE_SAMPLE_TARGET = 2;
+const LYRIC_LAYOUT_STABLE_MAX_ATTEMPTS = 8;
 
 // 切回歌词时抑制首帧闪烁（先隐藏，定位完成后再显示）
 const suppressLyricFlash = ref(true);
@@ -138,6 +143,71 @@ const waitForLayoutCommit = async () => {
     await nextTick();
     await waitForNextFrame();
 };
+
+const sleep = timeout =>
+    new Promise(resolve => {
+        setTimeout(resolve, timeout);
+    });
+
+const withTimeout = async (promise, timeoutMs) => {
+    await Promise.race([Promise.resolve(promise).catch(() => {}), sleep(timeoutMs)]);
+};
+
+function getLyricLineElements() {
+    if (lyricScroll.value && typeof lyricScroll.value.getElementsByClassName === 'function') {
+        return lyricScroll.value.getElementsByClassName('lyric-line');
+    }
+    if (typeof document !== 'undefined') {
+        return document.getElementsByClassName('lyric-line');
+    }
+    return [];
+}
+
+function createLyricRevealToken() {
+    lyricRevealToken += 1;
+    return lyricRevealToken;
+}
+
+function isLyricRevealTokenActive(token) {
+    return lyricRevealToken === token;
+}
+
+function invalidateLyricReveal() {
+    lyricRevealToken += 1;
+    lyricAreaReady.value = false;
+    suppressLyricFlash.value = true;
+}
+
+async function waitForLyricFonts(token) {
+    if (typeof document === 'undefined' || !isLyricRevealTokenActive(token)) return;
+    const fontSet = document.fonts;
+    if (!fontSet) return;
+
+    const lyricFontSize = Math.max(
+        Number(lyricSize.value || 0) || 20,
+        Number(tlyricSize.value || 0) || 14,
+        Number(rlyricSize.value || 0) || 12
+    );
+
+    try {
+        if (typeof fontSet.load === 'function') {
+            await withTimeout(
+                Promise.allSettled([
+                    fontSet.load(`700 ${lyricFontSize}px SourceHanSansCN-Bold`, '歌词 Lyric'),
+                    fontSet.load('700 10px Bender-Bold', 'MUSIC INTERLUDE THE REMAINING TIME'),
+                ]),
+                LYRIC_FONT_READY_TIMEOUT_MS
+            );
+            return;
+        }
+
+        if (typeof fontSet.ready?.then === 'function') {
+            await withTimeout(fontSet.ready, LYRIC_FONT_READY_TIMEOUT_MS);
+        }
+    } catch (_) {
+        // ignore and continue with best-effort layout
+    }
+}
 
 // 是否存在歌词列表与有效原文内容
 const hasLyricsList = computed(() => Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.length > 0);
@@ -248,25 +318,19 @@ const setMaxHeight = change => {
     if (lyricScrollArea.value) lyricScrollArea.value.style.height = initMax + 'Px';
 };
 
-const setDefaultStyle = async ({ keepHidden = false } = {}) => {
+const setDefaultStyle = async () => {
     lyricAreaReady.value = false;
     lycCurrentIndex.value = currentLyricIndex.value >= 0 ? currentLyricIndex.value : -1;
     interludeAnimation.value = false;
-    lyricEle.value = document.getElementsByClassName('lyric-line');
+    lyricEle.value = getLyricLineElements();
     initMax = 0;
     setMaxHeight(false);
     minHeightVal.value = 0;
     lineOffset.value = initOffset;
 
-    // 隐藏首帧，等待DOM稳定后同步到正确位置
-    suppressLyricFlash.value = true;
-    await nextTick();
+    await waitForLayoutCommit();
     if (lycCurrentIndex.value >= 0 && size > 0) {
         syncLyricPosition();
-    }
-    await nextTick();
-    if (!keepHidden) {
-        suppressLyricFlash.value = false;
     }
 
     if (!lyricShow.value && !widgetState.value) {
@@ -278,19 +342,46 @@ const setDefaultStyle = async ({ keepHidden = false } = {}) => {
     }
 };
 
+function captureLyricLayoutSignature() {
+    const lines = lyricEle.value;
+    const activeIndex =
+        Number.isInteger(lycCurrentIndex.value) && lycCurrentIndex.value >= 0 && lines?.[lycCurrentIndex.value]?.offsetParent !== null
+            ? lycCurrentIndex.value
+            : 0;
+    const activeLine = lines?.[activeIndex] || null;
+
+    return {
+        areaWidth: Math.round(lyricScroll.value?.clientWidth || 0),
+        totalHeight: Math.round(computeTotalHeight() || 0),
+        activeHeight: Math.round(activeLine?.clientHeight || 0),
+        activeWidth: Math.round(activeLine?.clientWidth || 0),
+    };
+}
+
+function isSameLyricLayoutSignature(prev, next) {
+    if (!prev || !next) return false;
+    return (
+        prev.areaWidth === next.areaWidth &&
+        prev.totalHeight === next.totalHeight &&
+        prev.activeHeight === next.activeHeight &&
+        prev.activeWidth === next.activeWidth
+    );
+}
+
 // 监听歌词数组变化，重新设置样式
 watch(
     () => lyricsObjArr.value,
     async newLyrics => {
         if (newLyrics && newLyrics.length > 0) {
-            const shouldRevealImmediately = showLyricArea.value;
-            await setDefaultStyle({ keepHidden: shouldRevealImmediately });
             // 重新根据本首歌的行间隔校准演唱速率
             recomputeSongTimingModel();
-            if (shouldRevealImmediately) {
-                await revealPreparedLyricArea();
+            if (showLyricArea.value) {
+                await prepareLyricReveal();
             }
+            return;
         }
+
+        invalidateLyricReveal();
     }
 );
 
@@ -306,7 +397,7 @@ const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
             lycCurrentIndex.value = syncedIndex;
         }
         await nextTick();
-        lyricEle.value = document.getElementsByClassName('lyric-line');
+        lyricEle.value = getLyricLineElements();
         setMaxHeight(true);
         syncLyricPosition();
         if (waitForPaint) {
@@ -321,18 +412,50 @@ const recalcLyricLayout = async () => {
     await applyLyricLayout();
 };
 
-const revealPreparedLyricArea = async () => {
-    suppressLyricFlash.value = true;
-    lyricAreaReady.value = false;
-    await applyLyricLayout({ waitForPaint: true });
-    await waitForLayoutCommit();
-    lyricAreaReady.value = true;
-    suppressLyricFlash.value = false;
+const waitForStableLyricLayout = async token => {
+    let previousSignature = null;
+    let stableSamples = 0;
+
+    for (let attempt = 0; attempt < LYRIC_LAYOUT_STABLE_MAX_ATTEMPTS; attempt++) {
+        if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return false;
+        await applyLyricLayout({ waitForPaint: true });
+        if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return false;
+
+        lyricEle.value = getLyricLineElements();
+        const signature = captureLyricLayoutSignature();
+        if (isSameLyricLayoutSignature(previousSignature, signature)) {
+            stableSamples += 1;
+            if (stableSamples >= LYRIC_LAYOUT_STABLE_SAMPLE_TARGET) return true;
+        } else {
+            stableSamples = 0;
+        }
+        previousSignature = signature;
+    }
+
+    return true;
 };
 
-// 过渡完成后再同步，避免在缩放/透明过渡中测量
-const onLyricAreaAfterEnter = async () => {
-    await revealPreparedLyricArea();
+const prepareLyricReveal = async () => {
+    if (!showLyricArea.value) return;
+
+    const token = createLyricRevealToken();
+    suppressLyricFlash.value = true;
+    lyricAreaReady.value = false;
+
+    await nextTick();
+    if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return;
+
+    await waitForLyricFonts(token);
+    if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return;
+
+    await setDefaultStyle();
+    if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return;
+
+    await waitForStableLyricLayout(token);
+    if (!isLyricRevealTokenActive(token) || !showLyricArea.value) return;
+
+    lyricAreaReady.value = true;
+    suppressLyricFlash.value = false;
 };
 
 // —— 间奏等待动画——
@@ -518,41 +641,19 @@ watch(
 
 // 观察歌词区域的真实可见性（包含 lyrics 存在、显示开关和原文开关，并且有可显示的原文内容）
 const lyricAreaVisible = computed(() => {
-    return !!(showLyricArea.value && lyricType.value);
+    return showLyricArea.value;
 });
 
-// 在切换为“显示原文”和“显示歌词”之前，先同步开启 no-flash，避免用户看到首帧
-const showOriginal = computed(() => !!(lyricType.value && lyricType.value.indexOf('original') !== -1));
-watch(
-    showOriginal,
-    show => {
-        if (show) {
-            lyricAreaReady.value = false;
-            suppressLyricFlash.value = true;
-        }
-    },
-    { flush: 'sync' }
-);
-watch(
-    () => lyricShow.value,
-    show => {
-        if (show) {
-            lyricAreaReady.value = false;
-            suppressLyricFlash.value = true;
-        }
-    },
-    { flush: 'sync' }
-);
-
-// 当区域从隐藏 -> 显示时，隐藏首帧并等待布局稳定后再同步，避免位置错乱
+// 当区域从隐藏 -> 显示时，统一走准备流程；隐藏时立即取消旧的 reveal 任务
 watch(
     lyricAreaVisible,
     async (visible) => {
         if (visible) {
-            lyricAreaReady.value = false;
-            suppressLyricFlash.value = true;
-            // 具体的布局同步放在过渡 after-enter 回调中完成
+            await prepareLyricReveal();
+            return;
         }
+
+        invalidateLyricReveal();
     },
     { flush: 'post' }
 );
@@ -620,18 +721,6 @@ const syncLyricPosition = () => {
     }
 };
 
-// 监听歌词显示状态变化，当重新显示歌词时同步位置
-watch(
-    () => lyricShow.value,
-    async (newVal) => {
-        if (newVal) {
-            // 当歌词重新显示时，先隐藏，再同步位置，避免看到跳变
-            suppressLyricFlash.value = true;
-            // 具体的布局同步放在过渡 after-enter 回调中完成
-        }
-    }
-);
-
 // 检测大幅进度跳转（拖动进度条）时立即恢复歌词同步
 watch(
     () => progress.value,
@@ -666,26 +755,11 @@ onMounted(() => {
             syncLyricPosition();
         }, 3000);
     });
-    
-    // 组件挂载后立即检查并同步歌词位置（先隐藏，定位完成后再显示，避免闪烁）
-    setTimeout(async () => {
-        if (lyricsObjArr.value && lyricsObjArr.value.length > 0) {
-            suppressLyricFlash.value = true;
-            await nextTick();
-            const shouldRevealImmediately = showLyricArea.value;
-            await setDefaultStyle({ keepHidden: shouldRevealImmediately });
-            if (shouldRevealImmediately) {
-                await revealPreparedLyricArea();
-            } else {
-                // 如果有当前歌词索引，确保同步到正确位置
-                if (currentLyricIndex.value >= 0) {
-                    syncLyricPosition();
-                }
-                await nextTick();
-                suppressLyricFlash.value = false;
-            }
-        }
-    }, 100);
+
+    if (showLyricArea.value) {
+        void prepareLyricReveal();
+    }
+
     // 监听容器尺寸变化，变化后重新同步（例如窗口尺寸变化、父容器变化、字体替换等）
     if (typeof ResizeObserver !== 'undefined') {
         lyricResizeObserver = new ResizeObserver(() => scheduleLayout());
@@ -696,6 +770,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    invalidateLyricReveal();
     clearInterludeTimers();
     if (interludeProgressInterval) { clearInterval(interludeProgressInterval); interludeProgressInterval = null; }
     if (lyricResizeObserver) {
@@ -725,7 +800,7 @@ watch([playing, lyricShow], ([p, show]) => {
 
 <template>
     <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
-        <Transition name="fade" @after-enter="onLyricAreaAfterEnter">
+        <Transition name="fade">
             <div v-show="showLyricArea" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash || !lyricAreaReady }" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
                 <div class="lyric-line" :style="{ transform: 'translateY(' + lineOffset + 'Px)' }" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
@@ -904,11 +979,11 @@ watch([playing, lyricShow], ([p, show]) => {
         width: calc(100% - 3vh);
         height: calc(100% - 3vh);
         overflow: hidden;
-        transition: 0.3s cubic-bezier(0.3, 0, 0.12, 1);
+        transition: opacity 0.3s cubic-bezier(0.3, 0, 0.12, 1);
         &.no-flash {
+            visibility: hidden;
             opacity: 0;
-            /* 取消进入过渡的缩放，以免影响布局测量/视觉位置 */
-            transform: none !important;
+            pointer-events: none;
         }
         &.no-flash, &.no-flash * {
             transition: none !important;
@@ -1227,14 +1302,13 @@ watch([playing, lyricShow], ([p, show]) => {
     }
 }
 .fade-enter-active {
-    transition: 0.4s cubic-bezier(0.3, 0.79, 0.55, 0.99) !important;
+    transition: opacity 0.25s cubic-bezier(0.3, 0.79, 0.55, 0.99) !important;
 }
 .fade-leave-active {
-    transition: 0.2s cubic-bezier(0.3, 0.79, 0.55, 0.99) !important;
+    transition: opacity 0.2s cubic-bezier(0.3, 0.79, 0.55, 0.99) !important;
 }
 .fade-enter-from,
 .fade-leave-to {
-    transform: scale(0.85);
     opacity: 0;
 }
 </style>
