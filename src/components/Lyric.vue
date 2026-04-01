@@ -62,6 +62,12 @@ const lyricAreaReady = ref(false);
 
 // 在高频同步中避免并发测量
 const syncingLayout = ref(false);
+const currentSong = computed(() => {
+    const list = Array.isArray(songList.value) ? songList.value : [];
+    const index = Number.isInteger(currentIndex.value) ? currentIndex.value : -1;
+
+    return index >= 0 && index < list.length ? list[index] : null;
+});
 
 // —— 每首歌自适应的演唱时长估计模型 ——
 // 以该首歌中“非间奏”的行间间隔，反推每个“文本单位”的平均时长（秒/单位），用于估计单行演唱结束点
@@ -955,11 +961,11 @@ watch([playing, lyricShow], ([p, show]) => {
             </div>
         </Transition>
 
-        <span class="song-quality" v-if="songList[currentIndex].type == 'local'">
-            {{ songList[currentIndex].sampleRate }}KHz/{{ songList[currentIndex].bitsPerSample }}Bits/{{ songList[currentIndex].bitrate }}Kpbs
+        <span class="song-quality" v-if="currentSong && currentSong.type == 'local'">
+            {{ currentSong.sampleRate }}KHz/{{ currentSong.bitsPerSample }}Bits/{{ currentSong.bitrate }}Kpbs
         </span>
-        <span class="song-quality" v-if="songList[currentIndex].level && songList[currentIndex].level.sr && songList[currentIndex].level.br">
-            {{ songList[currentIndex].level.sr / 1000 }}KHz/{{ Math.round(songList[currentIndex].level.br / 1000) }}Kpbs/{{ (songList[currentIndex].actualLevel || songList[currentIndex].quality || '').toUpperCase() }}
+        <span class="song-quality" v-if="currentSong && currentSong.level && currentSong.level.sr && currentSong.level.br">
+            {{ currentSong.level.sr / 1000 }}KHz/{{ Math.round(currentSong.level.br / 1000) }}Kpbs/{{ (currentSong.actualLevel || currentSong.quality || '').toUpperCase() }}
         </span>
         <div class="border border1"></div>
         <div class="border border2"></div>

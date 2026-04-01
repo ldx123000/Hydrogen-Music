@@ -30,9 +30,10 @@ export function checkMusic(id) {
  * 获取音乐播放URL
  * @param {string|number} id - 音乐ID
  * @param {string} level - 播放音质等级：standard/higher/exhigh/lossless/hires/jyeffect/sky/dolby/jymaster
+ * @param {object} requestParams - 额外透传给 /song/url/v1 的请求参数（如 ua、cookie）
  */
-export function getMusicUrl(id, level = 'lossless') {
-    return get('/song/url/v1', { id, level });
+export function getMusicUrl(id, level = 'lossless', requestParams = {}) {
+    return get('/song/url/v1', { ...requestParams, id, level });
 }
 
 /**

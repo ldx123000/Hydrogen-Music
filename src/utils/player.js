@@ -500,14 +500,47 @@ export function startProgress() {
     }, 1000);
 }
 
+function findSongIndexById(id) {
+    const list = Array.isArray(songList.value) ? songList.value : []
+    const targetId = id == null ? '' : String(id)
+    if (!targetId) return -1
+
+    return list.findIndex(song => song && String(song.id) === targetId)
+}
+
+function getSongByIdOrIndex(id, index = currentIndex.value) {
+    const list = Array.isArray(songList.value) ? songList.value : []
+    const resolvedIndex = findSongIndexById(id)
+    if (resolvedIndex >= 0) return list[resolvedIndex]
+
+    return Number.isInteger(index) && index >= 0 && index < list.length ? list[index] : null
+}
+
 export function setId(id, index) {
+    const list = Array.isArray(songList.value) ? songList.value : []
+    const resolvedIndex = findSongIndexById(id)
+
+    songId.value = id
+
     if (playMode.value != 3) {
-        songId.value = id
-        currentIndex.value = index
-    } else {
-        songId.value = id
-        shuffleIndex.value = index
-        currentIndex.value = (songList.value || []).findIndex((song) => song.id === songId.value)
+        if (Number.isInteger(index) && index >= 0 && index < list.length) {
+            currentIndex.value = index
+            return
+        }
+
+        currentIndex.value = resolvedIndex >= 0 ? resolvedIndex : 0
+        return
+    }
+
+    shuffleIndex.value = index
+
+    if (resolvedIndex >= 0) {
+        currentIndex.value = resolvedIndex
+        return
+    }
+
+    if (!Number.isInteger(currentIndex.value) || currentIndex.value < 0 || currentIndex.value >= list.length) {
+        currentIndex.value = 0
     }
 }
 
@@ -694,7 +727,10 @@ export function addSong(id, index, autoplay, isLocal) {
     // 切歌时清理视频状态（新的统一视频检查函数会处理加载）
     unloadMusicVideo()
 
-    if (songList.value[currentIndex.value].type == 'local') isLocal = true
+    const targetSong = getSongByIdOrIndex(id, currentIndex.value)
+    if (!targetSong) return
+
+    if (targetSong.type == 'local') isLocal = true
     else isLocal = false
 
     if (currentMusic.value && volume.value != 0) {
@@ -743,11 +779,22 @@ export async function getLocalLyric(filePath) {
     if (lyric && typeof lyric === 'object') return lyric
     return false
 }
+
+function restorePlayerLyricAfterSongChange() {
+    if (widgetState.value || lyricShow.value) return
+
+    lyricShow.value = true
+    playerChangeSong.value = false
+}
+
 export async function getSongUrl(id, index, autoplay, isLocal) {
-    // 名称与歌手的兜底处理（本地歌曲兼容）
-    const songName = getSongDisplayName(songList.value[index], 'Hydrogen Music', showSongTranslation.value)
-    const artistName = (songList.value[index].ar && songList.value[index].ar[0] && songList.value[index].ar[0].name) ? songList.value[index].ar[0].name : ''
     const targetSongId = id
+    const targetSong = getSongByIdOrIndex(targetSongId, index)
+    if (!targetSong) return
+
+    // 名称与歌手的兜底处理（本地歌曲兼容）
+    const songName = getSongDisplayName(targetSong, 'Hydrogen Music', showSongTranslation.value)
+    const artistName = (targetSong.ar && targetSong.ar[0] && targetSong.ar[0].name) ? targetSong.ar[0].name : ''
 
     // 区分平台：mac 使用 Dock 菜单，Windows/Linux 更新窗口标题
     const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
@@ -766,16 +813,16 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
     currentLyricIndex.value = -1
 
     if (isLocal) {
-        windowApi.getLocalMusicImage(songList.value[currentIndex.value].url).then(base64 => {
+        windowApi.getLocalMusicImage(targetSong.url).then(base64 => {
             localBase64Img.value = base64
             // 本地封面到达后，提示 Media Session 刷新一次元数据（以载入封面）
             try { window.dispatchEvent(new CustomEvent('mediaSession:updateArtwork')) } catch (_) {}
         })
-        const localPath = songList.value[currentIndex.value].url
+        const localPath = targetSong.url
         const fileUrl = windowApi?.toFileUrl ? windowApi.toFileUrl(localPath) : localPath
         play(fileUrl, autoplay)
         //获取本地歌词
-        const localLyric = await getLocalLyric(songList.value[currentIndex.value].url)
+        const localLyric = await getLocalLyric(targetSong.url)
         if (songId.value !== targetSongId) return
         if (localLyric) {
             lyric.value = localLyric
@@ -783,10 +830,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
             // 用空歌词对象标记“已完成本地歌词探测但确实没有歌词”，避免一直停留在加载态
             lyric.value = { lrc: { lyric: '' } }
         }
-        if (!lyricShow.value && !widgetState.value) {
-            lyricShow.value = true
-            playerChangeSong.value = false
-        }
+        restorePlayerLyricAfterSongChange()
         return
     }
     await checkMusic(id).then(result => {
@@ -808,6 +852,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
             getLyric(id).then(songLiric => {
                 if (songId.value !== targetSongId) return
                 lyric.value = songLiric
+                restorePlayerLyricAfterSongChange()
             })
         } else {
             noticeOpen('当前歌曲无法播放', 2)

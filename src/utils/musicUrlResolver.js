@@ -4,6 +4,10 @@ import { getPreferredQuality } from './quality'
 const ADVANCED_QUALITY_LEVELS = new Set(['jyeffect', 'sky', 'dolby', 'jymaster'])
 const LINEAR_FALLBACK_ORDER = ['hires', 'lossless', 'exhigh', 'higher', 'standard']
 const LINEAR_LEVEL_RANK = new Map(LINEAR_FALLBACK_ORDER.map((level, index) => [level, index]))
+const IPHONE_PLAYBACK_REQUEST_PARAMS = Object.freeze({
+    ua: 'NeteaseMusic 9.0.90/5038 (iPhone; iOS 16.2; zh_CN)',
+    cookie: 'os=iPhone OS; appver=9.0.90; osver=16.2; channel=distribution',
+})
 
 function extractTrackInfo(songInfo) {
     return songInfo && songInfo.data && songInfo.data[0] ? songInfo.data[0] : null
@@ -25,14 +29,20 @@ function isLinearFallbackMatch(requestedLevel, actualLevel) {
     return actualRank >= requestedRank
 }
 
-async function requestTrack(id, level) {
-    const songInfo = await getMusicUrl(id, level)
+function getPlaybackRequestParams(preferredLevel) {
+    if (!ADVANCED_QUALITY_LEVELS.has(preferredLevel)) return {}
+    return IPHONE_PLAYBACK_REQUEST_PARAMS
+}
+
+async function requestTrack(id, level, requestParams = {}) {
+    const songInfo = await getMusicUrl(id, level, requestParams)
     return extractTrackInfo(songInfo)
 }
 
 export async function resolveTrackByQualityPreference(id, preferredLevel) {
     const normalizedPreferredLevel = getPreferredQuality(preferredLevel)
-    const preferredTrack = await requestTrack(id, normalizedPreferredLevel)
+    const playbackRequestParams = getPlaybackRequestParams(normalizedPreferredLevel)
+    const preferredTrack = await requestTrack(id, normalizedPreferredLevel, playbackRequestParams)
 
     if (!ADVANCED_QUALITY_LEVELS.has(normalizedPreferredLevel)) return preferredTrack
     if (isPlayableTrack(preferredTrack) && getTrackLevel(preferredTrack) === normalizedPreferredLevel) {
@@ -41,7 +51,7 @@ export async function resolveTrackByQualityPreference(id, preferredLevel) {
 
     let firstPlayableFallbackTrack = null
     for (const fallbackLevel of LINEAR_FALLBACK_ORDER) {
-        const fallbackTrack = await requestTrack(id, fallbackLevel)
+        const fallbackTrack = await requestTrack(id, fallbackLevel, playbackRequestParams)
         if (!isPlayableTrack(fallbackTrack)) continue
 
         if (!firstPlayableFallbackTrack) firstPlayableFallbackTrack = fallbackTrack
