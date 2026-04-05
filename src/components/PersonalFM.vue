@@ -212,6 +212,7 @@ const currentSongAlbum = computed(() => getFmSongAlbum(currentSong.value))
 
 const fmSongs = ref([])
 const playedSongs = ref([]) // 已播放的歌曲历史（用于前后切换浏览）
+const lastLoadedUserId = ref(null)
 // 去重与“近期不重复”控制
 const fmPoolIds = new Set() // 当前候选池中的歌曲ID，避免同一池内重复（仅内存，用于本次池）
 const recentPlayedSet = new Set() // 近期播放过的歌曲集合（窗口集合）
@@ -541,10 +542,38 @@ const COVER_RELEASE_MIN_MS = 180
 const COVER_RELEASE_BUFFER_MS = 16
 const PANEL_INTRO_DURATION_MS = 1500
 const PANEL_INTRO_BUFFER_MS = 40
+let fmRefreshToken = 0
 let coverReleaseTimer = null
 let panelIntroTimer = null
 let panelIntroFrame = null
 let skipIntroOnNextActivated = true
+
+function getCurrentFmUserId() {
+    const userId = userStore?.user?.userId
+    return userId === undefined || userId === null || userId === '' ? null : String(userId)
+}
+
+function isActiveFmRefresh(token, userId) {
+    return token === fmRefreshToken && getCurrentFmUserId() === userId
+}
+
+function resetFmAccountState() {
+    fmRefreshToken += 1
+    fmSongs.value = []
+    playedSongs.value = []
+    fmPoolIds.clear()
+    currentIndex.value = 0
+    loading.value = false
+    isPrefetching.value = false
+    modeSwitching.value = false
+    modePanelOpen.value = false
+    awaitingSceneSubmodePick.value = false
+    lastRefreshSource.value = FM_REFRESH_SOURCE.PERSONAL_FM
+    lastLoadedUserId.value = null
+    clearCoverReleaseTimer()
+    coverNavigating.value = false
+    queuedDirection.value = null
+}
 
 const currentSong = computed(() => {
     // 先从已播放历史中查找
@@ -1121,6 +1150,13 @@ const likeSong = async () => {
 }
 
 const refreshFM = async ({ silent = false } = {}) => {
+    const requestUserId = getCurrentFmUserId()
+    if (!requestUserId) {
+        resetFmAccountState()
+        return false
+    }
+
+    const requestToken = ++fmRefreshToken
     if (!silent) {
         loading.value = true
     }
@@ -1137,22 +1173,26 @@ const refreshFM = async ({ silent = false } = {}) => {
             let primarySource = FM_REFRESH_SOURCE.PERSONAL_FM
             if (usingDefaultMode) {
                 const response = await getPersonalFM()
+                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
                 songs = Array.isArray(response?.data) ? response.data : []
                 console.log('[FM] personal_fm response size:', songs.length)
             } else {
                 const response = await getPersonalFMByMode(selectedModeRequest)
+                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
                 songs = Array.isArray(response?.data) ? response.data : []
                 primarySource = FM_REFRESH_SOURCE.FM_MODE_RESCUE
                 console.log('[FM] personal/fm/mode response size:', songs.length, selectedModeRequest)
             }
 
             if (songs.length > 0) {
+                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
                 const stats = addToFmPoolUnique(songs, primarySource)
                 if (stats.added > 0) {
                     lastRefreshSource.value = primarySource
+                    lastLoadedUserId.value = requestUserId
                     bootstrapFromPoolIfNeeded(primarySource)
                     console.log('[FM] refresh source:', lastRefreshSource.value)
-                    return
+                    return true
                 }
                 // 仅在“去重后无新增 + 当前无可播下一首”时触发模式救援
                 if (!nextCandidateSong.value && usingDefaultMode) {
@@ -1183,15 +1223,18 @@ const refreshFM = async ({ silent = false } = {}) => {
         if (shouldTryModeRescue) {
             try {
                 const modeResponse = await getPersonalFMByMode(FM_MODE_RESCUE_OPTIONS)
+                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
                 const modeSongs = Array.isArray(modeResponse?.data) ? modeResponse.data : []
                 console.log('[FM] fm_mode_rescue response size:', modeSongs.length, FM_MODE_RESCUE_OPTIONS)
                 if (modeSongs.length > 0) {
+                    if (!isActiveFmRefresh(requestToken, requestUserId)) return false
                     const modeStats = addToFmPoolUnique(modeSongs, FM_REFRESH_SOURCE.FM_MODE_RESCUE)
                     if (modeStats.added > 0) {
                         lastRefreshSource.value = FM_REFRESH_SOURCE.FM_MODE_RESCUE
+                        lastLoadedUserId.value = requestUserId
                         bootstrapFromPoolIfNeeded(FM_REFRESH_SOURCE.FM_MODE_RESCUE)
                         console.log('[FM] refresh source:', lastRefreshSource.value)
-                        return
+                        return true
                     }
                 }
             } catch (modeError) {
@@ -1202,17 +1245,20 @@ const refreshFM = async ({ silent = false } = {}) => {
         // 3) 最终回退：每日推荐
         try {
             const recResponse = await getRecommendSongs()
+            if (!isActiveFmRefresh(requestToken, requestUserId)) return false
             console.log('Daily recommendations response:', recResponse)
 
             if (recResponse && recResponse.data && recResponse.data.dailySongs) {
                 const songs = mapSongsPlayableStatus(recResponse.data.dailySongs)
                 const shuffledSongs = songs.sort(() => Math.random() - 0.5)
+                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
                 const dailyStats = addToFmPoolUnique(shuffledSongs, FM_REFRESH_SOURCE.DAILY_RECOMMEND)
                 if (dailyStats.added > 0) {
                     lastRefreshSource.value = FM_REFRESH_SOURCE.DAILY_RECOMMEND
+                    lastLoadedUserId.value = requestUserId
                     bootstrapFromPoolIfNeeded(FM_REFRESH_SOURCE.DAILY_RECOMMEND)
                     console.log('[FM] refresh source:', lastRefreshSource.value)
-                    return
+                    return true
                 }
                 console.log('[FM] daily_recommend deduped to empty')
             }
@@ -1224,10 +1270,11 @@ const refreshFM = async ({ silent = false } = {}) => {
     } catch (error) {
         console.error('All FM data sources failed:', error)
     } finally {
-        if (!silent) {
+        if (!silent && isActiveFmRefresh(requestToken, requestUserId)) {
             loading.value = false
         }
     }
+    return false
 }
 
 const prefetchNextCandidate = async () => {
@@ -1269,6 +1316,9 @@ onActivated(() => {
         return
     }
     startPanelIntro()
+    if (getCurrentFmUserId() && lastLoadedUserId.value !== getCurrentFmUserId()) {
+        void refreshFM({ silent: true })
+    }
 })
 
 onDeactivated(() => {
@@ -1295,8 +1345,13 @@ onUnmounted(() => {
 // 监听账号切换：按账号隔离“近期去重队列”
 watch(
     () => userStore?.user?.userId,
-    () => {
+    (nextUserId, previousUserId) => {
+        if (nextUserId === previousUserId) return
+        resetFmAccountState()
         loadPersistentRecent()
+        if (nextUserId) {
+            void refreshFM({ silent: router.currentRoute.value?.name !== 'personalfm' })
+        }
     }
 )
 

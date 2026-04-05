@@ -19,6 +19,14 @@ export const useUserStore = defineStore('userStore', {
         updateUser(userinfo) {
             this.user = userinfo
         },
+        resetAccountState() {
+            this.user = null
+            this.loginMode = null
+            this.likelist = null
+            this.favoritePlaylistId = null
+            this.favoritePlaylistName = null
+            this.appOptionShow = false
+        },
         updateLikelist(likelist) {
             this.likelist = Array.isArray(likelist) ? likelist : []
         },

@@ -76,6 +76,25 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.playlistHydrationToken = null
             this.playlistHydrationPromise = null
         },
+        resetAccountState() {
+            this.libraryList = null
+            this.libraryListAlbum = null
+            this.libraryListAritist = null
+            this.playlistCount = null
+            this.playlistUserCreated = null
+            this.playlistUserSub = null
+            this.libraryInfo = null
+            this.lastLibraryRoute = null
+            this.lastLibraryScrollTop = 0
+            this.restoreLibraryScrollOnActivate = false
+            this.detailScrollMemory = {}
+            this.librarySongs = null
+            this.libraryAlbum = null
+            this.libraryMV = null
+            this.libraryChangeAnimation = false
+            this.resetPlaylistHydration()
+            this.resetSearchIndex()
+        },
         resetSearchIndex(section = null) {
             if (!section) {
                 this.searchIndexById = createSearchIndexState()

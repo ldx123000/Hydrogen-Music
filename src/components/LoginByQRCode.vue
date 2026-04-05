@@ -22,8 +22,22 @@
   const pollingActive = ref(false)
   const pollingInFlight = ref(false)
   const loginCompleted = ref(false)
+  let pollingSessionId = 0
+  let qrLoadSessionId = 0
+  const resetQrState = () => {
+    clearTimer()
+    loginCompleted.value = false
+    pollingInFlight.value = false
+    qrKey.value = null
+    qrcodeImg.value = ''
+    qrStatus.value = 801
+    statusTitle.value = '请使用网易云音乐扫码'
+    statusTitleEN.value = 'QRCODE'
+    loging.value = -1
+  }
 
   const clearTimer = () => {
+    pollingSessionId += 1
     if (checkQRInterval.value) {
       clearTimeout(checkQRInterval.value)
       checkQRInterval.value = null
@@ -31,19 +45,20 @@
     pollingActive.value = false
   }
 
-  const scheduleNextPoll = (delay = 1000) => {
-    if (!pollingActive.value || loginCompleted.value) return
+  const scheduleNextPoll = (sessionId, delay = 1000) => {
+    if (sessionId !== pollingSessionId || !pollingActive.value || loginCompleted.value) return
 
     if (checkQRInterval.value) {
       clearTimeout(checkQRInterval.value)
     }
 
     checkQRInterval.value = setTimeout(async () => {
+      if (sessionId !== pollingSessionId) return
       checkQRInterval.value = null
-      await checkQRcode()
-      if (!pollingActive.value || loginCompleted.value) return
+      await checkQRcode(sessionId)
+      if (sessionId !== pollingSessionId || !pollingActive.value || loginCompleted.value) return
       if (qrStatus.value === 800 || qrStatus.value === 803) return
-      scheduleNextPoll()
+      scheduleNextPoll(sessionId)
     }, delay)
   }
 
@@ -51,7 +66,8 @@
     if (loginCompleted.value) return
     clearTimer()
     pollingActive.value = true
-    scheduleNextPoll()
+    const sessionId = pollingSessionId
+    scheduleNextPoll(sessionId)
   }
 
   const generateFallbackQrImg = async (key) => {
@@ -71,16 +87,13 @@
   const loadData = async () => {
     if (loadingQr.value) return
 
-    clearTimer()
+    const loadSessionId = ++qrLoadSessionId
+    resetQrState()
     loadingQr.value = true
-    loginCompleted.value = false
-    qrcodeImg.value = ''
-    qrStatus.value = 801
-    statusTitle.value = '请使用网易云音乐扫码'
-    statusTitleEN.value = 'QRCODE'
 
     try {
       const keyResult = await getQRcodeKey()
+      if (loadSessionId !== qrLoadSessionId) return
       const key = keyResult?.data?.unikey
       if (!key) {
         throw new Error('获取二维码 key 失败')
@@ -89,11 +102,14 @@
       qrKey.value = key
 
       const qrResult = await createQRcode(key)
+      if (loadSessionId !== qrLoadSessionId) return
       const qrimg = qrResult?.data?.qrimg
       qrcodeImg.value = qrimg || await generateFallbackQrImg(key)
+      if (loadSessionId !== qrLoadSessionId) return
 
       startPolling()
     } catch (error) {
+      if (loadSessionId !== qrLoadSessionId) return
       noticeOpen(error?.message || '二维码加载失败，请重试', 2)
       qrStatus.value = 800
       statusTitle.value = '二维码加载失败, 点击刷新'
@@ -105,7 +121,12 @@
   }
 
   const checkQR = () => {
-    if (loginCompleted.value) return
+    if (loginCompleted.value || qrStatus.value === 803) {
+      firstLoadMode.value = 0
+      loadData()
+      return
+    }
+
     clearTimer()
 
     if (firstLoadMode.value === 1 || !qrKey.value || !qrcodeImg.value) {
@@ -117,7 +138,7 @@
     startPolling()
   }
 
-  defineExpose({ checkQR, clearTimer })
+  defineExpose({ checkQR, clearTimer, resetQrState })
 
   watch(() => qrStatus.value, (newVal) => {
     if (newVal === 800) {
@@ -139,12 +160,15 @@
     }
   })
 
-  const checkQRcode = () => {
-    if (!qrKey.value || loginCompleted.value || pollingInFlight.value) return
+  const checkQRcode = async (sessionId = pollingSessionId) => {
+    if (sessionId !== pollingSessionId || !qrKey.value || loginCompleted.value || pollingInFlight.value) return
 
     pollingInFlight.value = true
 
-    checkQRcodeStatus(qrKey.value).then(result => {
+    try {
+      const result = await checkQRcodeStatus(qrKey.value)
+      if (sessionId !== pollingSessionId) return
+
       if (result?.code === 800) {
         qrStatus.value = 800
         clearTimer()
@@ -156,14 +180,16 @@
         qrStatus.value = 803
         loginCompleted.value = true
         clearTimer()
-        loginHandle(result, 'qr')
+        void loginHandle(result, 'qr')
         emits('jumpTo')
       }
-    }).catch(() => {
+    } catch (_) {
       // 轮询失败保持静默，避免频繁打断
-    }).finally(() => {
-      pollingInFlight.value = false
-    })
+    } finally {
+      if (sessionId === pollingSessionId) {
+        pollingInFlight.value = false
+      }
+    }
   }
 
   const refreshQRCode = () => {
@@ -178,7 +204,14 @@
   }
 
   onActivated(() => {
-    if (firstLoadMode.value === 0 && !loginCompleted.value && qrKey.value && qrcodeImg.value && qrStatus.value !== 800) {
+    if (firstLoadMode.value !== 0) return
+
+    if (loginCompleted.value || qrStatus.value === 803 || !qrKey.value || !qrcodeImg.value) {
+      loadData()
+      return
+    }
+
+    if (qrStatus.value !== 800) {
       startPolling()
     }
   })

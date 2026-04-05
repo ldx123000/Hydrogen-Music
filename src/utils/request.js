@@ -1,8 +1,9 @@
 import axios from "axios";
-import { getCookie, isLogin, clearLoginCookies } from '../utils/authority'
+import { getCookie, isLogin } from '../utils/authority'
 import pinia from "../store/pinia";
 import { useLibraryStore } from '../store/libraryStore'
 import { useUserStore } from '../store/userStore'
+import { clearAccountScopedState } from './accountState'
 
 const libraryStore = useLibraryStore(pinia)
 
@@ -132,6 +133,11 @@ function resetNcmApiCookieCache() {
     value: '',
     expiresAt: 0,
   }
+  ncmApiCookiePromise = null
+}
+
+export function invalidateNcmApiCookieCache() {
+  resetNcmApiCookieCache()
 }
 
 async function getNcmApiCookieString() {
@@ -167,25 +173,19 @@ function triggerAutoLogout(reason) {
   if (autoLoggingOut) return;
   autoLoggingOut = true;
 
-  try {
-    // 清理登录态
-    clearLoginCookies();
+  invalidateNcmApiCookieCache()
 
-    const userStore = useUserStore(pinia);
-    userStore.user = null;
-    userStore.likelist = null;
-    userStore.favoritePlaylistId = null;
-    userStore.favoritePlaylistName = null;
-
-    // 友好提示
-    const message = reason || '登录状态已失效，已自动退出，请重新登录';
-    noticeOpen(message, 3);
-
-    // 不自动跳转，让用户自行在界面中重新登录
-  } finally {
+  void clearAccountScopedState({ clearSessionCookies: true }).finally(() => {
+    invalidateNcmApiCookieCache()
     // 轻微延迟后允许再次触发，避免请求风暴导致的重复提示
     setTimeout(() => { autoLoggingOut = false; }, 1500);
-  }
+  })
+
+  const userStore = useUserStore(pinia);
+  userStore.appOptionShow = false;
+
+  const message = reason || '登录状态已失效，已自动退出，请重新登录';
+  noticeOpen(message, 3);
 }
 
 // 请求拦截器
@@ -242,7 +242,7 @@ request.interceptors.response.use(function (response) {
     const code = error?.response?.data?.code
 
     if (code === -460) {
-      resetNcmApiCookieCache()
+      invalidateNcmApiCookieCache()
     }
 
     // 若后端以HTTP身份错误返回，直接触发自动登出

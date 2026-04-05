@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, onMounted, onUnmounted, computed } from 'vue'
+  import { ref, onActivated, onMounted, onUnmounted, computed, watch } from 'vue'
   import { formatTime } from '../utils/time';
   import VueSlider from 'vue-slider-component'
   import { noticeOpen } from '../utils/dialog'
@@ -41,6 +41,8 @@
   const dragDetermined = ref(false)
   const uploadCloudDiskFile = ref()
   const typeSelect = ref(CLOUD_CATEGORY_ALL)
+  const lastLoadedUserId = ref(null)
+  let cloudRefreshToken = 0
   let changeHandler = null
 
   const selectedCategoryName = computed(() => CLOUD_CATEGORY_LABELS[typeSelect.value] || CLOUD_CATEGORY_LABELS[CLOUD_CATEGORY_ALL])
@@ -62,7 +64,6 @@
   })
 
   onMounted(async () => {
-    await refreshCloudData()
     changeHandler = async (e) => {
       const input = uploadCloudDiskFile.value
       if (!input) return
@@ -79,11 +80,27 @@
     }
   })
 
+  onActivated(() => {
+    void refreshCloudData({ silent: true })
+  })
+
   onUnmounted(() => {
     if (uploadCloudDiskFile.value && changeHandler) {
       try { uploadCloudDiskFile.value.removeEventListener('change', changeHandler) } catch (_) {}
     }
   })
+
+  watch(
+    () => userStore.user?.userId ?? null,
+    (nextUserId, previousUserId) => {
+      if (nextUserId === previousUserId) return
+      lastLoadedUserId.value = null
+      cloudStore.resetAccountState()
+      if (nextUserId) {
+        void refreshCloudData({ force: true })
+      }
+    }
+  )
 
   function changeCategory(num) {
     typeSelect.value = num
@@ -113,7 +130,28 @@
     return true
   }
 
-  async function refreshCloudData() {
+  function getCurrentUserId() {
+    const userId = userStore.user?.userId
+    return userId === undefined || userId === null || userId === '' ? null : String(userId)
+  }
+
+  async function refreshCloudData(options = {}) {
+    const { silent = false, force = false } = options
+    const currentUserId = getCurrentUserId()
+    const hadCurrentUserData = lastLoadedUserId.value === currentUserId && Array.isArray(cloudSongs.value)
+
+    if (!currentUserId) {
+      lastLoadedUserId.value = null
+      cloudStore.resetAccountState()
+      return false
+    }
+
+    if (force || lastLoadedUserId.value !== currentUserId) {
+      cloudStore.resetAccountState()
+    }
+
+    const requestToken = ++cloudRefreshToken
+
     try {
       const params = {
         limit: 500,
@@ -122,14 +160,23 @@
       }
 
       const result = await getCloudDiskData(params)
+      if (requestToken !== cloudRefreshToken || getCurrentUserId() !== currentUserId) return false
+
       count.value = Number(result?.count || 0)
       size.value = Number((((Number(result?.size) || 0) / 1024 / 1024 / 1024)).toFixed(1))
       maxSize.value = Number((Number(result?.maxSize || 0) / 1024 / 1024 / 1024))
       cloudSongs.value = Array.isArray(result?.data) ? result.data : []
+      lastLoadedUserId.value = currentUserId
+      return true
     } catch (error) {
+      if (requestToken !== cloudRefreshToken || getCurrentUserId() !== currentUserId) return false
+
       console.error('获取云盘数据失败:', error)
-      if (!Array.isArray(cloudSongs.value)) cloudSongs.value = []
-      noticeOpen('获取云盘数据失败', 2)
+      if (!hadCurrentUserData) {
+        cloudStore.resetAccountState()
+      }
+      if (!silent) noticeOpen('获取云盘数据失败', 2)
+      return false
     }
   }
 

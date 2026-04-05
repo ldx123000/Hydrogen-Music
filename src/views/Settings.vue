@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onActivated, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
-import { logout } from '@/api/user'
 import { noticeOpen, dialogOpen } from '@/utils/dialog'
 import { initSettings } from '@/utils/initApp'
 import { getVipInfo } from '@/api/user'
@@ -11,6 +10,7 @@ import { usePlayerStore } from '@/store/playerStore'
 import Selector from '../components/Selector.vue'
 import UpdateDialog from '../components/UpdateDialog.vue'
 import { setTheme, getSavedTheme } from '@/utils/theme'
+import { logoutCurrentAccountSession } from '@/utils/accountSession'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -92,6 +92,7 @@ const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ','
 // 更新相关状态
 const showUpdateDialog = ref(false)
 const newVersion = ref('')
+let updateListenersInitialized = false
 
 const normalizeSearchAssistLimit = value => {
     const num = Number.parseInt(value, 10)
@@ -99,11 +100,24 @@ const normalizeSearchAssistLimit = value => {
     return Math.max(1, num)
 }
 
-if (isLogin()) {
-    getVipInfo().then(result => {
-        vipInfo.value = result.data
-    })
+const loadVipInfo = async () => {
+    const requestUserId = userStore.user?.userId
+    if (!requestUserId || !isLogin()) {
+        vipInfo.value = null
+        return
+    }
+
+    try {
+        const result = await getVipInfo()
+        if (userStore.user?.userId != requestUserId) return
+        vipInfo.value = result?.data || null
+    } catch (error) {
+        if (userStore.user?.userId != requestUserId) return
+        console.error('加载 VIP 信息失败:', error)
+        vipInfo.value = null
+    }
 }
+
 onActivated(() => {
     windowApi.getSettings().then(settings => {
         if (!settings) return
@@ -131,6 +145,8 @@ onActivated(() => {
         theme.value = 'system'
     }
 
+    void loadVipInfo()
+
     // 设置更新事件监听器
     setupUpdateListeners()
 })
@@ -156,12 +172,26 @@ watch(
 
 // 设置更新监听器
 const setupUpdateListeners = () => {
+    if (updateListenersInitialized) return
+    updateListenersInitialized = true
     // 监听手动更新检查结果（不显示大窗弹出）
     windowApi.manualUpdateAvailable(version => {
         newVersion.value = version
         // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
     })
 }
+
+watch(
+    () => userStore.user?.userId ?? null,
+    (nextUserId, previousUserId) => {
+        if (nextUserId === previousUserId) return
+        if (!nextUserId) {
+            vipInfo.value = null
+            return
+        }
+        void loadVipInfo()
+    }
+)
 
 const setAppSettings = () => {
     let settings = {
@@ -343,21 +373,14 @@ const openCoverBlur = flag => {
     if (flag) playerStore.coverBlur = !playerStore.coverBlur
 }
 const userLogout = async () => {
-    if (isLogin()) {
-        logout().then(async result => {
-            if (result.code == 200) {
-                window.localStorage.clear()
-                userStore.user = null
-                userStore.likelist = null
-                userStore.favoritePlaylistId = null
-                userStore.favoritePlaylistName = null
-                userStore.biliUser = null
+    if (!isLogin()) {
+        noticeOpen('您已退出账号', 2)
+        return
+    }
 
-                router.push('/')
-                noticeOpen('已退出账号', 2)
-            } else noticeOpen('退出登录失败', 2)
-        })
-    } else noticeOpen('您已退出账号', 2)
+    await logoutCurrentAccountSession()
+    router.push('/')
+    noticeOpen('已退出账号', 2)
 }
 const save = () => {
     selectedShortcut.value = null

@@ -1,11 +1,11 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { logout } from '../api/user'
 import { noticeOpen } from '../utils/dialog'
 import { isLogin } from '../utils/authority'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
+import { logoutCurrentAccountSession } from '../utils/accountSession'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -34,22 +34,15 @@ const scheduleTrackerRealign = () => {
 const toSettings = () => {
     router.push('/settings')
 }
-const userLogout = () => {
-    if (isLogin()) {
-        logout().then(result => {
-            if (result.code == 200) {
-                window.localStorage.clear()
-                userStore.user = null
-                userStore.likelist = null
-                userStore.favoritePlaylistId = null
-                userStore.favoritePlaylistName = null
-                userStore.biliUser = null
+const userLogout = async () => {
+    if (!isLogin()) {
+        noticeOpen('您已退出账号', 2)
+        return
+    }
 
-                router.push('/')
-                noticeOpen('已退出账号', 2)
-            } else noticeOpen('退出登录失败', 2)
-        })
-    } else noticeOpen('您已退出账号', 2)
+    await logoutCurrentAccountSession()
+    router.push('/')
+    noticeOpen('已退出账号', 2)
 }
 const handleAuthOptionClick = () => {
     if (isLogin()) {

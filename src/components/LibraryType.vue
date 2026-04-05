@@ -1,5 +1,5 @@
 <script setup>
-  import { ref } from 'vue'
+  import { onActivated, ref, watch } from 'vue'
   import router from '../router/router'
   import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
   import { getUserSubAlbum } from '../api/album'
@@ -25,78 +25,181 @@
   const typeTwo = ref(0)
   const typeThree = ref(0)
   const typeFour = ref(0)
+  const lastLoadedUserId = ref(null)
+  const SUB_ALBUM_PAGE_SIZE = 100
+  let libraryRequestToken = 0
 
 //   const typeList = [['我创建的','我收藏的'],['专辑','歌手','MV'],['正在下载','下载完成'],['全部','专辑','歌手']]
 //   const currentList = ref(typeList[0])
-  changeTracker(0)
-  async function loadUserPlaylist() {
-    let params = {
-        uid: user.value.userId,
-        limit: 500,
-        offset: 0,
-        timestamp: new Date().getTime()
-    }
-    await getUserPlaylistCount().then(listCount => {
-        updateUserPlaylistCount(listCount)
-        getUserPlaylist(params).then(list => {
-            updateUserPlaylist(list.playlist)
-            changeList()
-        })
-    })
+
+  function getCurrentUserId() {
+    const userId = user.value?.userId
+    return userId === undefined || userId === null || userId === '' ? null : String(userId)
   }
 
-  async function changeList() {
-    if(option.value == 0 && typeOne.value == 0){//我创建的
-        listType2.value = 0
-        changeLibraryList(0)
-    } else if (option.value == 0 && typeOne.value == 1) {//我收藏的
-        listType2.value = 1
-        changeLibraryList(1)
-    } else if (option.value == 1 && typeTwo.value == 0) {
-        let params = {
-            limit: 50,
-            offset: 0,
-            // timestamp: new Date().getTime()
-        }
-        getUserSubAlbum(params).then(result => {
-            libraryList.value = result.data
-            listType2.value = 0
-            libraryListAlbum.value = libraryList.value
-        })
-    } else if (option.value == 1 && typeTwo.value == 1) {//歌手
-        getUserSubArtists().then(result => {
-            libraryList.value = result.data
-            listType2.value = 1
-            libraryListAritist.value = libraryList.value
-        })
-    } else if (option.value == 1 && typeTwo.value == 2) {//MV
-        getUserSubMV().then(result => {
-            result.data.forEach(item => {
-                item.id = item.vid
-            });
-            libraryList.value = result.data
-            listType2.value = 2
-        })
-    } else if (option.value == 1 && typeTwo.value == 3) { // 电台
-        const params = { limit: 50, offset: 0 }
-        getDjSubList(params).then(result => {
-            const list = result?.djRadios || result?.data || result?.radios || []
-            libraryList.value = list
-            listType2.value = 3
-        })
-    } else if (option.value == 2 && typeThree.value == 0) {//正在下载
-        listType2.value = 0
-    } else if (option.value == 2 && typeThree.value == 1) {//下载完成
-        listType2.value = 1
-    } else if (option.value == 3 && typeFour.value == 0) {//全部
-        listType2.value = 0
-    } else if (option.value == 3 && typeFour.value == 1) {//专辑
-        listType2.value = 1
-    } else if (option.value == 3 && typeFour.value == 2) {//歌手
-        listType2.value = 2
+  function isLibraryRequestActive(requestToken, requestUserId) {
+    return requestToken === libraryRequestToken && getCurrentUserId() === requestUserId
+  }
+
+  function clearAccountLibraryLists() {
+    libraryList.value = null
+    libraryListAlbum.value = null
+    libraryListAritist.value = null
+  }
+
+  async function loadUserPlaylist(requestToken, requestUserId) {
+    if (!requestUserId) {
+      clearAccountLibraryLists()
+      return false
     }
+
+    const params = {
+      uid: requestUserId,
+      limit: 500,
+      offset: 0,
+      timestamp: Date.now()
+    }
+
+    try {
+      const listCount = await getUserPlaylistCount()
+      if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+
+      updateUserPlaylistCount(listCount)
+
+      const list = await getUserPlaylist(params)
+      if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+
+      updateUserPlaylist(Array.isArray(list?.playlist) ? list.playlist : [])
+      lastLoadedUserId.value = requestUserId
+      return true
+    } catch (error) {
+      if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+      console.error('加载用户歌单失败:', error)
+      clearAccountLibraryLists()
+      return false
+    }
+  }
+
+  async function loadAllUserSubAlbums(requestToken, requestUserId) {
+    if (!requestUserId) {
+      clearAccountLibraryLists()
+      return false
+    }
+
+    const albums = []
+    let offset = 0
+
+    try {
+      while (true) {
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+
+        const result = await getUserSubAlbum({
+          limit: SUB_ALBUM_PAGE_SIZE,
+          offset,
+        })
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+
+        const currentPageAlbums = Array.isArray(result?.data) ? result.data : []
+        const totalCount = Number(result?.count)
+
+        albums.push(...currentPageAlbums)
+
+        if (currentPageAlbums.length == 0) break
+
+        offset += currentPageAlbums.length
+
+        if (currentPageAlbums.length < SUB_ALBUM_PAGE_SIZE) break
+        if (Number.isFinite(totalCount) && totalCount >= 0 && albums.length >= totalCount) break
+      }
+
+      if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+
+      libraryList.value = albums
+      listType2.value = 0
+      libraryListAlbum.value = albums
+      lastLoadedUserId.value = requestUserId
+      return true
+    } catch (error) {
+      if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+      console.error('加载收藏专辑失败:', error)
+      clearAccountLibraryLists()
+      return false
+    }
+  }
+
+  async function refreshCurrentSection() {
+    const requestUserId = getCurrentUserId()
+    const requestToken = ++libraryRequestToken
+
+    if ((option.value == 0 || option.value == 1) && !requestUserId) {
+      clearAccountLibraryLists()
+      return false
+    }
+
+    if (option.value == 0) {
+      const loaded = await loadUserPlaylist(requestToken, requestUserId)
+      if (!loaded || !isLibraryRequestActive(requestToken, requestUserId)) return false
+      listType2.value = typeOne.value == 0 ? 0 : 1
+      changeLibraryList(typeOne.value == 0 ? 0 : 1)
+    } else if (option.value == 1 && typeTwo.value == 0) {
+      const loaded = await loadAllUserSubAlbums(requestToken, requestUserId)
+      if (!loaded || !isLibraryRequestActive(requestToken, requestUserId)) return false
+    } else if (option.value == 1 && typeTwo.value == 1) {
+      try {
+        const result = await getUserSubArtists()
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+        libraryList.value = Array.isArray(result?.data) ? result.data : []
+        listType2.value = 1
+        libraryListAritist.value = libraryList.value
+        lastLoadedUserId.value = requestUserId
+      } catch (error) {
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+        console.error('加载收藏歌手失败:', error)
+        clearAccountLibraryLists()
+        return false
+      }
+    } else if (option.value == 1 && typeTwo.value == 2) {
+      try {
+        const result = await getUserSubMV()
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+        const list = Array.isArray(result?.data) ? result.data.map(item => ({ ...item, id: item?.vid })) : []
+        libraryList.value = list
+        listType2.value = 2
+        lastLoadedUserId.value = requestUserId
+      } catch (error) {
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+        console.error('加载收藏 MV 失败:', error)
+        clearAccountLibraryLists()
+        return false
+      }
+    } else if (option.value == 1 && typeTwo.value == 3) {
+      try {
+        const result = await getDjSubList({ limit: 50, offset: 0 })
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+        libraryList.value = result?.djRadios || result?.data || result?.radios || []
+        listType2.value = 3
+        lastLoadedUserId.value = requestUserId
+      } catch (error) {
+        if (!isLibraryRequestActive(requestToken, requestUserId)) return false
+        console.error('加载收藏电台失败:', error)
+        clearAccountLibraryLists()
+        return false
+      }
+    } else if (option.value == 2 && typeThree.value == 0) {
+      listType2.value = 0
+    } else if (option.value == 2 && typeThree.value == 1) {
+      listType2.value = 1
+    } else if (option.value == 3 && typeFour.value == 0) {
+      listType2.value = 0
+    } else if (option.value == 3 && typeFour.value == 1) {
+      listType2.value = 1
+    } else if (option.value == 3 && typeFour.value == 2) {
+      listType2.value = 2
+    }
+
     if(document.getElementById('libraryListScroll'))
-        document.getElementById('libraryListScroll').scrollTop = 0
+      document.getElementById('libraryListScroll').scrollTop = 0
+    return true
   }
   
   function changeTracker(num) {
@@ -104,12 +207,12 @@
     if(num == 0) {
         option.value = num
         typeTracker.value = num
-        loadUserPlaylist()
+        void refreshCurrentSection()
         return
     }
     option.value = num
     typeTracker.value = num
-    changeList()
+    void refreshCurrentSection()
   }
 
   function changeType(num) {
@@ -122,7 +225,7 @@
     } else if (option.value == 3) {
         typeFour.value = num
     }
-    changeList()
+    void refreshCurrentSection()
   }
 
   const refreshLocal = () => {
@@ -131,6 +234,26 @@
     if(listType1.value == 3) {scanMusic({type:'local',refresh:true});}
     router.push('/mymusic')
   }
+
+  watch(
+    () => user.value?.userId ?? null,
+    (nextUserId, previousUserId) => {
+      if (nextUserId === previousUserId) return
+      lastLoadedUserId.value = null
+      if (option.value == 0 || option.value == 1) {
+        void refreshCurrentSection()
+      }
+    }
+  )
+
+  onActivated(() => {
+    const currentUserId = getCurrentUserId()
+    if ((option.value == 0 || option.value == 1) && currentUserId && lastLoadedUserId.value !== currentUserId) {
+      void refreshCurrentSection()
+    }
+  })
+
+  changeTracker(0)
 </script>
 
 <template>

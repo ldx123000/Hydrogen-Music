@@ -34,6 +34,7 @@ export function setCookies(data) {
     cookieMap.MUSIC_U = data.token
   }
 
+  clearLoginCookies()
   persistAuthCookies(cookieMap)
 }
 

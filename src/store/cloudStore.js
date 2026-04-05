@@ -12,6 +12,12 @@ export const useCloudStore= defineStore('cloudStore', {
     actions: {
         updateCloudSongs(list) {
             this.cloudSongs = list
+        },
+        resetAccountState() {
+            this.count = null
+            this.size = null
+            this.maxSize = null
+            this.cloudSongs = null
         }
     },
 })

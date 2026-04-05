@@ -24,6 +24,7 @@ let manualUpdateCheckInProgress = false;
 let ncmApiReadyResolved = false;
 let ncmApiReadyPayload = null;
 const ncmApiReadyWaiters = [];
+const NCM_API_COOKIE_URLS = ['http://localhost:36530', 'http://127.0.0.1:36530']
 
 function resolveNcmApiReady(payload) {
     if (ncmApiReadyResolved) return;
@@ -47,10 +48,9 @@ function waitForNcmApiReady() {
 async function getNcmApiCookieString() {
     if (!session || !session.defaultSession) return ''
 
-    const cookieUrls = ['http://localhost:36530', 'http://127.0.0.1:36530']
     const cookieMap = new Map()
 
-    for (const url of cookieUrls) {
+    for (const url of NCM_API_COOKIE_URLS) {
         try {
             const cookies = await session.defaultSession.cookies.get({ url })
             cookies.forEach(({ name, value }) => {
@@ -62,6 +62,21 @@ async function getNcmApiCookieString() {
 
     if (cookieMap.size == 0) return ''
     return Array.from(cookieMap.entries()).map(([name, value]) => `${name}=${value}`).join('; ')
+}
+
+async function clearNcmApiCookies() {
+    if (!session || !session.defaultSession) return false
+
+    for (const url of NCM_API_COOKIE_URLS) {
+        try {
+            const cookies = await session.defaultSession.cookies.get({ url })
+            await Promise.all(cookies.map(({ name }) => session.defaultSession.cookies.remove(url, name)))
+        } catch (_) {
+            // ignore cookie cleanup failures for this origin
+        }
+    }
+
+    return true
 }
 
 //electron单例
@@ -139,6 +154,9 @@ if (!gotTheLock) {
     })
     ipcMain.handle('ncm-api-cookie-string', async () => {
         return getNcmApiCookieString()
+    })
+    ipcMain.handle('ncm-api-cookie-clear', async () => {
+        return clearNcmApiCookies()
     })
 
     app.on('window-all-closed', () => {
