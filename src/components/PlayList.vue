@@ -34,6 +34,7 @@
   }
 
   const checkArtist = (artistId) => {
+    if(!artistId) return
     if(songList.value[currentIndex.value].type != 'local') {
       router.push('/mymusic/artist/' + artistId)
       playerStore.forbidLastRouter = true

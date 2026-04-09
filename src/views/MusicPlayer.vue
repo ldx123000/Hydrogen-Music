@@ -66,7 +66,7 @@ const commentCountRequestSerial = ref(0);
 
 const commentTarget = computed(() => {
     const track = currentTrack.value;
-    if (!track || track.type === 'local') return null;
+    if (!track || track.type === 'local' || track.source === 'siren') return null;
 
     if (isDj.value) {
         const programId = track && (track.programId || track.programID || track.programid);
@@ -155,7 +155,7 @@ const commentPanelKey = computed(() => {
 
 watch(currentTrack, (song) => {
     try {
-        if (song && song.type === 'local' && rightPanelMode.value === 1) {
+        if (song && (song.type === 'local' || song.source === 'siren') && rightPanelMode.value === 1) {
             rightPanelMode.value = 0;
         }
     } catch (_) {}

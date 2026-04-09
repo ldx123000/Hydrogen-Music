@@ -8,6 +8,7 @@ const PersonalFMPage = () => import('../views/PersonalFMPage.vue')
 const LoginPage = () => import('../views/LoginPage.vue')
 const LoginContent = () => import('../components/LoginContent.vue')
 const MyMusic = () => import('../views/MyMusic.vue')
+const SirenPage = () => import('../views/SirenPage.vue')
 const LibraryDetail = () => import('../components/LibraryDetail.vue')
 const RecommendSongs = () => import('../components/RecommendSongs.vue')
 const LocalMusicDetail = () => import('../components/LocalMusicDetail.vue')
@@ -52,6 +53,16 @@ const routes = [
         path: '/login',
         name: 'login',
         component: LoginPage
+    },
+    {
+        path: '/siren',
+        name: 'siren',
+        component: SirenPage,
+    },
+    {
+        path: '/siren/album/:id',
+        name: 'sirenAlbum',
+        component: SirenPage,
     },
     {
         path: '/mymusic',

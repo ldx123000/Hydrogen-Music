@@ -697,6 +697,17 @@ const clearFmRecent = () => {
                                 </div>
                             </div>
                         </div>
+                        <div class="option">
+                            <div class="option-name">开启塞壬唱片页面</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="userStore.sirenPage = !userStore.sirenPage">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.sirenPage }">{{ userStore.sirenPage ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="userStore.sirenPage"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
                         <div class="option" v-if="userStore.personalFMPage">
                             <div class="option-name">清空漫游缓存</div>
                             <div class="option-operation">

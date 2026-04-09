@@ -233,7 +233,8 @@
         return
       }
       playerStore.forbidLastRouter = true
-      router.push('/mymusic/album/' + albumId)
+      if (song?.source === 'siren') router.push('/siren/album/' + albumId)
+      else router.push('/mymusic/album/' + albumId)
       otherStore.contextMenuShow = false
       return
     }

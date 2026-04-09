@@ -27,6 +27,7 @@ const programId = computed(() => {
 const musicCommentId = computed(() => {
     if (isDj.value) return null
     const cur = currentTrack.value
+    if (cur?.source === 'siren') return null
     const curId = cur && (cur.id || cur.songId || cur.musicId)
     return curId || songId.value || null
 })

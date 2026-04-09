@@ -82,6 +82,24 @@ export const useOtherStore = defineStore('otherStore', {
                 name: '打开本地文件夹'
             }
           ],
+          tree5: [
+            {
+                id: 1,
+                name: '播放'
+            },
+            {
+                id: 2,
+                name: '下一首播放'
+            },
+            {
+                id: 3,
+                name: '下载'
+            },
+            {
+                id: 11,
+                name: '显示专辑'
+            }
+          ],
           selectedPlaylist: null,
           selectedItem: null,
           addPlaylistShow: false,

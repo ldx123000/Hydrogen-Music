@@ -3,6 +3,7 @@ const fsp = fs.promises
 const path = require('path')
 const { parseFile } = require('music-metadata')
 const { nanoid } = require('nanoid')
+const { decodeLyricBuffer } = require('./localLyrics')
 
 const MUSIC_TYPES = new Set([
     '.aiff', '.aac', '.ape', '.asf', '.bwf', '.dsdiff', '.dsf', '.flac',
@@ -126,7 +127,9 @@ async function enrichMetadataFromSidecars(filePath, metadata) {
     if (!(await pathExists(lrcPath))) return
 
     try {
-        const lrcText = await fsp.readFile(lrcPath, 'utf8')
+        const lrcBuffer = await fsp.readFile(lrcPath)
+        const lrcText = decodeLyricBuffer(lrcBuffer)
+        if (!lrcText) return
         const lines = lrcText.split(/\r?\n/)
         for (let i = 0; i < Math.min(lines.length, 50); i++) {
             const line = lines[i]

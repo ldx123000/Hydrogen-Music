@@ -3,6 +3,7 @@ import { Howl, Howler } from 'howler'
 import { formatDuration } from './time';
 import { noticeOpen } from './dialog'
 import { checkMusic, likeMusic, getLyric } from '../api/song'
+import { getSirenLyricText, getSirenSong } from '../api/siren'
 import { updatePlaylist } from '../api/playlist'
 import { getLikelist, getUserPlaylist } from '../api/user'
 import { useUserStore } from '../store/userStore'
@@ -14,6 +15,7 @@ import {watch} from "vue";
 import { getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSongDisplayName } from './songName'
+import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from './siren'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
 
@@ -50,6 +52,54 @@ function hasCurrentSongSelected() {
     const list = Array.isArray(songList.value) ? songList.value : []
     const idx = Number.isInteger(currentIndex.value) ? currentIndex.value : -1
     return idx >= 0 && idx < list.length && Boolean(list[idx])
+}
+
+function clearCurrentSongLevel(song) {
+    if (!song) return
+    song.level = null
+    song.actualLevel = ''
+    song.quality = ''
+}
+
+function updateCurrentSongDurationFromHowl() {
+    const currentSong = songList.value && songList.value[currentIndex.value]
+    if (!currentSong || !currentMusic.value || typeof currentMusic.value.duration !== 'function') return
+
+    const durationMs = Math.round((currentMusic.value.duration() || 0) * 1000)
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return
+
+    currentSong.duration = durationMs
+    currentSong.dt = durationMs
+}
+
+async function resolveSirenSongPlayback(targetSong, options = {}) {
+    const sourceId = getSirenSourceId(targetSong)
+    if (!sourceId) throw new Error('缺少塞壬歌曲 ID')
+
+    const songData = await getSirenSong(sourceId, options)
+    const streamUrl = songData?.sourceUrl || targetSong?.streamUrl || targetSong?.sourceUrl || ''
+    const lyricUrl = songData?.lyricUrl || targetSong?.lyricUrl || ''
+
+    if (streamUrl) {
+        targetSong.streamUrl = streamUrl
+        targetSong.sourceUrl = streamUrl
+    }
+    if (lyricUrl) targetSong.lyricUrl = lyricUrl
+
+    return {
+        streamUrl,
+        lyricUrl,
+    }
+}
+
+async function getSirenLyricPayload(lyricUrl) {
+    if (!lyricUrl) return { lrc: { lyric: '' } }
+    const lyricText = await getSirenLyricText(lyricUrl)
+    return {
+        lrc: {
+            lyric: lyricText || '',
+        },
+    }
 }
 
 function syncWindowsTaskbarPlaybackState() {
@@ -352,28 +402,45 @@ async function refreshStreamAndResume(eventType, error) {
     const resumePosition = getSafeCurrentSeek()
 
     try {
-        const preferredQuality = getPreferredQuality(quality.value)
-        const trackInfo = await resolveTrackByQualityPreference(targetSongId, preferredQuality)
+        let nextStreamUrl = ''
+        let trackInfo = null
+
+        if (isSirenSong(currentSong)) {
+            const sirenPlayback = await resolveSirenSongPlayback(currentSong, { force: true })
+            nextStreamUrl = sirenPlayback?.streamUrl || ''
+        } else {
+            const preferredQuality = getPreferredQuality(quality.value)
+            trackInfo = await resolveTrackByQualityPreference(targetSongId, preferredQuality)
+            nextStreamUrl = trackInfo?.url || ''
+        }
 
         // 防止旧歌曲的异步刷新覆盖当前已切换的新歌曲。
         if (token !== streamRefreshToken || songId.value !== targetSongId || currentMusic.value !== targetHowl) {
             return
         }
 
-        if (!trackInfo || !trackInfo.url) {
+        if (!nextStreamUrl) {
             console.error('刷新歌曲播放地址失败：未返回url', trackInfo)
             noticeOpen('当前歌曲链接已失效，请尝试切换下一首', 2)
             return
         }
 
         try {
-            setSongLevel(trackInfo.level, trackInfo)
+            if (isSirenSong(currentSong)) {
+                const ext = getSirenAudioExtension(nextStreamUrl)
+                const sr = Howler.ctx?.sampleRate || 44100
+                currentSong.level = { sr, br: sr * 16 * 2, size: 0 }
+                currentSong.actualLevel = ext
+                currentSong.quality = ext
+            } else if (trackInfo) {
+                setSongLevel(trackInfo.level, trackInfo)
+            }
         } catch (err) {
             console.warn('更新歌曲音质信息失败:', err)
         }
 
         progress.value = resumePosition
-        play(trackInfo.url, true, resumePosition)
+        play(nextStreamUrl, true, resumePosition)
     } catch (fetchError) {
         console.error('刷新歌曲播放地址失败:', fetchError)
         noticeOpen('刷新播放地址失败，请尝试切换歌曲', 2)
@@ -450,6 +517,7 @@ export function play(url, autoplay, resumeSeek = null) {
     })
     currentMusic.value.once('load', () => {
         time.value = Math.floor(currentMusic.value.duration())
+        updateCurrentSongDurationFromHowl()
         let targetSeek = null
 
         if (normalizedSeek !== null) {
@@ -544,12 +612,13 @@ export function setId(id, index) {
     }
 }
 
-export function addToList(listType, songlist) {
+export function addToList(listType, songlist, listMeta = null) {
     // 移除之前的 fmReset 事件，以保留FM状态
     // if (listInfo.value && listInfo.value.type === 'personalfm' && listType !== 'personalfm') {
     //     ...
     // }
 
+    const normalizedSongList = Array.isArray(songlist) ? songlist : []
     let listId = 'none'
     if (listType === 'rec') {
         listId = 'rec'
@@ -568,6 +637,10 @@ export function addToList(listType, songlist) {
         } catch (_) {
             // 忽略解析失败，使用默认值
         }
+    } else if (listMeta && listMeta.id) {
+        listId = listMeta.id
+    } else if (listType === 'siren') {
+        listId = normalizedSongList[0]?.al?.id || listInfo.value?.id || 'siren'
     } else if (libraryInfo.value) {
         listId = libraryInfo.value.id
     }
@@ -576,7 +649,7 @@ export function addToList(listType, songlist) {
         id: listId,
         type: listType
     }
-    songList.value = songlist.slice(0, songlist.length + 1)
+    songList.value = normalizedSongList.slice(0, normalizedSongList.length + 1)
     syncWindowsTaskbarPlaybackState()
     savePlaylist()
 }
@@ -833,6 +906,62 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         restorePlayerLyricAfterSongChange()
         return
     }
+    if (isSirenSong(targetSong)) {
+        clearCurrentSongLevel(targetSong)
+        try {
+            const sirenPlayback = await resolveSirenSongPlayback(targetSong)
+            if (songId.value !== targetSongId) return
+
+            if (!sirenPlayback?.streamUrl) {
+                noticeOpen('当前歌曲无法播放', 2)
+                clearInterval(musicProgress)
+                playing.value = false
+                currentMusic.value = null
+                lyric.value = null
+                playNext()
+                return
+            }
+
+            play(sirenPlayback.streamUrl, autoplay)
+
+            // 在音频加载完成后设置塞壬歌曲音质信息
+            if (currentMusic.value) {
+                const sirenStreamUrl = sirenPlayback.streamUrl
+                currentMusic.value.once('load', () => {
+                    if (songId.value !== targetSongId) return
+                    const ext = getSirenAudioExtension(sirenStreamUrl)
+                    const sr = Howler.ctx?.sampleRate || 44100
+                    const channels = 2
+                    const bitsPerSample = 16
+                    const br = sr * bitsPerSample * channels
+                    targetSong.level = { sr, br, size: 0 }
+                    targetSong.actualLevel = ext
+                    targetSong.quality = ext
+                })
+            }
+
+            try {
+                const sirenLyric = await getSirenLyricPayload(sirenPlayback.lyricUrl)
+                if (songId.value !== targetSongId) return
+                lyric.value = sirenLyric
+            } catch (error) {
+                console.error('加载塞壬歌词失败:', error)
+                if (songId.value !== targetSongId) return
+                lyric.value = { lrc: { lyric: '' } }
+            }
+
+            restorePlayerLyricAfterSongChange()
+        } catch (error) {
+            console.error('获取塞壬歌曲播放地址失败:', error)
+            noticeOpen('当前歌曲无法播放', 2)
+            clearInterval(musicProgress)
+            playing.value = false
+            currentMusic.value = null
+            lyric.value = null
+            playNext()
+        }
+        return
+    }
     await checkMusic(id).then(result => {
         if (result.success == true) {
             const preferredQuality = getPreferredQuality(quality.value)
@@ -1025,13 +1154,13 @@ export function changePlayMode() {
     applyPlayMode(playMode.value != 3 ? playMode.value + 1 : 0, { inFM: false })
 }
 
-export function playAll(listType, list) {
+export function playAll(listType, list, listMeta = null) {
     if (playMode.value == 3) {
-        addToList(listType, list)
+        addToList(listType, list, listMeta)
         setShuffledList(true)
         addSong(shuffledList.value[0].id, 0, true)
     } else {
-        addToList(listType, list)
+        addToList(listType, list, listMeta)
         addSong(songList.value[0].id, 0, true)
     }
 }

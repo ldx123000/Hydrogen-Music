@@ -37,6 +37,22 @@ const props = defineProps({
         type: Array,
         default: null,
     },
+    queueListType: {
+        type: String,
+        default: '',
+    },
+    queueMeta: {
+        type: Object,
+        default: null,
+    },
+    artistRouteEnabled: {
+        type: Boolean,
+        default: true,
+    },
+    contextMenuMode: {
+        type: String,
+        default: '',
+    },
 })
 const hoverRowKey = ref(null)
 const rowKeyBySong = new WeakMap()
@@ -69,6 +85,7 @@ const scrollerItems = computed(() => {
 const queueSongs = computed(() => (Array.isArray(props.queueSonglist) ? props.queueSonglist : props.songlist))
 
 const checkArtist = artistId => {
+    if (!props.artistRouteEnabled || !artistId) return
     router.push('/mymusic/artist/' + artistId)
     playerStore.forbidLastRouter = true
 }
@@ -82,7 +99,7 @@ const play = (song, index) => {
         addToNext(song, true)
         return
     }
-    addToList(router.currentRoute.value.name, queueSongs.value || [])
+    addToList(props.queueListType || router.currentRoute.value.name, queueSongs.value || [], props.queueMeta || null)
     addSong(song.id, index, true)
     if (playMode.value == 3) setShuffledList()
 }
@@ -104,8 +121,14 @@ const openMenu = (e, item) => {
     otherStore.selectedItem = item
     otherStore.selectedPlaylist = libraryInfo.value
 
-    if (otherStore.selectedPlaylist && otherStore.selectedPlaylist.creator && otherStore.selectedPlaylist.creator.userId == userStore.user.userId) otherStore.menuTree = otherStore.tree1
-    else otherStore.menuTree = otherStore.tree2
+    if (props.contextMenuMode === 'siren' || item?.source === 'siren') {
+        otherStore.selectedPlaylist = null
+        otherStore.menuTree = otherStore.tree5
+    } else if (otherStore.selectedPlaylist && otherStore.selectedPlaylist.creator && otherStore.selectedPlaylist.creator.userId == userStore.user.userId) {
+        otherStore.menuTree = otherStore.tree1
+    } else {
+        otherStore.menuTree = otherStore.tree2
+    }
 
     const { clientX, clientY } = e
     const menuList = document.getElementById('menu')
@@ -176,7 +199,7 @@ const openMenu = (e, item) => {
                     <div class="item-author" v-if="item.song.ar">
                         <span class="item-singer" @click="checkArtist(singer.id)" v-for="(singer, index) in item.song.ar">{{ singer.name }}{{ index == item.song.ar.length - 1 ? '' : '/' }}</span>
                     </div>
-                    <span class="item-time">{{ songTime(item.song.dt || item.song.duration) }}</span>
+                        <span class="item-time">{{ songTime(item.song.dt || item.song.duration) || '--:--' }}</span>
                 </div>
             </div>
         </RecycleScroller>

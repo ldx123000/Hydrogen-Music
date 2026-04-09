@@ -10,6 +10,8 @@ import { destroyLyricRuntime, initLyricRuntime } from './composables/usePlayerRu
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
+import { useUserStore } from './store/userStore';
+import { useSirenStore } from './store/sirenStore';
 
 const MusicPlayer = defineAsyncComponent(() => import('./views/MusicPlayer.vue'));
 const VideoPlayer = defineAsyncComponent(() => import('./components/VideoPlayer.vue'));
@@ -20,10 +22,22 @@ const Update = defineAsyncComponent(() => import('./components/Update.vue'));
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const userStore = useUserStore();
+const sirenStore = useSirenStore();
 
 onMounted(() => {
     initLyricRuntime();
     initDesktopLyric();
+
+    // 塞壬唱片开启时，空闲预加载所有专辑歌曲时长
+    if (userStore.sirenPage) {
+        const startPreload = () => sirenStore.preloadAllDurations()
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(startPreload, { timeout: 10000 })
+        } else {
+            setTimeout(startPreload, 5000)
+        }
+    }
 });
 
 onUnmounted(() => {

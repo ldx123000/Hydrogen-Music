@@ -3,10 +3,12 @@ import { useLocalStore } from '../store/localStore'
 import { usePlayerStore } from '../store/playerStore'
 import { storeToRefs } from 'pinia'
 import { checkMusic, getLyric } from '../api/song'
+import { getSirenLyricText, getSirenSong } from '../api/siren'
 import { noticeOpen } from './dialog'
 import { scanMusic } from './locaMusic'
 import { getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
+import { getSirenAudioExtension, getSirenSourceId, SIREN_SOURCE } from './siren'
 
 let isInitialized = false
 
@@ -19,10 +21,74 @@ export const initDownloadManager = () => {
     const { quality } = storeToRefs(playerStore)
     
     let currentIndex = -1
+
+    const getItemArtists = item => {
+        if (Array.isArray(item?.ar)) return item.ar.map(artist => artist?.name).filter(Boolean)
+        if (Array.isArray(item?.artists)) return item.artists.map(artist => artist?.name || artist).filter(Boolean)
+        return []
+    }
+
+    const downloadSirenTrack = async item => {
+        try {
+            const sourceId = getSirenSourceId(item)
+            if (!sourceId) throw new Error('缺少塞壬歌曲 ID')
+
+            const songData = await getSirenSong(sourceId)
+            const streamUrl = songData?.sourceUrl || item?.streamUrl || item?.sourceUrl || ''
+            const lyricUrl = songData?.lyricUrl || item?.lyricUrl || ''
+
+            if (!streamUrl) throw new Error('该歌曲无法下载')
+
+            if (streamUrl) {
+                item.streamUrl = streamUrl
+                item.sourceUrl = streamUrl
+            }
+            if (lyricUrl) item.lyricUrl = lyricUrl
+
+            let lyricPayload = null
+            try {
+                const lyricText = lyricUrl ? await getSirenLyricText(lyricUrl) : ''
+                lyricPayload = {
+                    id: sourceId,
+                    lrc: lyricText || null,
+                    tlyric: null,
+                    romalrc: null,
+                }
+            } catch (_) {
+                lyricPayload = null
+            }
+
+            const coverUrl = item.coverUrl || item?.al?.picUrl || null
+            const artists = getItemArtists(item)
+            const album = item?.al?.name || item?.album?.name || item?.album?.title || item?.album || null
+
+            windowApi.download({
+                url: streamUrl,
+                name: item?.name,
+                type: getSirenAudioExtension(streamUrl),
+                id: item?.id || `siren:${sourceId}`,
+                lyrics: lyricPayload,
+                coverUrl,
+                artists,
+                album,
+            })
+        } catch (error) {
+            console.error('塞壬歌曲下载失败:', error)
+            noticeOpen("该歌曲无法下载！", 2)
+            downloadList.value.splice(currentIndex, 1)
+            downNext()
+        }
+    }
     
     const download = async () => {
         if (currentIndex < 0 || currentIndex >= downloadList.value.length) return
-        
+
+        const currentItem = downloadList.value[currentIndex] || {}
+        if (currentItem.source === SIREN_SOURCE) {
+            await downloadSirenTrack(currentItem)
+            return
+        }
+
         let id = downloadList.value[currentIndex].id
         checkMusic(id).then(async result => {
             if(result.success == true) {

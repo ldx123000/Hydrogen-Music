@@ -100,6 +100,7 @@ const isInFMMode = computed(() => {
 
 // 是否为电台(DJ)模式
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
+const isCurrentSirenSong = computed(() => songList.value?.[currentIndex.value]?.source === 'siren');
 const currentSongDisplayName = computed(() => getSongDisplayName(songList.value?.[currentIndex.value], '加载中...', showSongTranslation.value));
 
 // 当前电台订阅状态与rid
@@ -159,7 +160,10 @@ const toAlbum = () => {
     }
     // 普通歌曲：仍然跳转专辑
     if (currentSong.type != 'local') {
-        router.push('/mymusic/album/' + currentSong.al.id);
+        const targetPath = currentSong.source === 'siren'
+            ? '/siren/album/' + currentSong.al.id
+            : '/mymusic/album/' + currentSong.al.id
+        router.push(targetPath);
         widgetState.value = true;
         lyricShow.value = false;
         playlistWidgetShow.value = false;
@@ -180,7 +184,7 @@ const download = () => {
 const checkArtist = artistId => {
     const currentSong = songList.value?.[currentIndex.value];
     // 电台模式下禁止点击作者
-    if (isDjMode.value) return;
+    if (isDjMode.value || isCurrentSirenSong.value || !artistId) return;
     if (currentSong?.type != 'local') {
         router.push('/mymusic/artist/' + artistId);
         widgetState.value = true;
@@ -206,7 +210,7 @@ const backToVideo = () => {
 
 const addToPlaylist = () => {
     const currentSong = songList.value?.[currentIndex.value];
-    if (currentSong && currentSong.type !== 'local') {
+    if (currentSong && currentSong.type !== 'local' && currentSong.source !== 'siren') {
         otherStore.selectedItem = currentSong;
         otherStore.addPlaylistShow = true;
     }
@@ -263,12 +267,12 @@ const toggleDjSub = async isSubscribe => {
                 <div class="info-music">
                     <div class="music-author-lable" :class="{ 'music-author-lable-video': videoIsPlaying || coverBlur }"></div>
                     <div class="music-author">
-                        <span
-                            @click="checkArtist(singer.id)"
-                            :class="['author', { disabled: isDjMode }]"
-                            :style="{ color: videoIsPlaying || coverBlur ? 'var(--text)' : 'var(--muted-text)' }"
-                            v-for="(singer, index) in songList?.[currentIndex]?.ar || []"
-                        >
+                            <span
+                                @click="checkArtist(singer.id)"
+                                :class="['author', { disabled: isDjMode || isCurrentSirenSong }]"
+                                :style="{ color: videoIsPlaying || coverBlur ? 'var(--text)' : 'var(--muted-text)' }"
+                                v-for="(singer, index) in songList?.[currentIndex]?.ar || []"
+                            >
                             {{ singer.name || '' }}{{ index == (songList?.[currentIndex]?.ar?.length || 0) - 1 ? '' : ' / ' }}
                         </span>
                     </div>
@@ -546,7 +550,7 @@ const toggleDjSub = async isSubscribe => {
                 </svg>
 
                 <!-- 喜欢/收藏：仅在线歌曲显示；本地与电台隐藏/分支另行处理 -->
-                <template v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local'">
+                <template v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local' && !isCurrentSirenSong">
                     <svg
                         t="1668786418014"
                         v-if="Array.isArray(userStore.likelist)"
@@ -642,7 +646,7 @@ const toggleDjSub = async isSubscribe => {
                 </svg>
                 <!-- 添加到歌单：本地与电台均不显示 -->
                 <svg
-                    v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local'"
+                    v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local' && !isCurrentSirenSong"
                     @click="addToPlaylist()"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -761,7 +765,7 @@ const toggleDjSub = async isSubscribe => {
 
                 <!-- 歌词/评论切换按钮：本地歌曲隐藏评论按钮 -->
                 <svg
-                    v-if="songList?.[currentIndex]?.type !== 'local'"
+                    v-if="songList?.[currentIndex]?.type !== 'local' && !isCurrentSirenSong"
                     @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
                     :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
                     class="icon comment-icon"
