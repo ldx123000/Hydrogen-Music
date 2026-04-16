@@ -5,18 +5,10 @@ import { useUserStore } from '../store/userStore'
 import { clearLoginCookies } from './authority'
 
 export async function clearAccountScopedState(options = {}) {
-    const { clearCookies = true, clearSessionCookies = false } = options
+    const { clearCookies = true } = options
 
     if (clearCookies) {
         clearLoginCookies()
-    }
-
-    if (clearSessionCookies && typeof windowApi !== 'undefined' && typeof windowApi.clearNcmApiCookies == 'function') {
-        try {
-            await windowApi.clearNcmApiCookies()
-        } catch (_) {
-            // ignore session cookie cleanup failures
-        }
     }
 
     const userStore = useUserStore(pinia)

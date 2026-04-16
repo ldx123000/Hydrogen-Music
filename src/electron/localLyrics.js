@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const iconv = require('iconv-lite')
-const { parseFile } = require('music-metadata')
+const { parseFile } = require('./musicMetadata')
 
 const regTimeTag = /\[\d{1,3}\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*\d{1,2}(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*\d{1,3})?\]/m
 const sidecarExtPriority = Object.freeze({

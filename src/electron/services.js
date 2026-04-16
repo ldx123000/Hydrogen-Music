@@ -1,13 +1,5 @@
 const http = require('http')
 
-// 尝试加载增强版API（新包名）
-let enhancedApi = null;
-try {
-    enhancedApi = require('@neteasecloudmusicapienhanced/api');
-} catch (error) {
-    console.log('增强版API加载失败:', error.message);
-}
-
 const API_PORT = 36530
 const API_READY_TIMEOUT_MS = 12000
 const API_READY_POLL_INTERVAL_MS = 150
@@ -23,7 +15,7 @@ function waitForServerListening(server, timeoutMs = 4000) {
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
             cleanup()
-            reject(new Error('ncm-api-listen-timeout'))
+            reject(new Error('kugou-api-listen-timeout'))
         }, timeoutMs)
 
         const cleanup = () => {
@@ -55,7 +47,7 @@ function probeServer(url, timeoutMs = 1000) {
         })
 
         req.setTimeout(timeoutMs, () => {
-            req.destroy(new Error('ncm-api-probe-timeout'))
+            req.destroy(new Error('kugou-api-probe-timeout'))
         })
 
         req.on('error', reject)
@@ -76,28 +68,18 @@ async function waitForApiReachable(url, timeoutMs = API_READY_TIMEOUT_MS, interv
         }
     }
 
-    throw lastError || new Error('ncm-api-unreachable')
+    throw lastError || new Error('kugou-api-unreachable')
 }
 
-//启动网易云音乐API（可选）
-module.exports = async function startNeteaseMusicApi() {
-    if (enhancedApi && enhancedApi.serveNcmApi) {
-        try {
-            const appExt = await enhancedApi.serveNcmApi({
-                checkVersion: false,
-                port: API_PORT,
-            });
-            await waitForServerListening(appExt && appExt.server)
-            await waitForApiReachable(`http://127.0.0.1:${API_PORT}/`)
-            await delay(API_READY_SETTLE_DELAY_MS)
-            return { ready: true };
-        } catch (error) {
-            const errorMessage = error && error.message ? error.message : 'unknown error';
-            console.log('API服务器启动失败:', errorMessage);
-            return { ready: false, error: errorMessage };
-        }
+// 仅探测本地 KuGouMusicApi 是否可用，不再在 Hydrogen-Music 内启动任何后端。
+module.exports = async function startKugouMusicApi() {
+    try {
+        await waitForApiReachable(`http://127.0.0.1:${API_PORT}/`)
+        await delay(API_READY_SETTLE_DELAY_MS)
+        return { ready: true }
+    } catch (error) {
+        const errorMessage = error && error.message ? error.message : 'unknown error'
+        console.log('KuGou API unavailable:', errorMessage)
+        return { ready: false, error: errorMessage }
     }
-    const errorMessage = 'NCM API module unavailable';
-    console.log('NCM API 模块不可用，后续请求可能失败');
-    return { ready: false, error: errorMessage };
 }

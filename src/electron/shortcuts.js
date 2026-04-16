@@ -1,5 +1,5 @@
 const { Menu, globalShortcut } = require('electron')
-const Store = require('electron-store').default;
+const { getElectronStore } = require('./store')
 
 // 存储当前应用菜单的引用
 let currentApplicationMenu = null;
@@ -7,6 +7,7 @@ let currentApplicationMenu = null;
 // 创建应用菜单的函数
 async function createApplicationMenu(win, app, songInfo) {
     try {
+        const Store = await getElectronStore()
         const settingsStore = new Store({name: 'settings'});
         const shortcuts = await settingsStore.get('settings.shortcuts');
         if(!shortcuts) return
@@ -152,7 +153,7 @@ async function createApplicationMenu(win, app, songInfo) {
     currentApplicationMenu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(currentApplicationMenu);
     } catch (error) {
-        console.error('创建应用菜单时出错:', error);
+        console.error('Failed to create application menu:', error);
         // 创建一个简单的备用菜单
         const fallbackTemplate = [
             {
@@ -173,6 +174,7 @@ async function createApplicationMenu(win, app, songInfo) {
 
 module.exports = async function registerShortcuts(win, app) {
     try {
+        const Store = await getElectronStore()
         // 初始创建应用菜单（不显示歌曲信息）
         await createApplicationMenu(win, app);
         
@@ -180,10 +182,15 @@ module.exports = async function registerShortcuts(win, app) {
         const shortcuts = await settingsStore.get('settings.shortcuts');
         if(!shortcuts) return;
     
-    globalShortcut.register('CommandOrControl+Shift+F12', () => {
-        // 获取当前窗口并打开控制台
-        win.webContents.openDevTools({mode: 'detach'});
-    });
+    const openDevTools = () => {
+        if (win && win.webContents) {
+            win.webContents.openDevTools({ mode: 'detach' })
+        }
+    }
+
+    globalShortcut.register('CommandOrControl+Shift+I', openDevTools)
+    globalShortcut.register('CommandOrControl+Shift+F12', openDevTools)
+    globalShortcut.register('F12', openDevTools)
     
     if(!settingsStore.get('settings.other.globalShortcuts')) return
     globalShortcut.register(shortcuts.find(shortcut => shortcut.id == 'play').globalShortcut, () => {
@@ -208,7 +215,7 @@ module.exports = async function registerShortcuts(win, app) {
         win.webContents.send('music-process-control', 'back')
     })
     } catch (error) {
-        console.error('注册快捷键时出错:', error);
+        console.error('Failed to register shortcuts:', error);
     }
 }
 

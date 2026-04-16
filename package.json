@@ -12,12 +12,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",
+    "start": "chcp 65001 > nul && electron .",
+    "start:watch": "nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",
     "_dist": "vite build && node scripts/build.js -p always",
     "dist": "vite build && node scripts/build.js -p never"
   },
   "dependencies": {
-    "@neteasecloudmusicapienhanced/api": "^4.29.11",
     "axios": "^1.12.2",
     "dbus-next": "^0.10.2",
     "electron-store": "^11.0.2",

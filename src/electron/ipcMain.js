@@ -2,7 +2,7 @@ const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard } = require('ele
 const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
-const { parseFile } = require('music-metadata')
+const { parseFile } = require('./musicMetadata')
 const { spawn } = require('child_process')
 const { loadLocalLyricPayload } = require('./localLyrics')
 let ffmpegPath = null
@@ -13,11 +13,12 @@ try {
 }
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require('./shortcuts')
-const Store = require('electron-store').default;
+const { getElectronStore } = require('./store')
 const CancelToken = axios.CancelToken
 let cancel = null
 
-module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
+module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
+    const Store = await getElectronStore()
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
@@ -386,7 +387,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                             ipcMain.once('cancel-download-music-video', cancelListener)
 
                             transcodeProc.on('error', (err) => {
-                                console.warn('转码进程启动失败，保留原始文件:', err && err.message ? err.message : err)
+                                console.warn('Transcode process failed to start, keeping original file:', err && err.message ? err.message : err)
                                 finalizeSave()
                             })
                             transcodeProc.on('exit', (code) => {

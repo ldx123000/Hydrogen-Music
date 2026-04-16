@@ -2,16 +2,17 @@ const { ipcMain } = require('electron')
 const fs = require('fs')
 const fse = require('fs-extra')
 const axios = require('axios')
-const Store = require('electron-store').default;
+const { randomUUID } = require('crypto')
+const { getElectronStore } = require('./store')
 const path = require('path');
-const { nanoid } = require('nanoid')
 let NodeID3 = null
 let Metaflac = null
 let Sharp = null
 try { NodeID3 = require('node-id3') } catch (_) { NodeID3 = null }
 try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
 try { Sharp = require('sharp') } catch (_) { Sharp = null }
-module.exports = MusicDownload = (win) => {
+module.exports = async function MusicDownload(win) {
+  const Store = await getElectronStore()
   const settingsStore = new Store({ name: 'settings' })
   let isClose = false
   const sanitize = (name) => {
@@ -111,7 +112,7 @@ module.exports = MusicDownload = (win) => {
           try { fse.ensureDirSync(tryDir) } catch (_) {}
           item.setSavePath(path.join(tryDir, sanitize(downloadObj.fileName) + '.' + downloadObj.type))
           if (interruptedTimes > 3) {
-            item.setSavePath(path.join(downloadObj.savePath, "undefined_name_" + nanoid() + "." + downloadObj.type))
+            item.setSavePath(path.join(downloadObj.savePath, "undefined_name_" + randomUUID() + "." + downloadObj.type))
             interruptedTimes = 0
           }
           item.resume()

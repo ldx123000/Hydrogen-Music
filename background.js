@@ -1,4 +1,4 @@
-const startNeteaseMusicApi = require('./src/electron/services')
+const startKugouMusicApi = require('./src/electron/services')
 // Avoid depending on src/utils in packaged build; compute inline
 const isCreateMpris = process.platform === 'linux';
 // Load MPRIS integration lazily only on Linux to avoid packaging issues on macOS/Windows
@@ -14,6 +14,7 @@ if (isCreateMpris) {
 
 const { app, BrowserWindow, globalShortcut, Menu, ipcMain, session } = require('electron')
 const path = require('path')
+const { getElectronStore } = require('./src/electron/store')
 
 
 let myWindow = null
@@ -21,64 +22,6 @@ let lyricWindow = null
 let forceQuit = false;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
 let manualUpdateCheckInProgress = false;
-let ncmApiReadyResolved = false;
-let ncmApiReadyPayload = null;
-const ncmApiReadyWaiters = [];
-const NCM_API_COOKIE_URLS = ['http://localhost:36530', 'http://127.0.0.1:36530']
-
-function resolveNcmApiReady(payload) {
-    if (ncmApiReadyResolved) return;
-    ncmApiReadyResolved = true;
-    ncmApiReadyPayload = payload;
-    while (ncmApiReadyWaiters.length > 0) {
-        const waiter = ncmApiReadyWaiters.shift();
-        try {
-            waiter(payload);
-        } catch (_) {}
-    }
-}
-
-function waitForNcmApiReady() {
-    if (ncmApiReadyResolved) return Promise.resolve(ncmApiReadyPayload);
-    return new Promise(resolve => {
-        ncmApiReadyWaiters.push(resolve);
-    });
-}
-
-async function getNcmApiCookieString() {
-    if (!session || !session.defaultSession) return ''
-
-    const cookieMap = new Map()
-
-    for (const url of NCM_API_COOKIE_URLS) {
-        try {
-            const cookies = await session.defaultSession.cookies.get({ url })
-            cookies.forEach(({ name, value }) => {
-                if (!name || value === undefined || value === null) return
-                cookieMap.set(name, value)
-            })
-        } catch (_) {}
-    }
-
-    if (cookieMap.size == 0) return ''
-    return Array.from(cookieMap.entries()).map(([name, value]) => `${name}=${value}`).join('; ')
-}
-
-async function clearNcmApiCookies() {
-    if (!session || !session.defaultSession) return false
-
-    for (const url of NCM_API_COOKIE_URLS) {
-        try {
-            const cookies = await session.defaultSession.cookies.get({ url })
-            await Promise.all(cookies.map(({ name }) => session.defaultSession.cookies.remove(url, name)))
-        } catch (_) {
-            // ignore cookie cleanup failures for this origin
-        }
-    }
-
-    return true
-}
-
 //electron单例
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -112,22 +55,20 @@ if (!gotTheLock) {
     } catch (_) {}
 
     process.on('uncaughtException', (err) => {
-      console.error('捕获到未处理异常:', err)
+            console.error('Unhandled exception captured:', err)
     })
     createWindow()
-    startNeteaseMusicApi()
+        startKugouMusicApi()
       .then((result) => {
         const payload = result && typeof result == 'object'
           ? { ready: !!result.ready, ...(result.error ? { error: result.error } : {}) }
           : { ready: true }
-        if (payload.ready) console.log('Netease API 已就绪')
-        else console.warn('Netease API 未就绪:', payload.error || 'unknown error')
-        resolveNcmApiReady(payload)
+                                if (payload.ready) console.log('KuGou API ready')
+                                else console.warn('KuGou API not ready:', payload.error || 'unknown error')
       })
       .catch((err) => {
         const errorMessage = err && err.message ? err.message : 'unknown error'
-        console.error('Netease API 启动失败:', err);
-        resolveNcmApiReady({ ready: false, error: errorMessage })
+                                console.error('KuGou API probe failed:', err);
       })
     app.on('activate', () => {
       // 在macOS上，当点击dock图标并且没有其他窗口打开时，
@@ -149,16 +90,6 @@ if (!gotTheLock) {
     ipcMain.on('check-for-update', () => {
         manualUpdateCheckInProgress = true
     })
-    ipcMain.handle('ncm-api-ready-state', async () => {
-        return waitForNcmApiReady()
-    })
-    ipcMain.handle('ncm-api-cookie-string', async () => {
-        return getNcmApiCookieString()
-    })
-    ipcMain.handle('ncm-api-cookie-clear', async () => {
-        return clearNcmApiCookies()
-    })
-
     app.on('window-all-closed', () => {
         if (process.platform !== 'darwin') app.quit()
     })
@@ -408,7 +339,7 @@ const createWindow = () => {
         // 在macOS上，'close'事件通常意味着窗口将被销毁，而不是隐藏
         if (process.platform === 'darwin') {
             // 如果用户设置为“最小化”，则阻止关闭并隐藏窗口
-            const Store = require('electron-store').default
+            const Store = await getElectronStore()
             const settingsStore = new Store({ name: 'settings' })
             const settings = await settingsStore.get('settings');
             if (settings && settings.other && settings.other.quitApp === 'minimize') {
@@ -422,7 +353,7 @@ const createWindow = () => {
         } else {
             // 在非macOS平台上，保留您原有的逻辑
             event.preventDefault();
-            const Store = require('electron-store').default
+            const Store = await getElectronStore()
             const settingsStore = new Store({ name: 'settings' })
             const settings = await settingsStore.get('settings');
             if (settings && settings.other && settings.other.quitApp === 'minimize') {

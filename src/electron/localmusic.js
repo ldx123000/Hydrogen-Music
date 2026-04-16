@@ -1,9 +1,10 @@
 const { ipcMain }= require('electron')
 const scanLocalMusicTree = require('./dirTree')
-const Store = require('electron-store').default;
+const { getElectronStore } = require('./store')
 
 
-module.exports = function LocalFiles(win, app) {
+module.exports = async function LocalFiles(win, app) {
+    const Store = await getElectronStore()
     const settingsStore = new Store({name: 'settings'})
     const localStore = new Store({name: 'localMusic'})
        

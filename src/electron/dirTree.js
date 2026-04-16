@@ -1,8 +1,8 @@
 const fs = require('fs')
 const fsp = fs.promises
 const path = require('path')
-const { parseFile } = require('music-metadata')
-const { nanoid } = require('nanoid')
+const { randomUUID } = require('crypto')
+const { parseFile } = require('./musicMetadata')
 const { decodeLyricBuffer } = require('./localLyrics')
 
 const MUSIC_TYPES = new Set([
@@ -155,7 +155,7 @@ async function createMusicFileNode(filePath, fileName, progressReporter, parseWi
     if (!MUSIC_TYPES.has(ext)) return null
 
     const baseNode = {
-        id: nanoid(),
+        id: randomUUID(),
         name: fileName,
         dirPath: filePath,
     }

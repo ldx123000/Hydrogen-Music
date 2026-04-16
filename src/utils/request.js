@@ -5,118 +5,17 @@ import { useLibraryStore } from '../store/libraryStore'
 import { useUserStore } from '../store/userStore'
 import { clearAccountScopedState } from './accountState'
 
-const libraryStore = useLibraryStore(pinia)
-
 import { noticeOpen } from "./dialog";
 
-// 检查是否有增强版API可用（新包名）
-let enhancedApi = null;
-try {
-    enhancedApi = require('@neteasecloudmusicapienhanced/api');
-} catch (e) {
-    console.log('@neteasecloudmusicapienhanced/api 未找到，使用传统请求方式');
-}
+const libraryStore = useLibraryStore(pinia)
 
 const request = axios.create({
-    baseURL: 'http://localhost:36530', // 保持向后兼容，但会优先使用增强版API
+    baseURL: 'http://localhost:36530',
     withCredentials: true,
     timeout: 10000,
 });
+
 const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
-const NCM_API_READY_TIMEOUT_MS = 10000
-const NCM_API_COOKIE_CACHE_TTL_MS = 1200
-let ncmApiReadyPromise = null
-let ncmApiCookieCache = {
-  value: '',
-  expiresAt: 0,
-}
-let ncmApiCookiePromise = null
-
-function waitWithTimeout(promise, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error('ncm-api-ready-timeout'))
-    }, timeoutMs)
-
-    Promise.resolve(promise)
-      .then((value) => {
-        clearTimeout(timer)
-        resolve(value)
-      })
-      .catch((error) => {
-        clearTimeout(timer)
-        reject(error)
-      })
-  })
-}
-
-function ensureNcmApiReady() {
-  if (ncmApiReadyPromise) return ncmApiReadyPromise
-
-  if (typeof windowApi === 'undefined' || typeof windowApi.whenNcmApiReady !== 'function') {
-    ncmApiReadyPromise = Promise.resolve({ ready: true, skipped: true })
-    return ncmApiReadyPromise
-  }
-
-  ncmApiReadyPromise = waitWithTimeout(windowApi.whenNcmApiReady(), NCM_API_READY_TIMEOUT_MS)
-    .then((payload) => {
-      const readyState = payload && typeof payload === 'object' ? payload : { ready: true }
-      if (!readyState.ready) {
-        ncmApiReadyPromise = null
-      }
-      return readyState
-    })
-    .catch((error) => ({
-      ready: false,
-      error: error && error.message ? error.message : 'ncm-api-ready-failed',
-    }))
-    .then((readyState) => {
-      if (!readyState || !readyState.ready) {
-        ncmApiReadyPromise = null
-      }
-      return readyState
-    })
-
-  return ncmApiReadyPromise
-}
-
-function normalizeCookieString(cookieString) {
-  return String(cookieString || '').trim()
-}
-
-function parseCookieString(cookieString) {
-  const cookieMap = new Map()
-  const cookieText = normalizeCookieString(cookieString)
-  if (!cookieText) return cookieMap
-
-  cookieText.split(';').forEach((segment) => {
-    const cookiePart = String(segment || '').trim()
-    if (!cookiePart) return
-
-    const separatorIndex = cookiePart.indexOf('=')
-    if (separatorIndex <= 0) return
-
-    const name = cookiePart.slice(0, separatorIndex).trim()
-    const value = cookiePart.slice(separatorIndex + 1).trim()
-    if (!name || !value) return
-    cookieMap.set(name, value)
-  })
-
-  return cookieMap
-}
-
-function mergeCookieStrings(...cookieStrings) {
-  const mergedCookieMap = new Map()
-
-  cookieStrings.forEach((cookieString) => {
-    parseCookieString(cookieString).forEach((value, key) => {
-      mergedCookieMap.set(key, value)
-    })
-  })
-
-  if (mergedCookieMap.size == 0) return ''
-  return Array.from(mergedCookieMap.entries()).map(([key, value]) => `${key}=${value}`).join('; ')
-}
 
 function buildAuthCookieString() {
   return AUTH_COOKIE_KEYS
@@ -128,110 +27,50 @@ function buildAuthCookieString() {
     .join('; ')
 }
 
-function resetNcmApiCookieCache() {
-  ncmApiCookieCache = {
-    value: '',
-    expiresAt: 0,
-  }
-  ncmApiCookiePromise = null
-}
+let autoLoggingOut = false
 
-export function invalidateNcmApiCookieCache() {
-  resetNcmApiCookieCache()
-}
-
-async function getNcmApiCookieString() {
-  const now = Date.now()
-  if (ncmApiCookieCache.expiresAt > now) {
-    return ncmApiCookieCache.value
-  }
-
-  if (ncmApiCookiePromise) return ncmApiCookiePromise
-
-  if (typeof windowApi === 'undefined' || typeof windowApi.getNcmApiCookieString !== 'function') {
-    return ''
-  }
-
-  ncmApiCookiePromise = Promise.resolve(windowApi.getNcmApiCookieString())
-    .then((cookieString) => normalizeCookieString(cookieString))
-    .catch(() => '')
-    .then((cookieString) => {
-      ncmApiCookieCache = {
-        value: cookieString,
-        expiresAt: Date.now() + NCM_API_COOKIE_CACHE_TTL_MS,
-      }
-      ncmApiCookiePromise = null
-      return cookieString
-    })
-
-  return ncmApiCookiePromise
-}
-
-// 防抖：避免同一时间多次触发自动退出
-let autoLoggingOut = false;
 function triggerAutoLogout(reason) {
-  if (autoLoggingOut) return;
-  autoLoggingOut = true;
+  if (autoLoggingOut) return
+  autoLoggingOut = true
 
-  invalidateNcmApiCookieCache()
-
-  void clearAccountScopedState({ clearSessionCookies: true }).finally(() => {
-    invalidateNcmApiCookieCache()
-    // 轻微延迟后允许再次触发，避免请求风暴导致的重复提示
-    setTimeout(() => { autoLoggingOut = false; }, 1500);
+  void clearAccountScopedState().finally(() => {
+    setTimeout(() => { autoLoggingOut = false }, 1500)
   })
 
-  const userStore = useUserStore(pinia);
-  userStore.appOptionShow = false;
+  const userStore = useUserStore(pinia)
+  userStore.appOptionShow = false
 
-  const message = reason || '登录状态已失效，已自动退出，请重新登录';
-  noticeOpen(message, 3);
+  noticeOpen(reason || '登录状态已失效，已自动退出，请重新登录', 3)
 }
 
-// 请求拦截器
-request.interceptors.request.use(async function (config) {
-  await ensureNcmApiReady()
+request.interceptors.request.use(function (config) {
   config.params = config.params || {}
 
-  if (enhancedApi && config.useEnhancedApi) {
-    return config;
+  if (config.url != '/login/qr/check' && isLogin()) {
+    const authCookieString = buildAuthCookieString()
+    if (authCookieString) config.params.cookie = authCookieString
   }
-  
-  if(config.url != '/login/qr/check') {
-    const authCookieString = isLogin() ? buildAuthCookieString() : ''
-    const apiCookieString = await getNcmApiCookieString()
-    const mergedCookieString = mergeCookieStrings(apiCookieString, authCookieString, config.params.cookie)
-    if (mergedCookieString) config.params.cookie = mergedCookieString
-  }
-  if(libraryStore.needTimestamp.indexOf(config.url) != -1) {
+
+  if (libraryStore.needTimestamp.indexOf(config.url) != -1) {
     config.params.timestamp = new Date().getTime()
   }
-  
-  // 添加国内IP伪装来解决524环境异常错误
-  config.headers['X-Real-IP'] = '211.161.244.70'; // 国内IP地址
-  config.headers['X-Forwarded-For'] = '211.161.244.70';
-  
-  // 在发送请求之前做些什么
-  return config;
+
+  return config
 }, function (error) {
-  // 对请求错误做些什么
-  noticeOpen("发起请求错误", 2)
-  return Promise.reject(error);
+  noticeOpen('发起请求错误', 2)
+  return Promise.reject(error)
 });
 
-// 响应拦截器
 request.interceptors.response.use(function (response) {
     const url = response?.config?.url || ''
     const data = response?.data
 
-    // 跳过登录/登出相关接口的自动判断
     const isAuthApi = url.startsWith('/login') || url === '/logout'
     if (!isAuthApi && data && typeof data === 'object') {
       const code = data.code
       const text = data.msg || data.message || ''
-      // NCM 未登录常见返回：code=301 或者 message/msgs 提示需要登录
       if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
-        triggerAutoLogout('登录状态已失效，已自动退出');
+        triggerAutoLogout('登录状态已失效，已自动退出')
       }
     }
     return data
@@ -241,32 +80,22 @@ request.interceptors.response.use(function (response) {
     const msg = error?.response?.data?.message || error?.response?.data?.msg
     const code = error?.response?.data?.code
 
-    if (code === -460) {
-      invalidateNcmApiCookieCache()
-    }
-
-    // 若后端以HTTP身份错误返回，直接触发自动登出
     if (status === 401 || status === 403) {
-      triggerAutoLogout('登录已过期，请重新登录');
+      triggerAutoLogout('登录已过期，请重新登录')
     } else {
-      // 后端也可能以200以外的状态携带业务code
       const text = error?.response?.data?.msg || error?.response?.data?.message || ''
       if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
-        triggerAutoLogout('登录状态已失效，已自动退出');
+        triggerAutoLogout('登录状态已失效，已自动退出')
       }
     }
 
-    // 对 /like 与 /playlist/tracks 的错误不进行全局提示，这些操作由调用方负责降级与提示
     const suppressGlobalNotice = url === '/like' || url === '/playlist/tracks'
     if (!suppressGlobalNotice) {
       if (msg) noticeOpen(`请求错误：${msg}`, 2)
       else if (status) noticeOpen(`请求错误 (${status})`, 2)
       else noticeOpen('请求错误', 2)
     }
-    return error;
+    return error
   });
 
 export default request;
-
-// 导出API实例以供其他模块使用
-export { enhancedApi };
