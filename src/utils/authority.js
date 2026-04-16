@@ -1,6 +1,6 @@
 import Cookies from "js-cookie";
 
-const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
 
 function extractAuthCookieValues(rawCookie) {
   const cookieText = String(rawCookie || '')
@@ -26,13 +26,23 @@ function persistAuthCookies(cookieMap) {
 }
 
 export function setCookies(data) {
-  const cookieSource = data?.cookie || ''
-  const cookieMap = extractAuthCookieValues(cookieSource)
+  const cookieMap = {}
 
-  // 部分接口返回只有 MUSIC_U，或者以对象字段携带
-  if (!Object.keys(cookieMap).length && data?.profile && data?.token) {
-    cookieMap.MUSIC_U = data.token
-  }
+  const cookieSource = data?.cookie || ''
+  Object.assign(cookieMap, extractAuthCookieValues(cookieSource))
+
+  // 兼容 KuGou 返回字段：data.token / data.userid
+  const token = data?.token || data?.data?.token || ''
+  const userid = data?.userid || data?.data?.userid || ''
+  const vipType = data?.vip_type || data?.data?.vip_type || ''
+  const vipToken = data?.vip_token || data?.data?.vip_token || ''
+  const t1 = data?.t1 || data?.data?.t1 || ''
+
+  if (token) cookieMap.token = String(token)
+  if (userid) cookieMap.userid = String(userid)
+  if (vipType !== '') cookieMap.vip_type = String(vipType)
+  if (vipToken) cookieMap.vip_token = String(vipToken)
+  if (t1) cookieMap.t1 = String(t1)
 
   clearLoginCookies()
   persistAuthCookies(cookieMap)
@@ -51,13 +61,15 @@ export function getCookie(key) {
 
 //判断是否登录
 export function isLogin() {
-  return (getCookie('MUSIC_U') != undefined)
+  const token = getCookie('token')
+  const userid = getCookie('userid')
+  return token != undefined && userid != undefined
 }
 
 // 清理登录相关Cookie与本地存储（不影响其他设置）
 export function clearLoginCookies() {
   try {
-    const keys = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+    const keys = AUTH_COOKIE_KEYS
     keys.forEach((k) => {
       // 移除 localStorage 中持久化的 cookie 值
       try { localStorage.removeItem('cookie:' + k) } catch (_) {}

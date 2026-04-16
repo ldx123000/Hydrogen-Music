@@ -1,16 +1,9 @@
 import request from "../utils/request";
 
-function buildLoginPayload(params = {}) {
+function withTimestamp(params = {}) {
     return {
-        username: params?.username || params?.email || params?.account || '',
-        email: params?.email || params?.username || '',
-        phone: params?.phone || params?.mobile || '',
-        mobile: params?.mobile || params?.phone || '',
-        password: params?.password || '',
-        md5_password: params?.md5_password || params?.md5Password || '',
-        countrycode: params?.countrycode,
-        userid: params?.userid,
-        code: params?.code || params?.captcha || '',
+        ...params,
+        timestamp: Date.now(),
     }
 }
 
@@ -22,9 +15,16 @@ export function getQRcodeKey() {
     return request({
         url: '/login/qr/key',
         method: 'get',
-        params: {
-            timestamp: new Date().getTime(),
-        },
+        params: withTimestamp(),
+    }).then((result) => {
+        const key = result?.data?.unikey || result?.data?.qrcode || ''
+        return {
+            ...result,
+            data: {
+                ...(result?.data || {}),
+                unikey: key,
+            },
+        }
     })
 }
 
@@ -45,11 +45,19 @@ export function createQRcode(key) {
     return request({
         url: '/login/qr/create',
         method: 'get',
-        params: {
+        params: withTimestamp({
             key,
             qrimg: 1,
-            timestamp: new Date().getTime(),
-        },
+        }),
+    }).then((result) => {
+        const qrimg = result?.data?.qrimg || result?.data?.base64 || ''
+        return {
+            ...result,
+            data: {
+                ...(result?.data || {}),
+                qrimg,
+            },
+        }
     })
 }
 
@@ -62,40 +70,85 @@ export function checkQRcodeStatus(key) {
     return request({
         url: '/login/qr/check',
         method: 'get',
-        params: {
+        params: withTimestamp({
             key,
-            timestamp: new Date().getTime(),
-        },
+        }),
     })
 }
 
 /**
- * 账号登录。
- * 兼容 email / username / account 等字段写法。
+ * 微信二维码创建
  * @returns
  */
-export function loginByEmail(params) {
-    const payload = buildLoginPayload(params)
-
+export function createWeChatQRcode() {
     return request({
-        url: '/login',
-        method: 'post',
-        params: payload,
+        url: '/login/wx/create',
+        method: 'get',
+        params: withTimestamp(),
     })
 }
 
 /**
- * 手机登录。
- * 兼容 phone / mobile / code / captcha 等字段写法。
+ * 微信二维码状态检测
+ * @param {string} uuid
  * @returns
  */
-export function loginByPhone(params) {
-    const payload = buildLoginPayload(params)
+export function checkWeChatStatus(uuid) {
+    return request({
+        url: '/login/wx/check',
+        method: 'get',
+        params: withTimestamp({
+            uuid,
+        }),
+    })
+}
+
+/**
+ * 使用微信授权 code 登录
+ * @param {string} code
+ * @returns
+ */
+export function loginByOpenPlatform(code) {
+    return request({
+        url: '/login/openplat',
+        method: 'get',
+        params: withTimestamp({
+            code,
+        }),
+    })
+}
+
+/**
+ * 发送手机验证码
+ * @param {string} mobile
+ * @returns
+ */
+export function sendCaptcha(mobile) {
+    return request({
+        url: '/captcha/sent',
+        method: 'post',
+        params: withTimestamp({
+            mobile,
+        }),
+    })
+}
+
+/**
+ * 手机验证码登录
+ * @param {{mobile: string, code: string, userid?: string|number}} params
+ * @returns
+ */
+export function loginByPhone(params = {}) {
+    const payload = {
+        mobile: params?.mobile || params?.phone || '',
+        code: params?.code || params?.captcha || '',
+        userid: params?.userid,
+    }
 
     return request({
         url: '/login/cellphone',
         method: 'post',
-        params: payload,
+        params: withTimestamp(payload),
     })
 }
 

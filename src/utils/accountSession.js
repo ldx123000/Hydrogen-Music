@@ -1,5 +1,5 @@
 import pinia from '../store/pinia'
-import { getLikelist, getUserPlaylist, getUserProfile, logout } from '../api/user'
+import { getUserPlaylist, getUserProfile, logout } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { resolveFavoritePlaylistMeta } from './player'
 import { isLogin, setCookies } from './authority'
@@ -19,40 +19,63 @@ function isAccountSessionTokenActive(token) {
     return token === accountSessionToken
 }
 
+function pickFirstValue(...values) {
+    for (let i = 0; i < values.length; i += 1) {
+        const value = values[i]
+        if (value !== undefined && value !== null && value !== '') return value
+    }
+    return null
+}
+
+function normalizeUserProfile(profileResult = {}) {
+    const raw = profileResult?.data || profileResult?.profile || profileResult || {}
+    const userId = pickFirstValue(raw.userId, raw.userid, raw.id)
+    const nickname = pickFirstValue(raw.nickname, raw.k_nickname, raw.fx_nickname, raw.name)
+    const avatarUrl = pickFirstValue(raw.avatarUrl, raw.pic, raw.k_pic, raw.fx_pic, raw.avatar)
+    const backgroundUrl = pickFirstValue(raw.backgroundUrl, raw.backgroundPicUrl, raw.bg_pic)
+    const signature = pickFirstValue(raw.signature, raw.descri)
+
+    return {
+        ...raw,
+        userId: userId ? String(userId) : undefined,
+        userid: userId ? String(userId) : undefined,
+        nickname: nickname || '',
+        avatarUrl: avatarUrl || '',
+        backgroundUrl: backgroundUrl || '',
+        signature: signature || '',
+        vipType: Number(pickFirstValue(raw.vipType, raw.vip_type, 0)) || 0,
+    }
+}
+
+function extractPlaylistItems(playlistResult = {}) {
+    if (Array.isArray(playlistResult?.playlist)) return playlistResult.playlist
+    if (Array.isArray(playlistResult?.info)) return playlistResult.info
+    if (Array.isArray(playlistResult?.data?.info)) return playlistResult.data.info
+    if (Array.isArray(playlistResult?.data?.playlist)) return playlistResult.data.playlist
+    return []
+}
+
 async function hydrateAccountSession(token) {
     const profileResult = await getUserProfile()
     if (!isAccountSessionTokenActive(token)) return null
 
-    const profile = profileResult?.profile || null
+    const profile = normalizeUserProfile(profileResult)
     userStore.updateUser(profile)
+    userStore.updateLikelist([])
 
     if (!profile?.userId) {
-        userStore.updateLikelist([])
         userStore.updateFavoritePlaylistMeta(null)
         return profile
     }
 
     try {
-        const likelistResult = await getLikelist(profile.userId)
-        if (isAccountSessionTokenActive(token)) {
-            userStore.updateLikelist(likelistResult?.ids)
-        }
-    } catch (error) {
-        if (isAccountSessionTokenActive(token)) {
-            userStore.updateLikelist([])
-        }
-        console.error('加载喜欢列表失败:', error)
-    }
-
-    try {
         const playlistResult = await getUserPlaylist({
-            uid: profile.userId,
-            limit: 50,
-            offset: 0,
-            timestamp: Date.now(),
+            userid: profile.userId,
+            page: 1,
+            pagesize: 50,
         })
         if (isAccountSessionTokenActive(token)) {
-            userStore.updateFavoritePlaylistMeta(resolveFavoritePlaylistMeta(playlistResult?.playlist))
+            userStore.updateFavoritePlaylistMeta(resolveFavoritePlaylistMeta(extractPlaylistItems(playlistResult)))
         }
     } catch (error) {
         if (isAccountSessionTokenActive(token)) {

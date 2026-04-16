@@ -5,7 +5,7 @@ import request from '../utils/request'
  */
  export function getUserProfile() {
     return request({
-      url: '/user/account',
+      url: '/user/detail',
       method: 'get',
       params: {
         timestamp: new Date().getTime(),
@@ -50,13 +50,7 @@ import request from '../utils/request'
  * @returns 
  */
   export function logout() {
-    return request({
-      url: '/logout',
-      method: 'post',
-      params: {
-
-      }
-    });
+      return Promise.resolve({ status: 1 });
   }
 
 /**
@@ -82,7 +76,7 @@ import request from '../utils/request'
  */
   export function getVipInfo() {
     return request({
-      url: '/vip/info',
+      url: '/user/vip/detail',
       method: 'get',
       params: {
         timestamp: new Date().getTime(),

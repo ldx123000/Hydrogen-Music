@@ -15,16 +15,28 @@ const request = axios.create({
     timeout: 10000,
 });
 
-const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
+
+let cachedAuthCookieString = null
 
 function buildAuthCookieString() {
-  return AUTH_COOKIE_KEYS
+  if (cachedAuthCookieString !== null) {
+    return cachedAuthCookieString
+  }
+
+  cachedAuthCookieString = AUTH_COOKIE_KEYS
     .map((key) => {
       const value = getCookie(key)
       return value ? `${key}=${value}` : ''
     })
     .filter(Boolean)
     .join('; ')
+
+  return cachedAuthCookieString
+}
+
+export function invalidateNcmApiCookieCache() {
+  cachedAuthCookieString = null
 }
 
 let autoLoggingOut = false
@@ -46,7 +58,10 @@ function triggerAutoLogout(reason) {
 request.interceptors.request.use(function (config) {
   config.params = config.params || {}
 
-  if (config.url != '/login/qr/check' && isLogin()) {
+  const requestUrl = config.url || ''
+  const skipAuthCookie = requestUrl.startsWith('/login/') || requestUrl === '/captcha/sent'
+
+  if (!skipAuthCookie && isLogin()) {
     const authCookieString = buildAuthCookieString()
     if (authCookieString) config.params.cookie = authCookieString
   }
@@ -95,7 +110,7 @@ request.interceptors.response.use(function (response) {
       else if (status) noticeOpen(`请求错误 (${status})`, 2)
       else noticeOpen('请求错误', 2)
     }
-    return error
+    return Promise.reject(error)
   });
 
 export default request;

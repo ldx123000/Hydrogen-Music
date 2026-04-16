@@ -1,9 +1,8 @@
 <script setup>
-  import { onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
+  import { onActivated, onDeactivated, onUnmounted, ref } from 'vue'
   import { onBeforeRouteLeave } from 'vue-router'
-  import QRCode from 'qrcode'
   import DataCheckAnimaton from './DataCheckAnimaton.vue'
-  import { createQRcode, getQRcodeKey, checkQRcodeStatus } from '../api/login'
+  import { createWeChatQRcode, checkWeChatStatus, loginByOpenPlatform } from '../api/login'
   import { loginHandle } from '../utils/handle'
   import { noticeOpen } from '../utils/dialog'
 
@@ -12,52 +11,58 @@
 
   const firstLoadMode = ref(Number(props.firstLoadMode) || 0)
   const loging = ref(-1)
-  const qrKey = ref(null)
+  const wxUuid = ref('')
   const qrcodeImg = ref('')
-  const qrStatus = ref(1)
-  const statusTitle = ref('请使用酷狗音乐扫码')
-  const statusTitleEN = ref('QRCODE')
-  const checkQRInterval = ref(null)
+  const wxStatus = ref(408)
+  const statusTitle = ref('请使用微信扫码授权')
+  const statusTitleEN = ref('WECHAT')
+  const checkWXInterval = ref(null)
   const loadingQr = ref(false)
   const pollingActive = ref(false)
   const pollingInFlight = ref(false)
   const loginCompleted = ref(false)
   let pollingSessionId = 0
   let qrLoadSessionId = 0
-  const resetQrState = () => {
-    clearTimer()
-    loginCompleted.value = false
-    pollingInFlight.value = false
-    qrKey.value = null
-    qrcodeImg.value = ''
-    qrStatus.value = 1
-    statusTitle.value = '请使用酷狗音乐扫码'
-    statusTitleEN.value = 'QRCODE'
-    loging.value = -1
+
+  const normalizeWxQrImage = (raw = '') => {
+    if (!raw) return ''
+    return raw.startsWith('data:image/') ? raw : `data:image/jpeg;base64,${raw}`
   }
 
   const clearTimer = () => {
     pollingSessionId += 1
-    if (checkQRInterval.value) {
-      clearTimeout(checkQRInterval.value)
-      checkQRInterval.value = null
+    if (checkWXInterval.value) {
+      clearTimeout(checkWXInterval.value)
+      checkWXInterval.value = null
     }
     pollingActive.value = false
+  }
+
+  const resetWxState = () => {
+    clearTimer()
+    loginCompleted.value = false
+    pollingInFlight.value = false
+    wxUuid.value = ''
+    qrcodeImg.value = ''
+    wxStatus.value = 408
+    statusTitle.value = '请使用微信扫码授权'
+    statusTitleEN.value = 'WECHAT'
+    loging.value = -1
   }
 
   const scheduleNextPoll = (sessionId, delay = 1000) => {
     if (sessionId !== pollingSessionId || !pollingActive.value || loginCompleted.value) return
 
-    if (checkQRInterval.value) {
-      clearTimeout(checkQRInterval.value)
+    if (checkWXInterval.value) {
+      clearTimeout(checkWXInterval.value)
     }
 
-    checkQRInterval.value = setTimeout(async () => {
+    checkWXInterval.value = setTimeout(async () => {
       if (sessionId !== pollingSessionId) return
-      checkQRInterval.value = null
-      await checkQRcode(sessionId)
+      checkWXInterval.value = null
+      await checkWXCode(sessionId)
       if (sessionId !== pollingSessionId || !pollingActive.value || loginCompleted.value) return
-      if (qrStatus.value === 0 || qrStatus.value === 4) return
+      if (wxStatus.value === 402 || wxStatus.value === 403 || wxStatus.value === 405) return
       scheduleNextPoll(sessionId)
     }, delay)
   }
@@ -70,48 +75,33 @@
     scheduleNextPoll(sessionId)
   }
 
-  const generateFallbackQrImg = async (key) => {
-    const loginUrl = `https://h5.kugou.com/apps/loginQRCode/html/index.html?qrcode=${key}`
-    return QRCode.toDataURL(loginUrl, {
-      errorCorrectionLevel: 'Q',
-      type: 'image/png',
-      width: 192,
-      height: 192,
-      color: {
-        dark: '#000000',
-        light: '#00000000',
-      },
-    })
-  }
-
   const loadData = async () => {
     if (loadingQr.value) return
 
     const loadSessionId = ++qrLoadSessionId
-    resetQrState()
+    resetWxState()
     loadingQr.value = true
 
     try {
-      const keyResult = await getQRcodeKey()
+      const result = await createWeChatQRcode()
       if (loadSessionId !== qrLoadSessionId) return
-      const key = keyResult?.data?.unikey || keyResult?.data?.qrcode
-      if (!key) {
-        throw new Error('获取二维码 key 失败')
+
+      const uuid = result?.uuid || result?.data?.uuid
+      const qr = result?.qrcode?.qrcodebase64 || result?.data?.qrcode?.qrcodebase64 || ''
+
+      if (!uuid || !qr) {
+        throw new Error('微信二维码加载失败')
       }
 
-      qrKey.value = key
+      wxUuid.value = uuid
+      qrcodeImg.value = normalizeWxQrImage(qr)
 
-      const qrResult = await createQRcode(key)
       if (loadSessionId !== qrLoadSessionId) return
-      const qrimg = qrResult?.data?.qrimg || qrResult?.data?.base64 || qrResult?.data?.qrcode_img
-      qrcodeImg.value = qrimg || await generateFallbackQrImg(key)
-      if (loadSessionId !== qrLoadSessionId) return
-
       startPolling()
     } catch (error) {
       if (loadSessionId !== qrLoadSessionId) return
-      noticeOpen(error?.message || '二维码加载失败，请重试', 2)
-      qrStatus.value = 0
+      noticeOpen(error?.message || '微信二维码加载失败，请重试', 2)
+      wxStatus.value = 402
       statusTitle.value = '二维码加载失败, 点击刷新'
       statusTitleEN.value = 'ERROR'
       loging.value = -1
@@ -120,8 +110,8 @@
     }
   }
 
-  const checkQR = () => {
-    if (loginCompleted.value || qrStatus.value === 4) {
+  const checkWX = () => {
+    if (loginCompleted.value || wxStatus.value === 405) {
       firstLoadMode.value = 0
       loadData()
       return
@@ -129,7 +119,7 @@
 
     clearTimer()
 
-    if (firstLoadMode.value === 1 || !qrKey.value || !qrcodeImg.value) {
+    if (firstLoadMode.value === 1 || !wxUuid.value || !qrcodeImg.value) {
       firstLoadMode.value = 0
       loadData()
       return
@@ -138,54 +128,87 @@
     startPolling()
   }
 
-  defineExpose({ checkQR, clearTimer, resetQrState })
+  defineExpose({ checkWX, clearTimer, resetWxState })
 
-  watch(() => qrStatus.value, (newVal) => {
-    if (newVal === 0) {
-      statusTitle.value = '二维码过期, 点击刷新'
-      statusTitleEN.value = 'ERROR'
+  const applyStatus = (status) => {
+    if (status === 402) {
+      statusTitle.value = '二维码已过期, 点击刷新'
+      statusTitleEN.value = 'EXPIRED'
       loging.value = -1
-    } else if (newVal === 1) {
-      statusTitle.value = '请使用酷狗音乐扫码'
-      statusTitleEN.value = 'QRCODE'
+      return
+    }
+
+    if (status === 408) {
+      statusTitle.value = '请使用微信扫码授权'
+      statusTitleEN.value = 'WECHAT'
       loging.value = -1
-    } else if (newVal === 2) {
-      statusTitle.value = '请在手机端确认登录'
+      return
+    }
+
+    if (status === 404) {
+      statusTitle.value = '已扫码，请在微信确认'
       statusTitleEN.value = 'CONFIRM'
       loging.value = 1
-    } else if (newVal === 4) {
-      statusTitle.value = '登录成功，正在跳转'
+      return
+    }
+
+    if (status === 403) {
+      statusTitle.value = '已取消授权, 点击刷新'
+      statusTitleEN.value = 'DENIED'
+      loging.value = -1
+      return
+    }
+
+    if (status === 405) {
+      statusTitle.value = '授权成功，正在登录'
       statusTitleEN.value = 'LOGGING...'
       loging.value = 2
     }
-  })
+  }
 
-  const checkQRcode = async (sessionId = pollingSessionId) => {
-    if (sessionId !== pollingSessionId || !qrKey.value || loginCompleted.value || pollingInFlight.value) return
+  const checkWXCode = async (sessionId = pollingSessionId) => {
+    if (sessionId !== pollingSessionId || !wxUuid.value || loginCompleted.value || pollingInFlight.value) return
 
     pollingInFlight.value = true
 
     try {
-      const result = await checkQRcodeStatus(qrKey.value)
+      const result = await checkWeChatStatus(wxUuid.value)
       if (sessionId !== pollingSessionId) return
-      const status = Number(result?.data?.status ?? result?.code)
 
-      if (status === 0) {
-        qrStatus.value = 0
+      const status = Number(result?.wx_errcode ?? result?.code)
+      wxStatus.value = status
+      applyStatus(status)
+
+      if (status === 402 || status === 403) {
         clearTimer()
-      } else if (status === 1) {
-        qrStatus.value = 1
-      } else if (status === 2) {
-        qrStatus.value = 2
-      } else if (status === 4) {
-        qrStatus.value = 4
-        loginCompleted.value = true
-        clearTimer()
-        void loginHandle(result, 'qr')
-        emits('jumpTo')
+        return
       }
-    } catch (_) {
-      // 轮询失败保持静默，避免频繁打断
+
+      if (status === 405) {
+        const wxCode = result?.wx_code
+        if (!wxCode) {
+          throw new Error('微信授权码获取失败')
+        }
+
+        const openResult = await loginByOpenPlatform(wxCode)
+        if (sessionId !== pollingSessionId) return
+
+        if (openResult?.status === 1) {
+          loginCompleted.value = true
+          clearTimer()
+          await loginHandle(openResult, 'wechat')
+          emits('jumpTo')
+          return
+        }
+
+        throw new Error(openResult?.msg || openResult?.message || '微信登录失败')
+      }
+    } catch (error) {
+      if (sessionId !== pollingSessionId) return
+      noticeOpen(error?.message || '微信登录失败，请重试', 2)
+      wxStatus.value = 403
+      applyStatus(403)
+      clearTimer()
     } finally {
       if (sessionId === pollingSessionId) {
         pollingInFlight.value = false
@@ -194,7 +217,7 @@
   }
 
   const refreshQRCode = () => {
-    if (qrStatus.value === 0 || qrStatus.value === 2) {
+    if (wxStatus.value === 402 || wxStatus.value === 403 || wxStatus.value === 404) {
       loging.value = -2
       loadData()
     }
@@ -205,14 +228,14 @@
   }
 
   onActivated(() => {
-    if (firstLoadMode.value !== 0) return
+    if (firstLoadMode.value !== 1) return
 
-    if (loginCompleted.value || qrStatus.value === 4 || !qrKey.value || !qrcodeImg.value) {
+    if (loginCompleted.value || wxStatus.value === 405 || !wxUuid.value || !qrcodeImg.value) {
       loadData()
       return
     }
 
-    if (qrStatus.value !== 0) {
+    if (wxStatus.value !== 402 && wxStatus.value !== 403) {
       startPolling()
     }
   })
@@ -233,11 +256,11 @@
 <template>
   <div class="qrcode-container" @click="refreshQRCode">
     <div class="qrcode-border" :class="{ 'qrcode-loging-1': loging == 1, 'qrcode-loging-1 qrcode-loging-2': loging == 2 }">
-      <div class="qrcode" :class="{ 'qrcode-checking': loging == 2, 'qrcode-invalid': qrStatus == 0, 'qrcode-recover': loging == -2 }">
-        <img :src="qrcodeImg" alt="二维码" v-show="qrcodeImg">
+      <div class="qrcode" :class="{ 'qrcode-checking': loging == 2, 'qrcode-invalid': wxStatus == 402 || wxStatus == 403, 'qrcode-recover': loging == -2 }">
+        <img :src="qrcodeImg" alt="微信二维码" v-show="qrcodeImg">
         <span class="qrcode-loading" v-show="!qrcodeImg">Loading...</span>
       </div>
-      <div class="qrcode-status" :class="{ 'qrcode-checking': loging == 2, 'status-1': qrStatus == 0, 'status-2': qrStatus == 2, hide: loging == -2 }">{{ statusTitle }}</div>
+      <div class="qrcode-status" :class="{ 'qrcode-checking': loging == 2, 'status-1': wxStatus == 402 || wxStatus == 403, 'status-2': wxStatus == 404, hide: loging == -2 }">{{ statusTitle }}</div>
       <div class="border border1"></div>
       <div class="border border2"></div>
       <div class="border border3"></div>

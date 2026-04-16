@@ -3,7 +3,7 @@
 
   const router = useRouter()
 
-  //0为以网易云账号登录，1为以本地账户
+  // mode: 0=酷狗二维码(默认优先) 1=微信登录 2=手机验证码登录
   const modeSelect = (mode) => {
     router.push({ path: '/login/account', query: { mode } })
   }
@@ -17,8 +17,8 @@
           <img src="../assets/img/netease-music.png" alt="">
         </div>
         <div class="type-info">
-          <span class="type-title">云音乐</span>
-          <span class="type-subtitle">以云账号登录</span>
+          <span class="type-title">酷狗音乐</span>
+          <span class="type-subtitle">推荐使用二维码登录</span>
         </div>
       </div>
 

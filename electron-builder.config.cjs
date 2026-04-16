@@ -88,6 +88,18 @@ module.exports = {
     '**/node_modules/sharp/**',
     '**/node_modules/ffmpeg-static/**',
   ],
+  extraResources: [
+    {
+      from: '../KuGouMusicApi',
+      to: 'KuGouMusicApi',
+      filter: [
+        '**/*',
+        '!**/.git{,/**/*}',
+        '!**/docs{,/**/*}',
+        '!**/README*',
+      ],
+    },
+  ],
   directories: {
     output: 'release/${version}',
   },
