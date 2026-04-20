@@ -19,6 +19,28 @@
   const playerStore = usePlayerStore()
   const otherStore = useOtherStore()
   const { currentMusic, playing, progress, playMode, songList, songId, currentIndex, volume, time, playlistWidgetShow, lyricShow, localBase64Img, listInfo, showSongTranslation, widgetState } =storeToRefs(playerStore)
+
+  const safeSliderRange = computed(() => {
+    const currentTime = Number(time.value)
+    const currentProgress = Number(progress.value)
+    const normalizedTime = Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0
+    const normalizedProgress = Number.isFinite(currentProgress) && currentProgress > 0 ? currentProgress : 0
+    return Math.max(normalizedTime, normalizedProgress)
+  })
+
+  const safeSliderMax = computed(() => Math.ceil(safeSliderRange.value))
+
+  const sliderProgress = computed({
+    get: () => {
+      const currentProgress = Number(progress.value)
+      if (!Number.isFinite(currentProgress) || currentProgress <= 0) return 0
+      return Math.min(currentProgress, safeSliderMax.value)
+    },
+    set: value => {
+      const nextValue = Number(value)
+      progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0
+    }
+  })
   
   // 检查是否在FM模式
   const isInFMMode = computed(() => {
@@ -122,8 +144,8 @@
 <template>
   <div class="music-widget">
     <div class="music-progress-container">
-        <vue-slider id="widget-progress" class="music-progress" @click="changeProgress(progress)"  v-model="progress" :min="0" :max="time" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
-        <div class="music-time">{{songTime2(progress)}} / {{songTime2(time)}}</div>
+        <vue-slider id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
+        <div class="music-time">{{songTime2(sliderProgress)}} / {{songTime2(safeSliderRange)}}</div>
     </div>
     <div class="music-info">
         <div class="music-img" @click="showPlayer()">

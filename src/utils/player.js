@@ -48,6 +48,24 @@ watch(showSongTranslation, () => {
     updateWindowTitleDock()
 })
 
+function normalizePlaybackNumber(value) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+}
+
+function normalizePlaybackDuration(value) {
+    const parsed = normalizePlaybackNumber(value)
+    return parsed > 0 ? parsed : 0
+}
+
+function clampPlaybackProgress(value, maxDuration = null) {
+    const parsed = normalizePlaybackNumber(value)
+    if (parsed <= 0) return 0
+
+    const safeMax = normalizePlaybackDuration(maxDuration)
+    return safeMax > 0 ? Math.min(parsed, safeMax) : parsed
+}
+
 function hasCurrentSongSelected() {
     const list = Array.isArray(songList.value) ? songList.value : []
     const idx = Number.isInteger(currentIndex.value) ? currentIndex.value : -1
@@ -516,28 +534,29 @@ export function play(url, autoplay, resumeSeek = null) {
         }
     })
     currentMusic.value.once('load', () => {
-        time.value = Math.floor(currentMusic.value.duration())
+        const loadedDuration = normalizePlaybackDuration(currentMusic.value.duration())
+        time.value = loadedDuration
         updateCurrentSongDurationFromHowl()
         let targetSeek = null
 
         if (normalizedSeek !== null) {
-            targetSeek = Math.min(normalizedSeek, currentMusic.value.duration() || normalizedSeek)
+            targetSeek = clampPlaybackProgress(normalizedSeek, loadedDuration)
             loadLast = false
         } else if (loadLast && !autoplay) {
-            targetSeek = Math.min(progress.value || 0, currentMusic.value.duration() || 0)
+            targetSeek = clampPlaybackProgress(progress.value || 0, loadedDuration)
             loadLast = false
         }
 
         if (targetSeek !== null && !Number.isNaN(targetSeek)) {
             currentMusic.value.volume(0)
             currentMusic.value.seek(targetSeek)
-            progress.value = targetSeek
+            progress.value = clampPlaybackProgress(targetSeek, loadedDuration)
         }
         playerChangeSong.value = false
         // 通知 Media Session：新曲目加载完成，刷新一次系统时长/进度（静态策略）
         try {
             window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
-                detail: { duration: Math.floor(currentMusic.value.duration() || 0), toTime: progress.value || 0 }
+                detail: { duration: Math.floor(time.value || 0), toTime: progress.value || 0 }
             }))
         } catch (_) {}
     })
@@ -561,10 +580,12 @@ export function play(url, autoplay, resumeSeek = null) {
 
 export function startProgress() {
     clearInterval(musicProgress)
-    progress.value = currentMusic.value.seek()
+    const durationLimit = normalizePlaybackDuration(time.value || currentMusic.value.duration?.())
+    progress.value = clampPlaybackProgress(currentMusic.value.seek(), durationLimit)
     musicProgress = setInterval(() => {
-        if (currentMusic.value.seek() < time.value)
-            progress.value = currentMusic.value.seek()
+        const currentSeek = currentMusic.value.seek()
+        const currentDuration = normalizePlaybackDuration(time.value || currentMusic.value.duration?.())
+        progress.value = clampPlaybackProgress(currentSeek, currentDuration)
     }, 1000);
 }
 
@@ -1121,19 +1142,21 @@ const clearLycAnimation = () => {
 }
 export function changeProgress(toTime) {
     if (!widgetState.value && lyricShow.value && lyricEle.value) clearLycAnimation()
+    const durationLimit = normalizePlaybackDuration(currentMusic.value?.duration?.() || time.value)
+    const normalizedTime = clampPlaybackProgress(toTime, durationLimit)
     if (videoIsPlaying.value) {
-        musicVideoCheck(toTime, true)
+        musicVideoCheck(normalizedTime, true)
     }
     // 先更新进度与歌词索引，再执行实际 seek，确保 UI 与索引同步
-    if (typeof toTime === 'number' && Number.isFinite(toTime)) {
-        progress.value = toTime
-        syncLyricIndexForSeek(toTime)
+    if (typeof normalizedTime === 'number' && Number.isFinite(normalizedTime)) {
+        progress.value = normalizedTime
+        syncLyricIndexForSeek(normalizedTime)
     }
-    currentMusic.value.seek(toTime)
+    currentMusic.value.seek(normalizedTime)
     // 静态策略下，仅在显式 seek 时通知一次系统进度
     try {
         window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
-            detail: { duration: Math.floor(time.value || 0), toTime }
+            detail: { duration: Math.floor(time.value || 0), toTime: normalizedTime }
         }))
     } catch (_) {}
 }

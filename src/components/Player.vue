@@ -93,6 +93,28 @@ const {
     showSongTranslation,
 } = storeToRefs(playerStore);
 
+const safeSliderRange = computed(() => {
+    const currentTime = Number(time.value);
+    const currentProgress = Number(progress.value);
+    const normalizedTime = Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0;
+    const normalizedProgress = Number.isFinite(currentProgress) && currentProgress > 0 ? currentProgress : 0;
+    return Math.max(normalizedTime, normalizedProgress);
+});
+
+const safeSliderMax = computed(() => Math.ceil(safeSliderRange.value));
+
+const sliderProgress = computed({
+    get: () => {
+        const currentProgress = Number(progress.value);
+        if (!Number.isFinite(currentProgress) || currentProgress <= 0) return 0;
+        return Math.min(currentProgress, safeSliderMax.value);
+    },
+    set: value => {
+        const nextValue = Number(value);
+        progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0;
+    },
+});
+
 // 检查是否在FM模式
 const isInFMMode = computed(() => {
     return listInfo.value && listInfo.value.type === 'personalfm';
@@ -279,19 +301,19 @@ const toggleDjSub = async isSubscribe => {
                 </div>
             </div>
             <div class="player-control">
-                <div class="player-process">
-                    <div class="process-time">
-                        <span class="time-current">{{ songTime2(progress) }}</span>
-                        <span class="time-end">{{ songTime2(time) }}</span>
-                    </div>
-                    <div class="process">
-                        <vue-slider
+                    <div class="player-process">
+                        <div class="process-time">
+                        <span class="time-current">{{ songTime2(sliderProgress) }}</span>
+                        <span class="time-end">{{ songTime2(safeSliderRange) }}</span>
+                        </div>
+                        <div class="process">
+                            <vue-slider
                             id="widget-progress"
                             class="music-progress"
-                            @click="changeProgress(progress)"
-                            v-model="progress"
+                            @click="changeProgress(sliderProgress)"
+                            v-model="sliderProgress"
                             :min="0"
-                            :max="time"
+                            :max="safeSliderMax"
                             :interval="1"
                             :duration="0.5"
                             tooltip="none"
