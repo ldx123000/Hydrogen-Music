@@ -266,7 +266,7 @@ const toggleDjSub = async isSubscribe => {
                     <img
                         v-if="songList?.[currentIndex]?.type == 'local' && !localBase64Img"
                         :key="'local-default-' + (songId || songList?.[currentIndex]?.id)"
-                        src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140"
+                        src="https://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140"
                         alt=""
                     />
                 </div>

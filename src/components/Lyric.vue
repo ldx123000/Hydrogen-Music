@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
-import { changeProgress, musicVideoCheck } from '../utils/player';
+import { changeProgress } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime';
@@ -28,13 +28,8 @@ const {
 } = storeToRefs(playerStore);
 
 const lyricScroll = ref();
-const lyricScrollArea = ref();
-const heightVal = ref(0);
-const minHeightVal = ref(null);
-const maxHeightVal = ref(null);
-const lineOffset = ref(0);
 const isLyricActive = ref(true);
-const pauseActiveTimer = ref(null);
+const isManualScrollActive = ref(false);
 const lycCurrentIndex = ref(null);
 const interludeIndex = ref(null);
 const interludeAnimation = ref(false);
@@ -46,19 +41,28 @@ let interludeOutTimer = null;
 let interludeProgressInterval = null;
 // 在“上一句预计结束”时再启动间奏的延迟定时器（启发式）
 let interludeDeferStartTimer = null;
+let manualScrollReleaseTimer = null;
+let lyricWheelHandler = null;
 
-let initMax = null;
-let initOffset = null;
-let size = null;
 let lyricRevealToken = 0;
+let lyricScrollAnimationFrame = null;
+let lyricScrollAnimationToken = 0;
 
 const LYRIC_FONT_READY_TIMEOUT_MS = 900;
 const LYRIC_LAYOUT_STABLE_SAMPLE_TARGET = 2;
 const LYRIC_LAYOUT_STABLE_MAX_ATTEMPTS = 8;
+const MANUAL_SCROLL_IDLE_MS = 1000;
+const LYRIC_SCROLL_SYNC_TOLERANCE_PX = 2;
+const LYRIC_AUTO_SCROLL_DURATION_MS = 580;
+const LYRIC_FOLLOW_TOP_OFFSET_PX = 260;
+const LYRIC_FOLLOW_BOTTOM_GUTTER_PX = 180;
+const LYRIC_FOLLOW_VISIBLE_GUTTER_PX = 24;
 
 // 切回歌词时抑制首帧闪烁（先隐藏，定位完成后再显示）
 const suppressLyricFlash = ref(true);
 const lyricAreaReady = ref(false);
+const lyricTopSpacerHeight = ref(LYRIC_FOLLOW_TOP_OFFSET_PX);
+const lyricBottomSpacerHeight = ref(LYRIC_FOLLOW_BOTTOM_GUTTER_PX);
 
 // 在高频同步中避免并发测量
 const syncingLayout = ref(false);
@@ -160,11 +164,8 @@ const withTimeout = async (promise, timeoutMs) => {
 };
 
 function getLyricLineElements() {
-    if (lyricScroll.value && typeof lyricScroll.value.getElementsByClassName === 'function') {
-        return lyricScroll.value.getElementsByClassName('lyric-line');
-    }
-    if (typeof document !== 'undefined') {
-        return document.getElementsByClassName('lyric-line');
+    if (lyricScroll.value && typeof lyricScroll.value.querySelectorAll === 'function') {
+        return lyricScroll.value.querySelectorAll('.lyric-line');
     }
     return [];
 }
@@ -217,6 +218,10 @@ async function waitForLyricFonts(token) {
 
 // 是否存在歌词列表与有效原文内容
 const hasLyricsList = computed(() => Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.length > 0);
+const isUntimedLyrics = computed(() => {
+    if (!Array.isArray(lyricsObjArr.value)) return false;
+    return lyricsObjArr.value.some(item => !!item?.untimed);
+});
 const hasAnyLyricContent = computed(() => {
     if (!Array.isArray(lyricsObjArr.value)) return false;
     return lyricsObjArr.value.some(item => !!(item && item.lyric && String(item.lyric).trim()))
@@ -231,46 +236,230 @@ const showLyricArea = computed(() => {
     return !!(hasLyricsList.value && hasAnyLyricContent.value && lyricShow.value && lyricType.value.indexOf('original') != -1);
 });
 
-// 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
-function computeCumulativeOffset(index) {
-    if (!lyricEle.value || !lyricEle.value.length) {
-        return (index + 1) * (size || 0)
-    }
-    let offset = 0
-    for (let i = 0; i <= index && i < lyricEle.value.length; i++) {
-        const el = lyricEle.value[i]
-        if (el && el.offsetParent !== null) offset += el.clientHeight + 10
-        else offset += (size || 0)
-    }
-    return offset
+function getLyricScrollElement() {
+    return lyricScroll.value || null;
 }
 
-// 计算整份歌词的总高度（用于边界与容器高度），优先DOM，回退估算
-function computeTotalHeight() {
-    if (!lyricEle.value || !lyricEle.value.length) return initMax || 0
-    let total = 0
-    for (let i = 0; i < lyricEle.value.length; i++) {
-        const el = lyricEle.value[i]
-        if (el && el.offsetParent !== null) total += el.clientHeight + 10
-        else total += (size || 0)
+function getLyricLineWrapper(index) {
+    if (!Number.isInteger(index) || index < 0 || !lyricEle.value || index >= lyricEle.value.length) return null;
+    return lyricEle.value[index] || null;
+}
+
+function getLyricContentLineElement(index) {
+    const wrapper = getLyricLineWrapper(index);
+    if (!wrapper) return null;
+    return wrapper.querySelector('.line') || wrapper;
+}
+
+function calcBezierAxis(t, a1, a2) {
+    const c = 3 * a1;
+    const b = 3 * (a2 - a1) - c;
+    const a = 1 - c - b;
+    return ((a * t + b) * t + c) * t;
+}
+
+function calcBezierSlope(t, a1, a2) {
+    const c = 3 * a1;
+    const b = 3 * (a2 - a1) - c;
+    const a = 1 - c - b;
+    return (3 * a * t + 2 * b) * t + c;
+}
+
+function binarySubdivideBezier(x, a, b, x1, x2) {
+    let currentStart = a;
+    let currentEnd = b;
+    let currentT = a;
+
+    for (let i = 0; i < 10; i++) {
+        currentT = currentStart + (currentEnd - currentStart) / 2;
+        const currentX = calcBezierAxis(currentT, x1, x2) - x;
+        if (Math.abs(currentX) < 1e-7) break;
+        if (currentX > 0) currentEnd = currentT;
+        else currentStart = currentT;
     }
-    return total
+
+    return currentT;
 }
 
-function getInterludeHeightCompensation(index) {
-    if (!Number.isInteger(index) || index < 0) return 0
-    if (interludeIndex.value !== index) return 0
-    if (!lyricEle.value || !lyricEle.value[index]) return 0
-    const interludeEl = lyricEle.value[index].querySelector('.music-interlude')
-    if (!interludeEl) return 0
-    return interludeEl.clientHeight || 0
+function solveBezierT(x, x1, x2) {
+    let t = x;
+    for (let i = 0; i < 4; i++) {
+        const slope = calcBezierSlope(t, x1, x2);
+        if (Math.abs(slope) < 0.001) break;
+        const currentX = calcBezierAxis(t, x1, x2) - x;
+        t -= currentX / slope;
+    }
+
+    if (t >= 0 && t <= 1) return t;
+    return binarySubdivideBezier(x, 0, 1, x1, x2);
 }
 
-function getMeasuredLyricMetrics(index) {
-    const compensation = getInterludeHeightCompensation(index)
-    const offset = Math.max(0, computeCumulativeOffset(index) - compensation)
-    const total = Math.max(0, computeTotalHeight() - compensation)
-    return { offset, total }
+function easeLyricScroll(progress) {
+    if (progress <= 0) return 0;
+    if (progress >= 1) return 1;
+    const t = solveBezierT(progress, 0.4, 0.12);
+    return calcBezierAxis(t, 0, 1);
+}
+
+function getLyricFollowTopOffset(scrollEl, wrapperHeight = 0) {
+    if (!scrollEl) return LYRIC_FOLLOW_TOP_OFFSET_PX;
+
+    const safeWrapperHeight = Math.max(0, wrapperHeight);
+    const maxVisibleTop = Math.max(0, scrollEl.clientHeight - safeWrapperHeight - LYRIC_FOLLOW_VISIBLE_GUTTER_PX);
+    return Math.min(LYRIC_FOLLOW_TOP_OFFSET_PX, maxVisibleTop);
+}
+
+function updateLyricScrollSpacers(wrapperHeight = 0) {
+    const scrollEl = getLyricScrollElement();
+    if (!scrollEl) return;
+
+    const safeWrapperHeight = Math.max(0, wrapperHeight);
+    const followTopOffset = getLyricFollowTopOffset(scrollEl, safeWrapperHeight);
+    lyricTopSpacerHeight.value = followTopOffset;
+    lyricBottomSpacerHeight.value = Math.max(
+        LYRIC_FOLLOW_BOTTOM_GUTTER_PX,
+        scrollEl.clientHeight - followTopOffset - safeWrapperHeight
+    );
+}
+
+function getLyricContentMetrics(index) {
+    const scrollEl = getLyricScrollElement();
+    const wrapper = getLyricLineWrapper(index);
+    const lineEl = getLyricContentLineElement(index);
+    if (!scrollEl || !wrapper || !lineEl) return null;
+
+    const lineTop = wrapper.offsetTop + (lineEl !== wrapper ? lineEl.offsetTop : 0);
+    const lineHeight = lineEl.offsetHeight || wrapper.offsetHeight || 0;
+    const wrapperHeight = wrapper.offsetHeight || lineHeight;
+    const followTopOffset = getLyricFollowTopOffset(scrollEl, wrapperHeight);
+    updateLyricScrollSpacers(wrapperHeight);
+    const maxScrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+    const targetScrollTop = Math.min(
+        maxScrollTop,
+        Math.max(0, wrapper.offsetTop - followTopOffset)
+    );
+
+    return {
+        lineTop,
+        lineHeight,
+        wrapperHeight,
+        followTopOffset,
+        targetScrollTop,
+        maxScrollTop,
+    };
+}
+
+function clearManualScrollReleaseTimer() {
+    if (!manualScrollReleaseTimer) return;
+    clearTimeout(manualScrollReleaseTimer);
+    manualScrollReleaseTimer = null;
+}
+
+function cancelLyricScrollAnimation() {
+    lyricScrollAnimationToken += 1;
+    if (lyricScrollAnimationFrame !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(lyricScrollAnimationFrame);
+    }
+    lyricScrollAnimationFrame = null;
+}
+
+function setLyricScrollTop(scrollEl, top) {
+    if (!scrollEl) return;
+    scrollEl.scrollTop = top;
+}
+
+function animateLyricScrollTop(scrollEl, targetTop) {
+    if (!scrollEl) return;
+
+    const normalizedTargetTop = Math.max(0, Number(targetTop) || 0);
+    const startTop = scrollEl.scrollTop;
+    const delta = normalizedTargetTop - startTop;
+
+    if (Math.abs(delta) <= LYRIC_SCROLL_SYNC_TOLERANCE_PX) {
+        setLyricScrollTop(scrollEl, normalizedTargetTop);
+        return;
+    }
+
+    cancelLyricScrollAnimation();
+    if (typeof requestAnimationFrame !== 'function') {
+        setLyricScrollTop(scrollEl, normalizedTargetTop);
+        return;
+    }
+
+    const animationToken = lyricScrollAnimationToken;
+    const startTime = typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+
+    const step = now => {
+        if (animationToken !== lyricScrollAnimationToken) return;
+
+        const elapsed = Math.max(0, now - startTime);
+        const progress = Math.min(1, elapsed / LYRIC_AUTO_SCROLL_DURATION_MS);
+        const easedProgress = easeLyricScroll(progress);
+        setLyricScrollTop(scrollEl, startTop + delta * easedProgress);
+
+        if (progress >= 1) {
+            setLyricScrollTop(scrollEl, normalizedTargetTop);
+            lyricScrollAnimationFrame = null;
+            return;
+        }
+
+        lyricScrollAnimationFrame = requestAnimationFrame(step);
+    };
+
+    lyricScrollAnimationFrame = requestAnimationFrame(step);
+}
+
+function syncLyricPosition({ behavior = 'auto', force = false } = {}) {
+    const scrollEl = getLyricScrollElement();
+    if (!scrollEl) return;
+    if (!force && isManualScrollActive.value) return;
+
+    const targetIndex = Number.isInteger(lycCurrentIndex.value) ? lycCurrentIndex.value : -1;
+    if (targetIndex < 0) {
+        updateLyricScrollSpacers();
+        if (force) {
+            if (behavior === 'smooth') animateLyricScrollTop(scrollEl, 0);
+            else {
+                cancelLyricScrollAnimation();
+                setLyricScrollTop(scrollEl, 0);
+            }
+        }
+        isLyricActive.value = true;
+        return;
+    }
+
+    const metrics = getLyricContentMetrics(targetIndex);
+    if (!metrics) return;
+
+    if (Math.abs(scrollEl.scrollTop - metrics.targetScrollTop) <= LYRIC_SCROLL_SYNC_TOLERANCE_PX) {
+        if (force && behavior !== 'smooth') {
+            cancelLyricScrollAnimation();
+            setLyricScrollTop(scrollEl, metrics.targetScrollTop);
+        }
+        isLyricActive.value = true;
+        return;
+    }
+
+    if (behavior === 'smooth') animateLyricScrollTop(scrollEl, metrics.targetScrollTop);
+    else {
+        cancelLyricScrollAnimation();
+        setLyricScrollTop(scrollEl, metrics.targetScrollTop);
+    }
+    isLyricActive.value = true;
+}
+
+function enterManualScrollMode() {
+    cancelLyricScrollAnimation();
+    isLyricActive.value = false;
+    isManualScrollActive.value = true;
+    clearManualScrollReleaseTimer();
+    manualScrollReleaseTimer = setTimeout(() => {
+        manualScrollReleaseTimer = null;
+        isManualScrollActive.value = false;
+        syncLyricPosition({ behavior: 'smooth', force: true });
+    }, MANUAL_SCROLL_IDLE_MS);
 }
 
 const clearLycAnimation = flag => {
@@ -288,56 +477,16 @@ const clearLycAnimation = flag => {
     }
 };
 
-const setMaxHeight = change => {
-    if (!lyricsObjArr.value) return;
-
-    // 判断本首歌实际是否存在翻译/罗马音，避免没有对应内容时仍按照勾选项计算高度
-    const hasAnyTrans = Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.some(item => !!(item.tlyric && item.tlyric.trim()))
-    const hasAnyRoma = Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.some(item => !!(item.rlyric && item.rlyric.trim()))
-
-    const showOriginal = lyricType.value.indexOf('noOriginal') == -1 && lyricType.value.indexOf('original') != -1
-    const showTrans = (lyricType.value.indexOf('noTrans') == -1 && lyricType.value.indexOf('trans') != -1) && hasAnyTrans
-    const showRoma = (lyricType.value.indexOf('noRoma') == -1 && lyricType.value.indexOf('roma') != -1) && hasAnyRoma
-
-    size = (
-        parseInt(showOriginal ? lyricSize.value : 0) +
-        parseInt(showTrans ? tlyricSize.value : 0) +
-        parseInt(showRoma ? rlyricSize.value : 0)
-    ) * 1.5 + 30;
-    initMax = lyricsObjArr.value.length * size;
-    heightVal.value = initMax;
-    initOffset = -(initMax - 260);
-    // 使用DOM实际高度计算偏移，回退到均匀估算
-    let { offset, total } = getMeasuredLyricMetrics(lycCurrentIndex.value)
-    if (change) {
-        // 同步容器总高度并重算基础偏移
-        initMax = total || initMax
-        initOffset = -(initMax - 260)
-        lineOffset.value = initOffset - offset
-        minHeightVal.value = offset
-        maxHeightVal.value = initMax + offset
-    } else {
-        initMax = total || initMax
-        initOffset = -(initMax - 260)
-        maxHeightVal.value = initMax
-    }
-    if (lyricScrollArea.value) lyricScrollArea.value.style.height = initMax + 'Px';
-};
-
 const setDefaultStyle = async () => {
     lyricAreaReady.value = false;
     lycCurrentIndex.value = currentLyricIndex.value >= 0 ? currentLyricIndex.value : -1;
     interludeAnimation.value = false;
     lyricEle.value = getLyricLineElements();
-    initMax = 0;
-    setMaxHeight(false);
-    minHeightVal.value = 0;
-    lineOffset.value = initOffset;
+    updateLyricScrollSpacers();
 
     await waitForLayoutCommit();
-    if (lycCurrentIndex.value >= 0 && size > 0) {
-        syncLyricPosition();
-    }
+    lyricEle.value = getLyricLineElements();
+    syncLyricPosition({ force: true });
 
     if (!lyricShow.value && !widgetState.value) {
         const changeTimer = setTimeout(() => {
@@ -354,11 +503,12 @@ function captureLyricLayoutSignature() {
         Number.isInteger(lycCurrentIndex.value) && lycCurrentIndex.value >= 0 && lines?.[lycCurrentIndex.value]?.offsetParent !== null
             ? lycCurrentIndex.value
             : 0;
-    const activeLine = lines?.[activeIndex] || null;
+    const activeLine = getLyricContentLineElement(activeIndex);
+    const scrollEl = getLyricScrollElement();
 
     return {
-        areaWidth: Math.round(lyricScroll.value?.clientWidth || 0),
-        totalHeight: Math.round(computeTotalHeight() || 0),
+        areaWidth: Math.round(scrollEl?.clientWidth || 0),
+        totalHeight: Math.round(scrollEl?.scrollHeight || 0),
         activeHeight: Math.round(activeLine?.clientHeight || 0),
         activeWidth: Math.round(activeLine?.clientWidth || 0),
     };
@@ -404,8 +554,8 @@ const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
         }
         await nextTick();
         lyricEle.value = getLyricLineElements();
-        setMaxHeight(true);
-        syncLyricPosition();
+        const shouldAnimateSync = lyricAreaReady.value && !suppressLyricFlash.value && !isManualScrollActive.value;
+        syncLyricPosition({ behavior: shouldAnimateSync ? 'smooth' : 'auto', force: true });
         if (waitForPaint) {
             await waitForLayoutCommit();
         }
@@ -677,8 +827,9 @@ watch(
         }
         lycCurrentIndex.value = newIndex;
         // 等待DOM稳定后，统一调用同步函数，确保 scroll-area 高度与偏移一并更新
-        await nextTick();
-        syncLyricPosition();
+        await waitForLayoutCommit();
+        lyricEle.value = getLyricLineElements();
+        syncLyricPosition({ behavior: 'smooth' });
         // 短暂延时后恢复正常过渡（供后续可能的间奏展开使用）
         if (interludeFastClose.value) {
             setTimeout(() => { interludeFastClose.value = false; }, 120);
@@ -689,42 +840,19 @@ watch(
     { immediate: true, flush: 'post' }
 ); // 添加 immediate 选项确保立即执行
 
-const changeProgressLyc = (time, index) => {
-    if (lyricScrollArea.value) {
-        lyricScrollArea.value.style.height = initMax + 'Px';
-    }
+const changeProgressLyc = (time, index, item = null) => {
+    if (isUntimedLyrics.value || item?.untimed) return;
+    clearManualScrollReleaseTimer();
+    isManualScrollActive.value = false;
+    isLyricActive.value = true;
     lycCurrentIndex.value = index;
     playerStore.currentLyricIndex = index;
-
-    if (!playing.value) {
-        const { offset, total } = getMeasuredLyricMetrics(lycCurrentIndex.value)
-        initMax = total || initMax
-        initOffset = -(initMax - 260)
-        lineOffset.value = initOffset - offset
-        minHeightVal.value = offset
-        maxHeightVal.value = initMax + offset
-    }
+    nextTick(() => {
+        lyricEle.value = getLyricLineElements();
+        syncLyricPosition({ behavior: 'smooth', force: true });
+    });
     progress.value = time;
     changeProgress(time);
-};
-
-// 同步当前歌词位置的函数
-const syncLyricPosition = () => {
-    if (lycCurrentIndex.value !== null && lycCurrentIndex.value >= 0 && lyricEle.value && lyricEle.value[lycCurrentIndex.value]) {
-        const { offset, total } = getMeasuredLyricMetrics(lycCurrentIndex.value)
-        initMax = total || initMax
-        initOffset = -(initMax - 260)
-        lineOffset.value = initOffset - offset
-        minHeightVal.value = offset
-        maxHeightVal.value = initMax + offset
-        // 确保歌词容器高度正确
-        if (lyricScrollArea.value) {
-            lyricScrollArea.value.style.height = initMax + 'Px';
-            heightVal.value = initMax;
-        }
-        // 重置为激活状态
-        isLyricActive.value = true;
-    }
 };
 
 // 检测大幅进度跳转（拖动进度条）时立即恢复歌词同步
@@ -735,32 +863,17 @@ watch(
         handleInterludeOnProgress();
         if (typeof oldVal !== 'number') return;
         if (Math.abs(newVal - oldVal) <= 1.2) return;
-
-        if (pauseActiveTimer.value) {
-            clearTimeout(pauseActiveTimer.value);
-            pauseActiveTimer.value = null;
-        }
-
-        isLyricActive.value = true;
-        syncLyricPosition();
+        syncLyricPosition({ behavior: 'smooth' });
     }
 );
 
 onMounted(() => {
-    lyricScroll.value.addEventListener('wheel', e => {
-        isLyricActive.value = false;
-        heightVal.value += e.wheelDeltaY < 0 ? e.wheelDeltaY + 76 : e.wheelDeltaY - 76;
-
-        if (heightVal.value < minHeightVal.value) heightVal.value = minHeightVal.value;
-        if (heightVal.value > maxHeightVal.value) heightVal.value = maxHeightVal.value;
-
-        lyricScrollArea.value.style.height = heightVal.value + 'Px';
-
-        clearTimeout(pauseActiveTimer.value);
-        pauseActiveTimer.value = setTimeout(() => {
-            syncLyricPosition();
-        }, 3000);
-    });
+    lyricWheelHandler = () => {
+        enterManualScrollMode();
+    };
+    if (lyricScroll.value) {
+        lyricScroll.value.addEventListener('wheel', lyricWheelHandler, { passive: true });
+    }
 
     if (showLyricArea.value) {
         void prepareLyricReveal();
@@ -778,7 +891,13 @@ onMounted(() => {
 onUnmounted(() => {
     invalidateLyricReveal();
     clearInterludeTimers();
+    clearManualScrollReleaseTimer();
+    cancelLyricScrollAnimation();
     if (interludeProgressInterval) { clearInterval(interludeProgressInterval); interludeProgressInterval = null; }
+    if (lyricWheelHandler && lyricScroll.value) {
+        lyricScroll.value.removeEventListener('wheel', lyricWheelHandler);
+        lyricWheelHandler = null;
+    }
     if (lyricResizeObserver) {
         lyricResizeObserver.disconnect();
         lyricResizeObserver = null;
@@ -807,10 +926,15 @@ watch([playing, lyricShow], ([p, show]) => {
 <template>
     <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
         <Transition name="fade">
-            <div v-show="showLyricArea" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash || !lyricAreaReady }" ref="lyricScroll">
-                <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
-                <div class="lyric-line" :style="{ transform: 'translateY(' + lineOffset + 'Px)' }" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
-                    <div class="line" @click="changeProgressLyc(item.time, index)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active }">
+            <div
+                v-show="showLyricArea"
+                class="lyric-area"
+                :class="{ 'no-flash': suppressLyricFlash || !lyricAreaReady }"
+                ref="lyricScroll"
+            >
+                <div class="lyric-spacer" :style="{ height: lyricTopSpacerHeight + 'px' }"></div>
+                <div class="lyric-line" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
+                    <div class="line" @click="changeProgressLyc(item.time, index, item)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active, 'line-static': isUntimedLyrics || item.untimed }">
                         <span class="roma" :style="{ 'font-size': rlyricSize + 'px' }" v-if="item.rlyric && lyricType.indexOf('roma') != -1">{{ item.rlyric }}</span>
                         <span class="original" :style="{ 'font-size': lyricSize + 'px' }" v-if="lyricType.indexOf('original') != -1">{{ item.lyric }}</span>
                         <span class="trans" :style="{ 'font-size': tlyricSize + 'px' }" v-if="item.tlyric && lyricType.indexOf('trans') != -1">{{ item.tlyric }}</span>
@@ -951,6 +1075,7 @@ watch([playing, lyricShow], ([p, show]) => {
                         </div>
                     </div>
                 </div>
+                <div class="lyric-spacer" :style="{ height: lyricBottomSpacerHeight + 'px' }"></div>
             </div>
         </Transition>
         <Transition name="fade">
@@ -984,8 +1109,18 @@ watch([playing, lyricShow], ([p, show]) => {
     .lyric-area {
         width: calc(100% - 3vh);
         height: calc(100% - 3vh);
-        overflow: hidden;
+        box-sizing: border-box;
+        overflow-x: hidden;
+        overflow-y: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        overscroll-behavior: contain;
         transition: opacity 0.3s cubic-bezier(0.3, 0, 0.12, 1);
+        &::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+        }
         &.no-flash {
             visibility: hidden;
             opacity: 0;
@@ -994,15 +1129,15 @@ watch([playing, lyricShow], ([p, show]) => {
         &.no-flash, &.no-flash * {
             transition: none !important;
         }
-        .lyric-scroll-area {
+        .lyric-spacer {
             width: 100%;
-            transition: 0.3s;
+            flex: none;
+            pointer-events: none;
         }
         .lyric-line {
             margin-bottom: 10px;
             width: 100%;
             text-align: left;
-            transition: 0.58s cubic-bezier(0.4, 0, 0.12, 1);
             .line {
                 padding: 10px 130px 10px 25px;
                 width: 100%;
@@ -1012,8 +1147,7 @@ watch([playing, lyricShow], ([p, show]) => {
                 display: flex;
                 flex-direction: column;
                 align-items: flex-start;
-                transition-duration: 0.6s;
-                transition-timing-function: cubic-bezier(0.3, 0, 0.12, 1);
+                transition: background-color 0.6s cubic-bezier(0.3, 0, 0.12, 1), transform 0.6s cubic-bezier(0.3, 0, 0.12, 1);
                 user-select: text;
                 &:hover {
                     cursor: pointer;
@@ -1022,6 +1156,15 @@ watch([playing, lyricShow], ([p, show]) => {
                 &:active {
                     transform: scale(0.9);
                     filter: blur(0) !important;
+                }
+                &.line-static {
+                    &:hover {
+                        cursor: default;
+                        background-color: transparent;
+                    }
+                    &:active {
+                        transform: none;
+                    }
                 }
                 .original,
                 .trans,

@@ -14,6 +14,7 @@ try { Sharp = require('sharp') } catch (_) { Sharp = null }
 module.exports = MusicDownload = (win) => {
   const settingsStore = new Store({ name: 'settings' })
   let isClose = false
+  let currentDownloadItem = null
   const sanitize = (name) => {
     try {
       return String(name || '')
@@ -24,6 +25,52 @@ module.exports = MusicDownload = (win) => {
     } catch (_) {
       return 'unknown'
     }
+  }
+  const parseHttpUrl = (value) => {
+    try {
+      const parsedUrl = new URL(String(value || '').trim())
+      if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') return parsedUrl
+    } catch (_) {}
+    return null
+  }
+  const isPrivateNetworkHost = hostname => {
+    const normalizedHost = String(hostname || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\.$/, '')
+      .replace(/^\[|\]$/g, '')
+
+    if (!normalizedHost) return true
+    if (normalizedHost === 'localhost' || normalizedHost.endsWith('.localhost') || normalizedHost.endsWith('.local')) return true
+    if (normalizedHost.includes(':')) return true
+    if (!normalizedHost.includes('.')) return true
+
+    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalizedHost)) return false
+
+    const octets = normalizedHost.split('.').map(part => Number.parseInt(part, 10))
+    if (octets.length !== 4 || octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true
+
+    const [first, second] = octets
+    if (first === 0 || first === 10 || first === 127) return true
+    if (first === 169 && second === 254) return true
+    if (first === 172 && second >= 16 && second <= 31) return true
+    if (first === 192 && second === 168) return true
+    if (first === 100 && second >= 64 && second <= 127) return true
+    if (first === 198 && (second === 18 || second === 19)) return true
+    if (first >= 224) return true
+    return false
+  }
+  const parseSafeRemoteUrl = (value) => {
+    const parsedUrl = parseHttpUrl(value)
+    if (!parsedUrl) return null
+    return isPrivateNetworkHost(parsedUrl.hostname) ? null : parsedUrl
+  }
+  const normalizeDownloadExtension = (value) => {
+    const normalized = String(value || '')
+      .trim()
+      .replace(/^\./, '')
+      .toLowerCase()
+    return /^[a-z0-9]{1,8}$/.test(normalized) ? normalized : 'bin'
   }
   let downloadObj = {
     downloadUrl: '',
@@ -36,21 +83,67 @@ module.exports = MusicDownload = (win) => {
     artists: null,
     album: null,
   }
-  ipcMain.on('download', async (event, args) => {
+
+  const setCurrentDownloadItem = item => {
+    currentDownloadItem = item || null
+  }
+
+  const clearCurrentDownloadItem = item => {
+    if (currentDownloadItem === item) currentDownloadItem = null
+  }
+
+  ipcMain.on('download-resume', () => {
+    if (!currentDownloadItem) return
+    try { currentDownloadItem.resume() } catch (_) {}
+  })
+
+  ipcMain.on('download-pause', (_event, close) => {
+    if (!currentDownloadItem) return
+    if (close == 'shutdown') {
+      isClose = true
+      try { currentDownloadItem.cancel() } catch (_) {}
+      return
+    }
+    try { currentDownloadItem.pause() } catch (_) {}
+  })
+
+  ipcMain.on('download-cancel', () => {
+    if (!currentDownloadItem) return
+    try { currentDownloadItem.cancel() } catch (_) {}
+  })
+  ipcMain.on('download', async (event, args = {}) => {
+    const parsedDownloadUrl = parseSafeRemoteUrl(args.url)
+    if (!parsedDownloadUrl) {
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+        win.webContents.send('download-error', 'invalidDownloadUrl')
+        win.webContents.send('download-next')
+      }
+      return
+    }
     downloadObj.fileName = args.name
-    downloadObj.downloadUrl = args.url
-    downloadObj.type = args.type
+    downloadObj.downloadUrl = parsedDownloadUrl.toString()
+    downloadObj.type = normalizeDownloadExtension(args.type)
     downloadObj.id = args.id || null
     downloadObj.lyrics = args.lyrics || null
-    downloadObj.coverUrl = args.coverUrl || null
+    downloadObj.coverUrl = parseSafeRemoteUrl(args.coverUrl)?.toString() || null
     downloadObj.artists = args.artists || null
     downloadObj.album = args.album || null
     const savePath = await settingsStore.get('settings')
-    downloadObj.savePath = path.join(savePath.local.downloadFolder, path.sep)
+    const downloadFolder = savePath?.local?.downloadFolder
+    if (!downloadFolder) {
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+        win.webContents.send('download-error', 'noSavePath')
+        win.webContents.send('download-next')
+      }
+      return
+    }
+    downloadObj.savePath = path.resolve(downloadFolder)
     win.webContents.downloadURL(downloadObj.downloadUrl)
   })
 
   win.webContents.session.on('will-download', (event, item, webContents) => {
+    setCurrentDownloadItem(item)
+    const currentDownload = { ...downloadObj }
     const settings = (() => {
       try { return settingsStore.get('settings') || null } catch (_) { return null }
     })()
@@ -58,28 +151,28 @@ module.exports = MusicDownload = (win) => {
     const saveLyricFile = !!(settings && settings.local && settings.local.downloadSaveLyricFile)
 
     // 以歌曲名创建文件夹，内部保存音频/歌词/封面，并在音频文件内写入元数据
-    const baseName = sanitize(downloadObj.fileName)
-    let destDir = downloadObj.savePath
-    let audioFileName = baseName + '.' + downloadObj.type
+    const baseName = sanitize(currentDownload.fileName)
+    let destDir = currentDownload.savePath
+    let audioFileName = baseName + '.' + currentDownload.type
     if (createSongFolder) {
-      destDir = path.join(downloadObj.savePath, baseName)
+      destDir = path.join(currentDownload.savePath, baseName)
       try {
         let suffix = 1
         while (fs.existsSync(destDir) && !fs.statSync(destDir).isDirectory()) {
-          destDir = path.join(downloadObj.savePath, `${baseName} (${suffix++})`)
+          destDir = path.join(currentDownload.savePath, `${baseName} (${suffix++})`)
         }
         fse.ensureDirSync(destDir)
       } catch (e) {
-        try { fse.ensureDirSync(downloadObj.savePath) } catch (_) {}
-        destDir = downloadObj.savePath
+        try { fse.ensureDirSync(currentDownload.savePath) } catch (_) {}
+        destDir = currentDownload.savePath
       }
-      audioFileName = baseName + '.' + downloadObj.type
+      audioFileName = baseName + '.' + currentDownload.type
     } else {
-      try { fse.ensureDirSync(downloadObj.savePath) } catch (_) {}
+      try { fse.ensureDirSync(currentDownload.savePath) } catch (_) {}
       // 文件名冲突处理：在同一目录下追加 (n)
       try {
         let suffix = 1
-        const parsedType = '.' + String(downloadObj.type || '').replace(/^\./, '')
+        const parsedType = '.' + String(currentDownload.type || '').replace(/^\./, '')
         const ext = parsedType === '.' ? '' : parsedType
         while (fs.existsSync(path.join(destDir, audioFileName))) {
           audioFileName = `${baseName} (${suffix++})${ext}`
@@ -104,14 +197,14 @@ module.exports = MusicDownload = (win) => {
 
       if (state === 'interrupted') {
         console.log('Download is interrupted but can be resumed')
-        let alterPath = path.join(downloadObj.savePath, sanitize(downloadObj.fileName))
+        let alterPath = path.join(currentDownload.savePath, sanitize(currentDownload.fileName))
         if (true) {
           interruptedTimes++
           const tryDir = alterPath + (interruptedTimes > 1 ? ` (${interruptedTimes})` : '')
           try { fse.ensureDirSync(tryDir) } catch (_) {}
-          item.setSavePath(path.join(tryDir, sanitize(downloadObj.fileName) + '.' + downloadObj.type))
+          item.setSavePath(path.join(tryDir, sanitize(currentDownload.fileName) + '.' + currentDownload.type))
           if (interruptedTimes > 3) {
-            item.setSavePath(path.join(downloadObj.savePath, "undefined_name_" + nanoid() + "." + downloadObj.type))
+            item.setSavePath(path.join(currentDownload.savePath, "undefined_name_" + nanoid() + "." + currentDownload.type))
             interruptedTimes = 0
           }
           item.resume()
@@ -131,16 +224,16 @@ module.exports = MusicDownload = (win) => {
         console.log('Download successfully')
         try {
           // 下载完成后：可选写入同名 .lrc；并始终尝试写入音频标签（内嵌歌词）
-          if (downloadObj && downloadObj.lyrics && (downloadObj.lyrics.lrc || downloadObj.lyrics.tlyric || downloadObj.lyrics.romalrc)) {
+          if (currentDownload && currentDownload.lyrics && (currentDownload.lyrics.lrc || currentDownload.lyrics.tlyric || currentDownload.lyrics.romalrc)) {
             const audioPath = item.getSavePath()
             if (audioPath) {
               const parsed = path.parse(audioPath)
               const lrcPath = path.join(parsed.dir, parsed.name + '.lrc')
               // 生成最终合并 LRC 文本
-              const lrcText = buildCombinedLrcText(downloadObj.lyrics, {
-                name: downloadObj.fileName,
-                artists: Array.isArray(downloadObj.artists) ? downloadObj.artists : [],
-                album: downloadObj.album || null
+              const lrcText = buildCombinedLrcText(currentDownload.lyrics, {
+                name: currentDownload.fileName,
+                artists: Array.isArray(currentDownload.artists) ? currentDownload.artists : [],
+                album: currentDownload.album || null
               })
               if (saveLyricFile && lrcText && lrcText.trim().length > 0) {
                 try {
@@ -155,10 +248,10 @@ module.exports = MusicDownload = (win) => {
               // 将歌词写入 MP3 或 FLAC 标签（MP3: USLT/SYLT；FLAC: Vorbis comments）
               try {
                 const timedLrcText = lrcText
-                const fallbackPlainText = buildUnsyncedLyricText(downloadObj.lyrics)
+                const fallbackPlainText = buildUnsyncedLyricText(currentDownload.lyrics)
                 const hasTimedTags = typeof timedLrcText === 'string' && /\[\d{1,3}[:：.\uFF0E\u3002,，;；/\-_\s]\s*\d{1,2}/.test(timedLrcText)
                 const lyricTextForEmbed = (hasTimedTags ? timedLrcText : fallbackPlainText) || ''
-                const sylt = hasTimedTags ? buildSynchronisedLyricsFrames(downloadObj.lyrics) : null
+                const sylt = hasTimedTags ? buildSynchronisedLyricsFrames(currentDownload.lyrics) : null
                 const extLower = (parsed.ext || '').toLowerCase()
                 if (lyricTextForEmbed && lyricTextForEmbed.trim().length > 0) {
                   if (NodeID3 && extLower === '.mp3') {
@@ -193,17 +286,17 @@ module.exports = MusicDownload = (win) => {
           }
 
           // 仅尝试写入音频封面标签（不再生成同名封面图片侧车）；自动将 webp 等转为 jpg/png
-          if (downloadObj && downloadObj.coverUrl) {
+          if (currentDownload && currentDownload.coverUrl) {
             const audioPath = item.getSavePath()
             if (audioPath) {
               const parsed = path.parse(audioPath)
               // 根据 content-type 或 URL 推断扩展名（用于判断与转码）
               const fetchAndSaveCover = async () => {
                 try {
-                  const resp = await axios.get(downloadObj.coverUrl, { responseType: 'arraybuffer', timeout: 15000 })
+                  const resp = await axios.get(currentDownload.coverUrl, { responseType: 'arraybuffer', timeout: 15000 })
                   const buf = Buffer.from(resp.data)
                   const contentType = (resp.headers && resp.headers['content-type']) || ''
-                  const lowerUrl = downloadObj.coverUrl.split('?')[0].toLowerCase()
+                  const lowerUrl = currentDownload.coverUrl.split('?')[0].toLowerCase()
                   const isWebp = contentType.includes('webp') || lowerUrl.endsWith('.webp')
                   const isPngResp = contentType.includes('png') || lowerUrl.endsWith('.png')
                   const isJpegResp = contentType.includes('jpeg') || contentType.includes('jpg') || lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')
@@ -270,9 +363,9 @@ module.exports = MusicDownload = (win) => {
               const parsed = path.parse(audioPath)
               // 基础标签：标题/艺术家/专辑
               try {
-                const titleVal = downloadObj.fileName || parsed.name
-                const artistsArr = Array.isArray(downloadObj.artists) ? downloadObj.artists.filter(Boolean) : []
-                const albumVal = downloadObj.album || ''
+                const titleVal = currentDownload.fileName || parsed.name
+                const artistsArr = Array.isArray(currentDownload.artists) ? currentDownload.artists.filter(Boolean) : []
+                const albumVal = currentDownload.album || ''
                 const extLower = (parsed.ext || '').toLowerCase()
                 if (NodeID3 && extLower === '.mp3') {
                   const tag = {
@@ -313,20 +406,8 @@ module.exports = MusicDownload = (win) => {
       if (!win.isDestroyed()) {
         win.setProgressBar(-1);
       }
+      clearCurrentDownloadItem(item)
       if (!isClose) win.webContents.send('download-next')
-    })
-    ipcMain.on('download-resume', () => {
-      item.resume()
-    })
-    ipcMain.on('download-pause', (close) => {
-      if (close == 'shutdown') {
-        isClose = true
-        item.cancel()
-      }
-      else item.pause()
-    })
-    ipcMain.on('download-cancel', () => {
-      item.cancel()
     })
   })
 }

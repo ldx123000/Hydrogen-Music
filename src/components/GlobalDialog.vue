@@ -14,7 +14,7 @@
 
 <template>
   <div class="global-dialog" v-show="dialogShow"></div>
-  <Transition name="dialog-fade" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
+  <Transition appear name="dialog-fade" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
       <div class="dialog-container" :class="{'dialog-container-active': isActive}" v-if="dialogShow">
           <div class="dialog">
               <div class="dialog-header">

@@ -234,19 +234,30 @@ const routerChange = () => {
     router.back()
 }
 
-const selectFolder = type => {
+const openDirectoryPicker = async () => {
+    try {
+        if (!windowApi || typeof windowApi.openFile !== 'function') {
+            noticeOpen('目录选择器不可用', 2)
+            return null
+        }
+        return await windowApi.openFile()
+    } catch (error) {
+        console.error('打开目录选择器失败:', error)
+        noticeOpen('打开目录选择器失败', 2)
+        return null
+    }
+}
+
+const selectFolder = async type => {
+    const path = await openDirectoryPicker()
+    if (!path) return
+
     if (type == 'download') {
-        windowApi.openFile().then(path => {
-            downloadFolder.value = path
-        })
+        downloadFolder.value = path
     } else if (type == 'local') {
-        windowApi.openFile().then(path => {
-            if (path && localFolder.value.indexOf(path) == -1) localFolder.value.push(path)
-        })
+        if (localFolder.value.indexOf(path) == -1) localFolder.value.push(path)
     } else if (type == 'video') {
-        windowApi.openFile().then(path => {
-            videoFolder.value = path
-        })
+        videoFolder.value = path
     }
 }
 const deleteLocalFolder = index => {
@@ -350,9 +361,12 @@ const clearMusicVideo = () => {
         else noticeOpen('删除失败', 3)
     })
 }
-const setMusicVideo = () => {
-    if (!playerStore.musicVideo) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openMusicVideo)
-    else openMusicVideo(true)
+const setMusicVideo = async () => {
+    if (!playerStore.musicVideo) {
+        dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openMusicVideo)
+        return
+    }
+    openMusicVideo(true)
 }
 const openMusicVideo = flag => {
     if (flag) playerStore.musicVideo = !playerStore.musicVideo

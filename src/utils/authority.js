@@ -1,6 +1,63 @@
 import Cookies from "js-cookie";
 
 const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+const AUTH_COOKIE_STORAGE_PREFIX = 'cookie:'
+
+function getSessionStore() {
+  try {
+    if (typeof sessionStorage !== 'undefined') return sessionStorage
+  } catch (_) {}
+  return null
+}
+
+function getLocalStore() {
+  try {
+    if (typeof localStorage !== 'undefined') return localStorage
+  } catch (_) {}
+  return null
+}
+
+function getCookieStorageKey(key) {
+  return AUTH_COOKIE_STORAGE_PREFIX + key
+}
+
+function readStoredAuthCookie(key) {
+  const storageKey = getCookieStorageKey(key)
+  const localStore = getLocalStore()
+
+  try {
+    const localValue = localStore?.getItem(storageKey)
+    if (localValue) return localValue
+  } catch (_) {}
+
+  const sessionStore = getSessionStore()
+  try {
+    const sessionValue = sessionStore?.getItem(storageKey)
+    if (!sessionValue) return ''
+    try { localStore?.setItem(storageKey, sessionValue) } catch (_) {}
+    return sessionValue
+  } catch (_) {
+    return ''
+  }
+}
+
+function writeStoredAuthCookie(key, value) {
+  const storageKey = getCookieStorageKey(key)
+  if (!value) {
+    clearStoredAuthCookie(key)
+    return
+  }
+
+  const text = String(value)
+  try { getLocalStore()?.setItem(storageKey, text) } catch (_) {}
+  try { getSessionStore()?.removeItem(storageKey) } catch (_) {}
+}
+
+function clearStoredAuthCookie(key) {
+  const storageKey = getCookieStorageKey(key)
+  try { getSessionStore()?.removeItem(storageKey) } catch (_) {}
+  try { getLocalStore()?.removeItem(storageKey) } catch (_) {}
+}
 
 function extractAuthCookieValues(rawCookie) {
   const cookieText = String(rawCookie || '')
@@ -21,7 +78,13 @@ function persistAuthCookies(cookieMap) {
   Object.entries(cookieMap).forEach(([key, value]) => {
     if (!value) return
     try { document.cookie = `${key}=${value}; path=/`; } catch (_) {}
-    try { localStorage.setItem('cookie:' + key, value) } catch (_) {}
+    writeStoredAuthCookie(key, value)
+  })
+}
+
+export function migrateLegacyAuthSession() {
+  AUTH_COOKIE_KEYS.forEach((key) => {
+    void readStoredAuthCookie(key)
   })
 }
 
@@ -38,14 +101,10 @@ export function setCookies(data) {
   persistAuthCookies(cookieMap)
 }
 
-//获取Cookie - 优先从localStorage读取，确保在Electron中的可靠性
+// 获取 Cookie - 登录态持久化到 localStorage，并兼容当前会话中的旧值。
 export function getCookie(key) {
-  // 直接从localStorage读取，这是更可靠的方式
-  const localStorageValue = localStorage.getItem('cookie:' + key)
-  if (localStorageValue) {
-    return localStorageValue
-  }
-  // 作为备用，尝试从document.cookie读取
+  const storedValue = readStoredAuthCookie(key)
+  if (storedValue) return storedValue
   return Cookies.get(key)
 }
 
@@ -59,8 +118,7 @@ export function clearLoginCookies() {
   try {
     const keys = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
     keys.forEach((k) => {
-      // 移除 localStorage 中持久化的 cookie 值
-      try { localStorage.removeItem('cookie:' + k) } catch (_) {}
+      clearStoredAuthCookie(k)
       // 通过设置过期来移除浏览器 cookie
       try {
         document.cookie = `${k}=; Max-Age=0; path=/`;

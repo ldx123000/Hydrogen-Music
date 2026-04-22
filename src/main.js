@@ -27,7 +27,8 @@ app.mount('#app')
 
 // 延迟到空闲时再注册 MediaSession，避免阻塞首屏
 const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 500))
-if (window.process?.platform !== 'win32') {
+const runtimePlatform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
+if (!/Win/i.test(runtimePlatform)) {
   idle(async () => {
     try {
       const { initMediaSession } = await import('./utils/mediaSession')

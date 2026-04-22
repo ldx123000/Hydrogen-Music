@@ -12,7 +12,9 @@ import { noticeOpen } from "./dialog";
 // 检查是否有增强版API可用（新包名）
 let enhancedApi = null;
 try {
-    enhancedApi = require('@neteasecloudmusicapienhanced/api');
+    if (typeof require === 'function') {
+      enhancedApi = require('@neteasecloudmusicapienhanced/api');
+    }
 } catch (e) {
     console.log('@neteasecloudmusicapienhanced/api 未找到，使用传统请求方式');
 }
@@ -24,13 +26,10 @@ const request = axios.create({
 });
 const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
 const NCM_API_READY_TIMEOUT_MS = 10000
-const NCM_API_COOKIE_CACHE_TTL_MS = 1200
 let ncmApiReadyPromise = null
-let ncmApiCookieCache = {
-  value: '',
-  expiresAt: 0,
-}
-let ncmApiCookiePromise = null
+const defaultAdapter = typeof axios.getAdapter === 'function'
+  ? axios.getAdapter(axios.defaults.adapter)
+  : null
 
 function waitWithTimeout(promise, timeoutMs) {
   return new Promise((resolve, reject) => {
@@ -128,44 +127,117 @@ function buildAuthCookieString() {
     .join('; ')
 }
 
-function resetNcmApiCookieCache() {
-  ncmApiCookieCache = {
-    value: '',
-    expiresAt: 0,
+function buildAbsoluteUrl(baseURL, requestUrl) {
+  if (!requestUrl) return ''
+  try {
+    return new URL(requestUrl, baseURL || undefined).toString()
+  } catch (_) {
+    return String(requestUrl || '')
   }
-  ncmApiCookiePromise = null
+}
+
+function normalizeHeaders(headers) {
+  try {
+    if (axios.AxiosHeaders && typeof axios.AxiosHeaders.from === 'function') {
+      return axios.AxiosHeaders.from(headers || {}).toJSON()
+    }
+  } catch (_) {}
+
+  if (!headers || typeof headers !== 'object') return {}
+  return { ...headers }
+}
+
+function isFormDataPayload(data) {
+  return typeof FormData !== 'undefined' && data instanceof FormData
+}
+
+async function serializeRequestData(data) {
+  if (!isFormDataPayload(data)) return data
+
+  const entries = []
+  for (const [name, value] of data.entries()) {
+    if (typeof Blob !== 'undefined' && value instanceof Blob) {
+      entries.push({
+        name,
+        kind: 'blob',
+        value,
+        filename: typeof value.name === 'string' && value.name ? value.name : undefined,
+      })
+      continue
+    }
+
+    entries.push({
+      name,
+      kind: 'text',
+      value: String(value),
+    })
+  }
+
+  return {
+    __hmType: 'form-data',
+    entries,
+  }
 }
 
 export function invalidateNcmApiCookieCache() {
-  resetNcmApiCookieCache()
+  // 保留导出，兼容现有调用点；主进程请求链不再依赖渲染层缓存的原始 NCM Cookie。
 }
 
-async function getNcmApiCookieString() {
-  const now = Date.now()
-  if (ncmApiCookieCache.expiresAt > now) {
-    return ncmApiCookieCache.value
+async function ncmIpcAdapter(config) {
+  if (typeof windowApi === 'undefined' || typeof windowApi.requestNcmApi !== 'function') {
+    if (!defaultAdapter) {
+      throw new Error('NCM request adapter unavailable')
+    }
+    return defaultAdapter(config)
   }
 
-  if (ncmApiCookiePromise) return ncmApiCookiePromise
-
-  if (typeof windowApi === 'undefined' || typeof windowApi.getNcmApiCookieString !== 'function') {
-    return ''
-  }
-
-  ncmApiCookiePromise = Promise.resolve(windowApi.getNcmApiCookieString())
-    .then((cookieString) => normalizeCookieString(cookieString))
-    .catch(() => '')
-    .then((cookieString) => {
-      ncmApiCookieCache = {
-        value: cookieString,
-        expiresAt: Date.now() + NCM_API_COOKIE_CACHE_TTL_MS,
-      }
-      ncmApiCookiePromise = null
-      return cookieString
+  try {
+    const serializedData = await serializeRequestData(config.data)
+    const response = await windowApi.requestNcmApi({
+      url: buildAbsoluteUrl(config.baseURL, config.url),
+      method: String(config.method || 'get').toLowerCase(),
+      params: config.params || {},
+      data: serializedData,
+      headers: normalizeHeaders(config.headers),
+      timeout: config.timeout,
+      responseType: config.responseType,
     })
 
-  return ncmApiCookiePromise
+    const axiosResponse = {
+      data: response?.data,
+      status: Number(response?.status) || 500,
+      statusText: response?.statusText || '',
+      headers: response?.headers || {},
+      config,
+      request: null,
+    }
+
+    const validateStatus = config.validateStatus || (status => status >= 200 && status < 300)
+    if (!validateStatus(axiosResponse.status)) {
+      const errorCode = axiosResponse.status >= 500 ? axios.AxiosError.ERR_BAD_RESPONSE : axios.AxiosError.ERR_BAD_REQUEST
+      throw new axios.AxiosError(
+        `Request failed with status code ${axiosResponse.status}`,
+        errorCode,
+        config,
+        null,
+        axiosResponse
+      )
+    }
+
+    return axiosResponse
+  } catch (error) {
+    if (error instanceof axios.AxiosError) throw error
+    throw new axios.AxiosError(
+      error && error.message ? error.message : 'ncm-api-request-failed',
+      axios.AxiosError.ERR_NETWORK,
+      config,
+      null,
+      error && error.response ? error.response : null
+    )
+  }
 }
+
+request.defaults.adapter = ncmIpcAdapter
 
 // 防抖：避免同一时间多次触发自动退出
 let autoLoggingOut = false;
@@ -173,10 +245,7 @@ function triggerAutoLogout(reason) {
   if (autoLoggingOut) return;
   autoLoggingOut = true;
 
-  invalidateNcmApiCookieCache()
-
   void clearAccountScopedState({ clearSessionCookies: true }).finally(() => {
-    invalidateNcmApiCookieCache()
     // 轻微延迟后允许再次触发，避免请求风暴导致的重复提示
     setTimeout(() => { autoLoggingOut = false; }, 1500);
   })
@@ -199,8 +268,7 @@ request.interceptors.request.use(async function (config) {
   
   if(config.url != '/login/qr/check') {
     const authCookieString = isLogin() ? buildAuthCookieString() : ''
-    const apiCookieString = await getNcmApiCookieString()
-    const mergedCookieString = mergeCookieStrings(apiCookieString, authCookieString, config.params.cookie)
+    const mergedCookieString = mergeCookieStrings(authCookieString, config.params.cookie)
     if (mergedCookieString) config.params.cookie = mergedCookieString
   }
   if(libraryStore.needTimestamp.indexOf(config.url) != -1) {
@@ -240,10 +308,6 @@ request.interceptors.response.use(function (response) {
     const status = error?.response?.status
     const msg = error?.response?.data?.message || error?.response?.data?.msg
     const code = error?.response?.data?.code
-
-    if (code === -460) {
-      invalidateNcmApiCookieCache()
-    }
 
     // 若后端以HTTP身份错误返回，直接触发自动登出
     if (status === 401 || status === 403) {

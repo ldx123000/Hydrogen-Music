@@ -5,6 +5,7 @@
   import DataCheckAnimaton from './DataCheckAnimaton.vue'
   import { createQRcode, getQRcodeKey, checkQRcodeStatus } from '../api/login'
   import { loginHandle } from '../utils/handle'
+  import { isLogin } from '../utils/authority'
   import { noticeOpen } from '../utils/dialog'
 
   const props = defineProps(['firstLoadMode'])
@@ -122,8 +123,10 @@
 
   const checkQR = () => {
     if (loginCompleted.value || qrStatus.value === 803) {
-      firstLoadMode.value = 0
-      loadData()
+      if (!isLogin()) {
+        firstLoadMode.value = 0
+        loadData()
+      }
       return
     }
 
@@ -179,6 +182,7 @@
       } else if (result?.code === 803) {
         qrStatus.value = 803
         loginCompleted.value = true
+        qrKey.value = null
         clearTimer()
         void loginHandle(result, 'qr')
         emits('jumpTo')
@@ -206,7 +210,16 @@
   onActivated(() => {
     if (firstLoadMode.value !== 0) return
 
-    if (loginCompleted.value || qrStatus.value === 803 || !qrKey.value || !qrcodeImg.value) {
+    if (loginCompleted.value || qrStatus.value === 803) {
+      if (!isLogin()) {
+        loadData()
+        return
+      }
+      clearTimer()
+      return
+    }
+
+    if (!qrKey.value || !qrcodeImg.value) {
       loadData()
       return
     }

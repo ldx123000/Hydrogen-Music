@@ -175,6 +175,14 @@ export const initDownloadManager = () => {
             }
         }
     })
+
+    windowApi.downloadError(code => {
+        if (code == 'noSavePath') {
+            noticeOpen('请先在设置中设置下载目录', 2)
+            return
+        }
+        noticeOpen('下载失败', 2)
+    })
     
     isInitialized = true
 }

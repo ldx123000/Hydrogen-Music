@@ -122,7 +122,8 @@ async function getSirenLyricPayload(lyricUrl) {
 
 function syncWindowsTaskbarPlaybackState() {
     try {
-        if (window.process?.platform !== 'win32') return
+        const runtimePlatform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
+        if (!/Win/i.test(runtimePlatform)) return
         const hasCurrentSong = hasCurrentSongSelected()
         windowApi.updatePlaylistStatus({
             hasCurrentSong,

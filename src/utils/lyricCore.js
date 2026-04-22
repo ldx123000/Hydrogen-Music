@@ -94,6 +94,34 @@ function buildPureMusicRows(songDurationSec, withActive = false) {
     ];
 }
 
+function normalizePureTextLines(text) {
+    if (!text || typeof text !== 'string') return [];
+
+    const normalizedLines = [];
+    const lines = text.split(regNewLine);
+    for (let index = 0; index < lines.length; index++) {
+        const rawLine = lines[index];
+        if (typeof rawLine !== 'string') continue;
+
+        const normalized = index === 0 ? rawLine.replace(/^\uFEFF/, '').trim() : rawLine.trim();
+        if (isIgnoredPreludeLine(normalized)) continue;
+        if (!normalized) continue;
+
+        normalizedLines.push(normalized);
+    }
+
+    return normalizedLines;
+}
+
+function hasUntimedLyrics(lyrics) {
+    return Array.isArray(lyrics) && lyrics.some(item => !!item?.untimed);
+}
+
+function findFirstContentLyricIndex(lyrics) {
+    if (!Array.isArray(lyrics) || !lyrics.length) return -1;
+    return lyrics.findIndex(item => typeof item?.lyric === 'string' && item.lyric.trim());
+}
+
 function buildLocalMultiTrackTimeline(originalLyricText, translatedLyricText, romanizedLyricText, songDurationSec) {
     const preludeLines = extractUntimedPreludeLines(originalLyricText);
     const byTime = new Map();
@@ -257,26 +285,36 @@ function buildOnlineTimeline(originalLyricText, translatedLyricText, romanizedLy
     return [...preludeRows, ...normalizedResults];
 }
 
-function buildPureTextTimeline(originalLyricText, songDurationSec) {
-    const lines = (originalLyricText || '').split(regNewLine);
-    const processed = [];
+function buildPureTextTimeline(originalLyricText, translatedLyricText, romanizedLyricText, songDurationSec) {
+    const originalLines = normalizePureTextLines(originalLyricText);
+    if (!originalLines.length) return [];
 
-    for (const rawLine of lines) {
-        if (!rawLine || rawLine.trim() === '') continue;
-        processed.push({
-            lyric: rawLine.trim(),
-            tlyric: '',
-            rlyric: '',
-            time: 0,
-            active: true,
-        });
+    const translatedLines = normalizePureTextLines(translatedLyricText);
+    const romanizedLines = normalizePureTextLines(romanizedLyricText);
+
+    if (originalLines.some(text => text.includes('纯音乐')) || translatedLines.some(text => text.includes('纯音乐'))) {
+        return buildPureMusicRows(songDurationSec, false);
     }
+
+    const hasAlignedTranslated = translatedLines.length === originalLines.length;
+    const hasAlignedRomanized = romanizedLines.length === originalLines.length;
+
+    const normalizedDuration = Math.max(0, Number(songDurationSec) || 0);
+    const processed = originalLines.map((line, index) => ({
+        lyric: line,
+        tlyric: hasAlignedTranslated ? translatedLines[index] || '' : '',
+        rlyric: hasAlignedRomanized ? romanizedLines[index] || '' : '',
+        time: 0,
+        untimed: true,
+        active: true,
+    }));
 
     processed.push({
         lyric: '',
         tlyric: '',
         rlyric: '',
-        time: songDurationSec,
+        time: normalizedDuration,
+        untimed: true,
         active: true,
     });
 
@@ -295,7 +333,12 @@ export function buildLyricsTimeline(lyricPayload, { songDurationSec = 0, isLocal
     const hasTimeTag = timeTagSingle.test(originalLyricText);
 
     if (!hasTimeTag) {
-        return buildPureTextTimeline(originalLyricText, normalizedDuration);
+        return buildPureTextTimeline(
+            originalLyricText,
+            translatedLyricText,
+            romanizedLyricText,
+            normalizedDuration
+        );
     }
 
     if (isLocal) {
@@ -317,6 +360,11 @@ export function buildLyricsTimeline(lyricPayload, { songDurationSec = 0, isLocal
 
 export function findLyricIndexAtTime(lyrics, seekSeconds, biasSec = 0.2) {
     if (!Array.isArray(lyrics) || !lyrics.length) return -1;
+
+    if (hasUntimedLyrics(lyrics)) {
+        const firstContentIndex = findFirstContentLyricIndex(lyrics);
+        return firstContentIndex >= 0 ? firstContentIndex : 0;
+    }
 
     const seconds = Number(seekSeconds);
     if (!Number.isFinite(seconds)) return -1;

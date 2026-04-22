@@ -3,13 +3,17 @@ import { scanMusic } from './locaMusic'
 import { initDownloadManager } from './downloadManager'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
+import { useUserStore } from '../store/userStore'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from './quality'
 import { initializeCurrentAccountSession } from './accountSession'
+import { hasStoredBiliSession, migrateLegacyBiliSession } from './biliSession'
+import { migrateLegacyAuthSession } from './authority'
 
 const playerStore = usePlayerStore()
 const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation } = storeToRefs(playerStore)
 const localStore = useLocalStore()
+const userStore = useUserStore()
 
 export const initSettings = () => {
     windowApi.getSettings().then(settings => {
@@ -45,6 +49,12 @@ export const initSettings = () => {
 }
 //初始化
 export const init = async () => {
+    migrateLegacyAuthSession()
+    migrateLegacyBiliSession()
+    if (!hasStoredBiliSession() && userStore.biliUser) {
+        userStore.clearBiliAccountState()
+    }
+
     initSettings()
     initDownloadManager()  // 初始化下载管理器
     

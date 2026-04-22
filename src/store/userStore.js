@@ -28,6 +28,9 @@ export const useUserStore = defineStore('userStore', {
             this.favoritePlaylistName = null
             this.appOptionShow = false
         },
+        clearBiliAccountState() {
+            this.biliUser = null
+        },
         updateLikelist(likelist) {
             this.likelist = Array.isArray(likelist) ? likelist : []
         },

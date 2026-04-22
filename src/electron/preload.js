@@ -40,6 +40,9 @@ function downloadNext(callback) {
 function downloadProgress(callback) {
     ipcRenderer.on('download-progress', callback)
 }
+function downloadError(callback) {
+    ipcRenderer.on('download-error', (_event, code) => callback?.(code))
+}
 function downloadPause(close) {
     ipcRenderer.send('download-pause', close)
 }
@@ -140,8 +143,11 @@ function checkForUpdate() {
 function whenNcmApiReady() {
     return ipcRenderer.invoke('ncm-api-ready-state')
 }
-function getNcmApiCookieString() {
-    return ipcRenderer.invoke('ncm-api-cookie-string')
+function requestNcmApi(request) {
+    return ipcRenderer.invoke('ncm-api-request', request)
+}
+function requestTrustedResource(request) {
+    return ipcRenderer.invoke('trusted-resource-request', request)
 }
 function clearNcmApiCookies() {
     return ipcRenderer.invoke('ncm-api-cookie-clear')
@@ -207,6 +213,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     download,
     downloadNext,
     downloadProgress,
+    downloadError,
     downloadPause,
     downloadResume,
     downloadCancel,
@@ -234,7 +241,6 @@ contextBridge.exposeInMainWorld('windowApi', {
     getLastPlaylist: () => ipcRenderer.invoke('get-last-playlist'),
     openLocalFolder,
     saveLastPlaylist,
-    getRequestData: (request) => ipcRenderer.invoke('get-request-data', request),
     getBiliVideo: (request) => ipcRenderer.invoke('get-bili-video', request),
     downloadVideoProgress,
     cancelDownloadMusicVideo,
@@ -251,7 +257,8 @@ contextBridge.exposeInMainWorld('windowApi', {
     updateError,
     checkForUpdate,
     whenNcmApiReady,
-    getNcmApiCookieString,
+    requestNcmApi,
+    requestTrustedResource,
     clearNcmApiCookies,
     downloadUpdate,
     installUpdate,

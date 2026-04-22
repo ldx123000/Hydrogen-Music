@@ -14,10 +14,10 @@ function ensureStoreRefs() {
 let currentCallback = null
 
 export function dialogOpen(header, text, callback) {
+    dialogSetter(header, text)
+    currentCallback = typeof callback === 'function' ? callback : null
     const { dialogShow } = ensureStoreRefs();
     dialogShow.value = true
-    currentCallback = callback
-    dialogSetter(header, text)
 }
 export function dialogClose() {
     const { dialogShow } = ensureStoreRefs();
@@ -34,12 +34,18 @@ export function dialogClear() {
     dialogText.value = null
 }
 export function dialogCancel() {
-    currentCallback(false)
+    const callback = currentCallback
+    currentCallback = null
     dialogClose()
+    dialogClear()
+    if (typeof callback === 'function') callback(false)
 }
 export function dialogConfirm() {
-    currentCallback(true)
+    const callback = currentCallback
+    currentCallback = null
     dialogClose()
+    dialogClear()
+    if (typeof callback === 'function') callback(true)
 }
 
 let noticeTimer1 = null

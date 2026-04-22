@@ -40,15 +40,53 @@ const withCoverParam = (url, size = 512) => {
     return `${url}${hasQuery ? '&' : '?'}param=${size}y${size}`;
 };
 
-const coverBgUrl = computed(() => {
+const coverBgCandidateIndex = ref(0);
+
+const coverBgCandidates = computed(() => {
     const list = playerStore.songList || [];
     const idx = typeof playerStore.currentIndex === 'number' ? playerStore.currentIndex : 0;
     const song = list[idx] || null;
-    if (!song) return null;
-    if (song.type === 'local') return playerStore.localBase64Img || null;
-    const url = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url || null;
-    return withCoverParam(url, 512);
+    if (!song) return [];
+    if (song.type === 'local') return playerStore.localBase64Img ? [playerStore.localBase64Img] : [];
+
+    const candidates = [];
+    const pushCandidate = url => {
+        const normalizedUrl = typeof url === 'string' ? url.trim() : '';
+        if (!normalizedUrl) return;
+
+        const sizedUrl = withCoverParam(normalizedUrl, 512);
+        if (sizedUrl && !candidates.includes(sizedUrl)) candidates.push(sizedUrl);
+        if (sizedUrl !== normalizedUrl && !candidates.includes(normalizedUrl)) candidates.push(normalizedUrl);
+    };
+
+    pushCandidate(song.blurPicUrl);
+    pushCandidate(song.coverDeUrl);
+    pushCandidate(song.coverUrl);
+    pushCandidate(song.al?.picUrl);
+    pushCandidate(song.img1v1Url);
+
+    return candidates;
 });
+
+watch(
+    () => coverBgCandidates.value.join('\n'),
+    () => {
+        coverBgCandidateIndex.value = 0;
+    },
+    { immediate: true }
+);
+
+const coverBgUrl = computed(() => {
+    return coverBgCandidates.value[coverBgCandidateIndex.value] || null;
+});
+
+const handleCoverBgError = () => {
+    if (coverBgCandidateIndex.value >= coverBgCandidates.value.length - 1) {
+        coverBgCandidateIndex.value = coverBgCandidates.value.length;
+        return;
+    }
+    coverBgCandidateIndex.value += 1;
+};
 
 const showCoverBackdrop = computed(() => {
     return !!playerStore.coverBlur && !!coverBgUrl.value && !playerStore.videoIsPlaying;
@@ -60,6 +98,8 @@ const currentTrack = computed(() => {
     const idx = typeof playerStore.currentIndex === 'number' ? playerStore.currentIndex : 0;
     return list[idx] || null;
 });
+
+const isCurrentSirenSong = computed(() => currentTrack.value?.source === 'siren');
 
 const commentCount = ref(0);
 const commentCountRequestSerial = ref(0);
@@ -168,8 +208,19 @@ watch(currentTrack, (song) => {
             <div
                 v-if="showCoverBackdrop"
                 class="back-drop"
-                :style="{ backgroundImage: coverBgUrl ? `url(${coverBgUrl})` : 'none' }"
-            ></div>
+                :class="{ 'back-drop-siren': isCurrentSirenSong }"
+            >
+                <img
+                    v-if="coverBgUrl"
+                    :key="coverBgUrl"
+                    class="back-drop-image"
+                    :src="coverBgUrl"
+                    alt=""
+                    aria-hidden="true"
+                    referrerpolicy="no-referrer"
+                    @error="handleCoverBgError"
+                />
+            </div>
         </Transition>
         <Player
             class="player-container"
@@ -232,12 +283,27 @@ watch(currentTrack, (song) => {
         width: 120%;
         height: 120%;
         pointer-events: none;
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: cover;
-        filter: blur(50px) saturate(120%);
         transform: translate3d(-10%, -10%, 0);
         transition: 0.3s;
+        overflow: hidden;
+    }
+
+    .back-drop-image {
+        position: absolute;
+        top: 0;
+        left: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        filter: blur(50px) saturate(140%) brightness(1.08);
+        transform: scale(1.08);
+        transform-origin: center;
+        z-index: 0;
+    }
+
+    .back-drop-siren .back-drop-image {
+        filter: blur(50px) saturate(150%) brightness(1.18);
     }
 
     .back-drop::before {
@@ -249,6 +315,7 @@ watch(currentTrack, (song) => {
         width: 100%;
         height: 100%;
         background: var(--cover-backdrop-overlay, rgba(255, 255, 255, 0.3));
+        z-index: 1;
     }
 
     .player-container {

@@ -1,10 +1,10 @@
 <script setup>
 import { ref, watch, computed } from 'vue';
 import QRCode from 'qrcode';
-import axios from 'axios';
 import { songTime2, loadMusicVideo, unloadMusicVideo, pauseCurrentMusicVideo, reopenCurrentMusicVideo } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import { dialogOpen, noticeOpen } from '../utils/dialog';
+import { clearStoredBiliSession, hasStoredBiliSession, migrateLegacyBiliSession, readStoredBiliCookie, storeBiliCookies } from '../utils/biliSession';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
@@ -25,6 +25,10 @@ const timingList = ref(null);
 const progress = ref(0);
 const isDownloading = ref(false);
 const currentSongHasVideo = ref(false); // 当前歌曲是否确实有视频文件
+migrateLegacyBiliSession();
+if (!hasStoredBiliSession() && userStore.biliUser) {
+    userStore.clearBiliAccountState();
+}
 const headers = {
     Accept: '*/*',
     'Accept-Encoding': 'gzip, deflate',
@@ -35,30 +39,15 @@ const headers = {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 };
 
-const readStoredBiliCookie = () => {
-    const stored = localStorage.getItem('BiliCookie');
-    if (stored) return stored;
-    const safeDecode = v => {
-        if (!v) return v;
-        try {
-            const s = String(v);
-            return s.includes('%') ? decodeURIComponent(s) : s;
-        } catch (_) {
-            return String(v);
-        }
-    };
-    const sessdata = safeDecode(localStorage.getItem('Sessdata'));
-    if (!sessdata) return '';
-    const biliJct = safeDecode(localStorage.getItem('BiliJct'));
-    const dedeUserId = safeDecode(localStorage.getItem('DedeUserID'));
-    let cookieStr = `SESSDATA=${sessdata};`;
-    if (biliJct) cookieStr += ` bili_jct=${biliJct};`;
-    if (dedeUserId) cookieStr += ` DedeUserID=${dedeUserId};`;
-    return cookieStr;
-};
-
 const applyBiliCookieToHeaders = () => {
     headers.cookie = readStoredBiliCookie() || '';
+};
+
+const requestTrustedResource = (url, option = {}) => {
+    if (!windowApi || typeof windowApi.requestTrustedResource !== 'function') {
+        return Promise.reject(new Error('windowApi.requestTrustedResource 不可用'));
+    }
+    return windowApi.requestTrustedResource({ url, option });
 };
 
 const storeBiliCookiesFromLoginUrl = urlStr => {
@@ -86,13 +75,12 @@ const storeBiliCookiesFromLoginUrl = urlStr => {
     if (biliJct) cookieStr += ` bili_jct=${biliJct};`;
     if (dedeUserId) cookieStr += ` DedeUserID=${dedeUserId};`;
 
-    localStorage.setItem('Sessdata', sessdata);
-    if (biliJct) localStorage.setItem('BiliJct', biliJct);
-    else localStorage.removeItem('BiliJct');
-    if (dedeUserId) localStorage.setItem('DedeUserID', dedeUserId);
-    else localStorage.removeItem('DedeUserID');
-    localStorage.setItem('BiliCookie', cookieStr);
-    return cookieStr;
+    return storeBiliCookies({
+        sessdata,
+        biliJct,
+        dedeUserId,
+        cookieString: cookieStr,
+    });
 };
 
 const loginOrLogout = () => {
@@ -107,18 +95,14 @@ const loginOrLogout = () => {
             getQRCode();
         }
     } else {
-        localStorage.removeItem('Sessdata');
-        localStorage.removeItem('BiliJct');
-        localStorage.removeItem('DedeUserID');
-        localStorage.removeItem('BiliCookie');
+        clearStoredBiliSession();
         headers.cookie = '';
-        userStore.biliUser = null;
+        userStore.clearBiliAccountState();
         qrKey.value = null;
     }
 };
 const getQRCode = () => {
-    windowApi
-        .getRequestData({ url: 'https://passport.bilibili.com/x/passport-login/web/qrcode/generate', option: { headers: headers } })
+    requestTrustedResource('https://passport.bilibili.com/x/passport-login/web/qrcode/generate', { headers: headers })
         .then(result => {
             if (result.code === 0) {
                 qrKey.value = result.data.qrcode_key;
@@ -148,14 +132,11 @@ const getQRCode = () => {
 };
 const checkQRCode = async () => {
     try {
-        const result = await windowApi.getRequestData({
-            url: 'https://passport.bilibili.com/x/passport-login/web/qrcode/poll',
-            option: {
-                method: 'GET',
-                headers: headers,
-                params: {
-                    qrcode_key: qrKey.value,
-                },
+        const result = await requestTrustedResource('https://passport.bilibili.com/x/passport-login/web/qrcode/poll', {
+            method: 'GET',
+            headers: headers,
+            params: {
+                qrcode_key: qrKey.value,
             },
         });
         console.log('QR Code Check Result:', result);
@@ -220,10 +201,7 @@ const loginHandle = async data => {
         headers.cookie = cookieStr;
 
         // 使用正确的用户信息API
-        const userInfo = await windowApi.getRequestData({
-            url: 'https://api.bilibili.com/x/web-interface/nav',
-            option: { headers: headers },
-        });
+        const userInfo = await requestTrustedResource('https://api.bilibili.com/x/web-interface/nav', { headers: headers });
 
         console.log('用户信息响应:', userInfo);
 
@@ -261,12 +239,12 @@ const search = async () => {
             setDefault();
             selectedInfo.value = { bvid: bv };
             applyBiliCookieToHeaders();
-            const videoInfo = await windowApi.getRequestData({ url: 'http://api.bilibili.com/x/web-interface/view', option: { headers: headers, params: { bvid: bv } } });
+            const videoInfo = await requestTrustedResource('https://api.bilibili.com/x/web-interface/view', { headers: headers, params: { bvid: bv } });
             if (videoInfo.code == 0) {
                 currentVideoInfo.value = videoInfo.data;
-                const videoData = await windowApi.getRequestData({
-                    url: 'http://api.bilibili.com/x/player/playurl',
-                    option: { headers: headers, params: { bvid: bv, cid: currentVideoInfo.value.cid, fourk: 1, fnval: 80 } },
+                const videoData = await requestTrustedResource('https://api.bilibili.com/x/player/playurl', {
+                    headers: headers,
+                    params: { bvid: bv, cid: currentVideoInfo.value.cid, fourk: 1, fnval: 80 },
                 });
                 if (!videoData || videoData.code !== 0 || !videoData.data) {
                     currentVideoInfo.value.quality = null;
@@ -304,9 +282,9 @@ const selectPart = async cid => {
     setDefault();
     selectedInfo.value.part = cid;
     applyBiliCookieToHeaders();
-    const videoData = await windowApi.getRequestData({
-        url: 'http://api.bilibili.com/x/player/playurl',
-        option: { headers: headers, params: { bvid: selectedInfo.value.bvid, cid: cid, fourk: 1, fnval: 80 } },
+    const videoData = await requestTrustedResource('https://api.bilibili.com/x/player/playurl', {
+        headers: headers,
+        params: { bvid: selectedInfo.value.bvid, cid: cid, fourk: 1, fnval: 80 },
     });
     if (!videoData || videoData.code !== 0 || !videoData.data) {
         currentVideoInfo.value.quality = null;
@@ -324,7 +302,7 @@ const selectPart = async cid => {
     currentVideoInfo.value.duration = (videoData.data.dash && videoData.data.dash.duration) || currentVideoInfo.value.duration;
 };
 const selectQuality = (item, index) => {
-    if (!localStorage.getItem('Sessdata')) {
+    if (!hasStoredBiliSession()) {
         if (item != '流畅 360P' && item != '清晰 480P') {
             noticeOpen('该清晰度需要登录账号', 2);
             return;

@@ -23,11 +23,11 @@ function buildRequestConfig(extraOptions = {}) {
 }
 
 async function requestViaMain(url, options = {}) {
-    if (!windowApi || typeof windowApi.getRequestData !== 'function') {
-        throw new Error('windowApi.getRequestData 不可用')
+    if (!windowApi || typeof windowApi.requestTrustedResource !== 'function') {
+        throw new Error('windowApi.requestTrustedResource 不可用')
     }
 
-    return windowApi.getRequestData({
+    return windowApi.requestTrustedResource({
         url,
         option: buildRequestConfig(options),
     })

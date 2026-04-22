@@ -53,7 +53,7 @@
         <div class="cover">
           <img v-if="songList[currentIndex].type != 'local'" :src="(songList[currentIndex].coverUrl || songList[currentIndex].al.picUrl) + '?param=100y100'" alt="">
           <img v-else v-show="localBase64Img" :src="localBase64Img" alt="">
-          <img v-if="songList[currentIndex].type == 'local' && !localBase64Img" src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="">
+          <img v-if="songList[currentIndex].type == 'local' && !localBase64Img" src="https://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="">
         </div>
         <div class="music-info">
           <span class="music-name">{{getSongDisplayName(songList[currentIndex], '', showSongTranslation)}}</span>

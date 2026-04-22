@@ -52,14 +52,17 @@ export function isSirenSong(song) {
 export function normalizeSirenAlbum(album = {}) {
     const id = normalizeStringId(album.cid || album.id)
     const artistNames = normalizeArtistNames(album.artistes || album.artists)
-    const coverUrl = normalizeText(album.coverUrl || album.picUrl || album.blurPicUrl)
+    const coverUrl = normalizeText(album.coverUrl || album.picUrl || album.coverDeUrl || album.blurPicUrl)
+    const coverDeUrl = normalizeText(album.coverDeUrl || album.blurPicUrl)
+    const blurPicUrl = coverDeUrl || coverUrl
 
     return {
         id,
         cid: id,
         name: normalizeText(album.name) || '未知专辑',
         coverUrl,
-        blurPicUrl: coverUrl,
+        coverDeUrl: blurPicUrl || null,
+        blurPicUrl: blurPicUrl || null,
         artistNames: artistNames.join(' / '),
         artists: artistNames.map(name => ({ id: null, name })),
         artistes: artistNames,
@@ -71,7 +74,8 @@ export function normalizeSirenSong(song = {}, albumMeta = {}) {
     const sourceId = normalizeStringId(song.cid || song.id || song.sourceId)
     const albumId = normalizeStringId(song.albumCid || album.id)
     const artistNames = normalizeArtistNames(song.artists || song.artistes || album.artistes)
-    const coverUrl = normalizeText(song.coverUrl || album.coverUrl)
+    const coverUrl = normalizeText(song.coverUrl || album.coverUrl || album.coverDeUrl || album.blurPicUrl)
+    const coverDeUrl = normalizeText(song.coverDeUrl || song.blurPicUrl || album.coverDeUrl || album.blurPicUrl || coverUrl)
     const albumName = normalizeText(song.albumName || album.name)
 
     return {
@@ -92,6 +96,8 @@ export function normalizeSirenSong(song = {}, albumMeta = {}) {
         },
         albumCid: albumId,
         coverUrl: coverUrl || null,
+        coverDeUrl: coverDeUrl || null,
+        blurPicUrl: coverDeUrl || null,
         playable: true,
         vipOnly: false,
         duration: song.duration || null,

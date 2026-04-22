@@ -12,13 +12,14 @@ if (isCreateMpris) {
 }
 
 
-const { app, BrowserWindow, globalShortcut, Menu, ipcMain, session } = require('electron')
+const { app, BrowserWindow, globalShortcut, Menu, ipcMain, session, shell } = require('electron')
 const path = require('path')
 
 
 let myWindow = null
 let lyricWindow = null
 let forceQuit = false;
+const isDevServer = () => process.resourcesPath.indexOf(path.join('node_modules')) != -1
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
 let manualUpdateCheckInProgress = false;
 let ncmApiReadyResolved = false;
@@ -43,25 +44,6 @@ function waitForNcmApiReady() {
     return new Promise(resolve => {
         ncmApiReadyWaiters.push(resolve);
     });
-}
-
-async function getNcmApiCookieString() {
-    if (!session || !session.defaultSession) return ''
-
-    const cookieMap = new Map()
-
-    for (const url of NCM_API_COOKIE_URLS) {
-        try {
-            const cookies = await session.defaultSession.cookies.get({ url })
-            cookies.forEach(({ name, value }) => {
-                if (!name || value === undefined || value === null) return
-                cookieMap.set(name, value)
-            })
-        } catch (_) {}
-    }
-
-    if (cookieMap.size == 0) return ''
-    return Array.from(cookieMap.entries()).map(([name, value]) => `${name}=${value}`).join('; ')
 }
 
 async function clearNcmApiCookies() {
@@ -151,9 +133,6 @@ if (!gotTheLock) {
     })
     ipcMain.handle('ncm-api-ready-state', async () => {
         return waitForNcmApiReady()
-    })
-    ipcMain.handle('ncm-api-cookie-string', async () => {
-        return getNcmApiCookieString()
     })
     ipcMain.handle('ncm-api-cookie-clear', async () => {
         return clearNcmApiCookies()
@@ -256,10 +235,23 @@ const createWindow = () => {
         webPreferences: {
             //预加载脚本
             preload: path.resolve(__dirname, './src/electron/preload.js'),
-            webSecurity: false,
+            webSecurity: !isDevServer(),
+            nodeIntegration: false,
+            contextIsolation: true,
+            allowRunningInsecureContent: true,
         }
     })
     myWindow = win
+
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        try {
+            const parsedUrl = new URL(url)
+            if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
+                shell.openExternal(parsedUrl.toString())
+            }
+        } catch (_) {}
+        return { action: 'deny' }
+    })
 
     // 监听来自 ipcMain 的菜单更新事件（仅 macOS 生效，并加强负载校验）
     const { updateApplicationMenu } = require('./src/electron/shortcuts')
@@ -283,7 +275,7 @@ const createWindow = () => {
         }
     });
 
-    if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
+    if (isDevServer()) {
         win.loadURL('http://localhost:5173/')
         win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
             console.warn('Dev server not available, fallback to dist:', errorCode, errorDescription)
@@ -310,7 +302,7 @@ const createWindow = () => {
     const initPostShowFeatures = () => {
         if (postShowInitialized) return
         postShowInitialized = true
-        if (process.resourcesPath.indexOf(path.join('node_modules')) == -1) {
+        if (!isDevServer()) {
             // macOS: 禁用内置自动更新，改为手动检查（GitHub API）
             if (process.platform === 'darwin') {
                 return
@@ -493,16 +485,19 @@ const createLyricWindow = () => {
         backgroundColor: 'transparent',
         webPreferences: {
             preload: path.resolve(__dirname, './src/electron/preload.js'),
-            webSecurity: false,
+            webSecurity: !isDevServer(),
             nodeIntegration: false,
-            contextIsolation: true
+            contextIsolation: true,
+            allowRunningInsecureContent: true,
         }
     })
 
     lyricWindow = lyricWin
 
+    lyricWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
     const lyricHtml = path.join(process.env.DIST, 'dist/desktop-lyric.html')
-    if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
+    if (isDevServer()) {
         lyricWin.loadURL('http://localhost:5173/desktop-lyric.html')
         lyricWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
             console.warn('Dev server not available (desktop lyric), fallback to dist:', errorCode, errorDescription)
