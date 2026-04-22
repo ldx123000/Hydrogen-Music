@@ -3,8 +3,9 @@ import { storeToRefs } from 'pinia';
 import pinia from '../store/pinia';
 import { usePlayerStore } from '../store/playerStore';
 import { getSongDisplayName } from './songName';
+import { subscribePlaybackTick } from './player/playbackTicker';
 
-let lyricProgressInterval = null;
+let stopLyricProgressTicker = null;
 let songChangeTimer = null;
 let progressTimer = null;
 let bridgeInitialized = false;
@@ -18,6 +19,8 @@ let unwatchIsDesktopLyricOpen = null;
 let unwatchSongSnapshot = null;
 let unwatchProgress = null;
 let unwatchCurrentLyricIndex = null;
+let removeLyricDataRequestListener = null;
+let removeDesktopLyricClosedListener = null;
 
 const playerStore = usePlayerStore(pinia);
 const {
@@ -48,19 +51,22 @@ function clearProgressTimer() {
 }
 
 function stopDesktopLyricSync() {
-    if (!lyricProgressInterval) return;
-
-    clearInterval(lyricProgressInterval);
-    lyricProgressInterval = null;
+    if (!stopLyricProgressTicker) return;
+    stopLyricProgressTicker();
+    stopLyricProgressTicker = null;
 }
 
 function startDesktopLyricSync() {
     stopDesktopLyricSync();
     if (!isDesktopLyricOpen.value || !playing.value) return;
 
-    lyricProgressInterval = setInterval(() => {
+    stopLyricProgressTicker = subscribePlaybackTick(() => {
         sendLyricProgress();
-    }, 300);
+    }, {
+        id: 'desktop-lyric-progress',
+        interval: 200,
+        immediate: true,
+    });
 }
 
 function serializePayload(payload) {
@@ -203,13 +209,13 @@ export const initDesktopLyric = () => {
             playerStore.isDesktopLyricOpen = isVisible;
         });
 
-        window.electronAPI.getCurrentLyricData(() => {
+        removeLyricDataRequestListener = window.electronAPI.getCurrentLyricData(() => {
             sendCurrentLyricData({ force: true });
             sendPlayState({ force: true });
             sendLyricProgress({ force: true });
         });
 
-        window.electronAPI.onDesktopLyricClosed(() => {
+        removeDesktopLyricClosedListener = window.electronAPI.onDesktopLyricClosed(() => {
             playerStore.isDesktopLyricOpen = false;
         });
     }
@@ -305,6 +311,10 @@ export const destroyDesktopLyric = () => {
         unwatchCurrentLyricIndex();
         unwatchCurrentLyricIndex = null;
     }
+    removeLyricDataRequestListener?.();
+    removeLyricDataRequestListener = null;
+    removeDesktopLyricClosedListener?.();
+    removeDesktopLyricClosedListener = null;
 
     lastSongPayload = null;
     lastProgressPayload = null;

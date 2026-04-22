@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { isLogin } from '../utils/authority'
 import { noticeOpen } from '../utils/dialog'
+import { ensureDeferredAppInit } from '../utils/initApp'
 // 路由组件全部切换为懒加载，减小首屏体积
 const HomePage = () => import('../views/HomePage.vue')
 const CloudDisk = () => import('../views/CloudDisk.vue')
@@ -205,6 +206,20 @@ const routes = [
 const router = createRouter({
     history: createWebHashHistory(),
     routes,
+})
+
+router.beforeEach((to, from, next) => {
+    const fullPath = typeof to?.fullPath === 'string' ? to.fullPath : ''
+    const shouldWarmDeferredInit = fullPath.startsWith('/mymusic')
+        || fullPath.startsWith('/cloud')
+        || fullPath.startsWith('/personalfm')
+        || fullPath.startsWith('/siren')
+
+    if (shouldWarmDeferredInit) {
+        void ensureDeferredAppInit()
+    }
+
+    next()
 })
 
 export default router

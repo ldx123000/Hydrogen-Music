@@ -1,8 +1,8 @@
 <script setup>
-import { ref, onActivated, watch } from 'vue'
+import { ref, onActivated, onBeforeUnmount, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { noticeOpen, dialogOpen } from '@/utils/dialog'
-import { initSettings } from '@/utils/initApp'
+import { applySettingsSnapshot, initSettings } from '@/utils/initApp'
 import { getVipInfo } from '@/api/user'
 import { isLogin } from '@/utils/authority'
 import { useUserStore } from '@/store/userStore'
@@ -11,6 +11,7 @@ import Selector from '../components/Selector.vue'
 import UpdateDialog from '../components/UpdateDialog.vue'
 import { setTheme, getSavedTheme } from '@/utils/theme'
 import { logoutCurrentAccountSession } from '@/utils/accountSession'
+import { getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -93,6 +94,7 @@ const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ','
 const showUpdateDialog = ref(false)
 const newVersion = ref('')
 let updateListenersInitialized = false
+let removeUpdateListeners = null
 
 const normalizeSearchAssistLimit = value => {
     const num = Number.parseInt(value, 10)
@@ -118,24 +120,28 @@ const loadVipInfo = async () => {
     }
 }
 
+const applySettingsToForm = settings => {
+    if (!settings) return
+    musicLevel.value = settings.music.level
+    lyricSize.value = settings.music.lyricSize
+    tlyricSize.value = settings.music.tlyricSize
+    rlyricSize.value = settings.music.rlyricSize
+    lyricInterlude.value = settings.music.lyricInterlude
+    searchAssistLimit.value = normalizeSearchAssistLimit(settings.music.searchAssistLimit)
+    playerStore.showSongTranslation = settings?.music?.showSongTranslation !== false
+    videoFolder.value = settings.local.videoFolder
+    downloadFolder.value = settings.local.downloadFolder
+    downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder
+    downloadSaveLyricFile.value = !!settings.local.downloadSaveLyricFile
+    localFolder.value = settings.local.localFolder
+    shortcutsList.value = settings.shortcuts
+    globalShortcuts.value = settings.other.globalShortcuts
+    quitApp.value = settings.other.quitApp
+}
+
 onActivated(() => {
-    windowApi.getSettings().then(settings => {
-        if (!settings) return
-        musicLevel.value = settings.music.level
-        lyricSize.value = settings.music.lyricSize
-        tlyricSize.value = settings.music.tlyricSize
-        rlyricSize.value = settings.music.rlyricSize
-        lyricInterlude.value = settings.music.lyricInterlude
-        searchAssistLimit.value = normalizeSearchAssistLimit(settings.music.searchAssistLimit)
-        playerStore.showSongTranslation = settings?.music?.showSongTranslation !== false
-        videoFolder.value = settings.local.videoFolder
-        downloadFolder.value = settings.local.downloadFolder
-        downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder
-        downloadSaveLyricFile.value = !!settings.local.downloadSaveLyricFile
-        localFolder.value = settings.local.localFolder
-        shortcutsList.value = settings.shortcuts
-        globalShortcuts.value = settings.other.globalShortcuts
-        quitApp.value = settings.other.quitApp
+    void getSettingsSnapshot().then(settings => {
+        applySettingsToForm(settings)
     })
 
     // Initialize theme selection
@@ -160,8 +166,8 @@ watch(
             const isLeavingToPlayer = prev === true && now === false
             const inSettings = router.currentRoute.value?.name === 'settings'
             if (isLeavingToPlayer && inSettings) {
-                setAppSettings()
-                initSettings()
+                const snapshot = setAppSettings()
+                initSettings({ settings: snapshot, hydrateLocalMusic: true })
                 noticeOpen('设置已保存', 2)
             }
         } catch (_) {
@@ -175,11 +181,17 @@ const setupUpdateListeners = () => {
     if (updateListenersInitialized) return
     updateListenersInitialized = true
     // 监听手动更新检查结果（不显示大窗弹出）
-    windowApi.manualUpdateAvailable(version => {
+    removeUpdateListeners = windowApi.manualUpdateAvailable(version => {
         newVersion.value = version
         // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
     })
 }
+
+onBeforeUnmount(() => {
+    removeUpdateListeners?.()
+    removeUpdateListeners = null
+    updateListenersInitialized = false
+})
 
 watch(
     () => userStore.user?.userId ?? null,
@@ -194,7 +206,7 @@ watch(
 )
 
 const setAppSettings = () => {
-    let settings = {
+    const settings = {
         music: {
             level: musicLevel.value,
             lyricSize: lyricSize.value,
@@ -217,15 +229,19 @@ const setAppSettings = () => {
             quitApp: quitApp.value,
         },
     }
+
+    const snapshot = setCachedSettingsSnapshot(settings)
     windowApi.setSettings(JSON.stringify(settings))
+    applySettingsSnapshot(snapshot, { hydrateLocalMusic: false })
+    return snapshot
 }
 
 // apply theme immediately when user changes
 watch(theme, val => setTheme(val))
 
 onBeforeRouteLeave((to, from, next) => {
-    setAppSettings()
-    initSettings()
+    const snapshot = setAppSettings()
+    initSettings({ settings: snapshot, hydrateLocalMusic: true })
     next()
     noticeOpen('设置已保存', 2)
 })

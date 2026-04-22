@@ -16,7 +16,94 @@ const registerShortcuts = require('./shortcuts')
 const Store = require('electron-store').default;
 const CancelToken = axios.CancelToken
 
+const moduleState = {
+    initialized: false,
+    win: null,
+    app: null,
+    lyricFunctions: {},
+    removeWindowStateListeners: null,
+}
+
+function createDynamicProxy(getTarget) {
+    return new Proxy({}, {
+        get(_target, property) {
+            const currentTarget = getTarget()
+            const value = currentTarget?.[property]
+            return typeof value === 'function' ? value.bind(currentTarget) : value
+        },
+        set(_target, property, value) {
+            const currentTarget = getTarget()
+            if (!currentTarget) return true
+            currentTarget[property] = value
+            return true
+        },
+        has(_target, property) {
+            const currentTarget = getTarget()
+            return currentTarget ? property in currentTarget : false
+        },
+    })
+}
+
+function getActiveWindow() {
+    return moduleState.win
+}
+
+function sendWindowMaximizedState() {
+    const win = getActiveWindow()
+    if (!win || win.isDestroyed?.()) return
+    if (!win.webContents || win.webContents.isDestroyed?.()) return
+    win.webContents.send('window-maximized-changed', win.isMaximized())
+}
+
+function attachWindowStateListeners(win) {
+    moduleState.removeWindowStateListeners?.()
+
+    if (!win || win.isDestroyed?.()) {
+        moduleState.removeWindowStateListeners = null
+        return
+    }
+
+    const onWindowStateChange = () => {
+        sendWindowMaximizedState()
+    }
+
+    win.on('maximize', onWindowStateChange)
+    win.on('unmaximize', onWindowStateChange)
+    win.on('restore', onWindowStateChange)
+
+    moduleState.removeWindowStateListeners = () => {
+        try { win.removeListener('maximize', onWindowStateChange) } catch (_) {}
+        try { win.removeListener('unmaximize', onWindowStateChange) } catch (_) {}
+        try { win.removeListener('restore', onWindowStateChange) } catch (_) {}
+    }
+}
+
 module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
+    moduleState.win = win
+    moduleState.app = app
+    moduleState.lyricFunctions = lyricFunctions
+    attachWindowStateListeners(win)
+
+    if (moduleState.initialized) {
+        return {
+            setWindow(nextWin) {
+                moduleState.win = nextWin
+                attachWindowStateListeners(nextWin)
+            },
+            setApp(nextApp) {
+                moduleState.app = nextApp
+            },
+            setLyricFunctions(nextLyricFunctions = {}) {
+                moduleState.lyricFunctions = nextLyricFunctions
+            },
+        }
+    }
+
+    moduleState.initialized = true
+    win = createDynamicProxy(() => moduleState.win)
+    app = createDynamicProxy(() => moduleState.app)
+    lyricFunctions = createDynamicProxy(() => moduleState.lyricFunctions)
+
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
@@ -70,7 +157,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const getManagedVideoFolder = baseFolder => {
         const normalizedBaseFolder = typeof baseFolder === 'string' ? baseFolder.trim() : ''
         if (!normalizedBaseFolder) return ''
-        return path.join(normalizedBaseFolder, 'HydrogenMusicVideoCache')
+        return path.resolve(normalizedBaseFolder, 'HydrogenMusicVideoCache')
     }
 
     const getLegacyVideoFolder = baseFolder => {
@@ -80,14 +167,21 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     }
 
     const getVideoStorageRoots = baseFolder => {
+        // 读取时兼容历史版本直接写在用户目录根下的视频缓存，但新写入/清理只使用受管子目录。
         const roots = []
-        const legacyVideoFolder = getLegacyVideoFolder(baseFolder)
         const managedVideoFolder = getManagedVideoFolder(baseFolder)
+        const legacyVideoFolder = getLegacyVideoFolder(baseFolder)
 
-        if (legacyVideoFolder) roots.push(legacyVideoFolder)
         if (managedVideoFolder) roots.push(path.resolve(managedVideoFolder))
+        if (legacyVideoFolder) roots.push(legacyVideoFolder)
 
         return Array.from(new Set(roots))
+    }
+
+    const getVideoCleanupRoots = baseFolder => {
+        const managedVideoFolder = getManagedVideoFolder(baseFolder)
+        if (!managedVideoFolder) return []
+        return [path.resolve(managedVideoFolder)]
     }
 
     const getVideoCacheFileName = params => {
@@ -100,11 +194,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     }
 
     const getPreferredVideoSavePath = (baseFolder, params) => {
-        const legacyVideoFolder = getLegacyVideoFolder(baseFolder)
         const managedVideoFolder = getManagedVideoFolder(baseFolder)
-        const targetFolder = legacyVideoFolder || managedVideoFolder
-        if (!targetFolder) return ''
-        return path.join(targetFolder, getVideoCacheFileName(params))
+        if (!managedVideoFolder) return ''
+        return path.join(managedVideoFolder, getVideoCacheFileName(params))
     }
 
     const getVideoCacheCandidatePaths = (baseFolder, params) => {
@@ -493,13 +585,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.on('window-min', () => {
         win.minimize()
     })
-    const sendWindowMaximizedState = () => {
-        if (win.isDestroyed() || win.webContents.isDestroyed()) return
-        win.webContents.send('window-maximized-changed', win.isMaximized())
-    }
 
     ipcMain.removeHandler('window-is-maximized')
-    ipcMain.handle('window-is-maximized', () => win.isMaximized())
+    ipcMain.handle('window-is-maximized', () => win?.isMaximized?.() || false)
 
     ipcMain.on('window-max', () => {
         if (win.isMaximized()) {
@@ -507,18 +595,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } else {
             win.maximize()
         }
-    })
-
-    win.on('maximize', () => {
-        sendWindowMaximizedState()
-    })
-
-    win.on('unmaximize', () => {
-        sendWindowMaximizedState()
-    })
-
-    win.on('restore', () => {
-        sendWindowMaximizedState()
     })
     ipcMain.on('window-close', async () => {
         const settings = await settingsStore.get('settings')
@@ -811,6 +887,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
         return false
     }
+    const inflightMusicVideoExistenceChecks = new Map()
     async function saveMusicVideo(data) {
         const normalizedPath = normalizeStoredVideoPath(data?.path)
         if (!normalizedPath) return
@@ -1026,27 +1103,45 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     })
     ipcMain.handle('music-video-isexists', async (e, obj) => {
-        console.log('检查视频是否存在 - 歌曲ID:', obj.id, '方法:', obj.method)
-        const result = await searchMusicVideo(obj.id)
-        console.log('searchMusicVideo 结果:', result)
+        const lookupMethod = typeof obj?.method === 'string' ? obj.method : 'verify'
+        const lookupId = obj?.id
+        if (lookupId === null || lookupId === undefined || lookupId === '') return false
 
-        if (result) {
+        const lookupKey = `${lookupMethod}:${lookupId}`
+        if (inflightMusicVideoExistenceChecks.has(lookupKey)) {
+            return inflightMusicVideoExistenceChecks.get(lookupKey)
+        }
+
+        const lookupTask = (async () => {
+            console.log('检查视频是否存在 - 歌曲ID:', lookupId, '方法:', lookupMethod)
+            const result = await searchMusicVideo(lookupId)
+            console.log('searchMusicVideo 结果:', result)
+
+            if (!result) {
+                console.log('没有找到该歌曲的视频数据')
+                return false
+            }
+
             const normalizedPath = normalizeStoredVideoPath(result.data?.path, { allowExistingFileOutsideRoots: true })
             if (!normalizedPath) return false
             result.data.path = normalizedPath
-            if (obj.method == 'get') return result
+            if (lookupMethod == 'get') return result
             const file = await fileIsExists(normalizedPath)
             console.log('文件是否存在:', file, '路径:', result.data.path)
             if (!file) return '404'
-            else return result
-        } else {
-            console.log('没有找到该歌曲的视频数据')
-            return false
-        }
+            return result
+        })().finally(() => {
+            if (inflightMusicVideoExistenceChecks.get(lookupKey) === lookupTask) {
+                inflightMusicVideoExistenceChecks.delete(lookupKey)
+            }
+        })
+
+        inflightMusicVideoExistenceChecks.set(lookupKey, lookupTask)
+        return lookupTask
     })
     ipcMain.handle('clear-unused-video', async (e) => {
         const settings = await settingsStore.get('settings')
-        const folderPaths = getVideoStorageRoots(settings?.local?.videoFolder)
+        const folderPaths = getVideoCleanupRoots(settings?.local?.videoFolder)
         if (folderPaths.length === 0) return 'noSavePath'
         const musicVideo = await getStoredMusicVideos()
         const trackedPaths = new Set(
@@ -1452,4 +1547,17 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         // 可以在这里添加取消更新的逻辑，例如停止下载等
         win.setProgressBar(-1); // 隐藏进度条
     });
+
+    return {
+        setWindow(nextWin) {
+            moduleState.win = nextWin
+            attachWindowStateListeners(nextWin)
+        },
+        setApp(nextApp) {
+            moduleState.app = nextApp
+        },
+        setLyricFunctions(nextLyricFunctions = {}) {
+            moduleState.lyricFunctions = nextLyricFunctions
+        },
+    }
 }

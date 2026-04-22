@@ -9,6 +9,7 @@ import './assets/css/common.css'
 import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
+import { init } from './utils/initApp'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
@@ -17,25 +18,7 @@ app.directive('lazy', lazy)
 initTheme()
 app.mount('#app')
 
-// 懒加载初始化逻辑，减小首屏包体
-;(async () => {
-  try {
-    const { init } = await import('./utils/initApp')
-    init()
-  } catch (_) {}
-})()
-
-// 延迟到空闲时再注册 MediaSession，避免阻塞首屏
-const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 500))
-const runtimePlatform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
-if (!/Win/i.test(runtimePlatform)) {
-  idle(async () => {
-    try {
-      const { initMediaSession } = await import('./utils/mediaSession')
-      initMediaSession()
-    } catch (_) {}
-  })
-}
+void init().catch(() => {})
 
 // Prevent default browser file open on drag/drop globally
 window.addEventListener('dragover', (e) => {

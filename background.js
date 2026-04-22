@@ -507,8 +507,24 @@ const createLyricWindow = () => {
         lyricWin.loadFile(lyricHtml)
     }
 
+    let bumpTopMostTimer = null
+    const clearBumpTopMostTimer = () => {
+        if (!bumpTopMostTimer) return
+        clearTimeout(bumpTopMostTimer)
+        bumpTopMostTimer = null
+    }
+
+    const scheduleBumpTopMost = (delay = 0) => {
+        clearBumpTopMostTimer()
+        bumpTopMostTimer = setTimeout(() => {
+            bumpTopMostTimer = null
+            bumpTopMost()
+        }, delay)
+    }
+
     // Windows/UWP: 提升置顶效果的工具方法（无需管理员权限）
     const bumpTopMost = () => {
+        if (lyricWin.isDestroyed()) return
         try {
             // 再次声明置顶，提高 Z 序
             lyricWin.setAlwaysOnTop(true)
@@ -524,7 +540,7 @@ const createLyricWindow = () => {
         // macOS: 提高层级，覆盖全屏和 Space（忽略异常以兼容跨平台）
         try { lyricWin.setAlwaysOnTop(true, 'screen-saver') } catch (_) { }
         // 可见后小延时再次顶置，规避某些 UWP 抢焦点导致的抢占
-        setTimeout(() => bumpTopMost(), 50)
+        scheduleBumpTopMost(50)
     })
 
     // 添加备用显示逻辑，防止ready-to-show事件不触发
@@ -537,6 +553,7 @@ const createLyricWindow = () => {
     }, 2000)
 
     lyricWin.on('closed', () => {
+        clearBumpTopMostTimer()
         lyricWindow = null
     })
 
@@ -544,14 +561,19 @@ const createLyricWindow = () => {
 
     // 监听关键事件并在 Windows 上重新顶置
     if (process.platform === 'win32') {
-        const reboundEvents = ['show', 'focus', 'blur', 'resize', 'move', 'restore']
-        reboundEvents.forEach(evt => {
+        const immediateReboundEvents = ['show', 'focus', 'restore']
+        immediateReboundEvents.forEach(evt => {
             lyricWin.on(evt, () => bumpTopMost())
+        })
+
+        const deferredReboundEvents = ['blur', 'resize']
+        deferredReboundEvents.forEach(evt => {
+            lyricWin.on(evt, () => scheduleBumpTopMost(80))
         })
         // 当主窗口获得/失去焦点时也尝试顶置一次（减少被 UWP 挤压的概率）
         if (myWindow) {
-            myWindow.on('focus', () => bumpTopMost())
-            myWindow.on('blur', () => bumpTopMost())
+            myWindow.on('focus', () => scheduleBumpTopMost(40))
+            myWindow.on('blur', () => scheduleBumpTopMost(40))
         }
     }
 

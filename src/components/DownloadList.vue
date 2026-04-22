@@ -1,5 +1,5 @@
 <script setup>
-  import { ref } from 'vue'
+  import { ref, onUnmounted } from 'vue'
   import VueSlider from 'vue-slider-component'
   import { noticeOpen } from '../utils/dialog'
   import { checkMusic, getMusicUrl } from '../api/song'
@@ -19,8 +19,12 @@
   initDownloadManager()
   
   // 只注册进度回调（UI相关）
-  windowApi.downloadProgress((event, value) => {
+  const removeDownloadProgressListener = windowApi.downloadProgress((event, value) => {
     progress.value = value
+  })
+
+  onUnmounted(() => {
+    removeDownloadProgressListener?.()
   })
 
   const changeState = (flag) => {

@@ -28,6 +28,7 @@ const {
 } = storeToRefs(playerStore);
 
 const lyricScroll = ref();
+const lyricContent = ref();
 const isLyricActive = ref(true);
 const isManualScrollActive = ref(false);
 const lycCurrentIndex = ref(null);
@@ -45,8 +46,9 @@ let manualScrollReleaseTimer = null;
 let lyricWheelHandler = null;
 
 let lyricRevealToken = 0;
-let lyricScrollAnimationFrame = null;
+let lyricContentAnimation = null;
 let lyricScrollAnimationToken = 0;
+let lyricScrollAnimationTargetTop = null;
 
 const LYRIC_FONT_READY_TIMEOUT_MS = 900;
 const LYRIC_LAYOUT_STABLE_SAMPLE_TARGET = 2;
@@ -54,6 +56,7 @@ const LYRIC_LAYOUT_STABLE_MAX_ATTEMPTS = 8;
 const MANUAL_SCROLL_IDLE_MS = 1000;
 const LYRIC_SCROLL_SYNC_TOLERANCE_PX = 2;
 const LYRIC_AUTO_SCROLL_DURATION_MS = 580;
+const LYRIC_AUTO_SCROLL_EASING = 'cubic-bezier(0.4, 0, 0.12, 1)';
 const LYRIC_FOLLOW_TOP_OFFSET_PX = 260;
 const LYRIC_FOLLOW_BOTTOM_GUTTER_PX = 180;
 const LYRIC_FOLLOW_VISIBLE_GUTTER_PX = 24;
@@ -251,56 +254,6 @@ function getLyricContentLineElement(index) {
     return wrapper.querySelector('.line') || wrapper;
 }
 
-function calcBezierAxis(t, a1, a2) {
-    const c = 3 * a1;
-    const b = 3 * (a2 - a1) - c;
-    const a = 1 - c - b;
-    return ((a * t + b) * t + c) * t;
-}
-
-function calcBezierSlope(t, a1, a2) {
-    const c = 3 * a1;
-    const b = 3 * (a2 - a1) - c;
-    const a = 1 - c - b;
-    return (3 * a * t + 2 * b) * t + c;
-}
-
-function binarySubdivideBezier(x, a, b, x1, x2) {
-    let currentStart = a;
-    let currentEnd = b;
-    let currentT = a;
-
-    for (let i = 0; i < 10; i++) {
-        currentT = currentStart + (currentEnd - currentStart) / 2;
-        const currentX = calcBezierAxis(currentT, x1, x2) - x;
-        if (Math.abs(currentX) < 1e-7) break;
-        if (currentX > 0) currentEnd = currentT;
-        else currentStart = currentT;
-    }
-
-    return currentT;
-}
-
-function solveBezierT(x, x1, x2) {
-    let t = x;
-    for (let i = 0; i < 4; i++) {
-        const slope = calcBezierSlope(t, x1, x2);
-        if (Math.abs(slope) < 0.001) break;
-        const currentX = calcBezierAxis(t, x1, x2) - x;
-        t -= currentX / slope;
-    }
-
-    if (t >= 0 && t <= 1) return t;
-    return binarySubdivideBezier(x, 0, 1, x1, x2);
-}
-
-function easeLyricScroll(progress) {
-    if (progress <= 0) return 0;
-    if (progress >= 1) return 1;
-    const t = solveBezierT(progress, 0.4, 0.12);
-    return calcBezierAxis(t, 0, 1);
-}
-
 function getLyricFollowTopOffset(scrollEl, wrapperHeight = 0) {
     if (!scrollEl) return LYRIC_FOLLOW_TOP_OFFSET_PX;
 
@@ -355,12 +308,58 @@ function clearManualScrollReleaseTimer() {
     manualScrollReleaseTimer = null;
 }
 
-function cancelLyricScrollAnimation() {
-    lyricScrollAnimationToken += 1;
-    if (lyricScrollAnimationFrame !== null && typeof cancelAnimationFrame === 'function') {
-        cancelAnimationFrame(lyricScrollAnimationFrame);
+function getLyricContentVisualShiftY() {
+    const contentEl = lyricContent.value;
+    if (!contentEl || typeof getComputedStyle !== 'function') return 0;
+
+    const transform = getComputedStyle(contentEl).transform;
+    if (!transform || transform === 'none') return 0;
+
+    try {
+        if (typeof DOMMatrixReadOnly === 'function') {
+            return new DOMMatrixReadOnly(transform).m42 || 0;
+        }
+        if (typeof WebKitCSSMatrix === 'function') {
+            return new WebKitCSSMatrix(transform).m42 || 0;
+        }
+    } catch (_) {
+        // fall through to string parsing
     }
-    lyricScrollAnimationFrame = null;
+
+    const matrix3dMatch = transform.match(/^matrix3d\((.+)\)$/);
+    if (matrix3dMatch) {
+        const values = matrix3dMatch[1].split(',').map(value => Number(value.trim()));
+        return Number.isFinite(values[13]) ? values[13] : 0;
+    }
+
+    const matrixMatch = transform.match(/^matrix\((.+)\)$/);
+    if (matrixMatch) {
+        const values = matrixMatch[1].split(',').map(value => Number(value.trim()));
+        return Number.isFinite(values[5]) ? values[5] : 0;
+    }
+
+    return 0;
+}
+
+function cancelLyricScrollAnimation({ preserveVisualPosition = false } = {}) {
+    const scrollEl = getLyricScrollElement();
+    if (preserveVisualPosition && scrollEl) {
+        const visualShiftY = getLyricContentVisualShiftY();
+        if (Math.abs(visualShiftY) > 0.1) {
+            setLyricScrollTop(scrollEl, Math.max(0, scrollEl.scrollTop - visualShiftY));
+        }
+    }
+
+    lyricScrollAnimationToken += 1;
+    if (lyricContentAnimation) {
+        try {
+            lyricContentAnimation.cancel();
+        } catch (_) {
+            // ignore cancellation errors from torn-down animations
+        }
+        lyricContentAnimation = null;
+    }
+    lyricScrollAnimationTargetTop = null;
 }
 
 function setLyricScrollTop(scrollEl, top) {
@@ -372,43 +371,62 @@ function animateLyricScrollTop(scrollEl, targetTop) {
     if (!scrollEl) return;
 
     const normalizedTargetTop = Math.max(0, Number(targetTop) || 0);
+    if (
+        lyricContentAnimation !== null &&
+        lyricScrollAnimationTargetTop !== null &&
+        Math.abs(lyricScrollAnimationTargetTop - normalizedTargetTop) <= LYRIC_SCROLL_SYNC_TOLERANCE_PX
+    ) {
+        return;
+    }
+
+    if (lyricContentAnimation) {
+        cancelLyricScrollAnimation({ preserveVisualPosition: true });
+    }
+
     const startTop = scrollEl.scrollTop;
     const delta = normalizedTargetTop - startTop;
 
     if (Math.abs(delta) <= LYRIC_SCROLL_SYNC_TOLERANCE_PX) {
+        lyricScrollAnimationTargetTop = null;
         setLyricScrollTop(scrollEl, normalizedTargetTop);
         return;
     }
 
-    cancelLyricScrollAnimation();
-    if (typeof requestAnimationFrame !== 'function') {
-        setLyricScrollTop(scrollEl, normalizedTargetTop);
-        return;
-    }
+    const contentEl = lyricContent.value;
+    lyricScrollAnimationTargetTop = normalizedTargetTop;
+    setLyricScrollTop(scrollEl, normalizedTargetTop);
+
+    if (!contentEl || typeof contentEl.animate !== 'function') return;
 
     const animationToken = lyricScrollAnimationToken;
-    const startTime = typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? performance.now()
-        : Date.now();
 
-    const step = now => {
-        if (animationToken !== lyricScrollAnimationToken) return;
+    try {
+        lyricContentAnimation = contentEl.animate(
+            [
+                { transform: `translate3d(0, ${delta}px, 0)` },
+                { transform: 'translate3d(0, 0, 0)' },
+            ],
+            {
+                duration: LYRIC_AUTO_SCROLL_DURATION_MS,
+                easing: LYRIC_AUTO_SCROLL_EASING,
+                fill: 'both',
+            }
+        );
 
-        const elapsed = Math.max(0, now - startTime);
-        const progress = Math.min(1, elapsed / LYRIC_AUTO_SCROLL_DURATION_MS);
-        const easedProgress = easeLyricScroll(progress);
-        setLyricScrollTop(scrollEl, startTop + delta * easedProgress);
-
-        if (progress >= 1) {
-            setLyricScrollTop(scrollEl, normalizedTargetTop);
-            lyricScrollAnimationFrame = null;
-            return;
-        }
-
-        lyricScrollAnimationFrame = requestAnimationFrame(step);
-    };
-
-    lyricScrollAnimationFrame = requestAnimationFrame(step);
+        lyricContentAnimation.onfinish = () => {
+            if (animationToken !== lyricScrollAnimationToken) return;
+            lyricContentAnimation = null;
+            lyricScrollAnimationTargetTop = null;
+        };
+        lyricContentAnimation.oncancel = () => {
+            if (animationToken !== lyricScrollAnimationToken) return;
+            lyricContentAnimation = null;
+            lyricScrollAnimationTargetTop = null;
+        };
+    } catch (_) {
+        lyricContentAnimation = null;
+        lyricScrollAnimationTargetTop = null;
+    }
 }
 
 function syncLyricPosition({ behavior = 'auto', force = false } = {}) {
@@ -451,7 +469,7 @@ function syncLyricPosition({ behavior = 'auto', force = false } = {}) {
 }
 
 function enterManualScrollMode() {
-    cancelLyricScrollAnimation();
+    cancelLyricScrollAnimation({ preserveVisualPosition: true });
     isLyricActive.value = false;
     isManualScrollActive.value = true;
     clearManualScrollReleaseTimer();
@@ -542,7 +560,7 @@ watch(
 );
 
 // 根据显示配置（翻译/原文/罗马音、字号）动态调整高度与位置
-const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
+const applyLyricLayout = async ({ waitForPaint = false, syncBehavior = null } = {}) => {
     if (!lyricsObjArr.value || !lyricsObjArr.value.length) return;
     if (syncingLayout.value) return;
     syncingLayout.value = true;
@@ -554,8 +572,10 @@ const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
         }
         await nextTick();
         lyricEle.value = getLyricLineElements();
-        const shouldAnimateSync = lyricAreaReady.value && !suppressLyricFlash.value && !isManualScrollActive.value;
-        syncLyricPosition({ behavior: shouldAnimateSync ? 'smooth' : 'auto', force: true });
+        const resolvedSyncBehavior = syncBehavior ?? (
+            lyricAreaReady.value && !suppressLyricFlash.value && !isManualScrollActive.value ? 'smooth' : 'auto'
+        );
+        syncLyricPosition({ behavior: resolvedSyncBehavior, force: true });
         if (waitForPaint) {
             await waitForLayoutCommit();
         }
@@ -564,8 +584,8 @@ const applyLyricLayout = async ({ waitForPaint = false } = {}) => {
     }
 };
 
-const recalcLyricLayout = async () => {
-    await applyLyricLayout();
+const recalcLyricLayout = async ({ syncBehavior = 'auto' } = {}) => {
+    await applyLyricLayout({ syncBehavior });
 };
 
 const waitForStableLyricLayout = async token => {
@@ -774,7 +794,7 @@ let resizeRaf = 0;
 const scheduleLayout = () => {
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(async () => {
-        await applyLyricLayout();
+        await applyLyricLayout({ syncBehavior: 'auto' });
     });
 };
 
@@ -782,7 +802,7 @@ const scheduleLayout = () => {
 watch(
     lyricType,
     async () => {
-        await recalcLyricLayout();
+        await recalcLyricLayout({ syncBehavior: 'auto' });
     },
     { deep: true, flush: 'post' }
 );
@@ -814,7 +834,11 @@ watch(
     { flush: 'post' }
 );
 
-watch([lyricSize, tlyricSize, rlyricSize], recalcLyricLayout, { flush: 'post' });
+watch(
+    [lyricSize, tlyricSize, rlyricSize],
+    () => recalcLyricLayout({ syncBehavior: 'auto' }),
+    { flush: 'post' }
+);
 
 // 增强版的当前歌词索引监听（统一复用 syncLyricPosition，避免重复逻辑导致状态不一致）
 const { currentLyricIndex } = storeToRefs(playerStore);
@@ -826,8 +850,8 @@ watch(
             interludeFastClose.value = true;
         }
         lycCurrentIndex.value = newIndex;
-        // 等待DOM稳定后，统一调用同步函数，确保 scroll-area 高度与偏移一并更新
-        await waitForLayoutCommit();
+        // 普通播放换句保持旧版节奏：DOM patch 后立即启动跟随动画，避免多等一帧导致“高亮先跳、视图后追”
+        await nextTick();
         lyricEle.value = getLyricLineElements();
         syncLyricPosition({ behavior: 'smooth' });
         // 短暂延时后恢复正常过渡（供后续可能的间奏展开使用）
@@ -847,10 +871,8 @@ const changeProgressLyc = (time, index, item = null) => {
     isLyricActive.value = true;
     lycCurrentIndex.value = index;
     playerStore.currentLyricIndex = index;
-    nextTick(() => {
-        lyricEle.value = getLyricLineElements();
-        syncLyricPosition({ behavior: 'smooth', force: true });
-    });
+    lyricEle.value = getLyricLineElements();
+    syncLyricPosition({ behavior: 'smooth', force: true });
     progress.value = time;
     changeProgress(time);
 };
@@ -932,6 +954,7 @@ watch([playing, lyricShow], ([p, show]) => {
                 :class="{ 'no-flash': suppressLyricFlash || !lyricAreaReady }"
                 ref="lyricScroll"
             >
+                <div class="lyric-content" ref="lyricContent">
                 <div class="lyric-spacer" :style="{ height: lyricTopSpacerHeight + 'px' }"></div>
                 <div class="lyric-line" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
                     <div class="line" @click="changeProgressLyc(item.time, index, item)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active, 'line-static': isUntimedLyrics || item.untimed }">
@@ -1076,6 +1099,7 @@ watch([playing, lyricShow], ([p, show]) => {
                     </div>
                 </div>
                 <div class="lyric-spacer" :style="{ height: lyricBottomSpacerHeight + 'px' }"></div>
+                </div>
             </div>
         </Transition>
         <Transition name="fade">
@@ -1129,15 +1153,22 @@ watch([playing, lyricShow], ([p, show]) => {
         &.no-flash, &.no-flash * {
             transition: none !important;
         }
+        .lyric-content {
+            width: 100%;
+            transform: translate3d(0, 0, 0);
+            will-change: transform;
+        }
         .lyric-spacer {
             width: 100%;
             flex: none;
             pointer-events: none;
+            transition: height 0.3s;
         }
         .lyric-line {
             margin-bottom: 10px;
             width: 100%;
             text-align: left;
+            transition: 0.58s cubic-bezier(0.4, 0, 0.12, 1);
             .line {
                 padding: 10px 130px 10px 25px;
                 width: 100%;
@@ -1147,7 +1178,7 @@ watch([playing, lyricShow], ([p, show]) => {
                 display: flex;
                 flex-direction: column;
                 align-items: flex-start;
-                transition: background-color 0.6s cubic-bezier(0.3, 0, 0.12, 1), transform 0.6s cubic-bezier(0.3, 0, 0.12, 1);
+                transition: all 0.6s cubic-bezier(0.3, 0, 0.12, 1);
                 user-select: text;
                 &:hover {
                     cursor: pointer;

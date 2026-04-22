@@ -18,6 +18,10 @@ import { getSongDisplayName } from './songName'
 import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from './siren'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
+import { subscribePlaybackTick } from './player/playbackTicker'
+import { initPlayerExternalBridge as initExternalBridge } from './player/externalBridge'
+import { loadStoredPlaylist, persistPlaylistBeforeExit, saveStoredPlaylist } from './player/playlistPersistence'
+import { verifyStoredMusicVideo } from './musicVideoLookup'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -27,12 +31,14 @@ const { libraryInfo } = storeToRefs(libraryStore)
 const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation } = storeToRefs(playerStore)
 
 let isProgress = false
-let musicProgress = null
 let loadLast = true
 let playModeOne = false //为true代表顺序播放已全部结束
 let refreshingStream = false
 let lastRefreshAttempt = 0
 let streamRefreshToken = 0
+let disposeProgressTicker = null
+let disposeVideoTicker = null
+let playerExternalBridgeInitialized = false
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -170,7 +176,6 @@ function updateWindowTitleDock() {
     }
 }
 let currentTiming = null
-let videoCheckInterval = null
 let closedVideoMemory = new Set() // 记录用户主动关闭视频的歌曲ID
 const NORMAL_PLAY_MODES = Object.freeze([0, 1, 2, 3])
 let preFmPlayMode = null
@@ -269,25 +274,27 @@ export function checkAndLoadVideoForCurrentSong() {
     // 首先清理现有的视频状态
     unloadMusicVideo()
 
+    const targetSongId = songId.value
+
     // 检查是否启用了音乐视频功能
-    if (!musicVideo.value || !songId.value) {
+    if (!musicVideo.value || !targetSongId) {
         return
     }
 
     // 检查用户是否主动关闭了该歌曲的视频显示
-    if (closedVideoMemory.has(songId.value)) {
+    if (closedVideoMemory.has(targetSongId)) {
         return
     }
 
     // 立即检查当前歌曲是否有对应的视频文件
-    windowApi.musicVideoIsExists({ id: songId.value, method: 'verify' }).then(result => {
+    verifyStoredMusicVideo(targetSongId).then(result => {
         // 验证歌曲ID是否仍然匹配（防止快速切歌）
         if (result && result !== '404' && result !== false && result.data &&
-            result.data.path && result.data.id === songId.value &&
-            songId.value && songId.value === result.data.id) {
+            result.data.path && result.data.id === targetSongId &&
+            songId.value && songId.value === targetSongId) {
 
             // 再次检查记忆状态（防止异步过程中状态变化）
-            if (closedVideoMemory.has(songId.value)) {
+            if (closedVideoMemory.has(targetSongId)) {
                 return
             }
 
@@ -296,9 +303,9 @@ export function checkAndLoadVideoForCurrentSong() {
             // 等待音乐开始播放后再启动视频检查
             setTimeout(() => {
                 // 再次确认歌曲ID仍然匹配且未被用户关闭
-                if (songId.value === result.data.id && currentMusicVideo.value &&
-                    currentMusicVideo.value.id === songId.value &&
-                    !closedVideoMemory.has(songId.value)) {
+                if (songId.value === targetSongId && currentMusicVideo.value &&
+                    currentMusicVideo.value.id === targetSongId &&
+                    !closedVideoMemory.has(targetSongId)) {
 
                     // 根据歌曲类型启动对应的视频时间检查
                     if (songList.value && songList.value[currentIndex.value] && songList.value[currentIndex.value].type === 'local') {
@@ -374,7 +381,7 @@ export function isVideoClosedByUser(songId) {
 
 export function loadLastSong() {
     if (loadLast) {
-        windowApi.getLastPlaylist().then(list => {
+        loadStoredPlaylist().then(list => {
             if (list) {
                 songList.value = list.songList
                 shuffledList.value = list.shuffledList
@@ -403,6 +410,29 @@ function getSafeCurrentSeek() {
         console.warn('获取播放进度失败:', error)
     }
     return typeof progress.value === 'number' && !Number.isNaN(progress.value) ? progress.value : 0
+}
+
+function stopProgressSampling() {
+    if (!disposeProgressTicker) return
+    disposeProgressTicker()
+    disposeProgressTicker = null
+}
+
+function stopMusicVideoSampling() {
+    if (!disposeVideoTicker) return
+    disposeVideoTicker()
+    disposeVideoTicker = null
+}
+
+function startMusicVideoSampling() {
+    stopMusicVideoSampling()
+    disposeVideoTicker = subscribePlaybackTick(snapshot => {
+        musicVideoCheck(snapshot.seek)
+    }, {
+        id: 'player-mv-sync',
+        interval: 200,
+        immediate: true,
+    })
 }
 
 async function refreshStreamAndResume(eventType, error) {
@@ -470,7 +500,7 @@ async function refreshStreamAndResume(eventType, error) {
 
 export function play(url, autoplay, resumeSeek = null) {
     // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
-    clearInterval(musicProgress)
+    stopProgressSampling()
     if (currentMusic.value) {
         currentMusic.value.unload()
         Howler.unload()
@@ -503,7 +533,7 @@ export function play(url, autoplay, resumeSeek = null) {
             refreshStreamAndResume('loaderror', err)
         },
         onend: function () {
-            clearInterval(musicProgress)
+            stopProgressSampling()
 
             // 处理FM模式的播放结束逻辑
             if (listInfo.value && listInfo.value.type === 'personalfm') {
@@ -571,7 +601,7 @@ export function play(url, autoplay, resumeSeek = null) {
         updateWindowTitleDock()
     })
     currentMusic.value.on('pause', () => {
-        clearInterval(musicProgress)
+        stopProgressSampling()
         playing.value = false
         windowApi.playOrPauseMusicCheck(playing.value)
         syncWindowsTaskbarPlaybackState()
@@ -580,14 +610,16 @@ export function play(url, autoplay, resumeSeek = null) {
 }
 
 export function startProgress() {
-    clearInterval(musicProgress)
+    stopProgressSampling()
     const durationLimit = normalizePlaybackDuration(time.value || currentMusic.value.duration?.())
     progress.value = clampPlaybackProgress(currentMusic.value.seek(), durationLimit)
-    musicProgress = setInterval(() => {
-        const currentSeek = currentMusic.value.seek()
-        const currentDuration = normalizePlaybackDuration(time.value || currentMusic.value.duration?.())
-        progress.value = clampPlaybackProgress(currentSeek, currentDuration)
-    }, 1000);
+    disposeProgressTicker = subscribePlaybackTick(snapshot => {
+        progress.value = clampPlaybackProgress(snapshot.seek, snapshot.duration)
+    }, {
+        id: 'player-progress',
+        interval: 1000,
+        immediate: true,
+    })
 }
 
 function findSongIndexById(id) {
@@ -723,17 +755,11 @@ export function addLocalMusicTOList(listType, localMusicList, playId, playIndex)
     savePlaylist()
 }
 export function startLocalMusicVideo() {
-    clearInterval(videoCheckInterval)
-    videoCheckInterval = setInterval(() => {
-        musicVideoCheck(currentMusic.value.seek())
-    }, 200);
+    startMusicVideoSampling()
 }
 
 export function startMusicVideo() {
-    clearInterval(videoCheckInterval)
-    videoCheckInterval = setInterval(() => {
-        musicVideoCheck(currentMusic.value.seek())
-    }, 200);
+    startMusicVideoSampling()
 }
 export function unloadMusicVideo() {
     // 清理状态变量
@@ -743,10 +769,7 @@ export function unloadMusicVideo() {
     currentTiming = null
 
     // 清理定时器
-    if (videoCheckInterval) {
-        clearInterval(videoCheckInterval)
-        videoCheckInterval = null
-    }
+    stopMusicVideoSampling()
 
     // 如果存在视频播放器，暂停并清理
     if (musicVideoDOM.value) {
@@ -770,7 +793,7 @@ export function loadMusicVideo(id) {
 
     // 等待一个短暂的时间确保清理完成，然后检查视频
     setTimeout(() => {
-        windowApi.musicVideoIsExists({ id: id, method: 'verify' }).then(result => {
+        verifyStoredMusicVideo(id).then(result => {
             // 严格检查 - 只有明确返回有效结果且文件存在时才加载视频
             if (result && result !== '404' && result !== false && result.data && result.data.path && result.data.id === id) {
                 // 再次验证当前歌曲ID是否仍然匹配（防止快速切歌导致的异步问题）
@@ -800,7 +823,7 @@ export function addSong(id, index, autoplay, isLocal) {
     // 主动切歌：从头开始播放，不恢复上次进度
     loadLast = false
     // 先停止旧的进度计时，避免残留计时在下一秒把UI回写为上一首的进度
-    clearInterval(musicProgress)
+    stopProgressSampling()
     // 立即重置前端进度与时长，避免看到上一首的进度与时长
     progress.value = 0
     time.value = 0
@@ -936,7 +959,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
 
             if (!sirenPlayback?.streamUrl) {
                 noticeOpen('当前歌曲无法播放', 2)
-                clearInterval(musicProgress)
+                stopProgressSampling()
                 playing.value = false
                 currentMusic.value = null
                 lyric.value = null
@@ -976,7 +999,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         } catch (error) {
             console.error('获取塞壬歌曲播放地址失败:', error)
             noticeOpen('当前歌曲无法播放', 2)
-            clearInterval(musicProgress)
+            stopProgressSampling()
             playing.value = false
             currentMusic.value = null
             lyric.value = null
@@ -990,7 +1013,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
             resolveTrackByQualityPreference(id, preferredQuality).then(trackInfo => {
                 if (!trackInfo || !trackInfo.url) {
                     noticeOpen('当前歌曲无法播放', 2)
-                    clearInterval(musicProgress)
+                    stopProgressSampling()
                     playing.value = false
                     currentMusic.value = null
                     lyric.value = null
@@ -1007,7 +1030,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
             })
         } else {
             noticeOpen('当前歌曲无法播放', 2)
-            clearInterval(musicProgress)
+            stopProgressSampling()
             playing.value = false
             currentMusic.value = null
             lyric.value = null
@@ -1046,7 +1069,7 @@ export function startMusic() {
     }
 }
 export function pauseMusic() {
-    clearInterval(musicProgress)
+    stopProgressSampling()
     if (playing.value) {
         currentMusic.value.fade(volume.value, 0, 200)
         currentMusic.value.once('fade', () => {
@@ -1057,7 +1080,7 @@ export function pauseMusic() {
     if (videoIsPlaying.value) {
         musicVideoDOM.value.pause()
         // 为所有类型的音乐清理视频检查
-        clearInterval(videoCheckInterval)
+        stopMusicVideoSampling()
     }
 }
 
@@ -1163,7 +1186,7 @@ export function changeProgress(toTime) {
 }
 //控制拖拽进度条
 export function changeProgressByDragStart() {
-    clearInterval(musicProgress)
+    stopProgressSampling()
 }
 export function changeProgressByDragEnd(toTime) {
     changeProgress(toTime)
@@ -1637,11 +1660,11 @@ export function addToNextLocal(song, autoplay) {
     addToNext(localMusicHandle([song], true), autoplay)
 }
 export function savePlaylist() {
-    let list = {
+    const list = {
         songList: songList.value,
         shuffledList: shuffledList.value
     }
-    windowApi.saveLastPlaylist(JSON.stringify(list))
+    saveStoredPlaylist(list)
 }
 export function songTime(dt) {
     if (dt) {
@@ -1756,117 +1779,133 @@ function setVolumeForPlay(value) {
   currentMusic.value.volume(volume.value)
 }
 
+export function initPlayerExternalBridge() {
+    if (playerExternalBridgeInitialized) return
+    playerExternalBridgeInitialized = true
 
-window.addEventListener('mousedown', (e) => {
-    if (e.target.parentNode.parentNode.id == 'widget-progress') {
-        changeProgressByDragStart()
-        isProgress = true
-    }
-})
+    initExternalBridge({
+        onMouseDown(event) {
+            if (event?.target?.parentNode?.parentNode?.id == 'widget-progress') {
+                changeProgressByDragStart()
+                isProgress = true
+            }
+        },
+        onMouseUp() {
+            if (!isProgress) return
+            changeProgressByDragEnd(progress.value)
+            isProgress = false
+        },
+        onWindowClick(event) {
+            const target = event?.target
+            if (playlistWidgetShow.value) {
+                const playlistWidget = document.getElementsByClassName('playlist-widget')[0]
+                const musicControl = document.getElementsByClassName('music-control')[0]
+                const musicOther = document.getElementsByClassName('music-other')[0]
+                const playlistWidgetPlayer = document.getElementsByClassName('playlist-widget-player')[0]
+                const songControl = document.getElementsByClassName('song-control')[0]
+                const contextMenu = document.getElementsByClassName('contextMune')[0]
+                const isItemDelete = target?.className?.baseVal == 'item-delete'
 
-window.addEventListener('mouseup', () => {
-    if (isProgress) {
-        changeProgressByDragEnd(progress.value)
-        isProgress = false
-    }
-})
+                if (
+                    playlistWidget && musicControl && musicOther && playlistWidgetPlayer && songControl && contextMenu
+                    && playlistWidget.contains(target) == false
+                    && musicControl.contains(target) == false
+                    && musicOther.contains(target) == false
+                    && playlistWidgetPlayer.contains(target) == false
+                    && songControl.contains(target) == false
+                    && contextMenu.contains(target) == false
+                    && !isItemDelete
+                ) {
+                    playlistWidgetShow.value = false
+                }
+            }
+            if (otherStore.contextMenuShow) otherStore.contextMenuShow = false
 
-window.addEventListener('click', (e) => {
-    if (playlistWidgetShow.value) {
-        if (document.getElementsByClassName('playlist-widget')[0].contains(e.target) == false && document.getElementsByClassName('music-control')[0].contains(e.target) == false && document.getElementsByClassName('music-other')[0].contains(e.target) == false && document.getElementsByClassName('playlist-widget-player')[0].contains(e.target) == false && document.getElementsByClassName('song-control')[0].contains(e.target) == false && document.getElementsByClassName('contextMune')[0].contains(e.target) == false && e.target.className.baseVal != 'item-delete')
-            playlistWidgetShow.value = false
-    }
-    if (otherStore.contextMenuShow) otherStore.contextMenuShow = false
-    if (!otherStore.videoIsBlur && otherStore.videoPlayerShow && document.getElementById('videoPlayer').contains(e.target) == false) otherStore.videoIsBlur = true
-    else if (otherStore.videoIsBlur && otherStore.videoPlayerShow && document.getElementById('videoPlayer').contains(e.target) == true && document.getElementsByClassName('plyr__controls')[0].contains(e.target) != true) otherStore.videoIsBlur = false
-    if (userStore.appOptionShow && document.getElementsByClassName('user-head')[0].contains(e.target) != true) userStore.appOptionShow = false
-})
-windowApi.playOrPauseMusic((event) => {
-    if (playing.value) pauseMusic()
-    else startMusic()
-})
-windowApi.lastOrNextMusic((event, option) => {
-    if (option == 'last') playLast()
-    else if (option == 'next') playNext()
-})
-windowApi.changeMusicPlaymode((event, mode) => {
-    applyPlayMode(mode)
-})
-windowApi.volumeUp(() => {
-    if (volume.value + 0.1 < 1) volume.value += 0.1
-    else volume.value = 1
-    currentMusic.value.volume(volume.value)
-})
-windowApi.volumeDown(() => {
-    if (volume.value - 0.1 > 0) volume.value -= 0.1
-    else volume.value = 0
-    currentMusic.value.volume(volume.value)
-})
-windowApi.musicProcessControl((event, mode) => {
-    if (mode == 'forward') {
-        if (progress.value + 3 < currentMusic.value.duration()) progress.value += 3
-        else progress.value = currentMusic.value.duration()
-    } else if (mode == 'back') {
-        if (progress.value - 3 > 0) progress.value -= 3
-        else progress.value = 0
-    }
-    // 统一使用 changeProgress，确保歌词、视频等状态同步
-    changeProgress(progress.value)
-})
-windowApi.playOrPauseMusicCheck(playing.value)
-windowApi.changeTrayMusicPlaymode(playMode.value)
-syncWindowsTaskbarPlaybackState()
-windowApi.beforeQuit(() => {
-    //关闭之前清除下载管理中的状态
-    windowApi.downloadPause('shutdown')
-    let list = {
-        songList: songList.value,
-        shuffledList: shuffledList.value
-    }
-    windowApi.exitApp(JSON.stringify(list))
-})
+            const videoPlayer = document.getElementById('videoPlayer')
+            const controls = document.getElementsByClassName('plyr__controls')[0]
+            if (!otherStore.videoIsBlur && otherStore.videoPlayerShow && videoPlayer && videoPlayer.contains(target) == false) {
+                otherStore.videoIsBlur = true
+            } else if (otherStore.videoIsBlur && otherStore.videoPlayerShow && videoPlayer && controls && videoPlayer.contains(target) == true && controls.contains(target) != true) {
+                otherStore.videoIsBlur = false
+            }
 
-window.playerApi.onSetPosition((positionSeconds) => {
-  changeProgress(positionSeconds)
-})
-window.playerApi.onPlayPause(() => {
-  if (playing.value) pauseMusic()
-  else startMusic()
-})
+            const userHead = document.getElementsByClassName('user-head')[0]
+            if (userStore.appOptionShow && userHead && userHead.contains(target) != true) userStore.appOptionShow = false
+        },
+        onPlayOrPause() {
+            if (playing.value) pauseMusic()
+            else startMusic()
+        },
+        onLastOrNext(_event, option) {
+            if (option == 'last') playLast()
+            else if (option == 'next') playNext()
+        },
+        onPlayModeChange(_event, mode) {
+            applyPlayMode(mode)
+        },
+        onVolumeUp() {
+            if (volume.value + 0.1 < 1) volume.value += 0.1
+            else volume.value = 1
+            currentMusic.value?.volume?.(volume.value)
+        },
+        onVolumeDown() {
+            if (volume.value - 0.1 > 0) volume.value -= 0.1
+            else volume.value = 0
+            currentMusic.value?.volume?.(volume.value)
+        },
+        onProgressControl(_event, mode) {
+            const duration = currentMusic.value?.duration?.() || 0
+            if (mode == 'forward') {
+                if (progress.value + 3 < duration) progress.value += 3
+                else progress.value = duration
+            } else if (mode == 'back') {
+                if (progress.value - 3 > 0) progress.value -= 3
+                else progress.value = 0
+            }
+            changeProgress(progress.value)
+        },
+        onBeforeQuit() {
+            windowApi.downloadPause('shutdown')
+            persistPlaylistBeforeExit({
+                songList: songList.value,
+                shuffledList: shuffledList.value
+            })
+        },
+        onSetPosition(positionSeconds) {
+            changeProgress(positionSeconds)
+        },
+        onPlayerPlayPause() {
+            if (playing.value) pauseMusic()
+            else startMusic()
+        },
+        onPlayerNext() {
+            playNext()
+        },
+        onPlayerPrevious() {
+            playLast()
+        },
+        onPlayerPlay() {
+            startMusic()
+        },
+        onPlayerPause() {
+            pauseMusic()
+        },
+        onPlayerRepeat() {
+            changePlayMode()
+        },
+        onPlayerShuffle() {
+            if (isPersonalFMContext()) {
+                applyPlayMode(playMode.value === 2 ? 3 : 2, { inFM: true })
+                return
+            }
+            applyPlayMode(playMode.value !== 3 ? 3 : 0, { inFM: false })
+        },
+        onPlayerVolumeChanged(value) {
+            setVolumeForPlay(value)
+        },
+    })
 
-// 播放下一首
-window.playerApi.onNext(() => {
-  playNext() // 你自己实现的渲染端播放下一首逻辑
-})
-
-// 播放上一首
-window.playerApi.onPrevious(() => {
-  playLast()
-})
-
-// 播放/暂停
-window.playerApi.onPlayM(() => {
-  startMusic()
-})
-window.playerApi.onPauseM(() => {
-  pauseMusic()
-})
-
-//循环模式切换
-window.playerApi.onRepeat(() => {
-  changePlayMode()
-})
-
-// 随机播放切换
-window.playerApi.onShuffle(() => {
-  if (isPersonalFMContext()) {
-    applyPlayMode(playMode.value === 2 ? 3 : 2, { inFM: true })
-    return
-  }
-  applyPlayMode(playMode.value !== 3 ? 3 : 0, { inFM: false })
-})
-
-window.playerApi.onVolumeChanged((v) => {
-    setVolumeForPlay(v)
-  }
-)
+    windowApi.playOrPauseMusicCheck(playing.value)
+    windowApi.changeTrayMusicPlaymode(playMode.value)
+    syncWindowsTaskbarPlaybackState()
+}

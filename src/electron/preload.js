@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
+function subscribeChannel(channel, callback) {
+    if (typeof callback !== 'function') return () => {}
+    ipcRenderer.on(channel, callback)
+    return () => {
+        ipcRenderer.removeListener(channel, callback)
+    }
+}
+
 function windowMin() {
     ipcRenderer.send('window-min')
 }
@@ -23,7 +31,7 @@ function toRegister(url) {
     ipcRenderer.send('to-register', url)
 }
 function beforeQuit(callback) {
-    ipcRenderer.on('player-save', callback)
+    return subscribeChannel('player-save', callback)
 }
 function exitApp(playlist) {
     ipcRenderer.send('exit-app', playlist)
@@ -35,13 +43,14 @@ function download(url) {
     ipcRenderer.send('download', url)
 }
 function downloadNext(callback) {
-    ipcRenderer.on('download-next', callback)
+    return subscribeChannel('download-next', callback)
 }
 function downloadProgress(callback) {
-    ipcRenderer.on('download-progress', callback)
+    return subscribeChannel('download-progress', callback)
 }
 function downloadError(callback) {
-    ipcRenderer.on('download-error', (_event, code) => callback?.(code))
+    const listener = (_event, code) => callback?.(code)
+    return subscribeChannel('download-error', listener)
 }
 function downloadPause(close) {
     ipcRenderer.send('download-pause', close)
@@ -53,44 +62,43 @@ function downloadCancel() {
     ipcRenderer.send('download-cancel')
 }
 function lyricControl(callback) {
-    ipcRenderer.on('lyric-control', callback)
+    return subscribeChannel('lyric-control', callback)
 }
 function scanLocalMusic(type) {
     ipcRenderer.send('scan-local-music', type)
 }
 function localMusicFiles(callback) {
-    ipcRenderer.on('local-music-files', callback)
-    callback = null
+    return subscribeChannel('local-music-files', callback)
 }
 function localMusicCount(callback) {
-    ipcRenderer.on('local-music-count', callback)
+    return subscribeChannel('local-music-count', callback)
 }
 function playOrPauseMusic(callback) {
-    ipcRenderer.on('music-playing-control', callback)
+    return subscribeChannel('music-playing-control', callback)
 }
 function playOrPauseMusicCheck(playing) {
     ipcRenderer.send('music-playing-check', playing)
 }
 function lastOrNextMusic(callback) {
-    ipcRenderer.on('music-song-control', callback)
+    return subscribeChannel('music-song-control', callback)
 }
 function changeMusicPlaymode(callback) {
-    ipcRenderer.on('music-playmode-control', callback)
+    return subscribeChannel('music-playmode-control', callback)
 }
 function changeTrayMusicPlaymode(mode) {
     ipcRenderer.send('music-playmode-tray-change', mode)
 }
 function volumeUp(callback) {
-    ipcRenderer.on('music-volume-up', callback)
+    return subscribeChannel('music-volume-up', callback)
 }
 function volumeDown(callback) {
-    ipcRenderer.on('music-volume-down', callback)
+    return subscribeChannel('music-volume-down', callback)
 }
 function musicProcessControl(callback) {
-    ipcRenderer.on('music-process-control', callback)
+    return subscribeChannel('music-process-control', callback)
 }
 function hidePlayer(callback) {
-    ipcRenderer.on('hide-player', callback)
+    return subscribeChannel('hide-player', callback)
 }
 function setSettings(settings) {
     ipcRenderer.send('set-settings', settings)
@@ -111,7 +119,7 @@ function saveLastPlaylist(playlist) {
     ipcRenderer.send('save-last-playlist', playlist)
 }
 function downloadVideoProgress(callback) {
-    ipcRenderer.on('download-video-progress', callback)
+    return subscribeChannel('download-video-progress', callback)
 }
 function cancelDownloadMusicVideo() {
     ipcRenderer.send('cancel-download-music-video')
@@ -120,22 +128,28 @@ function copyTxt(txt) {
     ipcRenderer.send('copy-txt', txt)
 }
 function checkUpdate(callback) {
-    ipcRenderer.on('check-update', (_event, version) => callback?.(version))
+    const listener = (_event, version) => callback?.(version)
+    return subscribeChannel('check-update', listener)
 }
 function manualUpdateAvailable(callback) {
-    ipcRenderer.on('manual-update-available', (_event, version, url) => callback?.(version, url))
+    const listener = (_event, version, url) => callback?.(version, url)
+    return subscribeChannel('manual-update-available', listener)
 }
 function updateNotAvailable(callback) {
-    ipcRenderer.on('update-not-available', (_event, infoOrVersion) => callback?.(infoOrVersion))
+    const listener = (_event, infoOrVersion) => callback?.(infoOrVersion)
+    return subscribeChannel('update-not-available', listener)
 }
 function updateDownloadProgress(callback) {
-    ipcRenderer.on('update-download-progress', (_event, percent) => callback?.(percent))
+    const listener = (_event, percent) => callback?.(percent)
+    return subscribeChannel('update-download-progress', listener)
 }
 function updateDownloaded(callback) {
-    ipcRenderer.on('update-downloaded', (_event, version) => callback?.(version))
+    const listener = (_event, version) => callback?.(version)
+    return subscribeChannel('update-downloaded', listener)
 }
 function updateError(callback) {
-    ipcRenderer.on('update-error', (_event, message) => callback?.(message))
+    const listener = (_event, message) => callback?.(message)
+    return subscribeChannel('update-error', listener)
 }
 function checkForUpdate() {
     ipcRenderer.send('check-for-update')
@@ -236,6 +250,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     getSettings: () => ipcRenderer.invoke('get-settings'),
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
     clearLocalMusicData,
+    persistLocalMusicDerived: (payload) => ipcRenderer.send('persist-local-music-derived', payload),
     registerShortcuts,
     unregisterShortcuts,
     getLastPlaylist: () => ipcRenderer.invoke('get-last-playlist'),
@@ -275,15 +290,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     closeLyricWindow: () => ipcRenderer.invoke('close-lyric-window'),
     setLyricWindowMovable: (movable) => ipcRenderer.invoke('set-lyric-window-movable', movable),
     lyricWindowReady: () => ipcRenderer.send('lyric-window-ready'),
-    onLyricUpdate: (callback) => ipcRenderer.on('lyric-update', callback),
+    onLyricUpdate: (callback) => subscribeChannel('lyric-update', callback),
     requestLyricData: () => ipcRenderer.send('request-lyric-data'),
     updateLyricData: (data) => ipcRenderer.send('update-lyric-data', data),
-    getCurrentLyricData: (callback) => ipcRenderer.on('get-current-lyric-data', callback),
+    getCurrentLyricData: (callback) => subscribeChannel('get-current-lyric-data', callback),
     sendCurrentLyricData: (data) => ipcRenderer.send('current-lyric-data', data),
     isLyricWindowVisible: () => ipcRenderer.invoke('is-lyric-window-visible'),
     resizeWindow: (width, height) => ipcRenderer.invoke('resize-lyric-window', { width, height }),
     notifyLyricWindowClosed: () => ipcRenderer.send('lyric-window-closed'),
-    onDesktopLyricClosed: (callback) => ipcRenderer.on('desktop-lyric-closed', callback),
+    onDesktopLyricClosed: (callback) => subscribeChannel('desktop-lyric-closed', callback),
     // 拖拽相关：获取与移动桌面歌词窗口
     getLyricWindowBounds: () => ipcRenderer.invoke('get-lyric-window-bounds'),
     moveLyricWindow: (x, y) => ipcRenderer.send('move-lyric-window', { x, y }),
@@ -306,21 +321,25 @@ contextBridge.exposeInMainWorld('playerApi', {
   sendMetaData,
   sendPlayerCurrentTrackTime,
   onSetPosition: (callback) => {
-    ipcRenderer.on('setPosition', (_, positionUs) => {
+    const listener = (_, positionUs) => {
       callback(positionUs)
-    })
+    }
+    return subscribeChannel('setPosition', listener)
   },
-  onNext: (callback) => ipcRenderer.on('next', callback),
-  onPrevious: (callback) => ipcRenderer.on('previous', callback),
-  onPlayM: (callback) => ipcRenderer.on('play', callback),
-  onPlayPause: (callback) => ipcRenderer.on('playpause', callback),
-  onPauseM: (callback) => ipcRenderer.on('pause', callback),
-  onRepeat: (callback) => ipcRenderer.on('repeat', callback),
-  onShuffle: (callback) => ipcRenderer.on('shuffle', callback),
+  onNext: (callback) => subscribeChannel('next', callback),
+  onPrevious: (callback) => subscribeChannel('previous', callback),
+  onPlayM: (callback) => subscribeChannel('play', callback),
+  onPlayPause: (callback) => subscribeChannel('playpause', callback),
+  onPauseM: (callback) => subscribeChannel('pause', callback),
+  onRepeat: (callback) => subscribeChannel('repeat', callback),
+  onShuffle: (callback) => subscribeChannel('shuffle', callback),
   setVolume: (volume) => ipcRenderer.send('setVolume', volume),
-  onVolumeChanged: (callback) => ipcRenderer.on('volume_changed', (_, volume) => {
-    callback(volume)
-  }),
+  onVolumeChanged: (callback) => {
+    const listener = (_, volume) => {
+      callback(volume)
+    }
+    return subscribeChannel('volume_changed', listener)
+  },
 });
 
 // 这里安全地暴露必要的接口

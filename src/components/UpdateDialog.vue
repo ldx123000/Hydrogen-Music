@@ -82,7 +82,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
     visible: {
@@ -157,39 +157,53 @@ const retryUpdate = () => {
 // 监听更新事件
 const setupUpdateListeners = () => {
     if (typeof windowApi !== 'undefined') {
+        const disposers = []
         // 手动更新检查结果（用于设置页面的手动检查）
-        windowApi.manualUpdateAvailable((version, url) => {
+        disposers.push(windowApi.manualUpdateAvailable((version, url) => {
             updateStatus.value = 'available'
             if (url) manualDownloadUrl.value = url
-        })
+        }))
         
         // 更新不可用
-        windowApi.updateNotAvailable(() => {
+        disposers.push(windowApi.updateNotAvailable(() => {
             updateStatus.value = 'latest'
-        })
+        }))
         
         // 下载进度
-        windowApi.updateDownloadProgress((progress) => {
+        disposers.push(windowApi.updateDownloadProgress((progress) => {
             downloadProgress.value = progress
-        })
+        }))
         
         // 下载完成
-        windowApi.updateDownloaded(() => {
+        disposers.push(windowApi.updateDownloaded(() => {
             updateStatus.value = 'ready'
             isDownloading.value = false
-        })
+        }))
         
         // 更新错误
-        windowApi.updateError((error) => {
+        disposers.push(windowApi.updateError((error) => {
             updateStatus.value = 'error'
             errorMessage.value = error
             isDownloading.value = false
-        })
+        }))
+
+        return () => {
+            disposers.forEach(dispose => dispose?.())
+        }
     }
+
+    return () => {}
 }
 
+let removeUpdateListeners = () => {}
+
 onMounted(() => {
-    setupUpdateListeners()
+    removeUpdateListeners = setupUpdateListeners()
+})
+
+onUnmounted(() => {
+    removeUpdateListeners?.()
+    removeUpdateListeners = () => {}
 })
 </script>
 

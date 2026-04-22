@@ -1,10 +1,11 @@
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onUnmounted } from 'vue';
 import QRCode from 'qrcode';
 import { songTime2, loadMusicVideo, unloadMusicVideo, pauseCurrentMusicVideo, reopenCurrentMusicVideo } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import { dialogOpen, noticeOpen } from '../utils/dialog';
 import { clearStoredBiliSession, hasStoredBiliSession, migrateLegacyBiliSession, readStoredBiliCookie, storeBiliCookies } from '../utils/biliSession';
+import { invalidateStoredMusicVideoVerifyCache, verifyStoredMusicVideo } from '../utils/musicVideoLookup';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
@@ -25,6 +26,7 @@ const timingList = ref(null);
 const progress = ref(0);
 const isDownloading = ref(false);
 const currentSongHasVideo = ref(false); // 当前歌曲是否确实有视频文件
+let currentSongVideoCheckToken = 0;
 migrateLegacyBiliSession();
 if (!hasStoredBiliSession() && userStore.biliUser) {
     userStore.clearBiliAccountState();
@@ -420,6 +422,7 @@ const addVideo = async flag => {
                 return;
             } else if (result == 'success') {
                 noticeOpen('添加成功', 2);
+                invalidateStoredMusicVideoVerifyCache(addMusicVideo.value.id);
                 if (songId.value == addMusicVideo.value.id) {
                     loadMusicVideo(addMusicVideo.value.id);
                     // 立即重新检查当前歌曲的视频状态
@@ -460,6 +463,7 @@ const deleteVideo = flag => {
     if (flag) {
         windowApi.deleteMusicVideo(addMusicVideo.value.id).then(result => {
             if (result) {
+                invalidateStoredMusicVideoVerifyCache(addMusicVideo.value.id);
                 noticeOpen('删除成功', 2);
                 setDefault();
                 currentVideoInfo.value = null;
@@ -496,10 +500,14 @@ const loadData = () => {
         });
     }
 };
-windowApi.downloadVideoProgress((event, value) => {
+const removeDownloadVideoProgressListener = windowApi.downloadVideoProgress((event, value) => {
     progress.value = value;
 });
 loadData();
+
+onUnmounted(() => {
+    removeDownloadVideoProgressListener?.();
+});
 
 const formatTime = time => {
     let min = Math.floor(time / 60);
@@ -525,15 +533,21 @@ const hasCurrentVideo = () => {
 
 // 检查当前歌曲是否确实有对应的视频文件
 const checkCurrentSongVideo = async () => {
-    if (!songId.value) {
+    const targetSongId = songId.value;
+    currentSongVideoCheckToken += 1;
+    const requestToken = currentSongVideoCheckToken;
+
+    if (!targetSongId) {
         currentSongHasVideo.value = false;
         return;
     }
 
     try {
-        const result = await windowApi.musicVideoIsExists({ id: songId.value, method: 'verify' });
+        const result = await verifyStoredMusicVideo(targetSongId);
+        if (requestToken !== currentSongVideoCheckToken || songId.value !== targetSongId) return;
         currentSongHasVideo.value = !!(result && result !== '404' && result !== false && result.data && result.data.path);
     } catch (error) {
+        if (requestToken !== currentSongVideoCheckToken || songId.value !== targetSongId) return;
         console.error('检查当前歌曲视频文件时出错:', error);
         currentSongHasVideo.value = false;
     }

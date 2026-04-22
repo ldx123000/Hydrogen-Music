@@ -7,6 +7,7 @@ import { buildLocalSongSearchText } from './songFilter'
 
 const localStore = useLocalStore(pinia)
 const { downloadedMusicFolder, downloadedFiles, localMusicFolder, localMusicList, localMusicClassify, isRefreshLocalFile } = storeToRefs(localStore)
+const pendingScanTypes = new Set()
 
 function normalizeArtists(song) {
     const artists = song?.common?.artists
@@ -117,7 +118,83 @@ function buildLocalClassify(flatSongs = []) {
     }
 }
 
+function buildDerivedPayload(type, metadataRoot) {
+    const folderIndex = buildFolderIndex(metadataRoot)
+    if (type === 'downloaded') {
+        return {
+            lookupIndex: {
+                foldersByName: folderIndex.foldersByName,
+                songSearchById: folderIndex.songSearchById,
+            },
+            classify: null,
+        }
+    }
+
+    const localClassify = buildLocalClassify(folderIndex.flatSongs)
+    return {
+        lookupIndex: {
+            foldersByName: folderIndex.foldersByName,
+            songSearchById: folderIndex.songSearchById,
+            artistsById: localClassify.artistsById,
+            albumsById: localClassify.albumsById,
+        },
+        classify: {
+            artists: localClassify.artists,
+            albums: localClassify.albums,
+        },
+    }
+}
+
+function ensureDerivedPayload(type, localData) {
+    const cachedDerived = localData?.derived
+    if (cachedDerived?.lookupIndex) {
+        if (type === 'downloaded') return cachedDerived
+        if (cachedDerived?.classify?.artists && cachedDerived?.classify?.albums) return cachedDerived
+    }
+
+    const nextDerived = buildDerivedPayload(type, localData?.locaFilesMetadata)
+    try {
+        windowApi.persistLocalMusicDerived({
+            type,
+            derived: nextDerived,
+        })
+    } catch (_) {}
+    return nextDerived
+}
+
+function applyDownloadedPayload(localData, derived) {
+    downloadedMusicFolder.value = localData.dirTree
+    downloadedFiles.value = localData.locaFilesMetadata
+
+    localStore.updateLookupIndex('downloaded', {
+        foldersByName: derived?.lookupIndex?.foldersByName || {},
+        songSearchById: derived?.lookupIndex?.songSearchById || {},
+    })
+}
+
+function applyLocalPayload(localData, derived) {
+    localMusicFolder.value = localData.dirTree
+    localMusicList.value = localData.locaFilesMetadata
+    localMusicClassify.value = {
+        artists: derived?.classify?.artists || [],
+        albums: derived?.classify?.albums || [],
+    }
+
+    localStore.updateLookupIndex('local', {
+        foldersByName: derived?.lookupIndex?.foldersByName || {},
+        songSearchById: derived?.lookupIndex?.songSearchById || {},
+        artistsById: derived?.lookupIndex?.artistsById || {},
+        albumsById: derived?.lookupIndex?.albumsById || {},
+    })
+}
+
 export function scanMusic(params) {
+    const type = params?.type
+    const refresh = params?.refresh === true
+    if (!type) return
+    if (!refresh && pendingScanTypes.has(type)) return
+
+    pendingScanTypes.add(type)
     if(isRefreshLocalFile.value)
         noticeOpen("正在扫描本地音乐,请稍等", 3)
     windowApi.scanLocalMusic(params)
@@ -128,34 +205,17 @@ windowApi.localMusicCount((event, count) => {
 })
 
 windowApi.localMusicFiles((event, localData) => {
-    if(localData.type == 'downloaded') {
-        downloadedMusicFolder.value = localData.dirTree
-        downloadedFiles.value = localData.locaFilesMetadata
+    if (!localData?.type) return
+    pendingScanTypes.delete(localData.type)
 
-        const downloadedIndex = buildFolderIndex(localData.locaFilesMetadata)
-        localStore.updateLookupIndex('downloaded', {
-            foldersByName: downloadedIndex.foldersByName,
-            songSearchById: downloadedIndex.songSearchById,
-        })
+    if(localData.type == 'downloaded') {
+        const derived = ensureDerivedPayload('downloaded', localData)
+        applyDownloadedPayload(localData, derived)
     }
 
     if(localData.type == 'local') {
-        localMusicFolder.value = localData.dirTree
-        localMusicList.value = localData.locaFilesMetadata
-
-        const localIndex = buildFolderIndex(localData.locaFilesMetadata)
-        const localClassify = buildLocalClassify(localIndex.flatSongs)
-        localMusicClassify.value = {
-            artists: localClassify.artists,
-            albums: localClassify.albums,
-        }
-
-        localStore.updateLookupIndex('local', {
-            foldersByName: localIndex.foldersByName,
-            songSearchById: localIndex.songSearchById,
-            artistsById: localClassify.artistsById,
-            albumsById: localClassify.albumsById,
-        })
+        const derived = ensureDerivedPayload('local', localData)
+        applyLocalPayload(localData, derived)
     }
 
     if(isRefreshLocalFile.value) {

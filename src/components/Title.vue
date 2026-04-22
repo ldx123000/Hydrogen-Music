@@ -1,5 +1,5 @@
 <script setup>
-  import { computed } from 'vue'
+  import { computed, onBeforeUnmount } from 'vue'
   import { useRouter } from 'vue-router'
   import VueSlider from 'vue-slider-component'
   import { songTime2, changeProgress } from '../utils/player';
@@ -38,8 +38,12 @@
     widgetState.value = true
     lyricShow.value = false
   }
-  windowApi.hidePlayer(() => {
+  const removeHidePlayerListener = windowApi.hidePlayer(() => {
     if(!widgetState.value) backHome()
+  })
+
+  onBeforeUnmount(() => {
+    removeHidePlayerListener?.()
   })
 </script>
 

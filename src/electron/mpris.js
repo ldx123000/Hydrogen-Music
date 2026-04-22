@@ -2,28 +2,44 @@ const dbus = require('dbus-next');
 const {ipcMain, app} = require ('electron');
 const Player = require ("mpris-service");
 
+const mprisState = {
+  initialized: false,
+  window: null,
+  player: null,
+}
+
+function getRenderer() {
+  const activeWindow = mprisState.window
+  if (!activeWindow || activeWindow.isDestroyed?.()) return null
+  if (!activeWindow.webContents || activeWindow.webContents.isDestroyed?.()) return null
+  return activeWindow.webContents
+}
+
 function createMpris(window){
-  const renderer = window.webContents;
+  mprisState.window = window;
+  if (mprisState.initialized) return;
+  mprisState.initialized = true;
 
   const player = Player({
     name: 'hydrogenmusic',
     identity: 'HydrogenMusic',
   });
+  mprisState.player = player;
 
-  player.on('next', () => renderer.send('next'));
-  player.on('previous', () => renderer.send('previous'));
-  player.on('playpause', () => renderer.send('playpause'));
-  player.on('play', () => renderer.send('play'));
-  player.on('pause', () => renderer.send('pause'));
+  player.on('next', () => getRenderer()?.send('next'));
+  player.on('previous', () => getRenderer()?.send('previous'));
+  player.on('playpause', () => getRenderer()?.send('playpause'));
+  player.on('play', () => getRenderer()?.send('play'));
+  player.on('pause', () => getRenderer()?.send('pause'));
   player.on('quit', () => app.exit());
   player.on('position', args =>
-    renderer.send('setPosition', args.position / 1000 / 1000)
+    getRenderer()?.send('setPosition', args.position / 1000 / 1000)
   );
-  player.on('loopStatus', () => renderer.send('repeat'));
-  player.on('shuffle', () => renderer.send('shuffle'));
+  player.on('loopStatus', () => getRenderer()?.send('repeat'));
+  player.on('shuffle', () => getRenderer()?.send('shuffle'));
   // 当外部通过 MPRIS 改变音量时触发
   player.on('volume', (value) => {
-    renderer.send('volume_changed', value);
+    getRenderer()?.send('volume_changed', value);
   })
 
   ipcMain.on('music-playing-check', (e, playing) => {

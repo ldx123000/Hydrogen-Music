@@ -1,73 +1,132 @@
-const { ipcMain }= require('electron')
+const { ipcMain } = require('electron')
 const scanLocalMusicTree = require('./dirTree')
-const Store = require('electron-store').default;
+const Store = require('electron-store').default
 
+const moduleState = {
+    initialized: false,
+    win: null,
+}
 
-module.exports = function LocalFiles(win, app) {
-    const settingsStore = new Store({name: 'settings'})
-    const localStore = new Store({name: 'localMusic'})
-       
-    function sendLocalFiles(dirTree, metadata, type, count) {
-        let localData = {
-            dirTree: dirTree,
-            locaFilesMetadata: metadata,
-            type: type,
-            count: count
+function getCacheKey(type) {
+    return type === 'downloaded' ? 'localFiles.downloaded' : 'localFiles.local'
+}
+
+function getActiveWindow() {
+    return moduleState.win
+}
+
+function sendToRenderer(channel, payload) {
+    const win = getActiveWindow()
+    if (!win || win.isDestroyed?.()) return
+    if (!win.webContents || win.webContents.isDestroyed?.()) return
+    win.webContents.send(channel, payload)
+}
+
+module.exports = function LocalFiles(win) {
+    moduleState.win = win
+
+    if (moduleState.initialized) {
+        return {
+            setWindow(nextWin) {
+                moduleState.win = nextWin
+            },
         }
-        win.webContents.send('local-music-files', localData)
+    }
+
+    moduleState.initialized = true
+    const settingsStore = new Store({ name: 'settings' })
+    const localStore = new Store({ name: 'localMusic' })
+
+    function buildLocalPayload({ dirTree, metadata, type, count = 0, derived = null }) {
+        return {
+            dirTree,
+            locaFilesMetadata: metadata,
+            type,
+            count,
+            derived,
+        }
+    }
+
+    async function persistLocalFiles(type, payload) {
+        const cacheKey = getCacheKey(type)
+        const nextPayload = {
+            ...payload,
+            derived: payload?.derived ?? null,
+        }
+        await localStore.set(cacheKey, nextPayload)
+        return nextPayload
     }
 
     async function readLocalFiles(type, refresh) {
-        let dirTree = []
-        let metadata = []
-        if(refresh || (!localStore.get('localFiles.downloaded') && type == 'downloaded') || (!localStore.get('localFiles.local') && type == 'local')) {
-            let baseUrl = []
-            if(type == 'downloaded') {
-                let url = await settingsStore.get('settings')
-                baseUrl.push(url.local.downloadFolder)
-            } else if(type == 'local') {
-                let url = await settingsStore.get('settings')
-                baseUrl = url.local.localFolder
-            }
-            let count = 0
-            for (let i = 0; i < baseUrl.length; i++) {
-                const result = await scanLocalMusicTree(baseUrl[i], win)
-                dirTree.push(result.dirTree)
-                metadata.push(result.metadata)
-                count += Number(result.count || 0)
-            }
-            sendLocalFiles(dirTree, metadata, type, count)
-            count = null
-            let localData = {
-                dirTree: dirTree,
-                locaFilesMetadata: metadata
-            }
-            if(type == 'downloaded') {
-                localStore.set('localFiles.downloaded', localData)
-            }  else if(type == 'local') {
-                localStore.set('localFiles.local', localData)
-            }
-        } else {
-            if(type == 'downloaded') {
-                const data = await localStore.get('localFiles.downloaded')
-                data.type = 'downloaded'
-                win.webContents.send('local-music-files', data)
-            }  else if(type == 'local') {
-                const data =await localStore.get('localFiles.local')
-                data.type = 'local'
-                win.webContents.send('local-music-files', data)
-            }
+        const cacheKey = getCacheKey(type)
+        const cachedPayload = !refresh ? await localStore.get(cacheKey) : null
 
+        if (cachedPayload) {
+            sendToRenderer('local-music-files', {
+                ...cachedPayload,
+                type,
+            })
+            return
         }
+
+        const settings = await settingsStore.get('settings')
+        const baseUrl = []
+
+        if (type === 'downloaded') {
+            if (settings?.local?.downloadFolder) baseUrl.push(settings.local.downloadFolder)
+        } else if (type === 'local') {
+            if (Array.isArray(settings?.local?.localFolder)) baseUrl.push(...settings.local.localFolder)
+        }
+
+        const dirTree = []
+        const metadata = []
+        let count = 0
+
+        for (let i = 0; i < baseUrl.length; i += 1) {
+            const result = await scanLocalMusicTree(baseUrl[i], getActiveWindow())
+            dirTree.push(result.dirTree)
+            metadata.push(result.metadata)
+            count += Number(result.count || 0)
+        }
+
+        const nextPayload = await persistLocalFiles(type, buildLocalPayload({
+            dirTree,
+            metadata,
+            type,
+            count,
+            derived: null,
+        }))
+
+        sendToRenderer('local-music-files', nextPayload)
     }
-    ipcMain.on('scan-local-music', (e, params) => {
+
+    ipcMain.on('scan-local-music', (_event, params = {}) => {
         readLocalFiles(params.type, params.refresh)
     })
-    ipcMain.on('clear-local-music-data', (e, type) => {
-        if(type == 'downloaded') {
-            localStore.set('localFiles.downloaded', null)
-        }  else if(type == 'local') {
-            localStore.set('localFiles.local', null)
+
+    ipcMain.on('persist-local-music-derived', async (_event, payload = {}) => {
+        const type = payload?.type
+        if (type !== 'downloaded' && type !== 'local') return
+
+        const cacheKey = getCacheKey(type)
+        const cached = await localStore.get(cacheKey)
+        if (!cached) return
+
+        await localStore.set(cacheKey, {
+            ...cached,
+            derived: payload?.derived || null,
+        })
+    })
+
+    ipcMain.on('clear-local-music-data', (_event, type) => {
+        if (type === 'downloaded' || type === 'local') {
+            localStore.set(getCacheKey(type), null)
         }
     })
+
+    return {
+        setWindow(nextWin) {
+            moduleState.win = nextWin
+        },
+    }
 }

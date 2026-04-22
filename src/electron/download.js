@@ -1,9 +1,9 @@
 const { ipcMain } = require('electron')
 const fs = require('fs')
-const fse = require('fs-extra')
+const fsp = fs.promises
 const axios = require('axios')
-const Store = require('electron-store').default;
-const path = require('path');
+const Store = require('electron-store').default
+const path = require('path')
 const { nanoid } = require('nanoid')
 let NodeID3 = null
 let Metaflac = null
@@ -11,405 +11,482 @@ let Sharp = null
 try { NodeID3 = require('node-id3') } catch (_) { NodeID3 = null }
 try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
 try { Sharp = require('sharp') } catch (_) { Sharp = null }
-module.exports = MusicDownload = (win) => {
-  const settingsStore = new Store({ name: 'settings' })
-  let isClose = false
-  let currentDownloadItem = null
-  const sanitize = (name) => {
-    try {
-      return String(name || '')
-        .replace(/[\\/:*?"<>|]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 120) || 'unknown'
-    } catch (_) {
-      return 'unknown'
-    }
-  }
-  const parseHttpUrl = (value) => {
-    try {
-      const parsedUrl = new URL(String(value || '').trim())
-      if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') return parsedUrl
-    } catch (_) {}
-    return null
-  }
-  const isPrivateNetworkHost = hostname => {
-    const normalizedHost = String(hostname || '')
+
+const moduleState = {
+  initialized: false,
+  win: null,
+  isClose: false,
+  currentDownloadItem: null,
+  pendingDownloadContext: null,
+}
+
+const downloadContextByItem = new WeakMap()
+
+function getActiveWindow() {
+  return moduleState.win
+}
+
+function sendToRenderer(channel, payload) {
+  const win = getActiveWindow()
+  if (!win || win.isDestroyed?.()) return
+  if (!win.webContents || win.webContents.isDestroyed?.()) return
+  if (typeof payload === 'undefined') win.webContents.send(channel)
+  else win.webContents.send(channel, payload)
+}
+
+function updateWindowProgress(progress) {
+  const win = getActiveWindow()
+  if (!win || win.isDestroyed?.()) return
+  try {
+    win.setProgressBar(progress)
+  } catch (_) {}
+}
+
+function sanitize(name) {
+  try {
+    return String(name || '')
+      .replace(/[\\/:*?"<>|]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim()
-      .toLowerCase()
-      .replace(/\.$/, '')
-      .replace(/^\[|\]$/g, '')
+      .slice(0, 120) || 'unknown'
+  } catch (_) {
+    return 'unknown'
+  }
+}
 
-    if (!normalizedHost) return true
-    if (normalizedHost === 'localhost' || normalizedHost.endsWith('.localhost') || normalizedHost.endsWith('.local')) return true
-    if (normalizedHost.includes(':')) return true
-    if (!normalizedHost.includes('.')) return true
+function parseHttpUrl(value) {
+  try {
+    const parsedUrl = new URL(String(value || '').trim())
+    if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') return parsedUrl
+  } catch (_) {}
+  return null
+}
 
-    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalizedHost)) return false
+function isPrivateNetworkHost(hostname) {
+  const normalizedHost = String(hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '')
+    .replace(/^\[|\]$/g, '')
 
-    const octets = normalizedHost.split('.').map(part => Number.parseInt(part, 10))
-    if (octets.length !== 4 || octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true
+  if (!normalizedHost) return true
+  if (normalizedHost === 'localhost' || normalizedHost.endsWith('.localhost') || normalizedHost.endsWith('.local')) return true
+  if (normalizedHost.includes(':')) return true
+  if (!normalizedHost.includes('.')) return true
 
-    const [first, second] = octets
-    if (first === 0 || first === 10 || first === 127) return true
-    if (first === 169 && second === 254) return true
-    if (first === 172 && second >= 16 && second <= 31) return true
-    if (first === 192 && second === 168) return true
-    if (first === 100 && second >= 64 && second <= 127) return true
-    if (first === 198 && (second === 18 || second === 19)) return true
-    if (first >= 224) return true
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalizedHost)) return false
+
+  const octets = normalizedHost.split('.').map(part => Number.parseInt(part, 10))
+  if (octets.length !== 4 || octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true
+
+  const [first, second] = octets
+  if (first === 0 || first === 10 || first === 127) return true
+  if (first === 169 && second === 254) return true
+  if (first === 172 && second >= 16 && second <= 31) return true
+  if (first === 192 && second === 168) return true
+  if (first === 100 && second >= 64 && second <= 127) return true
+  if (first === 198 && (second === 18 || second === 19)) return true
+  if (first >= 224) return true
+  return false
+}
+
+function parseSafeRemoteUrl(value) {
+  const parsedUrl = parseHttpUrl(value)
+  if (!parsedUrl) return null
+  return isPrivateNetworkHost(parsedUrl.hostname) ? null : parsedUrl
+}
+
+function normalizeDownloadExtension(value) {
+  const normalized = String(value || '')
+    .trim()
+    .replace(/^\./, '')
+    .toLowerCase()
+  return /^[a-z0-9]{1,8}$/.test(normalized) ? normalized : 'bin'
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fsp.access(targetPath)
+    return true
+  } catch (_) {
     return false
   }
-  const parseSafeRemoteUrl = (value) => {
-    const parsedUrl = parseHttpUrl(value)
-    if (!parsedUrl) return null
-    return isPrivateNetworkHost(parsedUrl.hostname) ? null : parsedUrl
+}
+
+async function ensureDirectory(targetPath) {
+  try {
+    await fsp.mkdir(targetPath, { recursive: true })
+  } catch (_) {}
+}
+
+async function isDirectory(targetPath) {
+  try {
+    const stat = await fsp.stat(targetPath)
+    return stat.isDirectory()
+  } catch (_) {
+    return false
   }
-  const normalizeDownloadExtension = (value) => {
-    const normalized = String(value || '')
-      .trim()
-      .replace(/^\./, '')
-      .toLowerCase()
-    return /^[a-z0-9]{1,8}$/.test(normalized) ? normalized : 'bin'
+}
+
+async function findAvailableDirectoryPath(basePath) {
+  let candidatePath = basePath
+  let suffix = 1
+  while (await pathExists(candidatePath)) {
+    if (await isDirectory(candidatePath)) return candidatePath
+    candidatePath = `${basePath} (${suffix++})`
   }
-  let downloadObj = {
-    downloadUrl: '',
-    fileName: '',
-    type: '',
-    savePath: '',
-    id: null,
-    lyrics: null,
-    coverUrl: null,
-    artists: null,
-    album: null,
+  return candidatePath
+}
+
+async function findAvailableFilePath(destDir, fileName, extension) {
+  let suffix = 1
+  let candidateName = `${fileName}.${extension}`
+  while (await pathExists(path.join(destDir, candidateName))) {
+    candidateName = `${fileName} (${suffix++}).${extension}`
+  }
+  return path.join(destDir, candidateName)
+}
+
+async function prepareDownloadDestination(context, settings) {
+  const createSongFolder = !!(settings && settings.local && settings.local.downloadCreateSongFolder)
+  const baseName = sanitize(context.fileName)
+  const baseSavePath = path.resolve(context.savePath)
+
+  if (createSongFolder) {
+    const folderPath = await findAvailableDirectoryPath(path.join(baseSavePath, baseName))
+    await ensureDirectory(folderPath)
+    return path.join(folderPath, `${baseName}.${context.type}`)
   }
 
-  const setCurrentDownloadItem = item => {
-    currentDownloadItem = item || null
+  await ensureDirectory(baseSavePath)
+  return findAvailableFilePath(baseSavePath, baseName, context.type)
+}
+
+async function prepareInterruptedDownloadPath(context, interruptedTimes) {
+  const baseName = sanitize(context.fileName)
+  const baseSavePath = path.resolve(context.savePath)
+  if (interruptedTimes > 3) {
+    await ensureDirectory(baseSavePath)
+    return path.join(baseSavePath, `undefined_name_${nanoid()}.${context.type}`)
   }
 
-  const clearCurrentDownloadItem = item => {
-    if (currentDownloadItem === item) currentDownloadItem = null
+  const dirPath = interruptedTimes > 1
+    ? path.join(baseSavePath, `${baseName} (${interruptedTimes})`)
+    : path.join(baseSavePath, baseName)
+  await ensureDirectory(dirPath)
+  return path.join(dirPath, `${baseName}.${context.type}`)
+}
+
+async function writeLyricFileIfNeeded(lrcPath, lrcText) {
+  if (!lrcText || !lrcText.trim()) return
+  if (await pathExists(lrcPath)) return
+  try {
+    await fsp.writeFile(lrcPath, lrcText, 'utf8')
+  } catch (e) {
+    console.warn('写入歌词文件失败:', e)
   }
+}
+
+async function finalizeDownloadMetadata(item, context, settings) {
+  if (!context) return
+  const audioPath = item.getSavePath()
+  if (!audioPath) return
+  const parsed = path.parse(audioPath)
+  const saveLyricFile = !!(settings && settings.local && settings.local.downloadSaveLyricFile)
+
+  if (context.lyrics && (context.lyrics.lrc || context.lyrics.tlyric || context.lyrics.romalrc)) {
+    const lrcText = buildCombinedLrcText(context.lyrics, {
+      name: context.fileName,
+      artists: Array.isArray(context.artists) ? context.artists : [],
+      album: context.album || null,
+    })
+    const lrcPath = path.join(parsed.dir, parsed.name + '.lrc')
+    if (saveLyricFile) {
+      await writeLyricFileIfNeeded(lrcPath, lrcText)
+    }
+
+    try {
+      const timedLrcText = lrcText
+      const fallbackPlainText = buildUnsyncedLyricText(context.lyrics)
+      const hasTimedTags = typeof timedLrcText === 'string' && /\[\d{1,3}[:：.\uFF0E\u3002,，;；/\-_\s]\s*\d{1,2}/.test(timedLrcText)
+      const lyricTextForEmbed = (hasTimedTags ? timedLrcText : fallbackPlainText) || ''
+      const sylt = hasTimedTags ? buildSynchronisedLyricsFrames(context.lyrics) : null
+      const extLower = (parsed.ext || '').toLowerCase()
+      if (lyricTextForEmbed && lyricTextForEmbed.trim().length > 0) {
+        if (NodeID3 && extLower === '.mp3') {
+          const tags = { unsynchronisedLyrics: { language: 'chi', text: lyricTextForEmbed } }
+          if (sylt && Array.isArray(sylt) && sylt.length) tags.synchronisedLyrics = sylt
+          NodeID3.update(tags, audioPath)
+        } else if (Metaflac && extLower === '.flac') {
+          const flac = new Metaflac(audioPath)
+          const plain = (fallbackPlainText || '').trim()
+          const timed = (timedLrcText || '').trim()
+          if (plain) {
+            try { flac.setTag(`LYRICS=${plain}`) } catch (_) {}
+            try { flac.setTag(`UNSYNCEDLYRICS=${plain}`) } catch (_) {}
+          } else if (timed) {
+            try { flac.setTag(`LYRICS=${timed}`) } catch (_) {}
+          }
+          if (hasTimedTags && timed) {
+            try { flac.setTag(`LRC=${timed}`) } catch (_) {}
+            try { flac.setTag(`LYRICS_LRC=${timed}`) } catch (_) {}
+            try { flac.setTag(`SYNCEDLYRICS=${timed}`) } catch (_) {}
+          }
+          try { flac.save() } catch (_) {}
+        }
+      }
+    } catch (e) {
+      console.warn('写入歌词到标签失败:', e && e.message ? e.message : e)
+    }
+  }
+
+  if (context.coverUrl) {
+    const fetchAndSaveCover = async () => {
+      try {
+        const resp = await axios.get(context.coverUrl, { responseType: 'arraybuffer', timeout: 15000 })
+        const buf = Buffer.from(resp.data)
+        const contentType = (resp.headers && resp.headers['content-type']) || ''
+        const lowerUrl = context.coverUrl.split('?')[0].toLowerCase()
+        const isWebp = contentType.includes('webp') || lowerUrl.endsWith('.webp')
+        const isPngResp = contentType.includes('png') || lowerUrl.endsWith('.png')
+        const isJpegResp = contentType.includes('jpeg') || contentType.includes('jpg') || lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')
+
+        let embedBuf = buf
+        let embedMime = isPngResp ? 'image/png' : (isJpegResp ? 'image/jpeg' : (isWebp ? 'image/webp' : ''))
+        if (Sharp) {
+          try {
+            if (isWebp || (!isPngResp && !isJpegResp)) {
+              const img = Sharp(buf)
+              const meta = await img.metadata().catch(() => ({}))
+              const hasAlpha = !!meta.hasAlpha
+              if (hasAlpha) {
+                embedBuf = await img.toFormat('png').toBuffer()
+                embedMime = 'image/png'
+              } else {
+                embedBuf = await img.toFormat('jpeg', { mozjpeg: true, quality: 90 }).toBuffer()
+                embedMime = 'image/jpeg'
+              }
+            }
+          } catch (convErr) {
+            console.warn('封面转码失败，将尝试原图内嵌:', convErr && convErr.message ? convErr.message : convErr)
+          }
+        }
+        try {
+          const extLower = (parsed.ext || '').toLowerCase()
+          const isPngEmbed = (embedMime || '').includes('png')
+          const isJpegEmbed = (embedMime || '').includes('jpeg') || (embedMime || '').includes('jpg')
+          if (NodeID3 && extLower === '.mp3') {
+            const mime = isPngEmbed ? 'image/png' : (isJpegEmbed ? 'image/jpeg' : 'image/jpeg')
+            NodeID3.update({ image: { mime, type: { id: 3, name: 'front cover' }, description: 'Cover', imageBuffer: embedBuf } }, audioPath)
+          } else if (Metaflac && extLower === '.flac') {
+            if (isPngEmbed || isJpegEmbed) {
+              try {
+                const flac = new Metaflac(audioPath)
+                flac.importPictureFromBuffer(embedBuf)
+                flac.save()
+              } catch (fe) {
+                console.warn('写入FLAC封面失败:', fe && fe.message ? fe.message : fe)
+              }
+            } else {
+              console.warn('FLAC 封面未写入：需要 PNG/JPEG，但当前类型为', embedMime || 'unknown')
+            }
+          }
+        } catch (e) {
+          console.warn('写入封面到标签失败:', e && e.message ? e.message : e)
+        }
+      } catch (e) {
+        console.warn('下载封面失败:', e && e.message ? e.message : e)
+      }
+    }
+    fetchAndSaveCover()
+  }
+
+  try {
+    const titleVal = context.fileName || parsed.name
+    const artistsArr = Array.isArray(context.artists) ? context.artists.filter(Boolean) : []
+    const albumVal = context.album || ''
+    const extLower = (parsed.ext || '').toLowerCase()
+    if (NodeID3 && extLower === '.mp3') {
+      const tag = {
+        title: titleVal,
+        artist: artistsArr.join(' / '),
+        album: albumVal,
+        comment: { language: 'XXX', text: 'Hydrogen Music' }
+      }
+      NodeID3.update(tag, audioPath)
+    } else if (Metaflac && extLower === '.flac') {
+      const flac = new Metaflac(audioPath)
+      if (titleVal) flac.setTag(`TITLE=${titleVal}`)
+      if (albumVal) flac.setTag(`ALBUM=${albumVal}`)
+      if (artistsArr.length) {
+        try { flac.setTag(`ARTIST=${artistsArr.join(' / ')}`) } catch (_) {}
+        artistsArr.forEach(artist => { try { if (artist) flac.setTag(`ARTIST=${artist}`) } catch (_) {} })
+      }
+      try { flac.save() } catch (fe) {
+        console.warn('写入FLAC基础标签失败:', fe && fe.message ? fe.message : fe)
+      }
+    }
+  } catch (e) {
+    console.warn('写入基础标签失败:', e && e.message ? e.message : e)
+  }
+}
+
+module.exports = MusicDownload = (win) => {
+  moduleState.win = win
+
+  if (moduleState.initialized) {
+    return {
+      setWindow(nextWin) {
+        moduleState.win = nextWin
+      },
+    }
+  }
+
+  moduleState.initialized = true
+  const settingsStore = new Store({ name: 'settings' })
 
   ipcMain.on('download-resume', () => {
-    if (!currentDownloadItem) return
-    try { currentDownloadItem.resume() } catch (_) {}
+    if (!moduleState.currentDownloadItem) return
+    try { moduleState.currentDownloadItem.resume() } catch (_) {}
   })
 
   ipcMain.on('download-pause', (_event, close) => {
-    if (!currentDownloadItem) return
+    if (!moduleState.currentDownloadItem) return
     if (close == 'shutdown') {
-      isClose = true
-      try { currentDownloadItem.cancel() } catch (_) {}
+      moduleState.isClose = true
+      try { moduleState.currentDownloadItem.cancel() } catch (_) {}
       return
     }
-    try { currentDownloadItem.pause() } catch (_) {}
+    try { moduleState.currentDownloadItem.pause() } catch (_) {}
   })
 
   ipcMain.on('download-cancel', () => {
-    if (!currentDownloadItem) return
-    try { currentDownloadItem.cancel() } catch (_) {}
-  })
-  ipcMain.on('download', async (event, args = {}) => {
-    const parsedDownloadUrl = parseSafeRemoteUrl(args.url)
-    if (!parsedDownloadUrl) {
-      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
-        win.webContents.send('download-error', 'invalidDownloadUrl')
-        win.webContents.send('download-next')
-      }
-      return
-    }
-    downloadObj.fileName = args.name
-    downloadObj.downloadUrl = parsedDownloadUrl.toString()
-    downloadObj.type = normalizeDownloadExtension(args.type)
-    downloadObj.id = args.id || null
-    downloadObj.lyrics = args.lyrics || null
-    downloadObj.coverUrl = parseSafeRemoteUrl(args.coverUrl)?.toString() || null
-    downloadObj.artists = args.artists || null
-    downloadObj.album = args.album || null
-    const savePath = await settingsStore.get('settings')
-    const downloadFolder = savePath?.local?.downloadFolder
-    if (!downloadFolder) {
-      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
-        win.webContents.send('download-error', 'noSavePath')
-        win.webContents.send('download-next')
-      }
-      return
-    }
-    downloadObj.savePath = path.resolve(downloadFolder)
-    win.webContents.downloadURL(downloadObj.downloadUrl)
+    if (!moduleState.currentDownloadItem) return
+    try { moduleState.currentDownloadItem.cancel() } catch (_) {}
   })
 
-  win.webContents.session.on('will-download', (event, item, webContents) => {
-    setCurrentDownloadItem(item)
-    const currentDownload = { ...downloadObj }
+  ipcMain.on('download', async (_event, args = {}) => {
+    const parsedDownloadUrl = parseSafeRemoteUrl(args.url)
+    if (!parsedDownloadUrl) {
+      sendToRenderer('download-error', 'invalidDownloadUrl')
+      sendToRenderer('download-next')
+      return
+    }
+
+    const settings = await settingsStore.get('settings')
+    const downloadFolder = settings?.local?.downloadFolder
+    if (!downloadFolder) {
+      sendToRenderer('download-error', 'noSavePath')
+      sendToRenderer('download-next')
+      return
+    }
+
+    moduleState.pendingDownloadContext = {
+      downloadUrl: parsedDownloadUrl.toString(),
+      fileName: args.name,
+      type: normalizeDownloadExtension(args.type),
+      savePath: path.resolve(downloadFolder),
+      resolvedSavePath: null,
+      id: args.id || null,
+      lyrics: args.lyrics || null,
+      coverUrl: parseSafeRemoteUrl(args.coverUrl)?.toString() || null,
+      artists: args.artists || null,
+      album: args.album || null,
+    }
+
+    try {
+      moduleState.pendingDownloadContext.resolvedSavePath = await prepareDownloadDestination(moduleState.pendingDownloadContext, settings)
+    } catch (error) {
+      console.warn('预计算下载路径失败:', error)
+    }
+
+    const activeWin = getActiveWindow()
+    if (!activeWin || activeWin.isDestroyed?.() || !activeWin.webContents || activeWin.webContents.isDestroyed?.()) {
+      moduleState.pendingDownloadContext = null
+      sendToRenderer('download-error', 'downloadWindowUnavailable')
+      sendToRenderer('download-next')
+      return
+    }
+
+    activeWin.webContents.downloadURL(moduleState.pendingDownloadContext.downloadUrl)
+  })
+
+  win.webContents.session.on('will-download', (_event, item) => {
+    moduleState.currentDownloadItem = item || null
+    const currentDownload = moduleState.pendingDownloadContext
+      ? { ...moduleState.pendingDownloadContext }
+      : {
+        downloadUrl: item.getURL(),
+        fileName: path.parse(item.getFilename()).name,
+        type: normalizeDownloadExtension(path.extname(item.getFilename())),
+        savePath: '',
+        resolvedSavePath: null,
+        id: null,
+        lyrics: null,
+        coverUrl: null,
+        artists: null,
+        album: null,
+      }
+    moduleState.pendingDownloadContext = null
+    downloadContextByItem.set(item, currentDownload)
+
     const settings = (() => {
       try { return settingsStore.get('settings') || null } catch (_) { return null }
     })()
-    const createSongFolder = !!(settings && settings.local && settings.local.downloadCreateSongFolder)
-    const saveLyricFile = !!(settings && settings.local && settings.local.downloadSaveLyricFile)
 
-    // 以歌曲名创建文件夹，内部保存音频/歌词/封面，并在音频文件内写入元数据
-    const baseName = sanitize(currentDownload.fileName)
-    let destDir = currentDownload.savePath
-    let audioFileName = baseName + '.' + currentDownload.type
-    if (createSongFolder) {
-      destDir = path.join(currentDownload.savePath, baseName)
+    const preparedSavePath = currentDownload.resolvedSavePath
+    if (preparedSavePath) {
       try {
-        let suffix = 1
-        while (fs.existsSync(destDir) && !fs.statSync(destDir).isDirectory()) {
-          destDir = path.join(currentDownload.savePath, `${baseName} (${suffix++})`)
-        }
-        fse.ensureDirSync(destDir)
-      } catch (e) {
-        try { fse.ensureDirSync(currentDownload.savePath) } catch (_) {}
-        destDir = currentDownload.savePath
+        item.setSavePath(preparedSavePath)
+      } catch (error) {
+        console.warn('设置下载路径失败:', error)
       }
-      audioFileName = baseName + '.' + currentDownload.type
-    } else {
-      try { fse.ensureDirSync(currentDownload.savePath) } catch (_) {}
-      // 文件名冲突处理：在同一目录下追加 (n)
-      try {
-        let suffix = 1
-        const parsedType = '.' + String(currentDownload.type || '').replace(/^\./, '')
-        const ext = parsedType === '.' ? '' : parsedType
-        while (fs.existsSync(path.join(destDir, audioFileName))) {
-          audioFileName = `${baseName} (${suffix++})${ext}`
-        }
-      } catch (_) {}
     }
 
-    const audioPath = path.join(destDir, audioFileName)
-    item.setSavePath(audioPath)
-
-    const totalBytes = item.getTotalBytes();
-
-    console.log(item.getURL())
-    console.log(totalBytes)
-    console.log(item.getSavePath())
-
+    const totalBytes = item.getTotalBytes()
     let interruptedTimes = 0
-    item.on('updated', (event, state) => {
+
+    item.on('updated', async (_updatedEvent, state) => {
       let progress = item.getReceivedBytes() / totalBytes
       progress = Math.round(progress * 100)
-      win.setProgressBar(progress / 100);
+      updateWindowProgress(progress / 100)
 
       if (state === 'interrupted') {
-        console.log('Download is interrupted but can be resumed')
-        let alterPath = path.join(currentDownload.savePath, sanitize(currentDownload.fileName))
-        if (true) {
-          interruptedTimes++
-          const tryDir = alterPath + (interruptedTimes > 1 ? ` (${interruptedTimes})` : '')
-          try { fse.ensureDirSync(tryDir) } catch (_) {}
-          item.setSavePath(path.join(tryDir, sanitize(currentDownload.fileName) + '.' + currentDownload.type))
-          if (interruptedTimes > 3) {
-            item.setSavePath(path.join(currentDownload.savePath, "undefined_name_" + nanoid() + "." + currentDownload.type))
-            interruptedTimes = 0
-          }
-          item.resume()
-        }
-
-      } else if (state === 'progressing') {
-        if (item.isPaused()) {
-          console.log('Download is paused')
-        } else {
-          console.log(progress)
-        }
-      }
-      win.webContents.send('download-progress', progress)
-    })
-    item.once('done', (event, state) => {
-      if (state === 'completed') {
-        console.log('Download successfully')
+        interruptedTimes += 1
         try {
-          // 下载完成后：可选写入同名 .lrc；并始终尝试写入音频标签（内嵌歌词）
-          if (currentDownload && currentDownload.lyrics && (currentDownload.lyrics.lrc || currentDownload.lyrics.tlyric || currentDownload.lyrics.romalrc)) {
-            const audioPath = item.getSavePath()
-            if (audioPath) {
-              const parsed = path.parse(audioPath)
-              const lrcPath = path.join(parsed.dir, parsed.name + '.lrc')
-              // 生成最终合并 LRC 文本
-              const lrcText = buildCombinedLrcText(currentDownload.lyrics, {
-                name: currentDownload.fileName,
-                artists: Array.isArray(currentDownload.artists) ? currentDownload.artists : [],
-                album: currentDownload.album || null
-              })
-              if (saveLyricFile && lrcText && lrcText.trim().length > 0) {
-                try {
-                  // 若已存在第三方歌词文件，尊重现有文件，不覆盖
-                  if (!fs.existsSync(lrcPath)) {
-                    fs.writeFileSync(lrcPath, lrcText, 'utf8')
-                  }
-                } catch (e) {
-                  console.warn('写入歌词文件失败:', e)
-                }
-              }
-              // 将歌词写入 MP3 或 FLAC 标签（MP3: USLT/SYLT；FLAC: Vorbis comments）
-              try {
-                const timedLrcText = lrcText
-                const fallbackPlainText = buildUnsyncedLyricText(currentDownload.lyrics)
-                const hasTimedTags = typeof timedLrcText === 'string' && /\[\d{1,3}[:：.\uFF0E\u3002,，;；/\-_\s]\s*\d{1,2}/.test(timedLrcText)
-                const lyricTextForEmbed = (hasTimedTags ? timedLrcText : fallbackPlainText) || ''
-                const sylt = hasTimedTags ? buildSynchronisedLyricsFrames(currentDownload.lyrics) : null
-                const extLower = (parsed.ext || '').toLowerCase()
-                if (lyricTextForEmbed && lyricTextForEmbed.trim().length > 0) {
-                  if (NodeID3 && extLower === '.mp3') {
-                    const tags = { unsynchronisedLyrics: { language: 'chi', text: lyricTextForEmbed } }
-                    if (sylt && Array.isArray(sylt) && sylt.length) tags.synchronisedLyrics = sylt
-                    NodeID3.update(tags, audioPath)
-                  } else if (Metaflac && extLower === '.flac') {
-                    const flac = new Metaflac(audioPath)
-                    // 兼容性优先：LYRICS 写纯文本；带时间戳的 LRC 额外写入自定义键，避免播放器直接显示时间标
-                    const plain = (fallbackPlainText || '').trim()
-                    const timed = (timedLrcText || '').trim()
-                    if (plain) {
-                      try { flac.setTag(`LYRICS=${plain}`) } catch (_) {}
-                      try { flac.setTag(`UNSYNCEDLYRICS=${plain}`) } catch (_) {}
-                    } else if (timed) {
-                      // 没有纯文本时才回退写入（总比没有强）
-                      try { flac.setTag(`LYRICS=${timed}`) } catch (_) {}
-                    }
-                    if (hasTimedTags && timed) {
-                      // 非标准，但部分播放器/工具会读取；保留 .lrc 文件作为主要同步歌词来源
-                      try { flac.setTag(`LRC=${timed}`) } catch (_) {}
-                      try { flac.setTag(`LYRICS_LRC=${timed}`) } catch (_) {}
-                      try { flac.setTag(`SYNCEDLYRICS=${timed}`) } catch (_) {}
-                    }
-                    try { flac.save() } catch (_) {}
-                  }
-                }
-              } catch (e) {
-                console.warn('写入歌词到标签失败:', e && e.message ? e.message : e)
-              }
-            }
-          }
+          const nextSavePath = await prepareInterruptedDownloadPath(currentDownload, interruptedTimes)
+          item.setSavePath(nextSavePath)
+          if (interruptedTimes > 3) interruptedTimes = 0
+          item.resume()
+        } catch (_) {}
+      }
 
-          // 仅尝试写入音频封面标签（不再生成同名封面图片侧车）；自动将 webp 等转为 jpg/png
-          if (currentDownload && currentDownload.coverUrl) {
-            const audioPath = item.getSavePath()
-            if (audioPath) {
-              const parsed = path.parse(audioPath)
-              // 根据 content-type 或 URL 推断扩展名（用于判断与转码）
-              const fetchAndSaveCover = async () => {
-                try {
-                  const resp = await axios.get(currentDownload.coverUrl, { responseType: 'arraybuffer', timeout: 15000 })
-                  const buf = Buffer.from(resp.data)
-                  const contentType = (resp.headers && resp.headers['content-type']) || ''
-                  const lowerUrl = currentDownload.coverUrl.split('?')[0].toLowerCase()
-                  const isWebp = contentType.includes('webp') || lowerUrl.endsWith('.webp')
-                  const isPngResp = contentType.includes('png') || lowerUrl.endsWith('.png')
-                  const isJpegResp = contentType.includes('jpeg') || contentType.includes('jpg') || lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')
+      sendToRenderer('download-progress', progress)
+    })
 
-                  // 准备嵌入的数据与 MIME；必要时用 sharp 转码为 jpg/png
-                  let embedBuf = buf
-                  let embedMime = isPngResp ? 'image/png' : (isJpegResp ? 'image/jpeg' : (isWebp ? 'image/webp' : ''))
-                  if (Sharp) {
-                    try {
-                      // 若是 webp 或未知类型，优先尝试转码；有 alpha 用 png，无 alpha 用 jpeg
-                      if (isWebp || (!isPngResp && !isJpegResp)) {
-                        const img = Sharp(buf)
-                        const meta = await img.metadata().catch(() => ({}))
-                        const hasAlpha = !!meta.hasAlpha
-                        if (hasAlpha) {
-                          embedBuf = await img.toFormat('png').toBuffer()
-                          embedMime = 'image/png'
-                        } else {
-                          embedBuf = await img.toFormat('jpeg', { mozjpeg: true, quality: 90 }).toBuffer()
-                          embedMime = 'image/jpeg'
-                        }
-                      }
-                    } catch (convErr) {
-                      console.warn('封面转码失败，将尝试原图内嵌:', convErr && convErr.message ? convErr.message : convErr)
-                    }
-                  }
-                  // 内嵌封面：mp3(APIC) / flac(PICTURE)。注意：metaflac-js 仅支持 jpg/png
-                  try {
-                    const extLower = (parsed.ext || '').toLowerCase()
-                    const isPngEmbed = (embedMime || '').includes('png')
-                    const isJpegEmbed = (embedMime || '').includes('jpeg') || (embedMime || '').includes('jpg')
-                    if (NodeID3 && extLower === '.mp3') {
-                      const mime = isPngEmbed ? 'image/png' : (isJpegEmbed ? 'image/jpeg' : 'image/jpeg')
-                      NodeID3.update({ image: { mime, type: { id: 3, name: 'front cover' }, description: 'Cover', imageBuffer: embedBuf } }, audioPath)
-                    } else if (Metaflac && extLower === '.flac') {
-                      if (isPngEmbed || isJpegEmbed) {
-                        try {
-                          const flac = new Metaflac(audioPath)
-                          flac.importPictureFromBuffer(embedBuf)
-                          flac.save()
-                        } catch (fe) {
-                          console.warn('写入FLAC封面失败:', fe && fe.message ? fe.message : fe)
-                        }
-                      } else {
-                        console.warn('FLAC 封面未写入：需要 PNG/JPEG，但当前类型为', embedMime || 'unknown')
-                      }
-                    }
-                  } catch (e) {
-                    console.warn('写入封面到标签失败:', e && e.message ? e.message : e)
-                  }
-                } catch (e) {
-                  console.warn('下载封面失败:', e && e.message ? e.message : e)
-                }
-              }
-              // 异步执行，不阻塞下载完成事件
-              fetchAndSaveCover()
-            }
-          }
-
-          // 在音频文件内写入基础标签（不再生成 .json 侧车）
-          try {
-            const audioPath = item.getSavePath()
-            if (audioPath) {
-              const parsed = path.parse(audioPath)
-              // 基础标签：标题/艺术家/专辑
-              try {
-                const titleVal = currentDownload.fileName || parsed.name
-                const artistsArr = Array.isArray(currentDownload.artists) ? currentDownload.artists.filter(Boolean) : []
-                const albumVal = currentDownload.album || ''
-                const extLower = (parsed.ext || '').toLowerCase()
-                if (NodeID3 && extLower === '.mp3') {
-                  const tag = {
-                    title: titleVal,
-                    artist: artistsArr.join(' / '),
-                    album: albumVal,
-                    comment: { language: 'XXX', text: 'Hydrogen Music' }
-                  }
-                  NodeID3.update(tag, audioPath)
-                } else if (Metaflac && extLower === '.flac') {
-                  try {
-                    const flac = new Metaflac(audioPath)
-                    if (titleVal) flac.setTag(`TITLE=${titleVal}`)
-                    if (albumVal) flac.setTag(`ALBUM=${albumVal}`)
-                    if (artistsArr.length) {
-                      // 同时写入合并和分条 ARTIST，提升兼容性
-                      try { flac.setTag(`ARTIST=${artistsArr.join(' / ')}`) } catch (_) {}
-                      artistsArr.forEach(a => { try { if (a) flac.setTag(`ARTIST=${a}`) } catch (_) {} })
-                    }
-                    flac.save()
-                  } catch (fe) {
-                    console.warn('写入FLAC基础标签失败:', fe && fe.message ? fe.message : fe)
-                  }
-                }
-              } catch (e) {
-                console.warn('写入基础标签失败:', e && e.message ? e.message : e)
-              }
-            }
-          } catch (e) {
-            console.warn('写入元数据文件失败:', e && e.message ? e.message : e)
-          }
-        } catch (e) {
-          console.warn('处理歌词写入时出错:', e)
+    item.once('done', async (_doneEvent, state) => {
+      const context = downloadContextByItem.get(item) || currentDownload
+      if (state === 'completed') {
+        try {
+          await finalizeDownloadMetadata(item, context, settings)
+        } catch (error) {
+          console.warn('处理下载元数据失败:', error)
         }
       } else {
         console.log(`Download failed: ${state}`)
       }
-      if (!win.isDestroyed()) {
-        win.setProgressBar(-1);
-      }
-      clearCurrentDownloadItem(item)
-      if (!isClose) win.webContents.send('download-next')
+
+      updateWindowProgress(-1)
+      if (moduleState.currentDownloadItem === item) moduleState.currentDownloadItem = null
+      if (!moduleState.isClose) sendToRenderer('download-next')
     })
   })
+
+  return {
+    setWindow(nextWin) {
+      moduleState.win = nextWin
+    },
+  }
 }
 
 // 构建合并后的 LRC 文本：核心修复——兼容 [mm:ss:cc] 与 [mm:ss.xxx] 时间格式

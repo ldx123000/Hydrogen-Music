@@ -3,8 +3,9 @@ import { storeToRefs } from 'pinia';
 import pinia from '../store/pinia';
 import { usePlayerStore } from '../store/playerStore';
 import { buildLyricsTimeline, findLyricIndexAtTime } from '../utils/lyricCore';
+import { subscribePlaybackTick } from '../utils/player/playbackTicker';
 
-let lyricIndexInterval = null;
+let stopLyricTicker = null;
 let unwatchSongSignature = null;
 let unwatchLyric = null;
 let unwatchPlaying = null;
@@ -53,10 +54,9 @@ function getSafeCurrentSeek() {
 }
 
 function stopLyricIndexSync() {
-    if (!lyricIndexInterval) return;
-
-    clearInterval(lyricIndexInterval);
-    lyricIndexInterval = null;
+    if (!stopLyricTicker) return;
+    stopLyricTicker();
+    stopLyricTicker = null;
 }
 
 function applyCurrentLyricIndex(index) {
@@ -92,9 +92,13 @@ function startLyricIndexSync() {
     stopLyricIndexSync();
     if (!playing.value) return;
 
-    lyricIndexInterval = setInterval(() => {
-        syncLyricIndexForSeek(getSafeCurrentSeek());
-    }, 200);
+    stopLyricTicker = subscribePlaybackTick(snapshot => {
+        syncLyricIndexForSeek(snapshot.seek);
+    }, {
+        id: 'lyric-runtime',
+        interval: 200,
+        immediate: true,
+    });
 }
 
 export function initLyricRuntime() {

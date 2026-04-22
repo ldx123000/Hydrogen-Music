@@ -179,6 +179,8 @@ module.exports = async function registerShortcuts(win, app) {
         const settingsStore = new Store({name: 'settings'});
         const shortcuts = await settingsStore.get('settings.shortcuts');
         if(!shortcuts) return;
+
+    globalShortcut.unregisterAll();
     
     globalShortcut.register('CommandOrControl+Shift+F12', () => {
         // 获取当前窗口并打开控制台

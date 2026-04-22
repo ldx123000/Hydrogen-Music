@@ -9,6 +9,7 @@ import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
+import { readCommentCountCache, writeCommentCountCache } from '../utils/commentCountCache';
 const playerStore = usePlayerStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
@@ -144,6 +145,12 @@ const fetchCommentCount = async target => {
         return;
     }
 
+    const cachedCount = readCommentCountCache(target.key);
+    const hasCachedCount = cachedCount !== null;
+    if (cachedCount !== null) {
+        commentCount.value = cachedCount;
+    }
+
     try {
         let response = null;
         if (target.type === 'dj') {
@@ -157,12 +164,18 @@ const fetchCommentCount = async target => {
         if (response && response.code === 200) {
             const total = Number(response.total);
             commentCount.value = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
+            writeCommentCountCache(target.key, commentCount.value);
         } else {
-            commentCount.value = 0;
+            if (!hasCachedCount) {
+                commentCount.value = 0;
+                writeCommentCountCache(target.key, 0);
+            }
         }
     } catch (_) {
         if (serial !== commentCountRequestSerial.value) return;
-        commentCount.value = 0;
+        if (!hasCachedCount) {
+            commentCount.value = 0;
+        }
     }
 };
 
@@ -172,6 +185,7 @@ const handleCommentTotalChange = payload => {
 
     const total = Number(payload.total);
     commentCount.value = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
+    writeCommentCountCache(currentTarget.key, commentCount.value);
 };
 
 watch(

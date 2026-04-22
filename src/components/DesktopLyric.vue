@@ -84,6 +84,12 @@
         </div>
 
         <!-- 明日方舟风格右键菜单 -->
+        <div
+            v-if="contextMenuVisible"
+            class="arknights-context-menu-backdrop"
+            @mousedown.stop="hideContextMenu"
+            @click.stop="hideContextMenu"
+        ></div>
         <div class="arknights-context-menu" v-if="contextMenuVisible" :style="{ left: contextMenuX + 'px', top: contextMenuY + 'px' }" @click.stop>
             <div class="menu-header">
                 <span class="menu-title">DESKTOP LYRIC</span>
@@ -216,6 +222,8 @@ const currentLyricBoxHeight = ref(0);
 // 下一句预览行（含上下内边距）的目标高度（px）
 const nextLyricRowHeight = ref(0);
 let lyricResizeObserver = null;
+let removeLyricUpdateListener = null;
+let removeGlobalContextMenuGuard = null;
 let rafAdjust = 0;
 let baselineWindowWidth = 0;
 let baselineWindowHeightOneLine = 0; // 以“单行歌词高度”为基准的窗口外部高度
@@ -345,6 +353,57 @@ const dragStartScreen = ref({ x: 0, y: 0 });
 const dragStartSize = ref({ width: 0, height: 0 });
 const dragCurrentPos = ref({ x: 0, y: 0 });
 const originalMinMax = ref(null);
+let dragMoveRaf = 0;
+let pendingDragDelta = { x: 0, y: 0 };
+
+const resetPendingDragDelta = () => {
+    pendingDragDelta = { x: 0, y: 0 };
+};
+
+const flushPendingDragMove = () => {
+    if (!isWinOrLinux || !isDragging.value) return;
+    const dx = pendingDragDelta.x;
+    const dy = pendingDragDelta.y;
+    if (!dx && !dy) return;
+
+    resetPendingDragDelta();
+
+    const newX = Math.round(dragCurrentPos.value.x + dx);
+    const newY = Math.round(dragCurrentPos.value.y + dy);
+    if (newX === dragCurrentPos.value.x && newY === dragCurrentPos.value.y) return;
+
+    dragCurrentPos.value = { x: newX, y: newY };
+    window.electronAPI?.moveLyricWindowContentTo?.(newX, newY, dragStartSize.value.width, dragStartSize.value.height);
+};
+
+const schedulePendingDragMove = () => {
+    if (dragMoveRaf) return;
+    dragMoveRaf = requestAnimationFrame(() => {
+        dragMoveRaf = 0;
+        flushPendingDragMove();
+    });
+};
+
+const releaseDragFrame = () => {
+    if (!dragMoveRaf) return;
+    cancelAnimationFrame(dragMoveRaf);
+    dragMoveRaf = 0;
+};
+
+const primeDragWindowConstraints = async () => {
+    if (!isWinOrLinux || !isDragging.value) return;
+    window.electronAPI?.setLyricWindowResizable?.(false);
+    originalMinMax.value = await window.electronAPI?.getLyricWindowMinMax?.();
+    if (!isDragging.value) return;
+    if (!originalMinMax.value) return;
+
+    window.electronAPI?.setLyricWindowMinMax?.(
+        dragStartSize.value.width,
+        dragStartSize.value.height,
+        dragStartSize.value.width,
+        dragStartSize.value.height
+    );
+};
 
 const onDragStart = async (e) => {
     if (!isWinOrLinux || locked.value) return;
@@ -353,32 +412,22 @@ const onDragStart = async (e) => {
     try {
         e.preventDefault();
         e.stopPropagation();
-        // 记录起点与初始窗口尺寸/位置
-        const bounds = await window.electronAPI?.getLyricWindowBounds?.();
-        if (!bounds) return;
-        // 使用内容区域尺寸与位置，避免外框差异导致的尺寸漂移
         const contentBounds = await window.electronAPI?.getLyricWindowContentBounds?.();
-        const useBounds = contentBounds || bounds;
+        const useBounds = contentBounds || await window.electronAPI?.getLyricWindowBounds?.();
+        if (!useBounds) return;
+
         dragStartSize.value = { width: useBounds.width, height: useBounds.height };
         dragCurrentPos.value = { x: useBounds.x, y: useBounds.y };
         isDragging.value = true;
         dragStartScreen.value = { x: e.screenX, y: e.screenY };
-        // 懒获取：移动时用 movement 增量
+        resetPendingDragDelta();
+        releaseDragFrame();
         // 防止选中文本
         document.body.style.userSelect = 'none';
-        // 拖拽期间禁用窗口 resize，避免误判为调整大小
-        window.electronAPI?.setLyricWindowResizable?.(false);
-        // 读取并保存原始最小/最大尺寸，然后把 min/max 都锁到初始尺寸，彻底杜绝尺寸变化
-        originalMinMax.value = await window.electronAPI?.getLyricWindowMinMax?.();
-        await window.electronAPI?.setLyricWindowMinMax?.(
-            dragStartSize.value.width,
-            dragStartSize.value.height,
-            dragStartSize.value.width,
-            dragStartSize.value.height
-        );
         // 监听全局移动/松开，避免移出手柄就终止
         document.addEventListener('mousemove', onDragMove);
         document.addEventListener('mouseup', onDragEnd);
+        primeDragWindowConstraints();
     } catch (_) {}
 };
 
@@ -388,23 +437,21 @@ const onDragMove = (e) => {
     const dx = e.movementX ?? (e.screenX - dragStartScreen.value.x);
     const dy = e.movementY ?? (e.screenY - dragStartScreen.value.y);
 
-    // 更新当前记录位置
-    const newX = Math.round(dragCurrentPos.value.x + dx);
-    const newY = Math.round(dragCurrentPos.value.y + dy);
-    dragCurrentPos.value = { x: newX, y: newY };
+    pendingDragDelta.x += dx;
+    pendingDragDelta.y += dy;
 
     // 兼容无 movementX/Y 的场景，复位起点
     if (e.movementX == null || e.movementY == null) {
         dragStartScreen.value = { x: e.screenX, y: e.screenY };
     }
 
-    // 强制保持初始尺寸
-    // 用内容区域移动，进一步隔离外框差异
-    window.electronAPI?.moveLyricWindowContentTo?.(newX, newY, dragStartSize.value.width, dragStartSize.value.height);
+    schedulePendingDragMove();
 };
 
 const onDragEnd = () => {
     if (!isWinOrLinux || !isDragging.value) return;
+    releaseDragFrame();
+    flushPendingDragMove();
     isDragging.value = false;
     document.body.style.userSelect = '';
     // 恢复窗口 min/max 限制与可调整大小
@@ -412,7 +459,9 @@ const onDragEnd = () => {
         const { minWidth, minHeight, maxWidth, maxHeight } = originalMinMax.value;
         window.electronAPI?.setLyricWindowMinMax?.(minWidth, minHeight, maxWidth, maxHeight);
     }
+    originalMinMax.value = null;
     window.electronAPI?.setLyricWindowResizable?.(true);
+    resetPendingDragDelta();
     document.removeEventListener('mousemove', onDragMove);
     document.removeEventListener('mouseup', onDragEnd);
 };
@@ -642,6 +691,18 @@ const hideContextMenu = () => {
     contextMenuVisible.value = false;
 };
 
+const handleGlobalLeftMouseDown = event => {
+    if (!contextMenuVisible.value) return;
+    if (event.button !== 0) return;
+    if (event.target?.closest?.('.arknights-context-menu')) return;
+    hideContextMenu();
+};
+
+const handleWindowBlur = () => {
+    if (!contextMenuVisible.value) return;
+    hideContextMenu();
+};
+
 const handleClick = () => {
     if (contextMenuVisible.value) {
         hideContextMenu();
@@ -721,7 +782,7 @@ const hasLyricType = (type) => {
 onMounted(() => {
     if (window.electronAPI) {
         try {
-            window.electronAPI.onLyricUpdate(handleLyricUpdate);
+            removeLyricUpdateListener = window.electronAPI.onLyricUpdate(handleLyricUpdate);
             window.electronAPI.requestLyricData();
         } catch (error) {
             // 静默处理错误
@@ -729,11 +790,17 @@ onMounted(() => {
     }
 
     document.addEventListener('click', hideContextMenu);
-    document.addEventListener('contextmenu', e => {
+    document.addEventListener('mousedown', handleGlobalLeftMouseDown, true);
+    window.addEventListener('blur', handleWindowBlur);
+    const handleGlobalContextMenu = e => {
         if (!e.target.closest('.arknights-desktop-lyric')) {
             e.preventDefault();
         }
-    });
+    };
+    document.addEventListener('contextmenu', handleGlobalContextMenu);
+    removeGlobalContextMenuGuard = () => {
+        document.removeEventListener('contextmenu', handleGlobalContextMenu);
+    };
 
     // 启动同步扫描动画
     startScanAnimation();
@@ -753,7 +820,18 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    removeLyricUpdateListener?.();
+    removeLyricUpdateListener = null;
+    removeGlobalContextMenuGuard?.();
+    removeGlobalContextMenuGuard = null;
     document.removeEventListener('click', hideContextMenu);
+    document.removeEventListener('mousedown', handleGlobalLeftMouseDown, true);
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+    window.removeEventListener('blur', handleWindowBlur);
+    document.body.style.userSelect = '';
+    resetPendingDragDelta();
+    releaseDragFrame();
 
     // 清理动画
     if (scanAnimationRef.value) {
@@ -1212,6 +1290,14 @@ onUnmounted(() => {
 }
 
 // 明日方舟风格右键菜单
+.arknights-context-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999998;
+    background: transparent;
+    -webkit-app-region: no-drag;
+}
+
 .arknights-context-menu {
     position: fixed;
     min-width: 200px;
