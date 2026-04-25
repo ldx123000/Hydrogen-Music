@@ -173,6 +173,12 @@ function requestTrustedResource(request) {
         return response
     })
 }
+function requestAudioArrayBuffer(request) {
+    return ipcRenderer.invoke('audio-buffer-request', request)
+}
+function readLocalAudioBuffer(filePath) {
+    return ipcRenderer.invoke('read-local-audio-buffer', filePath)
+}
 function clearNcmApiCookies() {
     return ipcRenderer.invoke('ncm-api-cookie-clear')
 }
@@ -284,6 +290,8 @@ contextBridge.exposeInMainWorld('windowApi', {
     whenNcmApiReady,
     requestNcmApi,
     requestTrustedResource,
+    requestAudioArrayBuffer,
+    readLocalAudioBuffer,
     clearNcmApiCookies,
     downloadUpdate,
     installUpdate,

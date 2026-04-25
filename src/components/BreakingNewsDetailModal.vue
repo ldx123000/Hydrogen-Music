@@ -1,17 +1,17 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getSongDetail } from '../api/song'
-import { getAlbumDetail } from '../api/album'
-import { getPlaylistDetail } from '../api/playlist'
-import { getMVDetail } from '../api/mv'
 import { useLibraryStore } from '../store/libraryStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useOtherStore } from '../store/otherStore'
-import { mapSongsPlayableStatus } from '../utils/songStatus'
-import { addToNext } from '../utils/player'
+import { addToNext } from '../utils/player/lazy'
 import { noticeOpen } from '../utils/dialog'
 import { copyToClipboard } from '../utils/clipboard'
+import {
+  getBreakingNewsDetail,
+  getCachedBreakingNewsDetail,
+  withBreakingNewsCoverParam,
+} from '../utils/breakingNewsDetail'
 
 const props = defineProps({
   visible: {
@@ -48,21 +48,6 @@ const toValidResourceId = value => {
 const normalizeUrl = value => {
   if (typeof value !== 'string') return ''
   return value.trim()
-}
-
-const withCoverParam = (url, size = 720) => {
-  if (!url) return ''
-  if (url.startsWith('data:') || url.startsWith('blob:')) return url
-  if (/(?:\?|&)param=\d+y\d+/.test(url)) return url
-  return `${url}${url.includes('?') ? '&' : '?'}param=${size}y${size}`
-}
-
-const formatCount = value => {
-  const num = Number(value)
-  if (!Number.isFinite(num) || num < 0) return '0'
-  if (num >= 100000000) return `${(num / 100000000).toFixed(1)}亿`
-  if (num >= 10000) return `${(num / 10000).toFixed(1)}万`
-  return `${Math.round(num)}`
 }
 
 const buildSongUrl = id => (id ? `https://music.163.com/#/song?id=${id}` : '')
@@ -135,7 +120,8 @@ const shareUrl = computed(() => {
 })
 
 const coverUrl = computed(() => {
-  return withCoverParam(detailData.value?.cover || props.banner?.pic || '', 720)
+  if (detailData.value?.cover) return withBreakingNewsCoverParam(detailData.value.cover, 720)
+  return withBreakingNewsCoverParam(props.banner?.pic || '', 720)
 })
 
 const displayTitle = computed(() => detailData.value?.title || 'BREAKING NEWS')
@@ -197,118 +183,16 @@ const loadDetail = async () => {
   detailData.value = null
 
   try {
-    const type = resolvedTargetType.value
-    const id = resolvedTargetId.value
+    const cachedDetail = getCachedBreakingNewsDetail(props.banner)
 
-    if (type === 1) {
-      if (!id) throw new Error('缺少歌曲 ID')
-      const songRes = await getSongDetail(id)
-      if (serial !== requestSerial.value) return
-
-      const rawSongs = Array.isArray(songRes?.songs) ? songRes.songs : []
-      if (rawSongs.length === 0) throw new Error('未获取到歌曲信息')
-
-      const songs = mapSongsPlayableStatus(rawSongs) || rawSongs
-      const song = songs[0]
-      const artistText = (song?.ar || []).map(item => item?.name).filter(Boolean).join(' / ') || '未知歌手'
-      const albumName = song?.al?.name || '未知专辑'
-
-      detailData.value = {
-        kind: 'song',
-        title: song?.name || '未命名歌曲',
-        subtitle: artistText,
-        desc: `收录于专辑《${albumName}》`,
-        stats: song?.playable === false ? `当前状态：${song?.reason || '不可播放'}` : `歌曲 ID: ${song?.id || id}`,
-        cover: song?.al?.picUrl || props.banner?.pic || '',
-        shareUrl: buildSongUrl(song?.id || id),
-        song,
-      }
+    if (cachedDetail) {
+      detailData.value = cachedDetail
       return
     }
 
-    if (type === 10) {
-      if (!id) throw new Error('缺少专辑 ID')
-      const albumRes = await getAlbumDetail(id)
-      if (serial !== requestSerial.value) return
-
-      const album = albumRes?.album || null
-      if (!album) throw new Error('未获取到专辑信息')
-
-      const artistText = (album?.artists || []).map(item => item?.name).filter(Boolean).join(' / ') || album?.artist?.name || '未知艺术家'
-      const songCount = toValidNumber(album?.size) || toValidNumber(album?.songCount) || 0
-      const subCount = toValidNumber(album?.subCount) || 0
-
-      detailData.value = {
-        kind: 'album',
-        title: album?.name || '未命名专辑',
-        subtitle: artistText,
-        desc: album?.description || album?.company || '暂无专辑简介',
-        stats: `${songCount} 首歌曲 · ${formatCount(subCount)} 收藏`,
-        cover: album?.picUrl || props.banner?.pic || '',
-        shareUrl: buildAlbumUrl(album?.id || id),
-      }
-      return
-    }
-
-    if (type === 1000) {
-      if (!id) throw new Error('缺少歌单 ID')
-      const playlistRes = await getPlaylistDetail({ id })
-      if (serial !== requestSerial.value) return
-
-      const playlist = playlistRes?.playlist || null
-      if (!playlist) throw new Error('未获取到歌单信息')
-
-      const trackCount = toValidNumber(playlist?.trackCount) || 0
-      const playCount = toValidNumber(playlist?.playCount) || 0
-
-      detailData.value = {
-        kind: 'playlist',
-        title: playlist?.name || '未命名歌单',
-        subtitle: playlist?.creator?.nickname ? `by ${playlist.creator.nickname}` : '官方推荐',
-        desc: playlist?.description || '暂无歌单简介',
-        stats: `${trackCount} 首歌曲 · ${formatCount(playCount)} 播放`,
-        cover: playlist?.coverImgUrl || props.banner?.pic || '',
-        shareUrl: buildPlaylistUrl(playlist?.id || id),
-      }
-      return
-    }
-
-    if (type === 1004) {
-      if (!id) throw new Error('缺少 MV ID')
-      const mvRes = await getMVDetail(id)
-      if (serial !== requestSerial.value) return
-
-      const mv = mvRes?.data || null
-      if (!mv) throw new Error('未获取到 MV 信息')
-
-      const artistText = (mv?.artists || []).map(item => item?.name).filter(Boolean).join(' / ') || mv?.artistName || '未知艺人'
-      const publishTime = typeof mv?.publishTime === 'string' ? mv.publishTime.trim() : ''
-      const playCount = toValidNumber(mv?.playCount) || 0
-      const subCount = toValidNumber(mv?.subCount) || 0
-
-      detailData.value = {
-        kind: 'mv',
-        title: mv?.name || '未命名 MV',
-        subtitle: publishTime ? `${artistText} · ${publishTime}` : artistText,
-        desc: mv?.desc || mv?.briefDesc || '暂无 MV 简介',
-        stats: `${formatCount(playCount)} 播放 · ${formatCount(subCount)} 收藏`,
-        cover: mv?.cover || props.banner?.pic || '',
-        shareUrl: buildMvUrl(mv?.id || id),
-        mvId: mv?.id || id,
-      }
-      return
-    }
-
-    const external = normalizeUrl(props.banner?.url)
-    detailData.value = {
-      kind: 'external',
-      title: props.banner?.typeTitle || '外部内容',
-      subtitle: external ? '将通过系统浏览器打开' : '暂无外部链接',
-      desc: '该内容暂不支持站内解析，点击主按钮可尝试打开原始链接。',
-      stats: external ? '已检测到可用外链' : '无可用链接',
-      cover: props.banner?.pic || '',
-      shareUrl: external,
-    }
+    const nextDetailData = await getBreakingNewsDetail(props.banner, { preloadCover: true })
+    if (serial !== requestSerial.value) return
+    detailData.value = nextDetailData
   } catch (error) {
     if (serial !== requestSerial.value) return
     const message = error?.message || '获取详情失败'
@@ -334,7 +218,7 @@ const handlePrimaryAction = async () => {
       return
     }
 
-    addToNext(song, true)
+    await addToNext(song, true)
     closeModal()
     return
   }
@@ -649,6 +533,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--bn-cover-border);
   background: var(--bn-cover-bg);
   overflow: hidden;
+  position: relative;
 }
 
 .cover-wrapper img {

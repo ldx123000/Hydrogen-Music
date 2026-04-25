@@ -2,7 +2,7 @@ import pinia from '../store/pinia'
 import { watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { usePlayerStore } from '../store/playerStore'
-import { startMusic, pauseMusic, playNext, playLast, changeProgress } from './player'
+import { startMusic, pauseMusic, playNext, playLast, changeProgress } from './player/lazy'
 import { getSongDisplayName } from './songName'
 import { getIndexedSongOrFirst } from './songList'
 

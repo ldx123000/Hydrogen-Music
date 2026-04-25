@@ -2,7 +2,7 @@
   import { onActivated, ref } from 'vue'
   import { useRouter } from 'vue-router';
   import { getNewestSong } from '../api/song';
-  import { addToNext, startMusic, pauseMusic } from '../utils/player';
+  import { addToNext, startMusic, pauseMusic } from '../utils/player/lazy';
   import { usePlayerStore } from '../store/playerStore';
   import { storeToRefs } from 'pinia';
   import { getSongDisplayName } from '../utils/songName';
@@ -27,21 +27,21 @@
     let img = item.picUrl || item.blurPicUrl
     return img.replace('http://', 'https://') + '?param=90y90'
   }
-  const play = (song) => {
+  const play = async (song) => {
     let picUrl = {
         picUrl: song.picUrl
     }
     song.al = picUrl
     song.ar = song.song.artists
-    addToNext(song, true)
+    await addToNext(song, true)
   }
-  const togglePlay = (song) => {
+  const togglePlay = async (song) => {
     if (songId.value === song.id) {
-      if (playing.value) pauseMusic()
-      else startMusic()
+      if (playing.value) await pauseMusic()
+      else await startMusic()
       return
     }
-    play(song)
+    await play(song)
   }
   const checkArtist = (artistId) => {
     router.push('/mymusic/artist/' + artistId)

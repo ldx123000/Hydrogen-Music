@@ -34,12 +34,17 @@ watch(rightPanelMode, (newMode, oldMode) => {
 const isDj = computed(() => playerStore.listInfo && playerStore.listInfo.type === 'dj');
 
 const withCoverParam = (url, size = 512) => {
-    if (!url) return null;
-    if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-    const hasQuery = url.includes('?');
-    const hasParam = /(?:\\?|&)param=\\d+y\\d+/.test(url);
-    if (hasParam) return url;
-    return `${url}${hasQuery ? '&' : '?'}param=${size}y${size}`;
+    const normalizedUrl = typeof url === 'string' ? url.trim() : '';
+    if (!normalizedUrl) return null;
+    if (normalizedUrl.startsWith('data:') || normalizedUrl.startsWith('blob:')) return normalizedUrl;
+
+    const nextParam = `param=${size}y${size}`;
+    if (/(?:\?|&)param=\d+y\d+/.test(normalizedUrl)) {
+        return normalizedUrl.replace(/([?&])param=\d+y\d+/, `$1${nextParam}`);
+    }
+
+    const hasQuery = normalizedUrl.includes('?');
+    return `${normalizedUrl}${hasQuery ? '&' : '?'}${nextParam}`;
 };
 
 const coverBgCandidateIndex = ref(0);

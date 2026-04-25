@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { onBeforeRouteUpdate, useRouter } from 'vue-router'
 import { getDjDetail, getDjPrograms } from '../api/dj'
 import { usePlayerStore } from '../store/playerStore'
-import { playAll } from '../utils/player'
+import { playAll } from '../utils/player/lazy'
 import LibrarySongList from './LibrarySongList.vue'
 
 const router = useRouter()

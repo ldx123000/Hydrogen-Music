@@ -12,6 +12,9 @@ import UpdateDialog from '../components/UpdateDialog.vue'
 import { setTheme, getSavedTheme } from '@/utils/theme'
 import { logoutCurrentAccountSession } from '@/utils/accountSession'
 import { getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
+import settingsSchema from '@/shared/settingsSchema.js'
+
+const { MUSIC_LEVEL_OPTIONS, normalizeSettings } = settingsSchema
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -19,44 +22,7 @@ const playerStore = usePlayerStore()
 
 const vipInfo = ref(null)
 const musicLevel = ref('lossless')
-const musicLevelOptions = ref([
-    {
-        label: '标准',
-        value: 'standard',
-    },
-    {
-        label: '较高',
-        value: 'higher',
-    },
-    {
-        label: '极高',
-        value: 'exhigh',
-    },
-    {
-        label: '无损',
-        value: 'lossless',
-    },
-    {
-        label: 'Hi-Res',
-        value: 'hires',
-    },
-    {
-        label: '高清环绕声',
-        value: 'jyeffect',
-    },
-    {
-        label: '沉浸环绕声',
-        value: 'sky',
-    },
-    {
-        label: '杜比全景声',
-        value: 'dolby',
-    },
-    {
-        label: '超清母带',
-        value: 'jymaster',
-    },
-])
+const musicLevelOptions = ref(MUSIC_LEVEL_OPTIONS.map(option => ({ ...option })))
 const lyricSize = ref(20)
 const tlyricSize = ref(13)
 const rlyricSize = ref(12)
@@ -96,12 +62,6 @@ const newVersion = ref('')
 let updateListenersInitialized = false
 let removeUpdateListeners = null
 
-const normalizeSearchAssistLimit = value => {
-    const num = Number.parseInt(value, 10)
-    if (!Number.isFinite(num)) return 8
-    return Math.max(1, num)
-}
-
 const loadVipInfo = async () => {
     const requestUserId = userStore.user?.userId
     if (!requestUserId || !isLogin()) {
@@ -122,21 +82,23 @@ const loadVipInfo = async () => {
 
 const applySettingsToForm = settings => {
     if (!settings) return
-    musicLevel.value = settings.music.level
-    lyricSize.value = settings.music.lyricSize
-    tlyricSize.value = settings.music.tlyricSize
-    rlyricSize.value = settings.music.rlyricSize
-    lyricInterlude.value = settings.music.lyricInterlude
-    searchAssistLimit.value = normalizeSearchAssistLimit(settings.music.searchAssistLimit)
-    playerStore.showSongTranslation = settings?.music?.showSongTranslation !== false
-    videoFolder.value = settings.local.videoFolder
-    downloadFolder.value = settings.local.downloadFolder
-    downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder
-    downloadSaveLyricFile.value = !!settings.local.downloadSaveLyricFile
-    localFolder.value = settings.local.localFolder
-    shortcutsList.value = settings.shortcuts
-    globalShortcuts.value = settings.other.globalShortcuts
-    quitApp.value = settings.other.quitApp
+    const normalizedSettings = normalizeSettings(settings)
+    musicLevel.value = normalizedSettings.music.level
+    lyricSize.value = normalizedSettings.music.lyricSize
+    tlyricSize.value = normalizedSettings.music.tlyricSize
+    rlyricSize.value = normalizedSettings.music.rlyricSize
+    lyricInterlude.value = normalizedSettings.music.lyricInterlude
+    searchAssistLimit.value = normalizedSettings.music.searchAssistLimit
+    playerStore.showSongTranslation = normalizedSettings.music.showSongTranslation !== false
+    playerStore.gaplessPlayback = normalizedSettings.music.gaplessPlayback === true
+    videoFolder.value = normalizedSettings.local.videoFolder
+    downloadFolder.value = normalizedSettings.local.downloadFolder
+    downloadCreateSongFolder.value = !!normalizedSettings.local.downloadCreateSongFolder
+    downloadSaveLyricFile.value = !!normalizedSettings.local.downloadSaveLyricFile
+    localFolder.value = normalizedSettings.local.localFolder
+    shortcutsList.value = normalizedSettings.shortcuts
+    globalShortcuts.value = normalizedSettings.other.globalShortcuts
+    quitApp.value = normalizedSettings.other.quitApp
 }
 
 onActivated(() => {
@@ -213,8 +175,9 @@ const setAppSettings = () => {
             tlyricSize: tlyricSize.value,
             rlyricSize: rlyricSize.value,
             lyricInterlude: lyricInterlude.value,
-            searchAssistLimit: normalizeSearchAssistLimit(searchAssistLimit.value),
+            searchAssistLimit: searchAssistLimit.value,
             showSongTranslation: playerStore.showSongTranslation,
+            gaplessPlayback: playerStore.gaplessPlayback,
         },
         local: {
             videoFolder: videoFolder.value,
@@ -230,8 +193,9 @@ const setAppSettings = () => {
         },
     }
 
-    const snapshot = setCachedSettingsSnapshot(settings)
-    windowApi.setSettings(JSON.stringify(settings))
+    const normalizedSettings = normalizeSettings(settings)
+    const snapshot = setCachedSettingsSnapshot(normalizedSettings)
+    windowApi.setSettings(JSON.stringify(normalizedSettings))
     applySettingsSnapshot(snapshot, { hydrateLocalMusic: false })
     return snapshot
 }
@@ -402,6 +366,16 @@ const setCoverBlur = () => {
 const openCoverBlur = flag => {
     if (flag) playerStore.coverBlur = !playerStore.coverBlur
 }
+const setGaplessPlayback = () => {
+    if (!playerStore.gaplessPlayback) {
+        dialogOpen('确定开启', '开启后会提前预缓冲下一首音频，可能增加网络流量和内存占用，确定开启吗？', openGaplessPlayback)
+        return
+    }
+    openGaplessPlayback(true)
+}
+const openGaplessPlayback = flag => {
+    if (flag) playerStore.gaplessPlayback = !playerStore.gaplessPlayback
+}
 const userLogout = async () => {
     if (!isLogin()) {
         noticeOpen('您已退出账号', 2)
@@ -539,6 +513,17 @@ const clearFmRecent = () => {
                                     </div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="playerStore.showSongTranslation"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">歌曲无缝衔接</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="setGaplessPlayback()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.gaplessPlayback }">{{ playerStore.gaplessPlayback ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.gaplessPlayback"></div>
                                     </Transition>
                                 </div>
                             </div>

@@ -1,11 +1,11 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { songTime2 } from '../utils/player';
+import { songTime2 } from '../utils/time';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
-import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player';
+import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player/lazy';
 import { getDjDetail, subDj } from '../api/dj';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
@@ -130,6 +130,25 @@ const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.val
 const showRemoteCurrentSong = computed(() => !!currentSong.value && currentSong.value.type !== 'local');
 const showOnlineCurrentSongActions = computed(() => !isDjMode.value && showRemoteCurrentSong.value && !isCurrentSirenSong.value);
 const showCommentPanelAction = computed(() => showRemoteCurrentSong.value && !isCurrentSirenSong.value);
+
+const withCoverParam = (url, size = 640) => {
+    const normalizedUrl = typeof url === 'string' ? url.trim() : '';
+    if (!normalizedUrl) return '';
+    if (normalizedUrl.startsWith('data:') || normalizedUrl.startsWith('blob:')) return normalizedUrl;
+
+    const nextParam = `param=${size}y${size}`;
+    if (/(?:\?|&)param=\d+y\d+/.test(normalizedUrl)) {
+        return normalizedUrl.replace(/([?&])param=\d+y\d+/, `$1${nextParam}`);
+    }
+
+    return `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}${nextParam}`;
+};
+
+const currentSongCoverUrl = computed(() => {
+    const song = currentSong.value;
+    const coverUrl = song?.coverUrl || song?.al?.picUrl || song?.blurPicUrl || song?.img1v1Url || '';
+    return withCoverParam(coverUrl, 640);
+});
 
 // 当前电台订阅状态与rid
 const djSubed = ref(false);
@@ -264,8 +283,8 @@ const toggleDjSub = async isSubscribe => {
                     <!-- Force re-create <img> when song changes so old cover doesn't persist -->
                     <img
                         v-if="showRemoteCurrentSong"
-                        :key="'remote-' + (songId || currentSong?.id)"
-                        :src="currentSong?.coverUrl || currentSong?.al?.picUrl"
+                        :key="'remote-' + (songId || currentSong?.id) + '-' + currentSongCoverUrl"
+                        :src="currentSongCoverUrl"
                         alt=""
                     />
                     <img v-else-if="currentSong?.type === 'local' && localBase64Img" :key="'local-' + (songId || currentSong?.id)" :src="localBase64Img" alt="" />

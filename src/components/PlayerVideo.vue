@@ -2,7 +2,7 @@
   import { onMounted, onUnmounted } from 'vue'
   import Plyr from 'plyr'
   import '../assets/css/plyr.css'
-  import { musicVideoCheck } from '../utils/player';
+  import { musicVideoCheck } from '../utils/player/lazy';
   import { usePlayerStore } from '../store/playerStore';
   const playerStore = usePlayerStore()
   let plyrInstance = null

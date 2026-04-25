@@ -8,6 +8,9 @@ import { buildLocalSongSearchText } from './songFilter'
 const localStore = useLocalStore(pinia)
 const { downloadedMusicFolder, downloadedFiles, localMusicFolder, localMusicList, localMusicClassify, isRefreshLocalFile } = storeToRefs(localStore)
 const pendingScanTypes = new Set()
+let bridgeInitialized = false
+let removeLocalMusicCountListener = null
+let removeLocalMusicFilesListener = null
 
 function normalizeArtists(song) {
     const artists = song?.common?.artists
@@ -26,7 +29,11 @@ function normalizeAlbum(song) {
     return albumName || '其他'
 }
 
-function buildFolderIndex(metadataRoot) {
+function getPayloadMetadata(localData) {
+    return localData?.locaFilesMetadata || localData?.localFilesMetadata
+}
+
+export function buildFolderIndex(metadataRoot) {
     const foldersByName = {}
     const songSearchById = {}
 
@@ -70,7 +77,7 @@ function buildFolderIndex(metadataRoot) {
     }
 }
 
-function buildLocalClassify(flatSongs = []) {
+export function buildLocalClassify(flatSongs = []) {
     const artistMap = new Map()
     const albumMap = new Map()
 
@@ -118,7 +125,7 @@ function buildLocalClassify(flatSongs = []) {
     }
 }
 
-function buildDerivedPayload(type, metadataRoot) {
+export function buildDerivedPayload(type, metadataRoot) {
     const folderIndex = buildFolderIndex(metadataRoot)
     if (type === 'downloaded') {
         return {
@@ -152,7 +159,7 @@ function ensureDerivedPayload(type, localData) {
         if (cachedDerived?.classify?.artists && cachedDerived?.classify?.albums) return cachedDerived
     }
 
-    const nextDerived = buildDerivedPayload(type, localData?.locaFilesMetadata)
+    const nextDerived = buildDerivedPayload(type, getPayloadMetadata(localData))
     try {
         windowApi.persistLocalMusicDerived({
             type,
@@ -164,7 +171,7 @@ function ensureDerivedPayload(type, localData) {
 
 function applyDownloadedPayload(localData, derived) {
     downloadedMusicFolder.value = localData.dirTree
-    downloadedFiles.value = localData.locaFilesMetadata
+    downloadedFiles.value = getPayloadMetadata(localData)
 
     localStore.updateLookupIndex('downloaded', {
         foldersByName: derived?.lookupIndex?.foldersByName || {},
@@ -174,7 +181,7 @@ function applyDownloadedPayload(localData, derived) {
 
 function applyLocalPayload(localData, derived) {
     localMusicFolder.value = localData.dirTree
-    localMusicList.value = localData.locaFilesMetadata
+    localMusicList.value = getPayloadMetadata(localData)
     localMusicClassify.value = {
         artists: derived?.classify?.artists || [],
         albums: derived?.classify?.albums || [],
@@ -189,6 +196,8 @@ function applyLocalPayload(localData, derived) {
 }
 
 export function scanMusic(params) {
+    initLocalMusicBridge()
+
     const type = params?.type
     const refresh = params?.refresh === true
     if (!type) return
@@ -200,30 +209,44 @@ export function scanMusic(params) {
     windowApi.scanLocalMusic(params)
 }
 
-windowApi.localMusicCount((event, count) => {
-    noticeOpen('已扫描' + count + '首', 2)
-})
+export function initLocalMusicBridge() {
+    if (bridgeInitialized) return
+    bridgeInitialized = true
 
-windowApi.localMusicFiles((event, localData) => {
-    if (!localData?.type) return
-    pendingScanTypes.delete(localData.type)
+    removeLocalMusicCountListener = windowApi.localMusicCount((event, count) => {
+        noticeOpen('已扫描' + count + '首', 2)
+    })
 
-    if(localData.type == 'downloaded') {
-        const derived = ensureDerivedPayload('downloaded', localData)
-        applyDownloadedPayload(localData, derived)
-    }
+    removeLocalMusicFilesListener = windowApi.localMusicFiles((event, localData) => {
+        if (!localData?.type) return
+        pendingScanTypes.delete(localData.type)
 
-    if(localData.type == 'local') {
-        const derived = ensureDerivedPayload('local', localData)
-        applyLocalPayload(localData, derived)
-    }
-
-    if(isRefreshLocalFile.value) {
         if(localData.type == 'downloaded') {
-            noticeOpen("下载目录已更新，共" + localData.count + '首音乐', 3)
-        } else {
-            noticeOpen("扫描完毕 共" + localData.count + '首', 3)
+            const derived = ensureDerivedPayload('downloaded', localData)
+            applyDownloadedPayload(localData, derived)
         }
-        isRefreshLocalFile.value = false
-    }
-})
+
+        if(localData.type == 'local') {
+            const derived = ensureDerivedPayload('local', localData)
+            applyLocalPayload(localData, derived)
+        }
+
+        if(isRefreshLocalFile.value) {
+            if(localData.type == 'downloaded') {
+                noticeOpen("下载目录已更新，共" + localData.count + '首音乐', 3)
+            } else {
+                noticeOpen("扫描完毕 共" + localData.count + '首', 3)
+            }
+            isRefreshLocalFile.value = false
+        }
+    })
+}
+
+export function destroyLocalMusicBridge() {
+    removeLocalMusicCountListener?.()
+    removeLocalMusicFilesListener?.()
+    removeLocalMusicCountListener = null
+    removeLocalMusicFilesListener = null
+    bridgeInitialized = false
+    pendingScanTypes.clear()
+}

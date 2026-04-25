@@ -7,9 +7,13 @@ import { initializeCurrentAccountSession } from './accountSession'
 import { hasStoredBiliSession, migrateLegacyBiliSession } from './biliSession'
 import { migrateLegacyAuthSession } from './authority'
 import { getSettingsSnapshot, setCachedSettingsSnapshot } from './settingsSnapshot'
+import { initPlayerExternalBridge, loadLastSong } from './player/lazy'
+import settingsSchema from '../shared/settingsSchema.js'
+
+const { normalizeSettings } = settingsSchema
 
 const playerStore = usePlayerStore()
-const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation } = storeToRefs(playerStore)
+const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation, gaplessPlayback } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const userStore = useUserStore()
 
@@ -19,14 +23,8 @@ let deferredInitScheduled = false
 let mediaSessionInitialized = false
 let sirenDurationPreloadScheduled = false
 let lastSongRestoreScheduled = false
-let playerModulePromise = null
 let localMusicModulePromise = null
 let downloadManagerModulePromise = null
-
-function loadPlayerModule() {
-    if (!playerModulePromise) playerModulePromise = import('./player')
-    return playerModulePromise
-}
 
 function loadLocalMusicModule() {
     if (!localMusicModulePromise) localMusicModulePromise = import('./locaMusic')
@@ -44,12 +42,6 @@ function scanMusicDeferred(options) {
         .catch(error => {
             console.error('本地音乐扫描模块加载失败:', error)
         })
-}
-
-const normalizeSearchAssistLimit = value => {
-    const rawValue = Number.parseInt(value, 10)
-    if (!Number.isFinite(rawValue)) return 8
-    return Math.max(1, rawValue)
 }
 
 const idle = typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function'
@@ -103,14 +95,15 @@ function applyLocalSettings(settings, { hydrateLocalMusic = false } = {}) {
 export function applySettingsSnapshot(settings, options = {}) {
     if (!settings) return null
 
-    const normalizedSettings = setCachedSettingsSnapshot(settings)
+    const normalizedSettings = setCachedSettingsSnapshot(normalizeSettings(settings))
     quality.value = getPreferredQuality(normalizedSettings?.music?.level)
     lyricSize.value = normalizedSettings?.music?.lyricSize
     tlyricSize.value = normalizedSettings?.music?.tlyricSize
     rlyricSize.value = normalizedSettings?.music?.rlyricSize
     lyricInterludeTime.value = normalizedSettings?.music?.lyricInterlude
-    searchAssistLimit.value = normalizeSearchAssistLimit(normalizedSettings?.music?.searchAssistLimit)
+    searchAssistLimit.value = normalizedSettings?.music?.searchAssistLimit
     showSongTranslation.value = normalizedSettings?.music?.showSongTranslation !== false
+    gaplessPlayback.value = normalizedSettings?.music?.gaplessPlayback === true
 
     applyLocalSettings(normalizedSettings, options)
     return normalizedSettings
@@ -125,12 +118,10 @@ export async function initSettings(options = {}) {
 function restoreLastSongOnce() {
     if (lastSongRestoreScheduled) return
     lastSongRestoreScheduled = true
-    void loadPlayerModule()
-        .then(({ loadLastSong }) => loadLastSong())
-        .catch(error => {
-            lastSongRestoreScheduled = false
-            console.error('恢复上次播放失败:', error)
-        })
+    void loadLastSong().catch(error => {
+        lastSongRestoreScheduled = false
+        console.error('恢复上次播放失败:', error)
+    })
 }
 
 function resetStartupPlayerState() {
@@ -178,8 +169,7 @@ async function runBaseAppInit() {
         userStore.clearBiliAccountState()
     }
 
-    const { initPlayerExternalBridge } = await loadPlayerModule()
-    initPlayerExternalBridge()
+    await initPlayerExternalBridge()
     const { initDownloadManager } = await loadDownloadManagerModule()
     initDownloadManager()
     await initSettings({ hydrateLocalMusic: false })

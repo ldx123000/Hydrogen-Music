@@ -41,6 +41,7 @@ module.exports = function LocalFiles(win) {
         return {
             dirTree,
             locaFilesMetadata: metadata,
+            localFilesMetadata: metadata,
             type,
             count,
             derived,
@@ -64,6 +65,7 @@ module.exports = function LocalFiles(win) {
         if (cachedPayload) {
             sendToRenderer('local-music-files', {
                 ...cachedPayload,
+                localFilesMetadata: cachedPayload.localFilesMetadata || cachedPayload.locaFilesMetadata,
                 type,
             })
             return

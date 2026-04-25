@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
-import { changeProgress } from '../utils/player';
+import { changeProgress } from '../utils/player/lazy';
 import { getPlaybackSnapshot, PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from '../utils/player/playbackTicker';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';

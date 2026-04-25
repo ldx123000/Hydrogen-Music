@@ -2,7 +2,8 @@
   import { computed, onBeforeUnmount } from 'vue'
   import { useRouter } from 'vue-router'
   import VueSlider from 'vue-slider-component'
-  import { songTime2, changeProgress } from '../utils/player';
+  import { songTime2 } from '../utils/time';
+  import { changeProgress } from '../utils/player/lazy';
   import { usePlayerStore } from '../store/playerStore';
   import { storeToRefs } from 'pinia';
   import { getSongDisplayName } from '../utils/songName';

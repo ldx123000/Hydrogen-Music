@@ -2,6 +2,7 @@
   import {  ref, onActivated } from 'vue'
   import { onBeforeRouteLeave } from 'vue-router';
   import { getBanner } from '../api/other';
+  import { prefetchBreakingNewsDetails } from '../utils/breakingNewsDetail'
   const bannerSessionCache = new Map()
   const emit = defineEmits(['open-breaking-news'])
   const timer1 = ref(null)
@@ -19,12 +20,14 @@
   async function loadData(type) {
       if (bannerSessionCache.has(type)) {
           bannerList.value = bannerSessionCache.get(type)
+          prefetchBreakingNewsDetails(bannerList.value, { immediateFirst: true })
           return
       }
       const bannerData = await getBanner(type)
       const banners = Array.isArray(bannerData?.banners) ? bannerData.banners : [{}]
       bannerSessionCache.set(type, banners)
       bannerList.value = banners
+      prefetchBreakingNewsDetails(banners, { immediateFirst: true })
   }
 
   onActivated(async () => {

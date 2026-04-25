@@ -1,13 +1,13 @@
 <script setup>
   import { computed, ref, watch} from 'vue'
   import { useRouter } from 'vue-router'
-  import { songTime2 } from '../utils/player';
+  import { songTime2 } from '../utils/time';
   import VueSlider from 'vue-slider-component'
   import '../assets/css/slider.css'
   import PlayList from './PlayList.vue'
   import OverflowMarquee from './base/OverflowMarquee.vue'
 
-  import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player'
+  import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player/lazy'
   import { getDjDetail, subDj } from '../api/dj'
   import { useUserStore } from '../store/userStore'
   import { usePlayerStore } from '../store/playerStore'

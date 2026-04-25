@@ -1,0 +1,81 @@
+{
+  "defaultMusicLevel": "lossless",
+  "musicLevelOptions": [
+    { "label": "标准", "value": "standard" },
+    { "label": "较高", "value": "higher" },
+    { "label": "极高", "value": "exhigh" },
+    { "label": "无损", "value": "lossless" },
+    { "label": "Hi-Res", "value": "hires" },
+    { "label": "高清环绕声", "value": "jyeffect" },
+    { "label": "沉浸环绕声", "value": "sky" },
+    { "label": "杜比全景声", "value": "dolby" },
+    { "label": "超清母带", "value": "jymaster" }
+  ],
+  "defaultSettings": {
+    "music": {
+      "level": "lossless",
+      "lyricSize": "20",
+      "tlyricSize": "14",
+      "rlyricSize": "12",
+      "lyricInterlude": 13,
+      "searchAssistLimit": 8,
+      "showSongTranslation": true,
+      "gaplessPlayback": false
+    },
+    "local": {
+      "videoFolder": null,
+      "downloadFolder": null,
+      "downloadCreateSongFolder": false,
+      "downloadSaveLyricFile": false,
+      "localFolder": []
+    },
+    "shortcuts": [
+      {
+        "id": "play",
+        "name": "播放/暂停",
+        "shortcut": "CommandOrControl+P",
+        "globalShortcut": "CommandOrControl+Alt+P"
+      },
+      {
+        "id": "last",
+        "name": "上一首",
+        "shortcut": "CommandOrControl+Left",
+        "globalShortcut": "CommandOrControl+Alt+Left"
+      },
+      {
+        "id": "next",
+        "name": "下一首",
+        "shortcut": "CommandOrControl+Right",
+        "globalShortcut": "CommandOrControl+Alt+Right"
+      },
+      {
+        "id": "volumeUp",
+        "name": "增加音量",
+        "shortcut": "CommandOrControl+Up",
+        "globalShortcut": "CommandOrControl+Alt+Up"
+      },
+      {
+        "id": "volumeDown",
+        "name": "减少音量",
+        "shortcut": "CommandOrControl+Down",
+        "globalShortcut": "CommandOrControl+Alt+Down"
+      },
+      {
+        "id": "processForward",
+        "name": "快进(3s)",
+        "shortcut": "CommandOrControl+]",
+        "globalShortcut": "CommandOrControl+Alt+]"
+      },
+      {
+        "id": "processBack",
+        "name": "后退(3s)",
+        "shortcut": "CommandOrControl+[",
+        "globalShortcut": "CommandOrControl+Alt+["
+      }
+    ],
+    "other": {
+      "globalShortcuts": true,
+      "quitApp": "minimize"
+    }
+  }
+}

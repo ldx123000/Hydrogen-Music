@@ -1,6 +1,6 @@
 <script setup>
   import { onMounted, ref } from 'vue'
-  import { playAll } from '../utils/player';
+  import { playAll } from '../utils/player/lazy';
   import { useRouter } from 'vue-router';
   import { useLibraryStore } from '../store/libraryStore'
   import { useLocalStore } from '../store/localStore';
@@ -37,9 +37,8 @@
   }
   const playRecAll = async () => {
     if(isLogin()) {
-        await libraryStore.updateRecommendSongs().then(() => {
-            playAll('rec', libraryStore.librarySongs)
-        })
+        await libraryStore.updateRecommendSongs()
+        await playAll('rec', libraryStore.librarySongs)
     } else {
         noticeOpen("请先登录", 2)
         router.push('/login')

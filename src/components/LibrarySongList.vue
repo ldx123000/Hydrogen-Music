@@ -2,8 +2,8 @@
 import { computed, ref } from 'vue'
 import { RecycleScroller } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
-import { songTime } from '../utils/player'
-import { addToList, addSong, setShuffledList, addToNext, startMusic, pauseMusic } from '../utils/player'
+import { songTime } from '../utils/time'
+import { addToList, addSong, setShuffledList, addToNext, startMusic, pauseMusic } from '../utils/player/lazy'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
@@ -89,31 +89,31 @@ const checkArtist = artistId => {
     router.push('/mymusic/artist/' + artistId)
     playerStore.forbidLastRouter = true
 }
-const play = (song, index) => {
+const play = async (song, index) => {
     if (!song.playable) {
         noticeOpen(`当前歌曲无法播放${!!song.reason ? ', ' + song.reason : ''}`, 2)
         return
     }
     if (props.type == 'search') {
         // 搜索结果播放时：沿用“新增到现有播放列表并立即播放”的统一逻辑
-        addToNext(song, true)
+        await addToNext(song, true)
         return
     }
-    addToList(props.queueListType || router.currentRoute.value.name, queueSongs.value || [], props.queueMeta || null)
-    addSong(song.id, index, true)
-    if (playMode.value == 3) setShuffledList()
+    await addToList(props.queueListType || router.currentRoute.value.name, queueSongs.value || [], props.queueMeta || null)
+    await addSong(song.id, index, true)
+    if (playMode.value == 3) await setShuffledList()
 }
 
-const togglePlay = (song, index) => {
+const togglePlay = async (song, index) => {
     if (songId.value === song.id) {
         if (playing.value) {
-            pauseMusic()
+            await pauseMusic()
         } else {
-            startMusic()
+            await startMusic()
         }
         return
     }
-    play(song, index)
+    await play(song, index)
 }
 
 const openMenu = (e, item) => {

@@ -1,11 +1,13 @@
 <script setup>
 import { ref, watch, computed, onUnmounted } from 'vue';
 import QRCode from 'qrcode';
-import { songTime2, loadMusicVideo, unloadMusicVideo, pauseCurrentMusicVideo, reopenCurrentMusicVideo } from '../utils/player';
+import { songTime2 } from '../utils/time';
+import { loadMusicVideo, unloadMusicVideo, pauseCurrentMusicVideo, reopenCurrentMusicVideo } from '../utils/player/lazy';
 import VueSlider from 'vue-slider-component';
 import { dialogOpen, noticeOpen } from '../utils/dialog';
 import { clearStoredBiliSession, hasStoredBiliSession, migrateLegacyBiliSession, readStoredBiliCookie, storeBiliCookies } from '../utils/biliSession';
 import { invalidateStoredMusicVideoVerifyCache, verifyStoredMusicVideo } from '../utils/musicVideoLookup';
+import { buildMusicVideoTimingSegment, clampVideoTimingRange, hasTimingOverlap } from '../utils/musicVideoTiming';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
@@ -322,7 +324,7 @@ watch(
     () => {
         const vInterval = videoTiming.value[1] - videoTiming.value[0];
         const mInterval = addMusicVideo.value.dt - musicTiming.value;
-        if (vInterval > mInterval) videoTiming.value = [videoTiming.value[0], (videoTiming.value[1] -= vInterval - mInterval)];
+        if (vInterval > mInterval) videoTiming.value = clampVideoTimingRange(videoTiming.value, mInterval);
     }
 );
 const addTiming = () => {
@@ -330,18 +332,16 @@ const addTiming = () => {
         noticeOpen('视频播放段需大于3秒', 2);
         return;
     }
-    const start = musicTiming.value;
-    const end = musicTiming.value + videoTiming.value[1] - videoTiming.value[0];
+    const nextTiming = buildMusicVideoTimingSegment(musicTiming.value, videoTiming.value);
+
     if (timingList.value == null) {
-        timingList.value = [{ start: start, end: end, videoTiming: videoTiming.value[0] }];
+        timingList.value = [nextTiming];
     } else {
-        for (let i = 0; i < timingList.value.length; i++) {
-            if (!((start < timingList.value[i].start && end < timingList.value[i].start) || (start > timingList.value[i].end && end > timingList.value[i].end))) {
-                noticeOpen('该时间段已存在视频', 2);
-                return;
-            }
+        if (hasTimingOverlap(timingList.value, nextTiming)) {
+            noticeOpen('该时间段已存在视频', 2);
+            return;
         }
-        timingList.value.push({ start: start, end: end, videoTiming: videoTiming.value[0] });
+        timingList.value.push(nextTiming);
     }
     noticeOpen('添加时间段成功', 1);
     sortList();
@@ -405,7 +405,7 @@ const addVideo = async flag => {
                 },
             },
         })
-        .then(result => {
+        .then(async result => {
             isDownloading.value = false;
             if (result == 'noSavePath') {
                 noticeOpen('请先在设置中设置音乐视频缓存目录', 2);
@@ -420,7 +420,7 @@ const addVideo = async flag => {
                 noticeOpen('添加成功', 2);
                 invalidateStoredMusicVideoVerifyCache(addMusicVideo.value.id);
                 if (songId.value == addMusicVideo.value.id) {
-                    loadMusicVideo(addMusicVideo.value.id);
+                    await loadMusicVideo(addMusicVideo.value.id);
                     // 立即重新检查当前歌曲的视频状态
                     checkCurrentSongVideo();
                 }
@@ -457,7 +457,7 @@ const deleteConfirm = () => {
 };
 const deleteVideo = flag => {
     if (flag) {
-        windowApi.deleteMusicVideo(addMusicVideo.value.id).then(result => {
+        windowApi.deleteMusicVideo(addMusicVideo.value.id).then(async result => {
             if (result) {
                 invalidateStoredMusicVideoVerifyCache(addMusicVideo.value.id);
                 noticeOpen('删除成功', 2);
@@ -469,7 +469,7 @@ const deleteVideo = flag => {
 
                 // 如果删除的视频正好是当前播放歌曲的视频，立即清理
                 if (songId.value == addMusicVideo.value.id) {
-                    unloadMusicVideo();
+                    await unloadMusicVideo();
                     // 立即重新检查当前歌曲的视频状态
                     checkCurrentSongVideo();
                 }
@@ -575,8 +575,8 @@ const hasVideoButClosed = () => {
 };
 
 // 关闭当前音乐视频显示
-const pauseVideo = () => {
-    const success = pauseCurrentMusicVideo();
+const pauseVideo = async () => {
+    const success = await pauseCurrentMusicVideo();
     if (success) {
         noticeOpen('已关闭视频显示', 2);
     } else {
@@ -585,8 +585,8 @@ const pauseVideo = () => {
 };
 
 // 重新打开当前音乐视频显示
-const reopenVideo = () => {
-    const success = reopenCurrentMusicVideo();
+const reopenVideo = async () => {
+    const success = await reopenCurrentMusicVideo();
     if (success) {
         noticeOpen('正在重新加载视频', 2);
     } else {

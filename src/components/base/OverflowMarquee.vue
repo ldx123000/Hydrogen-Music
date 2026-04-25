@@ -28,16 +28,13 @@ const MARQUEE_MIN_TRAVEL_MS = 1200
 const viewportRef = ref(null)
 const primaryContentRef = ref(null)
 const loopDistancePx = ref(0)
-const transitionDurationMs = ref(0)
-const translateXPx = ref(0)
 const isOverflowing = ref(false)
 const isAnimatingMode = ref(false)
 
 let measureFrameId = null
-let transitionFrameId = null
+let restartFrameId = null
+let restartSecondFrameId = null
 let resizeObserver = null
-let cycleToken = 0
-const timerIds = new Set()
 
 const displayText = computed(() => String(props.text || ''))
 const overflowThresholdPx = computed(() => (
@@ -47,8 +44,9 @@ const overflowThresholdPx = computed(() => (
 ))
 const canAnimate = computed(() => props.active && isOverflowing.value && loopDistancePx.value > 0)
 const trackStyle = computed(() => ({
-    transform: `translate3d(${translateXPx.value}px, 0, 0)`,
-    transitionDuration: `${transitionDurationMs.value}ms`,
+    '--marquee-distance': `${loopDistancePx.value}px`,
+    '--marquee-duration': `${getTravelDurationMs()}ms`,
+    '--marquee-delay': `${Math.max(0, Number(props.startDelayMs) || 0)}ms`,
     '--marquee-gap': `${MARQUEE_LOOP_GAP_PX}px`,
 }))
 const primaryContentStyle = computed(() => (
@@ -59,32 +57,19 @@ const primaryContentStyle = computed(() => (
         }
 ))
 
-function clearTimers() {
-    timerIds.forEach(timerId => {
-        clearTimeout(timerId)
-    })
-    timerIds.clear()
-}
-
 function clearAnimationFrames() {
     if (measureFrameId !== null) {
         cancelAnimationFrame(measureFrameId)
         measureFrameId = null
     }
-    if (transitionFrameId !== null) {
-        cancelAnimationFrame(transitionFrameId)
-        transitionFrameId = null
+    if (restartFrameId !== null) {
+        cancelAnimationFrame(restartFrameId)
+        restartFrameId = null
     }
-}
-
-function scheduleTask(callback, delayMs) {
-    if (typeof window === 'undefined') return null
-    const timerId = window.setTimeout(() => {
-        timerIds.delete(timerId)
-        callback()
-    }, delayMs)
-    timerIds.add(timerId)
-    return timerId
+    if (restartSecondFrameId !== null) {
+        cancelAnimationFrame(restartSecondFrameId)
+        restartSecondFrameId = null
+    }
 }
 
 function getTravelDurationMs() {
@@ -94,59 +79,31 @@ function getTravelDurationMs() {
 }
 
 function resetMotion() {
-    cycleToken += 1
-    clearTimers()
-    if (transitionFrameId !== null) {
-        cancelAnimationFrame(transitionFrameId)
-        transitionFrameId = null
+    if (restartFrameId !== null) {
+        cancelAnimationFrame(restartFrameId)
+        restartFrameId = null
+    }
+    if (restartSecondFrameId !== null) {
+        cancelAnimationFrame(restartSecondFrameId)
+        restartSecondFrameId = null
     }
     isAnimatingMode.value = false
-    transitionDurationMs.value = 0
-    translateXPx.value = 0
-}
-
-function animateLoop(token) {
-    if (token !== cycleToken || !canAnimate.value) return
-
-    const duration = getTravelDurationMs()
-    if (duration <= 0) {
-        return
-    }
-
-    isAnimatingMode.value = true
-    transitionDurationMs.value = duration
-
-    if (transitionFrameId !== null) {
-        cancelAnimationFrame(transitionFrameId)
-    }
-
-    transitionFrameId = requestAnimationFrame(() => {
-        transitionFrameId = null
-        if (token !== cycleToken || !canAnimate.value) return
-
-        translateXPx.value = -loopDistancePx.value
-        scheduleTask(() => {
-            if (token !== cycleToken || !canAnimate.value) return
-            transitionDurationMs.value = 0
-            translateXPx.value = 0
-            transitionFrameId = requestAnimationFrame(() => {
-                transitionFrameId = null
-                if (token !== cycleToken || !canAnimate.value) return
-                animateLoop(token)
-            })
-        }, duration)
-    })
 }
 
 function restartMotion() {
     resetMotion()
     if (!canAnimate.value) return
 
-    const token = cycleToken
-    scheduleTask(() => {
-        if (token !== cycleToken || !canAnimate.value) return
-        animateLoop(token)
-    }, props.startDelayMs)
+    // Force the class to be removed for a frame before re-adding it so CSS
+    // restarts cleanly after text, width, font, or active-state changes.
+    restartFrameId = requestAnimationFrame(() => {
+        restartFrameId = null
+        restartSecondFrameId = requestAnimationFrame(() => {
+            restartSecondFrameId = null
+            if (!canAnimate.value) return
+            isAnimatingMode.value = true
+        })
+    })
 }
 
 async function measureOverflow() {
@@ -198,7 +155,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-    clearTimers()
     clearAnimationFrames()
     if (resizeObserver) {
         resizeObserver.disconnect()
@@ -254,8 +210,7 @@ watch(
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    transition-property: transform;
-    transition-timing-function: linear;
+    transform: translate3d(0, 0, 0);
 }
 
 .overflow-marquee__track--animated {
@@ -267,6 +222,11 @@ watch(
     text-overflow: clip;
     gap: var(--marquee-gap);
     will-change: transform;
+    animation-name: overflow-marquee-scroll;
+    animation-duration: var(--marquee-duration);
+    animation-delay: var(--marquee-delay);
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
 }
 
 .overflow-marquee__content {
@@ -287,5 +247,15 @@ watch(
 
 .overflow-marquee__content--duplicate {
     flex-shrink: 0;
+}
+
+@keyframes overflow-marquee-scroll {
+    from {
+        transform: translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: translate3d(calc(-1 * var(--marquee-distance)), 0, 0);
+    }
 }
 </style>

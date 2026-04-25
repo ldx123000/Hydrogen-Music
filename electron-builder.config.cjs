@@ -46,6 +46,8 @@ const BASE_FILE_PATTERNS = [
   'dist/**/*',
   'src/assets/icon/**/*',
   'src/electron/**/*',
+  'src/shared/settingsDefaults.json',
+  'src/shared/settingsSchema.cjs',
   '!**/.DS_Store',
   '!**/node_modules',
   '!release{,/**/*}',

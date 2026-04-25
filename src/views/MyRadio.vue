@@ -69,9 +69,9 @@ const playLatestProgram = async (radio) => {
     playerStore.listInfo = { id: rid, type: 'dj', name: radio?.name || '电台' }
 
     // 直接播放
-    const { play, setSongLevel } = await import('../utils/player')
-    setSongLevel(trackInfo?.level, trackInfo)
-    play(url, true)
+    const { play, setSongLevel } = await import('../utils/player/lazy')
+    await setSongLevel(trackInfo?.level, trackInfo)
+    await play(url, true)
 
     // 加载歌词（可能无歌词，忽略错误）
     try {

@@ -3,7 +3,7 @@ import { computed, nextTick, onDeactivated, onMounted, onUnmounted, ref, watch }
 import { useRoute, useRouter } from 'vue-router';
 import { getHistoryRecommendSongDates } from '../api/playlist';
 import { useLibraryStore } from '../store/libraryStore';
-import { playAll } from '../utils/player';
+import { playAll } from '../utils/player/lazy';
 import { noticeOpen } from '../utils/dialog';
 import LibrarySongList from './LibrarySongList.vue';
 

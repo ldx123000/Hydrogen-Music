@@ -5,6 +5,21 @@ const path = require('path')
 const { parseFile } = require('music-metadata')
 const { spawn } = require('child_process')
 const { loadLocalLyricPayload } = require('./localLyrics')
+const { registerSettingsIpc } = require('./ipc/settingsIpc')
+const {
+    getBufferLength,
+    getImageMime,
+    getImageMimeByPath,
+    isHttpUrl,
+    isPathInsideDirectory,
+    mergeCookieStrings,
+    normalizeHttpMethod,
+    normalizePlainObject,
+    normalizeResponseType,
+    normalizeTimeout,
+    parseUrlSafely,
+    sanitizePathToken,
+} = require('./ipcHelpers')
 let ffmpegPath = null
 try {
     ffmpegPath = require('ffmpeg-static')
@@ -224,19 +239,18 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         return Array.isArray(result) ? result : []
     }
 
-    const parseUrlSafely = value => {
-        try {
-            return new URL(String(value || '').trim())
-        } catch (_) {
-            return null
-        }
-    }
-
-    const isHttpUrl = urlObj => !!(urlObj && (urlObj.protocol === 'https:' || urlObj.protocol === 'http:'))
-
     const isTrustedShellUrl = urlObj => !!(urlObj && trustedShellProtocols.has(urlObj.protocol))
 
     const isTrustedExternalFetchUrl = urlObj => !!(urlObj && urlObj.protocol === 'https:' && trustedExternalFetchHosts.has(urlObj.hostname))
+    const isTrustedAudioFetchUrl = urlObj => {
+        if (!isHttpUrl(urlObj)) return false
+        const hostname = urlObj.hostname || ''
+        if (trustedExternalFetchHosts.has(hostname)) return true
+        return hostname === 'music.126.net'
+            || hostname.endsWith('.music.126.net')
+            || hostname === 'vod.126.net'
+            || hostname.endsWith('.vod.126.net')
+    }
 
     const isTrustedBiliDownloadUrl = urlObj => {
         if (!urlObj || urlObj.protocol !== 'https:') return false
@@ -248,17 +262,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         if (!isHttpUrl(urlObj)) return false
         if (!allowedNcmApiHosts.has(urlObj.hostname)) return false
         return String(urlObj.port || '') === '36530'
-    }
-
-    const normalizeHttpMethod = value => {
-        const method = String(value || 'get').trim().toLowerCase()
-        return ['get', 'post'].includes(method) ? method : null
-    }
-
-    const normalizeTimeout = value => {
-        const timeout = Number(value)
-        if (!Number.isFinite(timeout) || timeout <= 0) return 10000
-        return Math.min(Math.round(timeout), 2147483647)
     }
 
     const normalizeRequestHeaders = (headers, allowedHeaderNames = null) => {
@@ -284,16 +287,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         })
 
         return result
-    }
-
-    const normalizePlainObject = value => {
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-        return value
-    }
-
-    const normalizeResponseType = value => {
-        const normalized = String(value || '').trim().toLowerCase()
-        return normalized === 'text' ? 'text' : 'json'
     }
 
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -444,40 +437,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         return formData
     }
 
-    const parseCookieString = cookieString => {
-        const cookieMap = new Map()
-        const cookieText = String(cookieString || '').trim()
-        if (!cookieText) return cookieMap
-
-        cookieText.split(';').forEach(segment => {
-            const cookiePart = String(segment || '').trim()
-            if (!cookiePart) return
-
-            const separatorIndex = cookiePart.indexOf('=')
-            if (separatorIndex <= 0) return
-
-            const name = cookiePart.slice(0, separatorIndex).trim()
-            const value = cookiePart.slice(separatorIndex + 1).trim()
-            if (!name || !value) return
-            cookieMap.set(name, value)
-        })
-
-        return cookieMap
-    }
-
-    const mergeCookieStrings = (...cookieStrings) => {
-        const mergedCookieMap = new Map()
-
-        cookieStrings.forEach(cookieString => {
-            parseCookieString(cookieString).forEach((value, key) => {
-                mergedCookieMap.set(key, value)
-            })
-        })
-
-        if (mergedCookieMap.size === 0) return ''
-        return Array.from(mergedCookieMap.entries()).map(([key, value]) => `${key}=${value}`).join('; ')
-    }
-
     const getBrowserSession = () => {
         try {
             return win?.webContents?.session || null
@@ -619,24 +578,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     }
 
-    const isPathInsideDirectory = (directoryPath, targetPath) => {
-        if (!directoryPath || !targetPath) return false
-        const basePath = path.resolve(directoryPath)
-        const resolvedTargetPath = path.resolve(targetPath)
-        const relativePath = path.relative(basePath, resolvedTargetPath)
-        return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
-    }
-
-    const sanitizePathToken = (value, fallback = 'unknown') => {
-        const normalized = String(value ?? '')
-            .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 80)
-        if (!normalized || normalized === '.' || normalized === '..') return fallback
-        return normalized
-    }
-
     const getCurrentVideoStorageRoots = () => {
         const settings = settingsStore.get('settings')
         return getVideoStorageRoots(settings?.local?.videoFolder)
@@ -732,19 +673,20 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         if (!normalizedFilePath) return null
 
         try {
+            const getPictureScore = pic => {
+                if (!pic || !pic.data) return -1
+                const type = `${pic.type || ''} ${pic.description || ''}`.toLowerCase()
+                const isFrontCover = type.includes('front') || type.includes('cover')
+                return getBufferLength(pic.data) + (isFrontCover ? 2 * 1024 * 1024 : 0)
+            }
             // 显式禁用跳过封面，避免新版库默认不读取封面
             const data = await parseFile(normalizedFilePath, { skipCovers: false }).catch(() => null)
             const picArr = data && data.common && Array.isArray(data.common.picture) ? data.common.picture : null
-            const pic = picArr && picArr.length > 0 ? picArr[0] : null
+            const pic = picArr && picArr.length > 0
+                ? picArr.slice().sort((a, b) => getPictureScore(b) - getPictureScore(a))[0]
+                : null
             if (pic && pic.data) {
-                let mime = (pic.format && String(pic.format).startsWith('image/')) ? pic.format : null
-                if (!mime) {
-                    // 简单的文件头嗅探，兜底 MIME
-                    const buf = Buffer.from(pic.data)
-                    if (buf.length > 12 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) mime = 'image/png'
-                    else if (buf.length > 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) mime = 'image/jpeg'
-                    else mime = 'image/jpeg'
-                }
+                const mime = getImageMime(pic.format, pic.data)
                 return `data:${mime};base64,${Buffer.from(pic.data).toString('base64')}`
             }
 
@@ -760,143 +702,27 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 path.join(parsed.dir, 'cover.png'),
                 path.join(parsed.dir, 'folder.png'),
             ]
-            const mapMime = (p) => {
-                const ext = (p.split('.').pop() || '').toLowerCase()
-                if (ext === 'png') return 'image/png'
-                if (ext === 'webp') return 'image/webp'
-                return 'image/jpeg'
-            }
+            let sidecarCover = null
             for (const p of candidates) {
                 try {
                     if (fs.existsSync(p)) {
-                        const b64 = fs.readFileSync(p).toString('base64')
-                        return `data:${mapMime(p)};base64,${b64}`
+                        const stat = fs.statSync(p)
+                        if (stat.isFile() && (!sidecarCover || stat.size > sidecarCover.size)) {
+                            sidecarCover = { path: p, size: stat.size }
+                        }
                     }
                 } catch (_) { /* ignore */ }
+            }
+            if (sidecarCover) {
+                const b64 = fs.readFileSync(sidecarCover.path).toString('base64')
+                return `data:${getImageMimeByPath(sidecarCover.path)};base64,${b64}`
             }
         } catch (e) {
             // ignore
         }
         return null
     })
-    const normalizeSearchAssistLimit = value => {
-        const num = Number.parseInt(value, 10)
-        if (!Number.isFinite(num)) return 8
-        return Math.max(1, num)
-    }
-    const defaultMusicLevel = 'lossless'
-    const availableMusicLevel = new Set([
-        'standard',
-        'higher',
-        'exhigh',
-        'lossless',
-        'hires',
-        'jyeffect',
-        'sky',
-        'dolby',
-        'jymaster',
-    ])
-
-    const normalizeMusicLevel = level => availableMusicLevel.has(level) ? level : defaultMusicLevel
-
-    const normalizeMusicSettings = (music = {}) => {
-        const normalized = { ...music }
-        normalized.searchAssistLimit = normalizeSearchAssistLimit(normalized.searchAssistLimit)
-        normalized.level = normalizeMusicLevel(normalized.level)
-        normalized.showSongTranslation = normalized.showSongTranslation !== false
-        // 兼容历史版本：读取后清理旧迁移标记字段。
-        delete normalized.levelMigratedToLosslessV1
-        return normalized
-    }
-
-    ipcMain.on('set-settings', (e, settings) => {
-        const parsedSettings = JSON.parse(settings)
-        if (!parsedSettings.music) parsedSettings.music = {}
-        // 保存时仅做合法值归一化，并清理历史迁移字段。
-        parsedSettings.music = normalizeMusicSettings(parsedSettings.music)
-        settingsStore.set('settings', parsedSettings)
-        registerShortcuts(win)
-    })
-    ipcMain.handle('get-settings', async () => {
-        const settings = await settingsStore.get('settings')
-        if (settings) {
-            if (!settings.music) settings.music = {}
-            // 读取时仅做归一化（保留旧版本合法音质选择，并清理历史迁移字段）。
-            settings.music = normalizeMusicSettings(settings.music)
-            settingsStore.set('settings', settings)
-            return settings
-        } else {
-            let initSettings = {
-                music: {
-                    level: defaultMusicLevel,
-                    lyricSize: '20',
-                    tlyricSize: '14',
-                    rlyricSize: '12',
-                    lyricInterlude: 13,
-                    searchAssistLimit: 8,
-                    showSongTranslation: true,
-                },
-                local: {
-                    videoFolder: null,
-                    downloadFolder: null,
-                    downloadCreateSongFolder: false,
-                    downloadSaveLyricFile: false,
-                    localFolder: []
-                },
-                shortcuts: [
-                    {
-                        id: 'play',
-                        name: '播放/暂停',
-                        shortcut: 'CommandOrControl+P',
-                        globalShortcut: 'CommandOrControl+Alt+P',
-                    },
-                    {
-                        id: 'last',
-                        name: '上一首',
-                        shortcut: 'CommandOrControl+Left',
-                        globalShortcut: 'CommandOrControl+Alt+Left',
-                    },
-                    {
-                        id: 'next',
-                        name: '下一首',
-                        shortcut: 'CommandOrControl+Right',
-                        globalShortcut: 'CommandOrControl+Alt+Right',
-                    },
-                    {
-                        id: 'volumeUp',
-                        name: '增加音量',
-                        shortcut: 'CommandOrControl+Up',
-                        globalShortcut: 'CommandOrControl+Alt+Up',
-                    },
-                    {
-                        id: 'volumeDown',
-                        name: '减少音量',
-                        shortcut: 'CommandOrControl+Down',
-                        globalShortcut: 'CommandOrControl+Alt+Down',
-                    },
-                    {
-                        id: 'processForward',
-                        name: '快进(3s)',
-                        shortcut: 'CommandOrControl+]',
-                        globalShortcut: 'CommandOrControl+Alt+]',
-                    },
-                    {
-                        id: 'processBack',
-                        name: '后退(3s)',
-                        shortcut: 'CommandOrControl+[',
-                        globalShortcut: 'CommandOrControl+Alt+[',
-                    },
-                ],
-                other: {
-                    globalShortcuts: true,
-                    quitApp: 'minimize'
-                }
-            }
-            settingsStore.set('settings', initSettings)
-            registerShortcuts(win)
-            return initSettings
-        }
-    })
+    registerSettingsIpc({ ipcMain, settingsStore, win, registerShortcuts })
     ipcMain.handle('dialog:openFile', async () => {
         try {
             const { canceled, filePaths } = await dialog.showOpenDialog(win, {
@@ -1008,6 +834,36 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } catch (error) {
             return buildTrustedResourceErrorPayload(error, requestUrl)
         }
+    })
+    ipcMain.removeHandler('audio-buffer-request')
+    ipcMain.handle('audio-buffer-request', async (e, request = {}) => {
+        const parsedUrl = parseUrlSafely(request.url)
+        const option = request?.option && typeof request.option === 'object' ? request.option : request
+        if (!isTrustedAudioFetchUrl(parsedUrl)) {
+            throw new Error('unsupported-audio-buffer-request')
+        }
+
+        const response = await requestWithTransientRetry({
+            url: parsedUrl.toString(),
+            method: 'get',
+            params: normalizePlainObject(option.params),
+            headers: normalizeRequestHeaders(option.headers, trustedResourceHeaderNames),
+            timeout: normalizeTimeout(option.timeout || 45000),
+            responseType: 'arraybuffer',
+            validateStatus: () => true,
+        }, trustedResourceRetryDelays)
+
+        if (response.status < 200 || response.status >= 300) {
+            throw buildTrustedResourceError({ response }, parsedUrl.toString())
+        }
+
+        return Buffer.from(response.data)
+    })
+    ipcMain.removeHandler('read-local-audio-buffer')
+    ipcMain.handle('read-local-audio-buffer', async (e, filePath) => {
+        const audioPath = normalizeAllowedMediaPath(filePath)
+        if (!audioPath) throw new Error('unsupported-local-audio-buffer-request')
+        return fs.promises.readFile(audioPath)
     })
     async function searchMusicVideo(id) {
         const result = await getStoredMusicVideos()

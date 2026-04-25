@@ -2,7 +2,7 @@
 import { computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { playAll } from '../utils/player'
+import { playAll } from '../utils/player/lazy'
 import { useSirenStore } from '../store/sirenStore'
 import LibrarySongList from '../components/LibrarySongList.vue'
 

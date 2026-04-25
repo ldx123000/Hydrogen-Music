@@ -182,16 +182,19 @@ import {
     getLikeActionErrorMessage,
     isActiveLikeActionToken,
     play,
+    preloadGaplessSongPlayback,
     queueLikeRequest,
     setSongLevel,
     syncLikelistAfterLikeAction,
     updateFavoritePlaylistTrack,
-} from '../utils/player'
+} from '../utils/player/lazy'
 import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
 import { getSongDisplayName } from '../utils/songName'
+import { getPrefetchedSongAssets, prefetchSongAssetList } from '../utils/player/assetPrefetch'
+import { createEmptyLyric } from '../utils/player/lyricPayload'
 
 const router = useRouter()
 const playerStore = usePlayerStore()
@@ -597,6 +600,23 @@ const nextCandidateSong = computed(() => {
     return fmSongs.value[0] || null
 })
 
+function getPrefetchedFmLyric(...songs) {
+    for (const song of songs) {
+        const assets = getPrefetchedSongAssets(song)
+        if (assets?.hasLyric && assets.lyric && typeof assets.lyric == 'object') return assets.lyric
+    }
+    return null
+}
+
+function scheduleNextCandidateAssetPrefetch() {
+    const candidates = [nextCandidateSong.value, fmSongs.value[0], fmSongs.value[1]].filter(Boolean)
+    if (candidates.length === 0) return
+    void prefetchSongAssetList(candidates, { quality: quality.value, limit: 2 })
+    if (playerStore.gaplessPlayback) {
+        void preloadGaplessSongPlayback(candidates[0], { quality: quality.value })
+    }
+}
+
 const rightPlaceholderText = computed(() => {
     return isPrefetching.value ? 'NEXT LOADING' : 'NO NEXT'
 })
@@ -869,17 +889,21 @@ const togglePlay = async () => {
     }
 
     try {
-        // 获取歌曲URL
+        const sourceSong = currentSong.value
+        const targetSongId = sourceSong.id
+        const normalizedCurrentSong = normalizeFmSong(sourceSong)
+        if (!normalizedCurrentSong) {
+            console.error('Invalid current FM song shape:', sourceSong)
+            return
+        }
+
         const preferredQuality = getPreferredQuality(quality.value)
-        const trackInfo = await resolveTrackByQualityPreference(currentSong.value.id, preferredQuality)
+        const trackInfo = await resolveTrackByQualityPreference(targetSongId, preferredQuality)
+        if (currentSong.value?.id !== targetSongId) return
+
         if (trackInfo && trackInfo.url) {
             const musicUrl = trackInfo.url
-            const targetSongId = currentSong.value.id
-            const normalizedCurrentSong = normalizeFmSong(currentSong.value)
-            if (!normalizedCurrentSong) {
-                console.error('Invalid current FM song shape:', currentSong.value)
-                return
-            }
+            const prefetchedLyric = getPrefetchedFmLyric(normalizedCurrentSong, sourceSong)
 
             // 创建一个临时的单曲列表用于FM播放（不影响用户的真实播放列表）
             const fmSongList = [
@@ -890,7 +914,7 @@ const togglePlay = async () => {
             ]
 
             // 设置播放器状态
-            playerStore.songId = currentSong.value.id
+            playerStore.songId = targetSongId
             playerStore.currentIndex = 0
             playerStore.songList = fmSongList
             playerStore.listInfo = {
@@ -901,21 +925,28 @@ const togglePlay = async () => {
             playerStore.lyric = null
             playerStore.lyricsObjArr = null
             playerStore.currentLyricIndex = -1
-            setSongLevel(trackInfo.level, trackInfo)
+            await setSongLevel(trackInfo.level, trackInfo)
 
             // 直接播放音乐
-            play(musicUrl, true)
+            await play(musicUrl, true)
 
-            // 获取歌词
-            try {
-                const lyricResponse = await getLyric(currentSong.value.id)
-                if (playerStore.songId === targetSongId && lyricResponse && lyricResponse.lrc) {
-                    playerStore.lyric = lyricResponse
+            if (prefetchedLyric) {
+                if (playerStore.songId === targetSongId) playerStore.lyric = prefetchedLyric
+            } else {
+                try {
+                    const lyricResponse = await getLyric(targetSongId)
+                    if (playerStore.songId === targetSongId) {
+                        playerStore.lyric = lyricResponse || createEmptyLyric()
+                    }
+                } catch (lyricError) {
+                    console.warn('Failed to load lyrics:', lyricError)
+                    if (playerStore.songId === targetSongId) {
+                        playerStore.lyric = createEmptyLyric()
+                    }
                 }
-            } catch (lyricError) {
-                console.warn('Failed to load lyrics:', lyricError)
             }
 
+            scheduleNextCandidateAssetPrefetch()
         } else {
             console.error('No valid music URL found')
         }
@@ -1065,7 +1096,7 @@ const likeSong = async () => {
     if (!currentSong.value) return
     if (!Array.isArray(likelist.value)) return
 
-    const actionToken = createLikeActionToken()
+    const actionToken = await createLikeActionToken()
 
     try {
         // 使用计算属性来判断当前的操作是“喜欢”还是“取消喜欢”
@@ -1076,8 +1107,8 @@ const likeSong = async () => {
             const result = await queueLikeRequest(actionToken, () => likeMusic(currentSong.value.id, isLiked))
             if (result?.skipped) return
             if (result && result.code === 200) {
-                if (!isActiveLikeActionToken(actionToken)) return
-                const fallbackLikelist = applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
+                if (!(await isActiveLikeActionToken(actionToken))) return
+                const fallbackLikelist = await applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
                 userStore.updateLikelist(fallbackLikelist)
                 noticeOpen(await getFavoritePlaylistNoticeText(isLiked), 2)
                 await syncLikelistAfterLikeAction({
@@ -1086,11 +1117,11 @@ const likeSong = async () => {
                     actionToken,
                     fallbackLikelist,
                 })
-                if (!isActiveLikeActionToken(actionToken)) return
+                if (!(await isActiveLikeActionToken(actionToken))) return
                 schedulePlaylistCacheInvalidation()
                 return
             }
-            throw new Error(getLikeActionErrorMessage(result, 'likeMusic 返回异常'))
+            throw new Error(await getLikeActionErrorMessage(result, 'likeMusic 返回异常'))
         } catch (apiErr) {
             console.warn('PersonalFM likeMusic 失败，尝试使用歌单 tracks:', apiErr.message)
         }
@@ -1099,8 +1130,8 @@ const likeSong = async () => {
         try {
             const fallbackResult = await updateFavoritePlaylistTrack(currentSong.value.id, isLiked)
             if (fallbackResult.success) {
-                if (!isActiveLikeActionToken(actionToken)) return
-                const fallbackLikelist = applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
+                if (!(await isActiveLikeActionToken(actionToken))) return
+                const fallbackLikelist = await applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
                 userStore.updateLikelist(fallbackLikelist)
                 noticeOpen(isLiked ? `已添加到${fallbackResult.favoritePlaylist?.name || '我喜欢的音乐'}` : '已取消喜欢', 2)
                 await syncLikelistAfterLikeAction({
@@ -1109,7 +1140,7 @@ const likeSong = async () => {
                     actionToken,
                     fallbackLikelist,
                 })
-                if (!isActiveLikeActionToken(actionToken)) return
+                if (!(await isActiveLikeActionToken(actionToken))) return
                 schedulePlaylistCacheInvalidation()
                 return
             }
@@ -1261,6 +1292,7 @@ onMounted(() => {
     window.addEventListener('fmPlayModeResponse', handleFMPlayModeResponse)
     window.addEventListener('fmPreviousResponse', handleFMPreviousResponse)
     window.addEventListener('fmNextResponse', handleFMNextResponse)
+    window.addEventListener('fmGaplessStarted', handleFMGaplessStarted)
     window.addEventListener('fmClearRecent', handleFmClearRecent)
     window.addEventListener('mousedown', handleModePanelClickOutside)
     window.addEventListener('touchstart', handleModePanelClickOutside)
@@ -1288,6 +1320,7 @@ onUnmounted(() => {
     window.removeEventListener('fmPlayModeResponse', handleFMPlayModeResponse)
     window.removeEventListener('fmPreviousResponse', handleFMPreviousResponse)
     window.removeEventListener('fmNextResponse', handleFMNextResponse)
+    window.removeEventListener('fmGaplessStarted', handleFMGaplessStarted)
     window.removeEventListener('fmClearRecent', handleFmClearRecent)
     window.removeEventListener('mousedown', handleModePanelClickOutside)
     window.removeEventListener('touchstart', handleModePanelClickOutside)
@@ -1312,9 +1345,10 @@ watch(
 )
 
 watch(
-    [() => currentSong.value?.id, currentIndex, () => playedSongs.value.length, () => fmSongs.value.length, loading, coverNavigating],
+    [() => currentSong.value?.id, currentIndex, () => playedSongs.value.length, () => fmSongs.value.length, loading, coverNavigating, quality, () => playerStore.gaplessPlayback],
     () => {
         prefetchNextCandidate()
+        scheduleNextCandidateAssetPrefetch()
     },
     { immediate: true }
 )
@@ -1347,6 +1381,38 @@ const handleFMNextResponse = async event => {
 
     if (action === 'next') {
         await goNext()
+    }
+}
+
+const handleFMGaplessStarted = event => {
+    const { action, songId } = event.detail || {}
+    if (action !== 'next') return
+
+    const targetId = normalizeSongId(songId)
+    if (!targetId) return
+    if (normalizeSongId(currentSong.value?.id) === targetId) return
+
+    const historyCandidate = playedSongs.value[currentIndex.value + 1]
+    if (normalizeSongId(historyCandidate?.id) === targetId) {
+        currentIndex.value++
+        scheduleNextCandidateAssetPrefetch()
+        return
+    }
+
+    const poolIndex = fmSongs.value.findIndex(song => normalizeSongId(song?.id) === targetId)
+    if (poolIndex === -1) return
+
+    const [nextSongFromPool] = fmSongs.value.splice(poolIndex, 1)
+    if (!nextSongFromPool) return
+
+    fmPoolIds.delete(targetId)
+    playedSongs.value.push(nextSongFromPool)
+    rememberRecent(nextSongFromPool.id)
+    currentIndex.value = playedSongs.value.length - 1
+    scheduleNextCandidateAssetPrefetch()
+
+    if (fmSongs.value.length < 2) {
+        void refreshFM({ silent: true })
     }
 }
 

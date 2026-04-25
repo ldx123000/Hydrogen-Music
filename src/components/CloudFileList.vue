@@ -3,7 +3,7 @@
   import { formatTime } from '../utils/time'
   import { dialogOpen, noticeOpen } from '../utils/dialog'
   import { deleteCloudSong } from '../api/cloud'
-  import { addSong, setShuffledList } from '../utils/player'
+  import { addSong, setShuffledList } from '../utils/player/lazy'
   import { usePlayerStore } from '../store/playerStore'
   import { useLocalStore } from '../store/localStore'
 
@@ -139,7 +139,7 @@
     return formatTime(time, 'YYYY-MM-DD HH:mm:ss')
   }
 
-  function play(item) {
+  async function play(item) {
     const songId = getSongId(item)
     if (!songId) return
 
@@ -148,8 +148,8 @@
     if (playIndex == -1) return
 
     playerStore.songList = playableItems.map(entry => entry.simpleSong).filter(Boolean)
-    addSong(item.simpleSong.id, playIndex, true)
-    if (playerStore.playMode == 3) setShuffledList()
+    await addSong(item.simpleSong.id, playIndex, true)
+    if (playerStore.playMode == 3) await setShuffledList()
   }
 </script>
 

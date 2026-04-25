@@ -13,7 +13,7 @@ let tickerTimer = null
 let tickerInterval = 0
 const subscribers = new Map()
 const DEFAULT_PLAYBACK_TICK_INTERVAL_MS = 1000
-const MIN_PLAYBACK_TICK_INTERVAL_MS = 50
+const MIN_PLAYBACK_TICK_INTERVAL_MS = 25
 
 function normalizeInterval(interval) {
     const parsedInterval = Number(interval)

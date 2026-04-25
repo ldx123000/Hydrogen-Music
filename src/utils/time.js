@@ -57,6 +57,34 @@ export function formatDuration(duration, showHours = null) {
 }
 
 /**
+ * 格式化歌曲时长（毫秒转 mm:ss / HH:mm:ss）。
+ * 兼容历史播放器工具中的 songTime 导出。
+ */
+export function songTime(dt) {
+    if (dt) {
+        if (dt == 0 || dt == '--') return dt;
+        const seconds = Math.floor(dt / 1000);
+        return formatDuration(seconds);
+    }
+}
+
+/**
+ * 格式化播放进度（秒转 mm:ss）。
+ * 兼容历史播放器工具中的 songTime2 导出。
+ */
+export function songTime2(time) {
+    let min = Math.floor(time / 60);
+    let sec = Math.floor(time % 60);
+    if (sec == 60) {
+        sec = 0;
+        min++;
+    }
+    if (min < 10) min = '0' + min;
+    if (sec < 10) sec = '0' + sec;
+    return min + ':' + sec;
+}
+
+/**
  * 获取相对时间描述（如：1分钟前、2小时前）
  * @param {Date|string|number} date - 时间
  * @returns {string} 相对时间描述

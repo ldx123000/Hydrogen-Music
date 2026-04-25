@@ -2,7 +2,7 @@
   import { ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import { createPlaylist, updatePlaylist, deletePlaylist } from '../api/playlist'
-  import { addToNext, addToNextLocal } from '../utils/player'
+  import { addToNext, addToNextLocal } from '../utils/player/lazy'
   import { noticeOpen } from '../utils/dialog';
   import { useLibraryStore } from '../store/libraryStore';
   import { useLocalStore } from '../store/localStore';

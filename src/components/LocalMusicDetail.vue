@@ -1,8 +1,8 @@
 <script setup>
   import { ref, computed, nextTick, watch } from 'vue'
   import { useRouter, onBeforeRouteUpdate} from 'vue-router';
-  import { songTime2 } from '../utils/player';
-  import { addLocalMusicTOList, setShuffledList } from '../utils/player'
+  import { songTime2 } from '../utils/time';
+  import { addLocalMusicTOList, setShuffledList } from '../utils/player/lazy'
   import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
   import SongFilterInput from './SongFilterInput.vue';
   import { useLocalStore } from '../store/localStore';
@@ -53,9 +53,9 @@
   })
   const hasLocalSearchKeyword = computed(() => normalizeSongFilterKeyword(localSearchKeyword.value) !== '')
   const showLocalSearchEmpty = computed(() => hasLocalSearchKeyword.value && filteredSongEntries.value.length == 0)
-  const play = (item, sourceIndex) => {
-    addLocalMusicTOList(router.currentRoute.value.name, currentSelectedSongs.value || [], item.id, sourceIndex)
-    if(playMode.value == 3) setShuffledList()
+  const play = async (item, sourceIndex) => {
+    await addLocalMusicTOList(router.currentRoute.value.name, currentSelectedSongs.value || [], item.id, sourceIndex)
+    if(playMode.value == 3) await setShuffledList()
   }
   const openMenu = (e, item) => {
     otherStore.contextMenuShow = true
