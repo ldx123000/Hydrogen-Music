@@ -4,12 +4,11 @@ import { storeToRefs } from 'pinia'
 import { usePlayerStore } from '../store/playerStore'
 import { startMusic, pauseMusic, playNext, playLast, changeProgress } from './player'
 import { getSongDisplayName } from './songName'
+import { getIndexedSongOrFirst } from './songList'
 
 function getCurrentTrack(storeRefs) {
   const { songList, currentIndex } = storeRefs
-  const list = songList.value || []
-  const idx = typeof currentIndex.value === 'number' ? currentIndex.value : 0
-  return list[idx] || null
+  return getIndexedSongOrFirst(songList.value, currentIndex.value)
 }
 
 function getArtworkForTrack(track, localBase64) {

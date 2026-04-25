@@ -1,9 +1,11 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
 import { changeProgress } from '../utils/player';
+import { getPlaybackSnapshot, PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from '../utils/player/playbackTicker';
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
-import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime';
+import { LYRIC_INDEX_SYNC_BIAS_SEC, syncLyricIndexForSeek } from '../composables/usePlayerRuntime';
+import { getIndexedSong } from '../utils/songList';
 
 const playerStore = usePlayerStore();
 const {
@@ -12,7 +14,6 @@ const {
     lyricsObjArr,
     songList,
     currentIndex,
-    currentMusic,
     widgetState,
     lyricShow,
     lyricEle,
@@ -37,9 +38,9 @@ const interludeAnimation = ref(false);
 const interludeRemainingTime = ref(null);
 // 当从有间奏的行切换到下一行时，立即折叠上一行的间奏，避免其收起动画影响高度测量
 const interludeFastClose = ref(false);
-let interludeInTimer = null;
 let interludeOutTimer = null;
-let interludeProgressInterval = null;
+let interludeExitStartTimer = null;
+let stopInterludeProgressTicker = null;
 // 在“上一句预计结束”时再启动间奏的延迟定时器（启发式）
 let interludeDeferStartTimer = null;
 let manualScrollReleaseTimer = null;
@@ -60,6 +61,11 @@ const LYRIC_AUTO_SCROLL_EASING = 'cubic-bezier(0.4, 0, 0.12, 1)';
 const LYRIC_FOLLOW_TOP_OFFSET_PX = 260;
 const LYRIC_FOLLOW_BOTTOM_GUTTER_PX = 180;
 const LYRIC_FOLLOW_VISIBLE_GUTTER_PX = 24;
+const DEFAULT_INTERLUDE_THRESHOLD_SEC = 13;
+const INTERLUDE_EXIT_ANIMATION_MS = 800;
+const INTERLUDE_EXIT_DOM_CLEANUP_MS = 900;
+const INTERLUDE_EXIT_ANIMATION_SEC = INTERLUDE_EXIT_ANIMATION_MS / 1000;
+const INTERLUDE_EXIT_RESERVE_SEC = INTERLUDE_EXIT_ANIMATION_SEC + LYRIC_INDEX_SYNC_BIAS_SEC;
 
 // 切回歌词时抑制首帧闪烁（先隐藏，定位完成后再显示）
 const suppressLyricFlash = ref(true);
@@ -70,10 +76,7 @@ const lyricBottomSpacerHeight = ref(LYRIC_FOLLOW_BOTTOM_GUTTER_PX);
 // 在高频同步中避免并发测量
 const syncingLayout = ref(false);
 const currentSong = computed(() => {
-    const list = Array.isArray(songList.value) ? songList.value : [];
-    const index = Number.isInteger(currentIndex.value) ? currentIndex.value : -1;
-
-    return index >= 0 && index < list.length ? list[index] : null;
+    return getIndexedSong(songList.value, currentIndex.value);
 });
 
 // —— 每首歌自适应的演唱时长估计模型 ——
@@ -98,6 +101,16 @@ function textUnitCount(text) {
     return han + hira + kata + kataExt + halfKata + words * 0.6;
 }
 
+function getInterludeThresholdSec() {
+    const rawValue = lyricInterludeTime.value;
+    if (rawValue === null || rawValue === undefined) return DEFAULT_INTERLUDE_THRESHOLD_SEC;
+    if (typeof rawValue === 'string' && rawValue.trim() === '') return DEFAULT_INTERLUDE_THRESHOLD_SEC;
+
+    const parsedValue = Number(rawValue);
+    if (!Number.isFinite(parsedValue)) return DEFAULT_INTERLUDE_THRESHOLD_SEC;
+    return Math.max(0, parsedValue);
+}
+
 function median(arr) {
     if (!arr.length) return NaN;
     const a = arr.slice().sort((x, y) => x - y);
@@ -110,7 +123,7 @@ function recomputeSongTimingModel() {
         const arr = Array.isArray(lyricsObjArr.value) ? lyricsObjArr.value : [];
         if (!arr.length) return;
         const candidates = [];
-        const thr = Number(lyricInterludeTime.value || 0) || 8; // 用户阈值或回退 8s
+        const thr = getInterludeThresholdSec();
         const upper = Math.min(Math.max(thr - 1, 4.5), 10); // 认为 <= upper 的行间隔主要是演唱
         const lower = 0.8; // 过滤极短的间隔
         for (let i = 0; i < arr.length - 1; i++) {
@@ -635,23 +648,58 @@ const prepareLyricReveal = async () => {
 };
 
 // —— 间奏等待动画——
-function clearInterludeTimers() {
-    try { if (interludeInTimer) clearTimeout(interludeInTimer) } catch (_) {}
-    try { if (interludeOutTimer) clearTimeout(interludeOutTimer) } catch (_) {}
+function clearInterludeDeferStartTimer() {
     try { if (interludeDeferStartTimer) clearTimeout(interludeDeferStartTimer) } catch (_) {}
-    interludeInTimer = null;
-    interludeOutTimer = null;
     interludeDeferStartTimer = null;
 }
 
+function clearInterludeOutTimer() {
+    try { if (interludeOutTimer) clearTimeout(interludeOutTimer) } catch (_) {}
+    interludeOutTimer = null;
+}
+
+function clearInterludeExitStartTimer() {
+    try { if (interludeExitStartTimer) clearTimeout(interludeExitStartTimer) } catch (_) {}
+    interludeExitStartTimer = null;
+}
+
+function clearInterludeTimers() {
+    clearInterludeOutTimer();
+    clearInterludeExitStartTimer();
+    clearInterludeDeferStartTimer();
+}
+
+function resetInterludeState() {
+    clearInterludeTimers();
+    interludeAnimation.value = false;
+    interludeIndex.value = null;
+    interludeRemainingTime.value = null;
+    interludeFastClose.value = false;
+}
+
+function closeInterludeSoon({ fastClose = false } = {}) {
+    clearInterludeDeferStartTimer();
+    clearInterludeExitStartTimer();
+    interludeAnimation.value = false;
+    interludeRemainingTime.value = null;
+
+    if (interludeIndex.value == null) {
+        interludeFastClose.value = false;
+        return;
+    }
+
+    if (fastClose) interludeFastClose.value = true;
+    if (interludeOutTimer) return;
+
+    interludeOutTimer = setTimeout(() => {
+        interludeIndex.value = null;
+        interludeFastClose.value = false;
+        interludeOutTimer = null;
+    }, INTERLUDE_EXIT_DOM_CLEANUP_MS);
+}
+
 function getSafeSeek() {
-    try {
-        if (currentMusic.value && typeof currentMusic.value.seek === 'function') {
-            const s = currentMusic.value.seek();
-            if (typeof s === 'number' && !Number.isNaN(s)) return s;
-        }
-    } catch (_) {}
-    return typeof progress.value === 'number' ? progress.value : 0;
+    return getPlaybackSnapshot().seek;
 }
 
 // 辅助：查找“下一句有正文内容的歌词”的索引（忽略仅用于时长占位、正文为空的行）
@@ -677,115 +725,218 @@ function estimateLineDurationSec(text) {
 function estimateLineEndTimeSec(index, nextIndex) {
     const cur = lyricsObjArr.value?.[index];
     const nxt = lyricsObjArr.value?.[nextIndex];
-    if (!cur || typeof cur.time !== 'number') return NaN;
+    if (!cur) return NaN;
     const lineStart = Number(cur.time);
-    const nextStart = (nxt && typeof nxt.time === 'number') ? Number(nxt.time) : Infinity;
+    if (!Number.isFinite(lineStart)) return NaN;
+    const parsedNextStart = Number(nxt?.time);
+    const nextStart = Number.isFinite(parsedNextStart) ? parsedNextStart : Infinity;
     const estDur = estimateLineDurationSec(String(cur.lyric || ''));
     const estEnd = lineStart + estDur;
     return Math.min(estEnd, nextStart);
 }
 
+function getInterludeRemainingSeconds(nextLineTime, currentSeek, estEnd) {
+    const pureGapRemaining = nextLineTime - Math.max(currentSeek, estEnd);
+    return Math.max(0, Math.trunc(pureGapRemaining - INTERLUDE_EXIT_RESERVE_SEC));
+}
+
+function getInterludeExitStartTimeSec(nextLineTime) {
+    return nextLineTime - LYRIC_INDEX_SYNC_BIAS_SEC - INTERLUDE_EXIT_ANIMATION_SEC;
+}
+
+function shouldStartInterludeExit(nextLineTime, currentSeek) {
+    return currentSeek >= getInterludeExitStartTimeSec(nextLineTime);
+}
+
+function scheduleInterludeExit(nextLineTime, currentSeek, { force = false } = {}) {
+    if (!playing.value || !lyricShow.value) return;
+    if (interludeExitStartTimer && !force) return;
+
+    clearInterludeExitStartTimer();
+
+    const exitStartTime = getInterludeExitStartTimeSec(nextLineTime);
+    const delayMs = Math.max(0, Math.round((exitStartTime - currentSeek) * 1000));
+    if (delayMs === 0) {
+        closeInterludeSoon();
+        return;
+    }
+
+    interludeExitStartTimer = setTimeout(() => {
+        interludeExitStartTimer = null;
+        if (!playing.value || !lyricShow.value) return;
+        if (interludeIndex.value !== lycCurrentIndex.value) return;
+
+        const nextIdx = findNextContentIndex(lycCurrentIndex.value);
+        const scheduledNextLineTime = Number(lyricsObjArr.value?.[nextIdx]?.time ?? NaN);
+        if (!Number.isFinite(scheduledNextLineTime) || Math.abs(scheduledNextLineTime - nextLineTime) > 0.001) return;
+
+        const seekOnExit = getSafeSeek();
+        if (seekOnExit < exitStartTime - 0.05) {
+            scheduleInterludeExit(nextLineTime, seekOnExit, { force: true });
+            return;
+        }
+
+        closeInterludeSoon();
+    }, delayMs);
+}
+
+function getInterludeContext(index, seek = getSafeSeek()) {
+    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return null;
+    if (!Number.isInteger(index) || index < 0) return null;
+
+    const nextIdx = findNextContentIndex(index);
+    if (nextIdx === -1) return null;
+
+    const currentSeek = Number(seek);
+    const nextLineTime = Number(lyricsObjArr.value[nextIdx]?.time ?? NaN);
+    const estEnd = estimateLineEndTimeSec(index, nextIdx);
+    if (!Number.isFinite(currentSeek) || !Number.isFinite(nextLineTime) || !Number.isFinite(estEnd)) return null;
+
+    return {
+        index,
+        currentSeek,
+        nextLineTime,
+        estEnd,
+        pureGap: nextLineTime - estEnd,
+        threshold: getInterludeThresholdSec(),
+    };
+}
+
+function hasInterludeGap(context) {
+    return !!context && context.pureGap >= context.threshold;
+}
+
+function stageInterlude(context) {
+    interludeIndex.value = context.index;
+    interludeAnimation.value = false;
+    interludeRemainingTime.value = null;
+}
+
+function activateInterlude(context, { forceExitSchedule = false } = {}) {
+    clearInterludeOutTimer();
+    interludeIndex.value = context.index;
+    interludeFastClose.value = false;
+    interludeAnimation.value = true;
+    interludeRemainingTime.value = getInterludeRemainingSeconds(context.nextLineTime, context.currentSeek, context.estEnd);
+    scheduleInterludeExit(context.nextLineTime, context.currentSeek, { force: forceExitSchedule });
+}
+
+function scheduleInterludeEnter(context) {
+    if (!playing.value || !lyricShow.value) return;
+
+    const delayMs = Math.max(0, Math.round((context.estEnd - context.currentSeek) * 1000));
+    interludeDeferStartTimer = setTimeout(() => {
+        interludeDeferStartTimer = null;
+        if (lycCurrentIndex.value !== context.index || !playing.value || !lyricShow.value) return;
+
+        const nextContext = getInterludeContext(context.index, getSafeSeek());
+        if (!nextContext || !hasInterludeGap(nextContext)) {
+            closeInterludeSoon({ fastClose: true });
+            return;
+        }
+
+        if (nextContext.currentSeek < nextContext.estEnd) {
+            handleInterludeOnIndexChange(context.index);
+            return;
+        }
+
+        if (shouldStartInterludeExit(nextContext.nextLineTime, nextContext.currentSeek)) {
+            closeInterludeSoon();
+            return;
+        }
+
+        activateInterlude(nextContext, { forceExitSchedule: true });
+    }, delayMs);
+}
+
 // 当当前歌词行号变化时，根据阈值决定是否展示/收起间奏
 function handleInterludeOnIndexChange(newIdx) {
-    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return;
-    if (typeof newIdx !== 'number') return;
-    if (newIdx < 0) {
-        interludeAnimation.value = false;
-        clearInterludeTimers();
-        interludeIndex.value = null;
-        interludeRemainingTime.value = null;
+    if (!Number.isInteger(newIdx) || newIdx < 0) {
+        resetInterludeState();
         return;
     }
 
-    // 只对“有下一句正文”的情况启用间奏，否则视为“没有下一句歌词”不展示
-    const nextIdx = findNextContentIndex(newIdx);
-    if (nextIdx === -1) {
-        interludeAnimation.value = false;
-        clearInterludeTimers();
-        interludeIndex.value = null;
-        interludeRemainingTime.value = null;
+    const context = getInterludeContext(newIdx);
+    if (!context) {
+        resetInterludeState();
         return;
     }
-
-    const currentSeek = getSafeSeek();
-    const nextLineTime = Number(lyricsObjArr.value[nextIdx]?.time ?? NaN);
-    if (!Number.isFinite(nextLineTime)) return;
-
-    const threshold = Number(lyricInterludeTime.value || 0);
 
     // 先清理任何既有定时器
     clearInterludeTimers();
 
-    // 启发式：以“上一句预计结束时间”为起点计算纯间奏
-    const estEnd = estimateLineEndTimeSec(newIdx, nextIdx);
-    if (!Number.isFinite(estEnd)) return;
-    const pureGap = nextLineTime - estEnd; // 仅“上一句结束”到“下一句开始”的空档
+    if (hasInterludeGap(context)) {
+        stageInterlude(context);
 
-    if (pureGap >= threshold) {
-        interludeIndex.value = newIdx;
-        interludeAnimation.value = false;
-        const delayMs = Math.max(0, Math.round((estEnd - currentSeek) * 1000));
-        interludeDeferStartTimer = setTimeout(() => {
-            if (lycCurrentIndex.value !== newIdx) return;
-            interludeAnimation.value = true;
-            interludeDeferStartTimer = null;
-        }, delayMs);
-    } else {
-        // 不满足阈值：确保不展示
-        interludeAnimation.value = false;
-        interludeFastClose.value = true;
-        interludeOutTimer = setTimeout(() => {
-            interludeIndex.value = null;
-            interludeFastClose.value = false;
-            interludeOutTimer = null;
-        }, 900);
-        interludeRemainingTime.value = null;
+        if (context.currentSeek >= context.estEnd) {
+            if (shouldStartInterludeExit(context.nextLineTime, context.currentSeek)) {
+                closeInterludeSoon();
+            } else {
+                activateInterlude(context, { forceExitSchedule: true });
+            }
+            return;
+        }
+
+        scheduleInterludeEnter(context);
+        return;
     }
+
+    // 不满足阈值：确保不展示
+    closeInterludeSoon({ fastClose: true });
 }
 
-// 在进度变化时，仅更新倒计时与“<1s 收起”的判断（不做阈值判断，避免提前收起）
-function handleInterludeOnProgress() {
-    if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return;
+// 在进度变化时同步倒计时与当前间奏状态，覆盖同一句内拖动进度的情况
+function handleInterludeOnProgress(tickerSeek = null) {
     if (!playing.value || !lyricShow.value) return;
     const idx = typeof lycCurrentIndex.value === 'number' ? lycCurrentIndex.value : -1;
     if (idx < 0) return;
 
-    // 若没有下一句“有正文内容”的歌词，则不展示/继续间奏
-    const nextIdx = findNextContentIndex(idx);
-    if (nextIdx === -1) {
-        interludeAnimation.value = false;
-        clearInterludeTimers();
-        interludeIndex.value = null;
-        interludeRemainingTime.value = null;
+    const parsedTickerSeek = Number(tickerSeek);
+    const currentSeek = Number.isFinite(parsedTickerSeek) ? parsedTickerSeek : getSafeSeek();
+    const context = getInterludeContext(idx, currentSeek);
+    if (!context) {
+        resetInterludeState();
         return;
     }
-
-    const currentSeek = getSafeSeek();
-    const nextLineTime = Number(lyricsObjArr.value[nextIdx]?.time ?? NaN);
-    if (!Number.isFinite(nextLineTime)) return;
-    const estEnd = estimateLineEndTimeSec(idx, nextIdx);
-    if (!Number.isFinite(estEnd)) return;
 
     // 若尚未到“上一句预计结束”时刻，则不应显示动画
-    if (currentSeek < estEnd) {
+    if (context.currentSeek < context.estEnd) {
         interludeAnimation.value = false;
         interludeRemainingTime.value = null;
+        clearInterludeExitStartTimer();
         return;
     }
 
-    const gap = nextLineTime - currentSeek; // 距离下一句开始的剩余秒
-    const pureGapRemaining = nextLineTime - Math.max(currentSeek, estEnd); // 仅剩余的纯间奏秒数
-    if (gap < 1) {
-        interludeAnimation.value = false;
-        clearInterludeTimers();
-        interludeOutTimer = setTimeout(() => {
-            interludeIndex.value = null;
-            interludeOutTimer = null;
-        }, 900);
-        interludeRemainingTime.value = null;
-    } else {
-        interludeRemainingTime.value = Math.max(0, Math.trunc(pureGapRemaining - 1));
+    if (!hasInterludeGap(context)) {
+        closeInterludeSoon({ fastClose: true });
+        return;
     }
+
+    if (shouldStartInterludeExit(context.nextLineTime, context.currentSeek)) {
+        closeInterludeSoon();
+    } else {
+        activateInterlude(context);
+    }
+}
+
+function stopInterludeProgressSync() {
+    if (!stopInterludeProgressTicker) return;
+    stopInterludeProgressTicker();
+    stopInterludeProgressTicker = null;
+}
+
+function startInterludeProgressSync() {
+    stopInterludeProgressSync();
+    stopInterludeProgressTicker = subscribePlaybackTick(
+        snapshot => {
+            handleInterludeOnProgress(snapshot.seek);
+        },
+        {
+            id: 'lyric-interlude-progress',
+            interval: PLAYBACK_TICK_FAST_INTERVAL_MS,
+            immediate: true,
+        }
+    );
 }
 
 // Resize 触发同步：容器尺寸改变后重新测量与同步
@@ -812,6 +963,8 @@ watch(
     () => lyricInterludeTime.value,
     () => {
         recomputeSongTimingModel();
+        handleInterludeOnIndexChange(lycCurrentIndex.value);
+        handleInterludeOnProgress();
     }
 );
 
@@ -881,10 +1034,11 @@ const changeProgressLyc = (time, index, item = null) => {
 watch(
     () => progress.value,
     (newVal, oldVal) => {
-        // 仅更新倒计时与 <1s 收起，不做阈值判断
-        handleInterludeOnProgress();
+        // 普通播放 tick 只同步倒计时；大幅跳转会在下方重新跑完整间奏判断
+        handleInterludeOnProgress(newVal);
         if (typeof oldVal !== 'number') return;
         if (Math.abs(newVal - oldVal) <= 1.2) return;
+        handleInterludeOnIndexChange(lycCurrentIndex.value);
         syncLyricPosition({ behavior: 'smooth' });
     }
 );
@@ -915,7 +1069,7 @@ onUnmounted(() => {
     clearInterludeTimers();
     clearManualScrollReleaseTimer();
     cancelLyricScrollAnimation();
-    if (interludeProgressInterval) { clearInterval(interludeProgressInterval); interludeProgressInterval = null; }
+    stopInterludeProgressSync();
     if (lyricWheelHandler && lyricScroll.value) {
         lyricScroll.value.removeEventListener('wheel', lyricWheelHandler);
         lyricWheelHandler = null;
@@ -928,21 +1082,18 @@ onUnmounted(() => {
     }
 });
 
-// 启动/停止 200ms 的进度轮询
+// 启动/停止 200ms 的间奏同步，复用全局播放节拍
 watch([playing, lyricShow], ([p, show]) => {
     if (p && show) {
-        if (!interludeProgressInterval) {
-            interludeProgressInterval = setInterval(() => {
-                handleInterludeOnProgress();
-            }, 200);
-        }
+        startInterludeProgressSync();
+        handleInterludeOnIndexChange(lycCurrentIndex.value);
     } else {
-        if (interludeProgressInterval) {
-            clearInterval(interludeProgressInterval);
-            interludeProgressInterval = null;
-        }
+        stopInterludeProgressSync();
+        clearInterludeDeferStartTimer();
+        clearInterludeExitStartTimer();
+        if (!show) resetInterludeState();
     }
-});
+}, { immediate: true });
 </script>
 
 <template>

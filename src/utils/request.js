@@ -327,7 +327,7 @@ request.interceptors.response.use(function (response) {
       else if (status) noticeOpen(`请求错误 (${status})`, 2)
       else noticeOpen('请求错误', 2)
     }
-    return error;
+    return Promise.reject(error);
   });
 
 export default request;

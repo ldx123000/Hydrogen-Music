@@ -2,11 +2,12 @@
 import { computed } from 'vue'
 import { usePlayerStore } from '../store/playerStore'
 import { storeToRefs } from 'pinia'
+import { getIndexedSong } from '../utils/songList'
 
 const playerStore = usePlayerStore()
 const { songList, currentIndex } = storeToRefs(playerStore)
 
-const current = computed(() => (songList.value && songList.value[currentIndex.value]) || {})
+const current = computed(() => getIndexedSong(songList.value, currentIndex.value) || {})
 const cover = computed(() => (current.value.coverUrl || (current.value.al && current.value.al.picUrl) || '') + (current.value.coverUrl || (current.value.al && current.value.al.picUrl) ? '?param=300y300' : ''))
 const title = computed(() => current.value.programName || current.value.name || '节目')
 const desc = computed(() => current.value.programDesc || '暂无节目简介')
@@ -51,4 +52,3 @@ const desc = computed(() => current.value.programDesc || '暂无节目简介')
   .b4 { bottom: 6Px; left: 6Px; }
 }
 </style>
-

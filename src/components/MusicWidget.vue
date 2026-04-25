@@ -14,6 +14,7 @@
   import { useOtherStore } from '../store/otherStore'
   import { storeToRefs } from 'pinia'
   import { getSongDisplayName } from '../utils/songName'
+  import { getIndexedSong } from '../utils/songList'
   const router = useRouter()
   const userStore = useUserStore()
   const playerStore = usePlayerStore()
@@ -68,9 +69,7 @@
   watch(djRid, () => { djSubed.value = false; if (djRid.value) loadDjSubStatus() })
   const showMusicTime = ref(false)
   const currentSong = computed(() => {
-    const list = Array.isArray(songList.value) ? songList.value : []
-    const idx = Number.isInteger(currentIndex.value) ? currentIndex.value : -1
-    return idx >= 0 && idx < list.length ? list[idx] : null
+    return getIndexedSong(songList.value, currentIndex.value)
   })
   const currentSongArtists = computed(() => Array.isArray(currentSong.value?.ar) ? currentSong.value.ar : [])
   const isCurrentLocalSong = computed(() => currentSong.value?.type === 'local')
@@ -82,7 +81,7 @@
   const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '', showSongTranslation.value))
 
   watch(() => volume.value, () => {
-    currentMusic.value.volume(volume.value)
+    currentMusic.value?.volume?.(volume.value)
   })
 
   const checkIsLike = computed(() => (id) => {

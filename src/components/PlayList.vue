@@ -1,4 +1,5 @@
 <script setup>
+  import { computed } from 'vue'
   import { RecycleScroller } from 'vue-virtual-scroller'
   import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
   import { pauseMusic } from '../utils/player';
@@ -7,9 +8,11 @@
   import { usePlayerStore } from '../store/playerStore'
   import { storeToRefs } from 'pinia'
   import { getSongDisplayName } from '../utils/songName'
+  import { getIndexedSong } from '../utils/songList'
   const router = useRouter()
   const playerStore = usePlayerStore()
   const { playing, progress, playMode, currentMusic, currentIndex, listInfo, songList, shuffledList, shuffleIndex, songId, widgetState, playlistWidgetShow, lyricShow, showSongTranslation } = storeToRefs(playerStore)
+  const currentSong = computed(() => getIndexedSong(songList.value, currentIndex.value))
 
   const clearPlaylist = () => {
     playlistWidgetShow.value = false
@@ -21,7 +24,7 @@
       shuffledList.value = null
       currentIndex.value = 0
       shuffleIndex.value = 0
-      currentMusic.value.unload()
+      currentMusic.value?.unload?.()
       currentMusic.value = null
       progress.value = 0
       if(!widgetState.value) {
@@ -35,7 +38,7 @@
 
   const checkArtist = (artistId) => {
     if(!artistId) return
-    if(songList.value[currentIndex.value].type != 'local') {
+    if(currentSong.value && currentSong.value.type != 'local') {
       router.push('/mymusic/artist/' + artistId)
       playerStore.forbidLastRouter = true
       if(!widgetState.value) {widgetState.value = true;playlistWidgetShow.value = false;lyricShow.value = false}

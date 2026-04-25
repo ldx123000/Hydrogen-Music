@@ -10,6 +10,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
 import { readCommentCountCache, writeCommentCountCache } from '../utils/commentCountCache';
+import { getIndexedSongOrFirst } from '../utils/songList';
 const playerStore = usePlayerStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
@@ -44,9 +45,7 @@ const withCoverParam = (url, size = 512) => {
 const coverBgCandidateIndex = ref(0);
 
 const coverBgCandidates = computed(() => {
-    const list = playerStore.songList || [];
-    const idx = typeof playerStore.currentIndex === 'number' ? playerStore.currentIndex : 0;
-    const song = list[idx] || null;
+    const song = getIndexedSongOrFirst(playerStore.songList, playerStore.currentIndex);
     if (!song) return [];
     if (song.type === 'local') return playerStore.localBase64Img ? [playerStore.localBase64Img] : [];
 
@@ -95,9 +94,7 @@ const showCoverBackdrop = computed(() => {
 
 // 当切到本地歌曲时，若右侧是评论区则自动切回歌词，避免无按钮无法关闭
 const currentTrack = computed(() => {
-    const list = playerStore.songList || [];
-    const idx = typeof playerStore.currentIndex === 'number' ? playerStore.currentIndex : 0;
-    return list[idx] || null;
+    return getIndexedSongOrFirst(playerStore.songList, playerStore.currentIndex);
 });
 
 const isCurrentSirenSong = computed(() => currentTrack.value?.source === 'siren');

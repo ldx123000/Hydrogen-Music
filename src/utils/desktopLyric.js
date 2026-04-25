@@ -3,16 +3,16 @@ import { storeToRefs } from 'pinia';
 import pinia from '../store/pinia';
 import { usePlayerStore } from '../store/playerStore';
 import { getSongDisplayName } from './songName';
-import { subscribePlaybackTick } from './player/playbackTicker';
+import { PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from './player/playbackTicker';
+import { getIndexedSong } from './songList';
 
 let stopLyricProgressTicker = null;
 let songChangeTimer = null;
 let progressTimer = null;
 let bridgeInitialized = false;
 
-let lastSongPayload = null;
-let lastProgressPayload = null;
-let lastPlayStatePayload = null;
+const lastPayloadByType = new Map();
+const DESKTOP_LYRIC_READY_PUSH_DELAY_MS = 200;
 
 let unwatchPlaying = null;
 let unwatchIsDesktopLyricOpen = null;
@@ -33,7 +33,6 @@ const {
     showSongTranslation,
     songId,
     songList,
-    time,
 } = storeToRefs(playerStore);
 
 function clearSongChangeTimer() {
@@ -64,7 +63,7 @@ function startDesktopLyricSync() {
         sendLyricProgress();
     }, {
         id: 'desktop-lyric-progress',
-        interval: 200,
+        interval: PLAYBACK_TICK_FAST_INTERVAL_MS,
         immediate: true,
     });
 }
@@ -81,25 +80,17 @@ function pushPayload(payload, { force = false } = {}) {
     if (!window.electronAPI || !payload || !payload.type) return;
 
     const serialized = serializePayload(payload);
-    let lastSnapshot = null;
-
-    if (payload.type === 'song-change') lastSnapshot = lastSongPayload;
-    if (payload.type === 'lyric-progress') lastSnapshot = lastProgressPayload;
-    if (payload.type === 'play-state') lastSnapshot = lastPlayStatePayload;
+    const lastSnapshot = lastPayloadByType.get(payload.type) || null;
 
     if (!force && serialized && serialized === lastSnapshot) return;
 
-    if (payload.type === 'song-change') lastSongPayload = serialized;
-    if (payload.type === 'lyric-progress') lastProgressPayload = serialized;
-    if (payload.type === 'play-state') lastPlayStatePayload = serialized;
+    lastPayloadByType.set(payload.type, serialized);
 
     window.electronAPI.updateLyricData(payload);
 }
 
 function buildSongChangePayload() {
-    const list = Array.isArray(songList.value) ? songList.value : [];
-    const index = Number.isInteger(currentIndex.value) ? currentIndex.value : -1;
-    const currentSong = index >= 0 && index < list.length ? list[index] : null;
+    const currentSong = getIndexedSong(songList.value, currentIndex.value);
 
     return {
         type: 'song-change',
@@ -131,11 +122,13 @@ function buildPlayStatePayload() {
 }
 
 function buildLyricProgressPayload() {
+    const currentProgress = Number(progress.value || 0);
+
     return {
         type: 'lyric-progress',
         currentIndex: Number.isInteger(currentLyricIndex.value) ? currentLyricIndex.value : -1,
-        progress: Number(progress.value || 0),
-        currentTime: Number((progress.value / 100) * time.value || 0),
+        progress: currentProgress,
+        currentTime: currentProgress,
     };
 }
 
@@ -193,7 +186,7 @@ export const toggleDesktopLyric = async () => {
                 sendCurrentLyricData({ force: true });
                 sendPlayState({ force: true });
                 sendLyricProgress({ force: true });
-            }, 200);
+            }, DESKTOP_LYRIC_READY_PUSH_DELAY_MS);
         }
     } catch (_) {
         // ignore window bridge errors
@@ -316,8 +309,6 @@ export const destroyDesktopLyric = () => {
     removeDesktopLyricClosedListener?.();
     removeDesktopLyricClosedListener = null;
 
-    lastSongPayload = null;
-    lastProgressPayload = null;
-    lastPlayStatePayload = null;
+    lastPayloadByType.clear();
     bridgeInitialized = false;
 };

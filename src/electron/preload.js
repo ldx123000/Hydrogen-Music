@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron')
+const TRUSTED_RESOURCE_ERROR_MARKER = '__hydrogenMusicTrustedResourceError'
 
 function subscribeChannel(channel, callback) {
     if (typeof callback !== 'function') return () => {}
@@ -161,7 +162,16 @@ function requestNcmApi(request) {
     return ipcRenderer.invoke('ncm-api-request', request)
 }
 function requestTrustedResource(request) {
-    return ipcRenderer.invoke('trusted-resource-request', request)
+    return ipcRenderer.invoke('trusted-resource-request', request).then((response) => {
+        if (response && typeof response === 'object' && response[TRUSTED_RESOURCE_ERROR_MARKER]) {
+            const error = new Error(response.message || 'trusted-resource-request-failed')
+            if (response.code) error.code = response.code
+            if (response.status) error.status = response.status
+            if (response.statusText) error.statusText = response.statusText
+            throw error
+        }
+        return response
+    })
 }
 function clearNcmApiCookies() {
     return ipcRenderer.invoke('ncm-api-cookie-clear')

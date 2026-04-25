@@ -1,10 +1,10 @@
 import pinia from '../store/pinia'
 import { getLikelist, getUserPlaylist, getUserProfile, logout } from '../api/user'
 import { useUserStore } from '../store/userStore'
-import { resolveFavoritePlaylistMeta } from './player'
 import { isLogin, setCookies } from './authority'
 import { clearAccountScopedState } from './accountState'
 import { invalidateNcmApiCookieCache } from './request'
+import { resolveFavoritePlaylistMeta } from './favoritePlaylist'
 
 const userStore = useUserStore(pinia)
 
@@ -52,7 +52,7 @@ async function hydrateAccountSession(token) {
             timestamp: Date.now(),
         })
         if (isAccountSessionTokenActive(token)) {
-            userStore.updateFavoritePlaylistMeta(resolveFavoritePlaylistMeta(playlistResult?.playlist))
+            userStore.updateFavoritePlaylistMeta(resolveFavoritePlaylistMeta(playlistResult?.playlist, profile.userId))
         }
     } catch (error) {
         if (isAccountSessionTokenActive(token)) {

@@ -1,81 +1,57 @@
 <script setup>
-  import { onMounted, watch } from 'vue'
+  import { onMounted, onUnmounted } from 'vue'
   import Plyr from 'plyr'
   import '../assets/css/plyr.css'
   import { musicVideoCheck } from '../utils/player';
   import { usePlayerStore } from '../store/playerStore';
   const playerStore = usePlayerStore()
+  let plyrInstance = null
+  let nativeVideoElement = null
   
   onMounted(() => {
-    console.log('PlayerVideo onMounted, currentMusicVideo:', playerStore.currentMusicVideo)
-    
     const config = {
       autoplay: false,
       controls: []
     };
-    playerStore.musicVideoDOM = new Plyr('#video-player', config)
+    const player = new Plyr('#video-player', config)
+    plyrInstance = player
+    playerStore.musicVideoDOM = player
     
     let sources = []
     let videoPath = playerStore.currentMusicVideo.path
-    console.log('原始视频文件路径:', videoPath)
     
     // 处理本地文件路径，确保使用 file:// 协议
     if (videoPath && !videoPath.startsWith('http')) {
       videoPath = windowApi?.toFileUrl ? windowApi.toFileUrl(videoPath) : videoPath
     }
     
-    console.log('处理后的视频文件路径:', videoPath)
-    
     sources.push({
       src: videoPath,
       type: "video/mp4",
     })
     
-    playerStore.musicVideoDOM.source = {
+    player.source = {
       type: 'video',
       sources: sources,
     }
     
-    // 添加视频事件监听
-    playerStore.musicVideoDOM.on('ready', () => {
-      console.log('视频播放器已准备就绪')
-    })
-    
-    playerStore.musicVideoDOM.on('loadstart', () => {
-      console.log('开始加载视频文件')
-    })
-    
-    playerStore.musicVideoDOM.on('loadeddata', () => {
-      console.log('视频数据已加载')
-    })
-    
-    playerStore.musicVideoDOM.on('canplay', () => {
-      console.log('视频可以开始播放')
-    })
-    
-    playerStore.musicVideoDOM.on('error', (event) => {
+    player.on('error', (event) => {
       console.error('视频播放错误:', event)
     })
     
-    playerStore.musicVideoDOM.on('play', () => {
-      console.log('视频开始播放')
-      musicVideoCheck(playerStore.currentMusic.seek(), true)
-    })
-    
-    playerStore.musicVideoDOM.on('pause', () => {
-      console.log('视频暂停播放')
+    player.on('play', () => {
+      let seek = 0
+      try {
+        const value = playerStore.currentMusic?.seek?.()
+        if (Number.isFinite(value)) seek = value
+      } catch (_) {}
+      musicVideoCheck(seek, true)
     })
     
     // 检查视频元素
-    const videoElement = playerStore.musicVideoDOM.media
+    const videoElement = player.media
+    nativeVideoElement = videoElement
     if (videoElement) {
-      console.log('视频元素信息:', {
-        src: videoElement.src,
-        readyState: videoElement.readyState,
-        networkState: videoElement.networkState,
-        error: videoElement.error
-      })
-      
       // 监听原生视频元素的错误事件
       videoElement.onerror = function(e) {
         console.error('原生视频元素错误:', e)
@@ -84,6 +60,24 @@
           message: videoElement.error?.message
         })
       }
+    }
+  })
+
+  onUnmounted(() => {
+    if (nativeVideoElement) {
+      nativeVideoElement.onerror = null
+      nativeVideoElement = null
+    }
+    if (plyrInstance) {
+      try {
+        plyrInstance.destroy()
+      } catch (error) {
+        console.warn('销毁视频播放器失败:', error)
+      }
+      if (playerStore.musicVideoDOM === plyrInstance) {
+        playerStore.musicVideoDOM = null
+      }
+      plyrInstance = null
     }
   })
 </script>

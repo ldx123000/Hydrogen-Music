@@ -11,17 +11,23 @@ import { usePlayerStore } from '../store/playerStore'
 import { useLibraryStore } from '../store/libraryStore'
 import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
-import {watch} from "vue";
+import { markRaw, toRaw, watch } from "vue";
 import { getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSongDisplayName } from './songName'
 import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from './siren'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
-import { subscribePlaybackTick } from './player/playbackTicker'
+import { PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from './player/playbackTicker'
 import { initPlayerExternalBridge as initExternalBridge } from './player/externalBridge'
 import { loadStoredPlaylist, persistPlaylistBeforeExit, saveStoredPlaylist } from './player/playlistPersistence'
 import { verifyStoredMusicVideo } from './musicVideoLookup'
+import { getIndexedSong, getIndexedSongOrFirst } from './songList'
+import {
+    DEFAULT_FAVORITE_PLAYLIST_NAME,
+    normalizeFavoritePlaylistMeta,
+    resolveFavoritePlaylistMeta as resolveFavoritePlaylistMetaBase,
+} from './favoritePlaylist'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -72,10 +78,16 @@ function clampPlaybackProgress(value, maxDuration = null) {
     return safeMax > 0 ? Math.min(parsed, safeMax) : parsed
 }
 
+function getCurrentSong() {
+    return getIndexedSong(songList.value, currentIndex.value)
+}
+
+function getCurrentSongOrFirst() {
+    return getIndexedSongOrFirst(songList.value, currentIndex.value)
+}
+
 function hasCurrentSongSelected() {
-    const list = Array.isArray(songList.value) ? songList.value : []
-    const idx = Number.isInteger(currentIndex.value) ? currentIndex.value : -1
-    return idx >= 0 && idx < list.length && Boolean(list[idx])
+    return !!getCurrentSong()
 }
 
 function clearCurrentSongLevel(song) {
@@ -86,7 +98,7 @@ function clearCurrentSongLevel(song) {
 }
 
 function updateCurrentSongDurationFromHowl() {
-    const currentSong = songList.value && songList.value[currentIndex.value]
+    const currentSong = getCurrentSong()
     if (!currentSong || !currentMusic.value || typeof currentMusic.value.duration !== 'function') return
 
     const durationMs = Math.round((currentMusic.value.duration() || 0) * 1000)
@@ -152,9 +164,7 @@ watch(
 // 统一更新窗口标题和（macOS）Dock菜单
 function updateWindowTitleDock() {
     try {
-        const curList = songList.value || []
-        const idx = typeof currentIndex.value === 'number' ? currentIndex.value : 0
-        const cur = curList[idx]
+        const cur = getCurrentSongOrFirst()
         if (!cur) {
             // 无当前歌曲，恢复默认标题
             windowApi.setWindowTile('Hydrogen Music')
@@ -179,7 +189,6 @@ let currentTiming = null
 let closedVideoMemory = new Set() // 记录用户主动关闭视频的歌曲ID
 const NORMAL_PLAY_MODES = Object.freeze([0, 1, 2, 3])
 let preFmPlayMode = null
-const DEFAULT_FAVORITE_PLAYLIST_NAME = '我喜欢的音乐'
 const LIKE_SYNC_RETRY_DELAY = 280
 const LIKE_SYNC_RETRY_LIMIT = 2
 const LIKE_REQUEST_COOLDOWN_MS = 1200
@@ -308,7 +317,7 @@ export function checkAndLoadVideoForCurrentSong() {
                     !closedVideoMemory.has(targetSongId)) {
 
                     // 根据歌曲类型启动对应的视频时间检查
-                    if (songList.value && songList.value[currentIndex.value] && songList.value[currentIndex.value].type === 'local') {
+                    if (getCurrentSong()?.type === 'local') {
                         startLocalMusicVideo()
                     } else {
                         startMusicVideo()
@@ -388,13 +397,15 @@ export function loadLastSong() {
             }
             syncWindowsTaskbarPlaybackState()
             if (songList.value) {
+                const currentSong = getCurrentSongOrFirst()
+                if (!currentSong) return
                 // 恢复播放状态时，需要先设置歌曲ID
-                setId(songList.value[currentIndex.value].id, currentIndex.value)
+                setId(currentSong.id, currentIndex.value)
                 syncWindowsTaskbarPlaybackState()
 
-                if (songList.value[currentIndex.value].type == 'local') getSongUrl(songList.value[currentIndex.value].id, currentIndex.value, false, true)
-                else getSongUrl(songList.value[currentIndex.value].id, currentIndex.value, false, false)
-                if (musicVideo.value) loadMusicVideo(songList.value[currentIndex.value].id)
+                if (currentSong.type == 'local') getSongUrl(currentSong.id, currentIndex.value, false, true)
+                else getSongUrl(currentSong.id, currentIndex.value, false, false)
+                if (musicVideo.value) loadMusicVideo(currentSong.id)
             }
         })
     }
@@ -424,13 +435,56 @@ function stopMusicVideoSampling() {
     disposeVideoTicker = null
 }
 
+function getCurrentHowl() {
+    return currentMusic.value && typeof currentMusic.value === 'object' ? currentMusic.value : null
+}
+
+function isCurrentHowl(howl) {
+    return currentMusic.value === howl || toRaw(currentMusic.value) === howl
+}
+
+function resetFailedPlaybackState() {
+    stopProgressSampling()
+    try {
+        currentMusic.value?.unload?.()
+    } catch (error) {
+        console.warn('清理失败的播放器实例时出错:', error)
+    }
+    playing.value = false
+    currentMusic.value = null
+    lyric.value = null
+    progress.value = 0
+    time.value = 0
+    try { windowApi.playOrPauseMusicCheck(playing.value) } catch (_) {}
+    syncWindowsTaskbarPlaybackState()
+}
+
+function isTransientPlaybackRequestError(error) {
+    const status = Number(error?.response?.status || error?.status || error?.response?.data?.code)
+    if (status === 408 || status === 429 || status >= 500) return true
+
+    const code = String(error?.code || error?.response?.data?.errorCode || '')
+    if (/^(ERR_NETWORK|ECONNABORTED|ETIMEDOUT|ESOCKETTIMEDOUT|ECONNRESET|EAI_AGAIN|ENOTFOUND)$/i.test(code)) return true
+
+    const message = String(error?.response?.data?.msg || error?.response?.data?.message || error?.message || '')
+    return /timeout|timed\s*out|etimedout|econnaborted|econnreset|eai_again|enotfound|getaddrinfo|network/i.test(message)
+}
+
+function handlePlaybackLoadFailure(error, { advance = false } = {}) {
+    if (error) console.error('获取歌曲播放信息失败:', error)
+    const isNetworkError = isTransientPlaybackRequestError(error)
+    noticeOpen(isNetworkError ? '网络请求失败，请稍后重试' : '当前歌曲无法播放', 2)
+    resetFailedPlaybackState()
+    if (advance && !isNetworkError) playNext()
+}
+
 function startMusicVideoSampling() {
     stopMusicVideoSampling()
     disposeVideoTicker = subscribePlaybackTick(snapshot => {
         musicVideoCheck(snapshot.seek)
     }, {
         id: 'player-mv-sync',
-        interval: 200,
+        interval: PLAYBACK_TICK_FAST_INTERVAL_MS,
         immediate: true,
     })
 }
@@ -438,7 +492,7 @@ function startMusicVideoSampling() {
 async function refreshStreamAndResume(eventType, error) {
     const now = Date.now()
     if (refreshingStream || now - lastRefreshAttempt < 500) return
-    const currentSong = songList.value && songList.value[currentIndex.value]
+    const currentSong = getCurrentSong()
     if (!currentSong || currentSong.type === 'local') return
     if (!songId.value) return
 
@@ -512,9 +566,9 @@ export function play(url, autoplay, resumeSeek = null) {
 
     const normalizedSeek = typeof resumeSeek === 'number' && !Number.isNaN(resumeSeek) ? Math.max(resumeSeek, 0) : null
 
-    currentMusic.value = new Howl({
+    const nextHowl = markRaw(new Howl({
         src: url,
-        autoplay: autoplay,
+        autoplay: false,
         html5: true,
         preload: true,
         format: ['mp3', 'flac', 'aac', 'm4a', 'wav', 'ogg', 'webm', 'mp4', 'weba', 'oga'],
@@ -563,9 +617,11 @@ export function play(url, autoplay, resumeSeek = null) {
             if (playMode.value == 3) { playNext() } //随机播放(为列表循环)
             if (playMode.value == 2) { clearLycAnimation() } // 单曲循环播放结束时清除歌词动画
         }
-    })
-    currentMusic.value.once('load', () => {
-        const loadedDuration = normalizePlaybackDuration(currentMusic.value.duration())
+    }))
+    currentMusic.value = nextHowl
+    nextHowl.once('load', () => {
+        if (!isCurrentHowl(nextHowl)) return
+        const loadedDuration = normalizePlaybackDuration(nextHowl.duration())
         time.value = loadedDuration
         updateCurrentSongDurationFromHowl()
         let targetSeek = null
@@ -579,8 +635,8 @@ export function play(url, autoplay, resumeSeek = null) {
         }
 
         if (targetSeek !== null && !Number.isNaN(targetSeek)) {
-            currentMusic.value.volume(0)
-            currentMusic.value.seek(targetSeek)
+            nextHowl.volume(0)
+            nextHowl.seek(targetSeek)
             progress.value = clampPlaybackProgress(targetSeek, loadedDuration)
         }
         playerChangeSong.value = false
@@ -591,8 +647,9 @@ export function play(url, autoplay, resumeSeek = null) {
             }))
         } catch (_) {}
     })
-    currentMusic.value.on('play', () => {
-        currentMusic.value.fade(0, volume.value, 200)
+    nextHowl.on('play', () => {
+        if (!isCurrentHowl(nextHowl)) return
+        nextHowl.fade(0, volume.value, 200)
         startProgress()
         playing.value = true
         windowApi.playOrPauseMusicCheck(playing.value)
@@ -600,19 +657,24 @@ export function play(url, autoplay, resumeSeek = null) {
         // 切歌/播放开始时统一更新窗口标题与（macOS）Dock 菜单
         updateWindowTitleDock()
     })
-    currentMusic.value.on('pause', () => {
+    nextHowl.on('pause', () => {
+        if (!isCurrentHowl(nextHowl)) return
         stopProgressSampling()
         playing.value = false
         windowApi.playOrPauseMusicCheck(playing.value)
         syncWindowsTaskbarPlaybackState()
-        currentMusic.value.fade(volume.value, 0, 200)
+        nextHowl.fade(volume.value, 0, 200)
     })
+    if (autoplay) nextHowl.play()
 }
 
 export function startProgress() {
     stopProgressSampling()
-    const durationLimit = normalizePlaybackDuration(time.value || currentMusic.value.duration?.())
-    progress.value = clampPlaybackProgress(currentMusic.value.seek(), durationLimit)
+    const currentHowl = getCurrentHowl()
+    if (!currentHowl || typeof currentHowl.seek !== 'function') return
+
+    const durationLimit = normalizePlaybackDuration(time.value || currentHowl.duration?.())
+    progress.value = clampPlaybackProgress(currentHowl.seek(), durationLimit)
     disposeProgressTicker = subscribePlaybackTick(snapshot => {
         progress.value = clampPlaybackProgress(snapshot.seek, snapshot.duration)
     }, {
@@ -780,7 +842,7 @@ export function unloadMusicVideo() {
                 musicVideoDOM.value.source = null
             }
         } catch (error) {
-            console.log('清理视频播放器时出错:', error)
+            console.warn('清理视频播放器时出错:', error)
         }
     }
 }
@@ -801,7 +863,7 @@ export function loadMusicVideo(id) {
                     currentMusicVideo.value = result.data
 
                     // 为所有类型的音乐启动视频检查
-                    if (songList.value && songList.value[currentIndex.value] && songList.value[currentIndex.value].type == 'local') {
+                    if (getCurrentSong()?.type == 'local') {
                         startLocalMusicVideo()
                     } else {
                         startMusicVideo()
@@ -851,14 +913,15 @@ export function addSong(id, index, autoplay, isLocal) {
     if (targetSong.type == 'local') isLocal = true
     else isLocal = false
 
-    if (currentMusic.value && volume.value != 0) {
-        currentMusic.value.fade(volume.value, 0, 200)
-        currentMusic.value.once('fade', () => {
+    const currentHowl = getCurrentHowl()
+    if (currentHowl && volume.value != 0) {
+        currentHowl.fade(volume.value, 0, 200)
+        currentHowl.once('fade', () => {
             getSongUrl(id, index, autoplay, isLocal)
             return
         })
-        if (currentMusic.value.state() == 'loading' || currentMusic.value.state() == 'unloaded') {
-            currentMusic.value.unload()
+        if (currentHowl.state() == 'loading' || currentHowl.state() == 'unloaded') {
+            currentHowl.unload()
             getSongUrl(id, index, autoplay, isLocal)
         }
     } else {
@@ -879,7 +942,7 @@ function buildLevelInfoFromStream(streamInfo = {}) {
 }
 
 export function setSongLevel(level, streamInfo = null) {
-    const currentSong = songList.value && songList.value[currentIndex.value]
+    const currentSong = getCurrentSong()
     if (!currentSong) return
 
     const normalizedLevel = typeof level === 'string' && level ? level : 'unknown'
@@ -970,9 +1033,10 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
             play(sirenPlayback.streamUrl, autoplay)
 
             // 在音频加载完成后设置塞壬歌曲音质信息
-            if (currentMusic.value) {
+            const sirenHowl = getCurrentHowl()
+            if (sirenHowl) {
                 const sirenStreamUrl = sirenPlayback.streamUrl
-                currentMusic.value.once('load', () => {
+                sirenHowl.once('load', () => {
                     if (songId.value !== targetSongId) return
                     const ext = getSirenAudioExtension(sirenStreamUrl)
                     const sr = Howler.ctx?.sampleRate || 44100
@@ -1007,42 +1071,57 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         }
         return
     }
-    await checkMusic(id).then(result => {
-        if (result.success == true) {
-            const preferredQuality = getPreferredQuality(quality.value)
-            resolveTrackByQualityPreference(id, preferredQuality).then(trackInfo => {
-                if (!trackInfo || !trackInfo.url) {
-                    noticeOpen('当前歌曲无法播放', 2)
-                    stopProgressSampling()
-                    playing.value = false
-                    currentMusic.value = null
-                    lyric.value = null
-                    playNext()
-                    return
-                }
-                play(trackInfo.url, autoplay)
-                setSongLevel(trackInfo.level, trackInfo)
-            })
-            getLyric(id).then(songLiric => {
-                if (songId.value !== targetSongId) return
-                lyric.value = songLiric
-                restorePlayerLyricAfterSongChange()
-            })
-        } else {
-            noticeOpen('当前歌曲无法播放', 2)
-            stopProgressSampling()
-            playing.value = false
-            currentMusic.value = null
-            lyric.value = null
-            playNext()
+    try {
+        const result = await checkMusic(id)
+        if (songId.value !== targetSongId) return
+
+        if (result.success != true) {
+            handlePlaybackLoadFailure(null, { advance: true })
+            return
         }
-    })
+
+        const preferredQuality = getPreferredQuality(quality.value)
+        const trackInfo = await resolveTrackByQualityPreference(id, preferredQuality)
+        if (songId.value !== targetSongId) return
+
+        if (!trackInfo || !trackInfo.url) {
+            handlePlaybackLoadFailure(null, { advance: true })
+            return
+        }
+
+        play(trackInfo.url, autoplay)
+        setSongLevel(trackInfo.level, trackInfo)
+
+        getLyric(id).then(songLiric => {
+            if (songId.value !== targetSongId) return
+            lyric.value = songLiric
+            restorePlayerLyricAfterSongChange()
+        }).catch(error => {
+            console.warn('获取歌词失败:', error)
+            if (songId.value !== targetSongId) return
+            lyric.value = { lrc: { lyric: '' } }
+            restorePlayerLyricAfterSongChange()
+        })
+    } catch (error) {
+        if (songId.value !== targetSongId) return
+        handlePlaybackLoadFailure(error, { advance: !isTransientPlaybackRequestError(error) })
+    }
 }
 
 export function startMusic() {
-    if (playMode.value == 0 && currentIndex.value == songList.value.length - 1 && playModeOne && currentMusic.value.seek() == 0) { playNext(); playModeOne = false; return }
+    const currentHowl = getCurrentHowl()
+    const list = Array.isArray(songList.value) ? songList.value : []
+
+    if (!currentHowl || typeof currentHowl.play !== 'function') {
+        const currentSong = getCurrentSong()
+        if (currentSong?.id) addSong(currentSong.id, currentIndex.value, true, currentSong.type === 'local')
+        return
+    }
+
+    const currentSeek = typeof currentHowl.seek === 'function' ? currentHowl.seek() : 0
+    if (playMode.value == 0 && currentIndex.value == list.length - 1 && playModeOne && currentSeek == 0) { playNext(); playModeOne = false; return }
     if (!playing.value) {
-        currentMusic.value.play()
+        currentHowl.play()
     }
     if (lyricShow.value) {
         isLyricDelay.value = false
@@ -1058,7 +1137,7 @@ export function startMusic() {
             musicVideoDOM.value.play()
         }
         // 根据歌曲类型启动对应的视频时间检查
-        if (songList.value && songList.value[currentIndex.value] && songList.value[currentIndex.value].type === 'local') {
+        if (getCurrentSong()?.type === 'local') {
             startLocalMusicVideo()
         } else {
             startMusicVideo()
@@ -1070,14 +1149,17 @@ export function startMusic() {
 }
 export function pauseMusic() {
     stopProgressSampling()
-    if (playing.value) {
-        currentMusic.value.fade(volume.value, 0, 200)
-        currentMusic.value.once('fade', () => {
-            currentMusic.value.pause()
+    const currentHowl = getCurrentHowl()
+    if (playing.value && currentHowl && typeof currentHowl.fade === 'function' && typeof currentHowl.once === 'function') {
+        currentHowl.fade(volume.value, 0, 200)
+        currentHowl.once('fade', () => {
+            currentHowl.pause?.()
             playing.value = false
         })
+    } else if (!currentHowl) {
+        playing.value = false
     }
-    if (videoIsPlaying.value) {
+    if (videoIsPlaying.value && musicVideoDOM.value) {
         musicVideoDOM.value.pause()
         // 为所有类型的音乐清理视频检查
         stopMusicVideoSampling()
@@ -1166,7 +1248,8 @@ const clearLycAnimation = () => {
 }
 export function changeProgress(toTime) {
     if (!widgetState.value && lyricShow.value && lyricEle.value) clearLycAnimation()
-    const durationLimit = normalizePlaybackDuration(currentMusic.value?.duration?.() || time.value)
+    const currentHowl = getCurrentHowl()
+    const durationLimit = normalizePlaybackDuration(currentHowl?.duration?.() || time.value)
     const normalizedTime = clampPlaybackProgress(toTime, durationLimit)
     if (videoIsPlaying.value) {
         musicVideoCheck(normalizedTime, true)
@@ -1176,7 +1259,9 @@ export function changeProgress(toTime) {
         progress.value = normalizedTime
         syncLyricIndexForSeek(normalizedTime)
     }
-    currentMusic.value.seek(normalizedTime)
+    if (currentHowl && typeof currentHowl.seek === 'function') {
+        currentHowl.seek(normalizedTime)
+    }
     // 静态策略下，仅在显式 seek 时通知一次系统进度
     try {
         window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
@@ -1226,9 +1311,12 @@ function shuffle(arr, isplayAll) { // 随机打乱数组
         _arr[j] = t
     }
     if (!isplayAll) {
-        let currentSongIndex = (_arr || []).findIndex((song) => song.id === songId.value) //在打乱的列表中找到当前播放歌曲删除并添加至队列顶部
-        _arr.splice(currentSongIndex, 1)
-        _arr.unshift(songList.value[currentIndex.value])
+        let currentSongIndex = (_arr || []).findIndex((song) => song && song.id === songId.value) //在打乱的列表中找到当前播放歌曲删除并添加至队列顶部
+        const currentSong = getCurrentSong()
+        if (currentSong) {
+            if (currentSongIndex >= 0) _arr.splice(currentSongIndex, 1)
+            _arr.unshift(currentSong)
+        }
     }
     return _arr
 }
@@ -1331,22 +1419,6 @@ async function resolveLikelistAfterLikeAction(songId, like, fallbackLikelist) {
     return cloneLikelist(fallbackLikelist)
 }
 
-function normalizeFavoritePlaylistMeta(playlist) {
-    const playlistId = playlist?.id ?? null
-    if (!playlistId) return null
-
-    const rawName = playlist?.name ?? playlist?.title ?? ''
-    const playlistName = typeof rawName == 'string' ? rawName.trim() : String(rawName || '').trim()
-    const isFavoritePlaylist = Number(playlist?.specialType) === 5
-        || playlistName === DEFAULT_FAVORITE_PLAYLIST_NAME
-        || playlistName.endsWith('喜欢的音乐')
-
-    return {
-        id: playlistId,
-        name: isFavoritePlaylist ? DEFAULT_FAVORITE_PLAYLIST_NAME : (playlistName || DEFAULT_FAVORITE_PLAYLIST_NAME),
-    }
-}
-
 function cacheFavoritePlaylistMeta(playlist) {
     const meta = normalizeFavoritePlaylistMeta(playlist)
     if (!meta) return null
@@ -1355,21 +1427,7 @@ function cacheFavoritePlaylistMeta(playlist) {
 }
 
 export function resolveFavoritePlaylistMeta(playlists) {
-    const playlistList = Array.isArray(playlists) ? playlists : []
-    if (playlistList.length == 0) return null
-
-    const userId = userStore.user?.userId
-    const ownedPlaylists = playlistList.filter(playlist => !userId || playlist?.creator?.userId === userId)
-    const candidatePlaylists = ownedPlaylists.length > 0 ? ownedPlaylists : playlistList
-
-    const favoritePlaylist = candidatePlaylists.find(playlist => Number(playlist?.specialType) === 5)
-        || candidatePlaylists.find(playlist => {
-            const playlistName = typeof playlist?.name == 'string' ? playlist.name : ''
-            return playlistName === DEFAULT_FAVORITE_PLAYLIST_NAME || playlistName.endsWith('喜欢的音乐')
-        })
-        || candidatePlaylists[0]
-
-    return normalizeFavoritePlaylistMeta(favoritePlaylist)
+    return resolveFavoritePlaylistMetaBase(playlists, userStore.user?.userId)
 }
 
 export async function getFavoritePlaylistId() {
@@ -1510,14 +1568,11 @@ export async function likeSong(like) {
     const actionToken = createLikeActionToken()
 
     try {
-        console.log('调用官方 /like API, songId:', songIdValue, 'like:', like, 'userId:', userStore.user.userId)
         const result = await queueLikeRequest(actionToken, () => likeMusic(songIdValue, like))
         if (result?.skipped) return
-        console.log('likeMusic 返回结果:', result)
 
         if (result && result.code == 200) {
             if (!isActiveLikeActionToken(actionToken)) return
-            console.log('官方 /like API 成功')
             const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
             userStore.updateLikelist(fallbackLikelist)
             noticeOpen(await getFavoritePlaylistNoticeText(like), 2)
@@ -1563,12 +1618,9 @@ async function updateFavoritePlaylistIfViewing() {
     if (libraryStore.libraryInfo && userStore.favoritePlaylistId &&
         libraryStore.libraryInfo.id == userStore.favoritePlaylistId) {
 
-        console.log('当前正在查看我喜欢的音乐，正在更新歌单内容...')
-
         try {
             // 重新获取歌单详情
             await libraryStore.updatePlaylistDetail(userStore.favoritePlaylistId)
-            console.log('我喜欢的音乐歌单已更新')
         } catch (error) {
             console.error('更新我喜欢的音乐歌单失败:', error)
         }
@@ -1685,6 +1737,32 @@ export function songTime2(time) {
     if (sec < 10) sec = '0' + sec
     return min + ':' + sec
 }
+
+function isValidMusicVideoTiming(timing) {
+    return timing &&
+        typeof timing.start === 'number' &&
+        typeof timing.end === 'number' &&
+        typeof timing.videoTiming === 'number'
+}
+
+function isSeekInMusicVideoTiming(seek, timing) {
+    return isValidMusicVideoTiming(timing) && seek >= timing.start && seek < timing.end
+}
+
+function syncMusicVideoTiming(timing, seek, update) {
+    if (playing.value && musicVideoDOM.value) {
+        musicVideoDOM.value.play()
+    }
+
+    const videoTime = timing.videoTiming + seek - timing.start
+    if (musicVideoDOM.value) {
+        musicVideoDOM.value.currentTime = videoTime
+    }
+    currentTiming = timing
+    videoIsPlaying.value = true
+    if (!update) playerShow.value = false
+}
+
 /**
  * 音乐视频监测
  */
@@ -1721,53 +1799,56 @@ export function musicVideoCheck(seek, update) {
     }
 
     // 普通模式下还需要检查歌曲列表中的当前歌曲ID是否也匹配
-    if (!isPersonalFM && songList.value && currentIndex.value >= 0 && songList.value[currentIndex.value] &&
-        songList.value[currentIndex.value].id !== currentMusicVideo.value.id) {
+    const currentSong = getCurrentSong()
+    if (!isPersonalFM && currentSong && currentSong.id !== currentMusicVideo.value.id) {
         unloadMusicVideo() // 清理不匹配的视频
         return
     }
 
+    const normalizedSeek = normalizePlaybackNumber(seek)
+
+    if (currentTiming && isSeekInMusicVideoTiming(normalizedSeek, currentTiming)) {
+        if (!videoIsPlaying.value || update) {
+            syncMusicVideoTiming(currentTiming, normalizedSeek, update)
+        }
+        return
+    }
+
+    if (videoIsPlaying.value && currentTiming && !update) {
+        if (normalizedSeek > currentTiming.end) {
+            videoIsPlaying.value = false
+            playerShow.value = true
+            currentTiming = null
+        }
+        return
+    }
+
     if (musicVideo.value && currentMusicVideo.value && (!videoIsPlaying.value || update)) {
-        let foundValidTiming = false
+        let foundTiming = false
 
         for (let i = 0; i < currentMusicVideo.value.timing.length; i++) {
             const timing = currentMusicVideo.value.timing[i]
 
             // 验证时间段数据的完整性
-            if (typeof timing.start !== 'number' || typeof timing.end !== 'number' || typeof timing.videoTiming !== 'number') {
+            if (!isValidMusicVideoTiming(timing)) {
                 console.warn('无效的时间段数据:', timing)
                 continue
             }
 
-            if (seek >= timing.start && seek < timing.end) {
-                foundValidTiming = true
+            if (!isSeekInMusicVideoTiming(normalizedSeek, timing)) continue
 
-                if (playing.value && musicVideoDOM.value) {
-                    musicVideoDOM.value.play()
-                }
-                const vt = timing.videoTiming + seek - timing.start
-                if (musicVideoDOM.value) {
-                    musicVideoDOM.value.currentTime = vt
-                }
-                currentTiming = timing
-                videoIsPlaying.value = true
-                if (!update) playerShow.value = false
-                return
-            }
+            foundTiming = true
+            syncMusicVideoTiming(timing, normalizedSeek, update)
+            return
         }
 
-        if (!foundValidTiming) {
-            videoIsPlaying.value = false
-            playerShow.value = true
-            if (musicVideoDOM.value) {
-                musicVideoDOM.value.pause()
-            }
-        }
-    } else if (videoIsPlaying.value && currentTiming) {
-        if (seek > currentTiming.end) {
+        if (!foundTiming) {
             videoIsPlaying.value = false
             playerShow.value = true
             currentTiming = null
+            if (musicVideoDOM.value) {
+                musicVideoDOM.value.pause()
+            }
         }
     }
 }
@@ -1775,8 +1856,7 @@ export function musicVideoCheck(seek, update) {
 
 function setVolumeForPlay(value) {
   volume.value = Math.max(0, Math.min(1, value))
-  console.log(volume.value)
-  currentMusic.value.volume(volume.value)
+  currentMusic.value?.volume?.(volume.value)
 }
 
 export function initPlayerExternalBridge() {

@@ -103,6 +103,11 @@ const loginOrLogout = () => {
         qrKey.value = null;
     }
 };
+const clearQRCodeTimer = () => {
+    if (!checkQRTimer.value) return;
+    clearInterval(checkQRTimer.value);
+    checkQRTimer.value = null;
+};
 const getQRCode = () => {
     requestTrustedResource('https://passport.bilibili.com/x/passport-login/web/qrcode/generate', { headers: headers })
         .then(result => {
@@ -129,7 +134,7 @@ const getQRCode = () => {
         .catch(error => {
             console.error('请求二维码失败:', error);
         });
-    clearInterval(checkQRTimer.value);
+    clearQRCodeTimer();
     checkInterval();
 };
 const checkQRCode = async () => {
@@ -141,7 +146,6 @@ const checkQRCode = async () => {
                 qrcode_key: qrKey.value,
             },
         });
-        console.log('QR Code Check Result:', result);
         if (result.code === 0) {
             return result.data;
         }
@@ -152,13 +156,13 @@ const checkQRCode = async () => {
     }
 };
 const checkInterval = () => {
+    clearQRCodeTimer();
     checkQRTimer.value = setInterval(() => {
         checkQRCode().then(result => {
             if (!result) {
                 getQRCode();
                 return;
             }
-            console.log('Status Code:', result.code, 'Message:', result.message);
 
             if (result.code === 86101) {
                 // 未扫码，继续等待
@@ -172,7 +176,6 @@ const checkInterval = () => {
                 return;
             } else if (result.code === 0) {
                 // 登录成功
-                console.log('Login successful, data:', result);
                 loginHandle(result);
             } else {
                 // 其他状态码，重新获取二维码
@@ -185,8 +188,6 @@ const checkInterval = () => {
 const loginHandle = async data => {
     closeLogin();
     try {
-        console.log('登录数据:', data);
-
         // 检查是否有登录URL
         if (!data.url) {
             noticeOpen('登录失败：未获取到登录信息', 2);
@@ -204,8 +205,6 @@ const loginHandle = async data => {
 
         // 使用正确的用户信息API
         const userInfo = await requestTrustedResource('https://api.bilibili.com/x/web-interface/nav', { headers: headers });
-
-        console.log('用户信息响应:', userInfo);
 
         if (userInfo.code == 0) {
             noticeOpen('登录成功', 2);
@@ -229,7 +228,7 @@ const loginHandle = async data => {
 };
 const closeLogin = () => {
     toLogin.value = false;
-    clearInterval(checkQRTimer.value);
+    clearQRCodeTimer();
 };
 const search = async () => {
     if (videoUrl.value == '' || !videoUrl.value) {
@@ -367,11 +366,8 @@ const addVideo = async flag => {
     isDownloading.value = true;
     noticeOpen('开始添加，请稍后', 2);
     applyBiliCookieToHeaders();
-    console.log(currentVideoInfo.value);
-    console.log(selectedInfo.value);
     let urlIndex = selectedInfo.value.qn - (currentVideoInfo.value.quality.length - currentVideoInfo.value.video.length / 2)
     if (urlIndex < 0) urlIndex = 0
-    console.log(urlIndex)
 
     // 优先选择 AVC 编码的视频源（若同清晰度存在 avc 与 hevc）
     let videoList = currentVideoInfo.value.video || []
@@ -506,6 +502,7 @@ const removeDownloadVideoProgressListener = windowApi.downloadVideoProgress((eve
 loadData();
 
 onUnmounted(() => {
+    clearQRCodeTimer();
     removeDownloadVideoProgressListener?.();
 });
 

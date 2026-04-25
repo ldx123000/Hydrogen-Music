@@ -7,6 +7,7 @@ import { useUserStore } from '../store/userStore'
 import { storeToRefs } from 'pinia'
 import { noticeOpen } from '../utils/dialog'
 import { getCommentScrollPosition, setCommentScrollPosition, getLastCommentTargetKey, setLastCommentTargetKey } from '../utils/commentScrollMemory'
+import { getIndexedSongOrFirst } from '../utils/songList'
 import CommentText from './CommentText.vue'
 
 const emit = defineEmits(['total-change'])
@@ -15,9 +16,7 @@ const playerStore = usePlayerStore()
 const userStore = useUserStore()
 const { songId, songList, currentIndex, listInfo } = storeToRefs(playerStore)
 const currentTrack = computed(() => {
-    const list = songList.value || []
-    const idx = typeof currentIndex.value === 'number' ? currentIndex.value : 0
-    return list[idx] || null
+    return getIndexedSongOrFirst(songList.value, currentIndex.value)
 })
 const isDj = computed(() => listInfo.value && listInfo.value.type === 'dj')
 const programId = computed(() => {

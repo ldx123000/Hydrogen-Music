@@ -6,15 +6,19 @@ import { usePlayerStore } from '../../store/playerStore'
 const playerStore = usePlayerStore(pinia)
 const { currentMusic, playing, progress, time } = storeToRefs(playerStore)
 
+export const PLAYBACK_TICK_FAST_INTERVAL_MS = 200
+
 let subscriberIdSeed = 0
 let tickerTimer = null
 let tickerInterval = 0
 const subscribers = new Map()
+const DEFAULT_PLAYBACK_TICK_INTERVAL_MS = 1000
+const MIN_PLAYBACK_TICK_INTERVAL_MS = 50
 
 function normalizeInterval(interval) {
     const parsedInterval = Number(interval)
-    if (!Number.isFinite(parsedInterval) || parsedInterval <= 0) return 1000
-    return Math.max(50, Math.round(parsedInterval))
+    if (!Number.isFinite(parsedInterval) || parsedInterval <= 0) return DEFAULT_PLAYBACK_TICK_INTERVAL_MS
+    return Math.max(MIN_PLAYBACK_TICK_INTERVAL_MS, Math.round(parsedInterval))
 }
 
 function getSafeCurrentSeek() {
@@ -59,7 +63,7 @@ function clearTicker() {
 function getDesiredTickerInterval() {
     if (!playing.value || subscribers.size === 0) return 0
 
-    let nextInterval = 1000
+    let nextInterval = DEFAULT_PLAYBACK_TICK_INTERVAL_MS
     subscribers.forEach(subscriber => {
         nextInterval = Math.min(nextInterval, subscriber.interval)
     })
@@ -73,11 +77,15 @@ function tick(force = false) {
     const snapshot = createSnapshot()
     subscribers.forEach(subscriber => {
         if (!force && now - subscriber.lastRunAt < subscriber.interval) return
-        subscriber.lastRunAt = now
-        try {
-            subscriber.callback(snapshot)
-        } catch (_) {}
+        runSubscriber(subscriber, snapshot, now)
     })
+}
+
+function runSubscriber(subscriber, snapshot = createSnapshot(), now = Date.now()) {
+    subscriber.lastRunAt = now
+    try {
+        subscriber.callback(snapshot)
+    } catch (_) {}
 }
 
 function syncTicker() {
@@ -121,11 +129,13 @@ export function subscribePlaybackTick(callback, options = {}) {
     syncTicker()
 
     if (options.immediate !== false) {
-        tick(true)
+        runSubscriber(subscriber)
     }
 
     return () => {
-        subscribers.delete(subscriberId)
+        if (subscribers.get(subscriberId) === subscriber) {
+            subscribers.delete(subscriberId)
+        }
         syncTicker()
     }
 }

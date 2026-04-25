@@ -3,7 +3,10 @@ import { storeToRefs } from 'pinia';
 import pinia from '../store/pinia';
 import { usePlayerStore } from '../store/playerStore';
 import { buildLyricsTimeline, findLyricIndexAtTime } from '../utils/lyricCore';
-import { subscribePlaybackTick } from '../utils/player/playbackTicker';
+import { getPlaybackSnapshot, PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from '../utils/player/playbackTicker';
+import { getIndexedSong } from '../utils/songList';
+
+export const LYRIC_INDEX_SYNC_BIAS_SEC = 0.2;
 
 let stopLyricTicker = null;
 let unwatchSongSignature = null;
@@ -13,23 +16,18 @@ let initialized = false;
 
 const playerStore = usePlayerStore(pinia);
 const {
-    currentMusic,
     currentIndex,
     currentLyricIndex,
     lyric,
     lyricsObjArr,
     playing,
-    progress,
     songId,
     songList,
     time,
 } = storeToRefs(playerStore);
 
 function getCurrentSong() {
-    const list = Array.isArray(songList.value) ? songList.value : [];
-    const index = Number.isInteger(currentIndex.value) ? currentIndex.value : -1;
-
-    return index >= 0 && index < list.length ? list[index] : null;
+    return getIndexedSong(songList.value, currentIndex.value);
 }
 
 function getCurrentSongDurationSec() {
@@ -38,19 +36,6 @@ function getCurrentSongDurationSec() {
     if (songDurationSec > 0) return songDurationSec;
 
     return Math.max(0, Math.floor(Number(time.value) || 0));
-}
-
-function getSafeCurrentSeek() {
-    try {
-        if (currentMusic.value && typeof currentMusic.value.seek === 'function') {
-            const seekValue = currentMusic.value.seek();
-            if (typeof seekValue === 'number' && !Number.isNaN(seekValue)) return seekValue;
-        }
-    } catch (_) {
-        // ignore and fall back to store progress
-    }
-
-    return typeof progress.value === 'number' && !Number.isNaN(progress.value) ? progress.value : 0;
 }
 
 function stopLyricIndexSync() {
@@ -79,11 +64,11 @@ function rebuildLyricsTimeline() {
     });
 
     playerStore.lyricsObjArr = timeline;
-    syncLyricIndexForSeek(getSafeCurrentSeek());
+    syncLyricIndexForSeek(getPlaybackSnapshot().seek);
 }
 
 export function syncLyricIndexForSeek(seekSeconds) {
-    const nextIndex = findLyricIndexAtTime(lyricsObjArr.value, seekSeconds, 0.2);
+    const nextIndex = findLyricIndexAtTime(lyricsObjArr.value, seekSeconds, LYRIC_INDEX_SYNC_BIAS_SEC);
     applyCurrentLyricIndex(nextIndex);
     return nextIndex;
 }
@@ -96,7 +81,7 @@ function startLyricIndexSync() {
         syncLyricIndexForSeek(snapshot.seek);
     }, {
         id: 'lyric-runtime',
-        interval: 200,
+        interval: PLAYBACK_TICK_FAST_INTERVAL_MS,
         immediate: true,
     });
 }
@@ -126,7 +111,7 @@ export function initLyricRuntime() {
         () => playing.value,
         isPlaying => {
             if (isPlaying) {
-                syncLyricIndexForSeek(getSafeCurrentSeek());
+                syncLyricIndexForSeek(getPlaybackSnapshot().seek);
                 startLyricIndexSync();
                 return;
             }

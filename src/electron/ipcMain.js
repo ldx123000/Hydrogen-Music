@@ -120,6 +120,11 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const disallowedForwardHeaders = new Set(['host', 'connection', 'content-length'])
     const trustedResourceHeaderNames = new Set(['accept', 'accept-language', 'content-type', 'referer', 'user-agent'])
     const trustedBiliResourceHeaderNames = new Set(['accept', 'accept-language', 'content-type', 'cookie', 'origin', 'referer', 'user-agent'])
+    const transientNetworkErrorCodes = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND'])
+    const timeoutNetworkErrorCodes = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ESOCKETTIMEDOUT'])
+    const ncmApiRetryDelays = Object.freeze([300, 900])
+    const trustedResourceRetryDelays = Object.freeze([500])
+    const trustedResourceErrorMarker = '__hydrogenMusicTrustedResourceError'
 
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
@@ -289,6 +294,116 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const normalizeResponseType = value => {
         const normalized = String(value || '').trim().toLowerCase()
         return normalized === 'text' ? 'text' : 'json'
+    }
+
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+    const getResponseBodyMessage = data => {
+        if (typeof data === 'string') return data
+        if (!data || typeof data !== 'object') return ''
+        return String(data.msg || data.message || data.error || '')
+    }
+
+    const getAxiosErrorMessage = error => {
+        return getResponseBodyMessage(error?.response?.data) || String(error?.message || '')
+    }
+
+    const isTransientNetworkMessage = message => {
+        return /timeout|timed\s*out|etimedout|econnaborted|econnreset|eai_again|enotfound|getaddrinfo|socket hang up|network/i.test(String(message || ''))
+    }
+
+    const isRetryableAxiosError = error => {
+        if (!error) return false
+        if (transientNetworkErrorCodes.has(error.code)) return true
+        const status = Number(error?.response?.status)
+        if (status === 408 || status === 429 || status >= 500) return true
+        return isTransientNetworkMessage(getAxiosErrorMessage(error))
+    }
+
+    const isRetryableHttpResponse = response => {
+        const status = Number(response?.status)
+        if (status === 408 || status === 429 || status >= 500) return true
+        return false
+    }
+
+    const requestWithTransientRetry = async (axiosConfig, retryDelays = []) => {
+        let lastError = null
+        let lastResponse = null
+
+        for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+            try {
+                const response = await axios(axiosConfig)
+                if (attempt < retryDelays.length && isRetryableHttpResponse(response)) {
+                    lastResponse = response
+                    await delay(retryDelays[attempt])
+                    continue
+                }
+                return response
+            } catch (error) {
+                lastError = error
+                if (attempt >= retryDelays.length || !isRetryableAxiosError(error)) throw error
+                await delay(retryDelays[attempt])
+            }
+        }
+
+        if (lastResponse) return lastResponse
+        throw lastError || new Error('request-failed')
+    }
+
+    const buildNcmApiErrorResponse = error => {
+        const statusFromResponse = Number(error?.response?.status)
+        if (statusFromResponse) {
+            return {
+                status: statusFromResponse,
+                statusText: error?.response?.statusText || '',
+                data: error?.response?.data || { code: statusFromResponse, msg: getAxiosErrorMessage(error) || 'ncm-api-request-failed' },
+                headers: error?.response?.headers || {},
+            }
+        }
+
+        const message = getAxiosErrorMessage(error) || 'ncm-api-request-failed'
+        const isTimeout = timeoutNetworkErrorCodes.has(error?.code) || /timeout|timed\s*out|etimedout|econnaborted/i.test(message)
+        const status = isTimeout ? 504 : 502
+
+        return {
+            status,
+            statusText: isTimeout ? 'Gateway Timeout' : 'Bad Gateway',
+            data: {
+                code: status,
+                msg: message,
+                ...(error?.code ? { errorCode: error.code } : {}),
+            },
+            headers: {},
+        }
+    }
+
+    const buildTrustedResourceError = (error, url) => {
+        const status = error?.response?.status
+        const statusText = error?.response?.statusText
+        const code = error?.code
+        const messageParts = ['trusted-resource-request-failed']
+
+        if (status) messageParts.push(`status=${status}`)
+        if (statusText) messageParts.push(`statusText=${statusText}`)
+        if (code) messageParts.push(`code=${code}`)
+        if (url) messageParts.push(`url=${url}`)
+
+        return new Error(messageParts.join(' '))
+    }
+
+    const buildTrustedResourceErrorPayload = (error, url) => {
+        const status = error?.response?.status
+        const statusText = error?.response?.statusText
+        const code = error?.code
+        const message = buildTrustedResourceError(error, url).message
+
+        return {
+            [trustedResourceErrorMarker]: true,
+            message,
+            ...(status ? { status } : {}),
+            ...(statusText ? { statusText } : {}),
+            ...(code ? { code } : {}),
+        }
     }
 
     const isSerializedFormData = value => {
@@ -839,24 +954,28 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         delete normalizedHeaders.cookie
         const requestData = await rebuildSerializedRequestData(request.data, normalizedHeaders)
 
-        const response = await axios({
-            url: parsedUrl.toString(),
-            method,
-            params: normalizedParams,
-            data: requestData,
-            headers: normalizedHeaders,
-            timeout: normalizeTimeout(request.timeout),
-            responseType: normalizeResponseType(request.responseType),
-            validateStatus: () => true,
-        })
+        try {
+            const response = await requestWithTransientRetry({
+                url: parsedUrl.toString(),
+                method,
+                params: normalizedParams,
+                data: requestData,
+                headers: normalizedHeaders,
+                timeout: normalizeTimeout(request.timeout),
+                responseType: normalizeResponseType(request.responseType),
+                validateStatus: () => true,
+            }, method === 'get' ? ncmApiRetryDelays : [])
 
-        await syncNcmApiResponseCookies(parsedUrl, response.headers || {})
+            await syncNcmApiResponseCookies(parsedUrl, response.headers || {})
 
-        return {
-            status: response.status,
-            statusText: response.statusText || '',
-            data: response.data,
-            headers: response.headers || {},
+            return {
+                status: response.status,
+                statusText: response.statusText || '',
+                data: response.data,
+                headers: response.headers || {},
+            }
+        } catch (error) {
+            return buildNcmApiErrorResponse(error)
         }
     })
     ipcMain.removeHandler('trusted-resource-request')
@@ -868,16 +987,27 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             throw new Error('unsupported-trusted-resource-request')
         }
 
-        const response = await axios({
-            url: parsedUrl.toString(),
-            method: 'get',
-            params: normalizePlainObject(option.params),
-            headers: normalizeRequestHeaders(option.headers, getTrustedResourceHeaderAllowList(parsedUrl)),
-            timeout: normalizeTimeout(option.timeout),
-            responseType: normalizeResponseType(option.responseType),
-        })
+        const requestUrl = parsedUrl.toString()
 
-        return response.data
+        try {
+            const response = await requestWithTransientRetry({
+                url: requestUrl,
+                method: 'get',
+                params: normalizePlainObject(option.params),
+                headers: normalizeRequestHeaders(option.headers, getTrustedResourceHeaderAllowList(parsedUrl)),
+                timeout: normalizeTimeout(option.timeout),
+                responseType: normalizeResponseType(option.responseType),
+                validateStatus: () => true,
+            }, trustedResourceRetryDelays)
+
+            if (response.status < 200 || response.status >= 300) {
+                return buildTrustedResourceErrorPayload({ response }, requestUrl)
+            }
+
+            return response.data
+        } catch (error) {
+            return buildTrustedResourceErrorPayload(error, requestUrl)
+        }
     })
     async function searchMusicVideo(id) {
         const result = await getStoredMusicVideos()

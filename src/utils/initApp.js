@@ -1,6 +1,3 @@
-import { loadLastSong, initPlayerExternalBridge } from './player'
-import { scanMusic } from './locaMusic'
-import { initDownloadManager } from './downloadManager'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
 import { useUserStore } from '../store/userStore'
@@ -22,6 +19,32 @@ let deferredInitScheduled = false
 let mediaSessionInitialized = false
 let sirenDurationPreloadScheduled = false
 let lastSongRestoreScheduled = false
+let playerModulePromise = null
+let localMusicModulePromise = null
+let downloadManagerModulePromise = null
+
+function loadPlayerModule() {
+    if (!playerModulePromise) playerModulePromise = import('./player')
+    return playerModulePromise
+}
+
+function loadLocalMusicModule() {
+    if (!localMusicModulePromise) localMusicModulePromise = import('./locaMusic')
+    return localMusicModulePromise
+}
+
+function loadDownloadManagerModule() {
+    if (!downloadManagerModulePromise) downloadManagerModulePromise = import('./downloadManager')
+    return downloadManagerModulePromise
+}
+
+function scanMusicDeferred(options) {
+    void loadLocalMusicModule()
+        .then(({ scanMusic }) => scanMusic(options))
+        .catch(error => {
+            console.error('本地音乐扫描模块加载失败:', error)
+        })
+}
 
 const normalizeSearchAssistLimit = value => {
     const rawValue = Number.parseInt(value, 10)
@@ -54,7 +77,7 @@ function applyLocalSettings(settings, { hydrateLocalMusic = false } = {}) {
         }
         windowApi.clearLocalMusicData('downloaded')
     } else if (hydrateLocalMusic && nextDownloadFolder && !localStore.downloadedMusicFolder) {
-        scanMusic({ type: 'downloaded', refresh: false })
+        scanMusicDeferred({ type: 'downloaded', refresh: false })
     }
 
     if (nextLocalFolders.length === 0 && localStore.localMusicFolder) {
@@ -73,7 +96,7 @@ function applyLocalSettings(settings, { hydrateLocalMusic = false } = {}) {
         }
         windowApi.clearLocalMusicData('local')
     } else if (hydrateLocalMusic && nextLocalFolders.length !== 0 && !localStore.localMusicFolder) {
-        scanMusic({ type: 'local', refresh: false })
+        scanMusicDeferred({ type: 'local', refresh: false })
     }
 }
 
@@ -102,7 +125,12 @@ export async function initSettings(options = {}) {
 function restoreLastSongOnce() {
     if (lastSongRestoreScheduled) return
     lastSongRestoreScheduled = true
-    loadLastSong()
+    void loadPlayerModule()
+        .then(({ loadLastSong }) => loadLastSong())
+        .catch(error => {
+            lastSongRestoreScheduled = false
+            console.error('恢复上次播放失败:', error)
+        })
 }
 
 function resetStartupPlayerState() {
@@ -150,7 +178,9 @@ async function runBaseAppInit() {
         userStore.clearBiliAccountState()
     }
 
+    const { initPlayerExternalBridge } = await loadPlayerModule()
     initPlayerExternalBridge()
+    const { initDownloadManager } = await loadDownloadManagerModule()
     initDownloadManager()
     await initSettings({ hydrateLocalMusic: false })
     resetStartupPlayerState()

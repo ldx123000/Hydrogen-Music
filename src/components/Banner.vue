@@ -7,6 +7,7 @@
   const timer1 = ref(null)
   const timer2 = ref(null)
   const timer3 = ref(null)
+  const timer4 = ref(null)
   const leftVal = ref(0)
   const imgWidth = ref(35)
   const currentIndex = ref(0)
@@ -31,8 +32,21 @@
       bannerStart()
   })
 
+    function clearBannerTimers() {
+        clearTimeout(timer2.value)
+        clearTimeout(timer3.value)
+        clearTimeout(timer4.value)
+        timer2.value = null
+        timer3.value = null
+        timer4.value = null
+    }
+
     onBeforeRouteLeave(() => {
         clearInterval(timer1.value)
+        timer1.value = null
+        clearBannerTimers()
+        bannerTimer1.value = false
+        bannerTimer2.value = false
     })
 
     //banner开始轮播
@@ -82,15 +96,14 @@
 
     //banner右上角计时器
     function bannerTimerFun() {
-        clearTimeout(timer2.value)
-        clearTimeout(timer3.value)
+        clearBannerTimers()
         bannerTimer1.value = false
         bannerTimer2.value = false
         timer2.value = setTimeout(() => {
             bannerTimer1.value = true
             bannerTimer2.value = true
         }, 1);
-        timer2.value = setTimeout(() => {
+        timer4.value = setTimeout(() => {
             bannerTimer1.value = false
         }, 900);
         timer3.value = setTimeout(() => {
