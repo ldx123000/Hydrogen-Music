@@ -13,6 +13,7 @@ import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
+import { withCoverParam } from '../utils/coverBackdrop';
 import { getSongDisplayName } from '../utils/songName';
 import { getIndexedSong } from '../utils/songList';
 
@@ -117,12 +118,10 @@ const sliderProgress = computed({
 });
 
 // 检查是否在FM模式
-const isInFMMode = computed(() => {
-    return listInfo.value && listInfo.value.type === 'personalfm';
-});
+const isInFMMode = computed(() => listInfo.value?.type === 'personalfm');
 
 // 是否为电台(DJ)模式
-const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
+const isDjMode = computed(() => listInfo.value?.type === 'dj');
 const currentSong = computed(() => getIndexedSong(songList.value, currentIndex.value));
 const currentSongArtists = computed(() => Array.isArray(currentSong.value?.ar) ? currentSong.value.ar : []);
 const isCurrentSirenSong = computed(() => currentSong.value?.source === 'siren');
@@ -130,19 +129,6 @@ const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.val
 const showRemoteCurrentSong = computed(() => !!currentSong.value && currentSong.value.type !== 'local');
 const showOnlineCurrentSongActions = computed(() => !isDjMode.value && showRemoteCurrentSong.value && !isCurrentSirenSong.value);
 const showCommentPanelAction = computed(() => showRemoteCurrentSong.value && !isCurrentSirenSong.value);
-
-const withCoverParam = (url, size = 640) => {
-    const normalizedUrl = typeof url === 'string' ? url.trim() : '';
-    if (!normalizedUrl) return '';
-    if (normalizedUrl.startsWith('data:') || normalizedUrl.startsWith('blob:')) return normalizedUrl;
-
-    const nextParam = `param=${size}y${size}`;
-    if (/(?:\?|&)param=\d+y\d+/.test(normalizedUrl)) {
-        return normalizedUrl.replace(/([?&])param=\d+y\d+/, `$1${nextParam}`);
-    }
-
-    return `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}${nextParam}`;
-};
 
 const currentSongCoverUrl = computed(() => {
     const song = currentSong.value;

@@ -29,6 +29,7 @@ const progress = ref(0);
 const isDownloading = ref(false);
 const currentSongHasVideo = ref(false); // 当前歌曲是否确实有视频文件
 let currentSongVideoCheckToken = 0;
+const BILI_PLAYURL_API = 'https://api.bilibili.com/x/player/playurl';
 migrateLegacyBiliSession();
 if (!hasStoredBiliSession() && userStore.biliUser) {
     userStore.clearBiliAccountState();
@@ -52,6 +53,48 @@ const requestTrustedResource = (url, option = {}) => {
         return Promise.reject(new Error('windowApi.requestTrustedResource 不可用'));
     }
     return windowApi.requestTrustedResource({ url, option });
+};
+
+const clearCurrentVideoStreams = () => {
+    if (!currentVideoInfo.value) return;
+    currentVideoInfo.value.quality = null;
+    currentVideoInfo.value.video = null;
+};
+
+const getPlayUrlQualityOptions = data => {
+    return (
+        data.accept_description ||
+        (Array.isArray(data.support_formats)
+            ? data.support_formats.map(f => f.display_desc || f.new_description || f.description).filter(Boolean)
+            : null)
+    );
+};
+
+const getPlayUrlVideoStreams = data => {
+    if (data.dash?.video) return data.dash.video;
+    if (data.durl) return data.durl.map(d => ({ url: d.url, id: data.quality }));
+    return null;
+};
+
+const fetchBiliPlayUrlData = async cid => {
+    const videoData = await requestTrustedResource(BILI_PLAYURL_API, {
+        headers,
+        params: { bvid: selectedInfo.value.bvid, cid, fourk: 1, fnval: 80 },
+    });
+    if (videoData?.code === 0 && videoData.data) return videoData.data;
+
+    clearCurrentVideoStreams();
+    noticeOpen('获取画质失败，请尝试重新登录或重试', 2);
+    return null;
+};
+
+const applyBiliPlayUrlData = (data, { includeVideo = true, updateDuration = false } = {}) => {
+    if (!data || !currentVideoInfo.value) return;
+    currentVideoInfo.value.quality = getPlayUrlQualityOptions(data);
+    if (includeVideo) currentVideoInfo.value.video = getPlayUrlVideoStreams(data);
+    if (updateDuration) {
+        currentVideoInfo.value.duration = (data.dash && data.dash.duration) || currentVideoInfo.value.duration;
+    }
 };
 
 const storeBiliCookiesFromLoginUrl = urlStr => {
@@ -111,7 +154,7 @@ const clearQRCodeTimer = () => {
     checkQRTimer.value = null;
 };
 const getQRCode = () => {
-    requestTrustedResource('https://passport.bilibili.com/x/passport-login/web/qrcode/generate', { headers: headers })
+    requestTrustedResource('https://passport.bilibili.com/x/passport-login/web/qrcode/generate', { headers })
         .then(result => {
             if (result.code === 0) {
                 qrKey.value = result.data.qrcode_key;
@@ -143,7 +186,7 @@ const checkQRCode = async () => {
     try {
         const result = await requestTrustedResource('https://passport.bilibili.com/x/passport-login/web/qrcode/poll', {
             method: 'GET',
-            headers: headers,
+            headers,
             params: {
                 qrcode_key: qrKey.value,
             },
@@ -206,7 +249,7 @@ const loginHandle = async data => {
         headers.cookie = cookieStr;
 
         // 使用正确的用户信息API
-        const userInfo = await requestTrustedResource('https://api.bilibili.com/x/web-interface/nav', { headers: headers });
+        const userInfo = await requestTrustedResource('https://api.bilibili.com/x/web-interface/nav', { headers });
 
         if (userInfo.code == 0) {
             noticeOpen('登录成功', 2);
@@ -242,27 +285,15 @@ const search = async () => {
             setDefault();
             selectedInfo.value = { bvid: bv };
             applyBiliCookieToHeaders();
-            const videoInfo = await requestTrustedResource('https://api.bilibili.com/x/web-interface/view', { headers: headers, params: { bvid: bv } });
+            const videoInfo = await requestTrustedResource('https://api.bilibili.com/x/web-interface/view', { headers, params: { bvid: bv } });
             if (videoInfo.code == 0) {
                 currentVideoInfo.value = videoInfo.data;
-                const videoData = await requestTrustedResource('https://api.bilibili.com/x/player/playurl', {
-                    headers: headers,
-                    params: { bvid: bv, cid: currentVideoInfo.value.cid, fourk: 1, fnval: 80 },
+                const playUrlData = await fetchBiliPlayUrlData(currentVideoInfo.value.cid);
+                if (!playUrlData) return;
+                applyBiliPlayUrlData(playUrlData, {
+                    includeVideo: currentVideoInfo.value.pages.length == 1,
                 });
-                if (!videoData || videoData.code !== 0 || !videoData.data) {
-                    currentVideoInfo.value.quality = null;
-                    currentVideoInfo.value.video = null;
-                    noticeOpen('获取画质失败，请尝试重新登录或重试', 2);
-                    return;
-                }
-                const quality =
-                    videoData.data.accept_description ||
-                    (Array.isArray(videoData.data.support_formats)
-                        ? videoData.data.support_formats.map(f => f.display_desc || f.new_description || f.description).filter(Boolean)
-                        : null);
-                currentVideoInfo.value.quality = quality;
                 if (currentVideoInfo.value.pages.length == 1) {
-                    currentVideoInfo.value.video = (videoData.data.dash && videoData.data.dash.video) || (videoData.data.durl ? videoData.data.durl.map(d => ({ url: d.url, id: videoData.data.quality })) : null);
                     selectedInfo.value.part = currentVideoInfo.value.cid;
                 }
             } else noticeOpen('获取视频失败', 3);
@@ -285,24 +316,9 @@ const selectPart = async cid => {
     setDefault();
     selectedInfo.value.part = cid;
     applyBiliCookieToHeaders();
-    const videoData = await requestTrustedResource('https://api.bilibili.com/x/player/playurl', {
-        headers: headers,
-        params: { bvid: selectedInfo.value.bvid, cid: cid, fourk: 1, fnval: 80 },
-    });
-    if (!videoData || videoData.code !== 0 || !videoData.data) {
-        currentVideoInfo.value.quality = null;
-        currentVideoInfo.value.video = null;
-        noticeOpen('获取画质失败，请尝试重新登录或重试', 2);
-        return;
-    }
-    const quality =
-        videoData.data.accept_description ||
-        (Array.isArray(videoData.data.support_formats)
-            ? videoData.data.support_formats.map(f => f.display_desc || f.new_description || f.description).filter(Boolean)
-            : null);
-    currentVideoInfo.value.quality = quality;
-    currentVideoInfo.value.video = (videoData.data.dash && videoData.data.dash.video) || (videoData.data.durl ? videoData.data.durl.map(d => ({ url: d.url, id: videoData.data.quality })) : null);
-    currentVideoInfo.value.duration = (videoData.data.dash && videoData.data.dash.duration) || currentVideoInfo.value.duration;
+    const playUrlData = await fetchBiliPlayUrlData(cid);
+    if (!playUrlData) return;
+    applyBiliPlayUrlData(playUrlData, { updateDuration: true });
 };
 const selectQuality = (item, index) => {
     if (!hasStoredBiliSession()) {
@@ -393,7 +409,7 @@ const addVideo = async flag => {
         .getBiliVideo({
             url: finalUrl,
             option: {
-                headers: headers,
+                headers,
                 params: {
                     id: addMusicVideo.value.id,
                     bv: selectedInfo.value.bvid,
@@ -542,7 +558,7 @@ const checkCurrentSongVideo = async () => {
     try {
         const result = await verifyStoredMusicVideo(targetSongId);
         if (requestToken !== currentSongVideoCheckToken || songId.value !== targetSongId) return;
-        currentSongHasVideo.value = !!(result && result !== '404' && result !== false && result.data && result.data.path);
+        currentSongHasVideo.value = !!(result && result !== '404' && result.data?.path);
     } catch (error) {
         if (requestToken !== currentSongVideoCheckToken || songId.value !== targetSongId) return;
         console.error('检查当前歌曲视频文件时出错:', error);

@@ -5,7 +5,7 @@ import { useUserStore } from '../store/userStore'
 import { clearLoginCookies } from './authority'
 
 export async function clearAccountScopedState(options = {}) {
-    const { clearCookies = true, clearSessionCookies = false } = options
+    const { clearCookies = true, clearSessionCookies = false, clearStores = true } = options
 
     if (clearCookies) {
         clearLoginCookies()
@@ -19,10 +19,11 @@ export async function clearAccountScopedState(options = {}) {
         }
     }
 
+    if (!clearStores) return
+
     const userStore = useUserStore(pinia)
     const cloudStore = useCloudStore(pinia)
     const libraryStore = useLibraryStore(pinia)
-
     userStore.resetAccountState()
     cloudStore.resetAccountState()
     libraryStore.resetAccountState()

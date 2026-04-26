@@ -1,7 +1,24 @@
 <template>
-    <div class="arknights-desktop-lyric" :class="{ draggable: !locked, 'native-drag': isMac && !locked }" @contextmenu.prevent.stop="showContextMenu" @click="handleClick" @mousedown="onDragStart">
+    <div class="arknights-desktop-lyric" :class="{ draggable: !locked, 'native-drag': isMac && !locked, 'cover-blur-active': showCoverBackdrop }" @contextmenu.prevent.stop="showContextMenu" @click="handleClick" @mousedown="onDragStart">
         <!-- 背景层 -->
         <div class="background-layers">
+            <Transition name="desktop-cover-fade">
+                <div
+                    v-if="showCoverBackdrop"
+                    class="cover-backdrop"
+                    :class="{ 'cover-backdrop-siren': coverBackdrop.isSiren }"
+                >
+                    <img
+                        :key="coverBackdropUrl"
+                        class="cover-backdrop-image"
+                        :src="coverBackdropUrl"
+                        alt=""
+                        aria-hidden="true"
+                        referrerpolicy="no-referrer"
+                        @error="handleCoverBackdropError"
+                    />
+                </div>
+            </Transition>
             <div class="bg-layer bg-primary"></div>
             <div class="bg-layer bg-secondary"></div>
         </div>
@@ -205,6 +222,8 @@ const progress = ref(0);
 const playing = ref(false);
 const locked = ref(false);
 const lyricFontSize = ref(22);
+const coverBackdrop = ref({ urls: [], isSiren: false });
+const coverBackdropCandidateIndex = ref(0);
 
 // 桌面歌词显示类型配置 - 单选模式
 const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
@@ -212,6 +231,27 @@ const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
 // 右键菜单文案（默认中文，悬停显示英文）
 const enLockText = computed(() => (locked.value ? 'UNLOCK POSITION' : 'LOCK POSITION'));
 const zhLockText = computed(() => (locked.value ? '解锁位置' : '锁定位置'));
+const coverBackdropUrl = computed(() => coverBackdrop.value.urls[coverBackdropCandidateIndex.value] || '');
+const showCoverBackdrop = computed(() => !!coverBackdropUrl.value);
+
+const applyCoverBackdrop = backdrop => {
+    const urls = Array.isArray(backdrop?.urls)
+        ? backdrop.urls.map(url => String(url || '').trim()).filter(Boolean)
+        : [];
+
+    coverBackdropCandidateIndex.value = 0;
+    coverBackdrop.value = {
+        urls,
+        isSiren: !!backdrop?.isSiren,
+    };
+};
+
+const handleCoverBackdropError = () => {
+    coverBackdropCandidateIndex.value = Math.min(
+        coverBackdropCandidateIndex.value + 1,
+        coverBackdrop.value.urls.length
+    );
+};
 
 // 同步扫描动画控制
 const scanAnimationRef = ref(null);
@@ -254,9 +294,17 @@ const ensureMeasureEl = () => {
     return el;
 };
 
+const removeMeasureEl = () => {
+    if (measureEl?.parentNode) {
+        measureEl.parentNode.removeChild(measureEl);
+    }
+    measureEl = null;
+};
+
 const scheduleAdjustLyricLayout = () => {
     if (rafAdjust) cancelAnimationFrame(rafAdjust);
     rafAdjust = requestAnimationFrame(() => {
+        rafAdjust = 0;
         applyLyricAutoExpand();
     });
 };
@@ -354,10 +402,47 @@ const dragStartSize = ref({ width: 0, height: 0 });
 const dragCurrentPos = ref({ x: 0, y: 0 });
 const originalMinMax = ref(null);
 let dragMoveRaf = 0;
+let dragConstraintToken = 0;
 let pendingDragDelta = { x: 0, y: 0 };
 
 const resetPendingDragDelta = () => {
     pendingDragDelta = { x: 0, y: 0 };
+};
+
+const setDragWindowBounds = bounds => {
+    dragStartSize.value = { width: bounds.width, height: bounds.height };
+    dragCurrentPos.value = { x: bounds.x, y: bounds.y };
+};
+
+const addDragDocumentListeners = () => {
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+};
+
+const removeDragDocumentListeners = () => {
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+};
+
+const restoreDragWindowConstraints = () => {
+    if (originalMinMax.value) {
+        const { minWidth, minHeight, maxWidth, maxHeight } = originalMinMax.value;
+        window.electronAPI?.setLyricWindowMinMax?.(minWidth, minHeight, maxWidth, maxHeight);
+    }
+    originalMinMax.value = null;
+    window.electronAPI?.setLyricWindowResizable?.(true);
+};
+
+const resetDragInteractionState = ({ restoreConstraints = false } = {}) => {
+    const wasDragging = isDragging.value;
+    dragConstraintToken += 1;
+    isDragging.value = false;
+    if (restoreConstraints && (wasDragging || originalMinMax.value)) restoreDragWindowConstraints();
+    else originalMinMax.value = null;
+    document.body.style.userSelect = '';
+    resetPendingDragDelta();
+    releaseDragFrame();
+    removeDragDocumentListeners();
 };
 
 const flushPendingDragMove = () => {
@@ -392,17 +477,23 @@ const releaseDragFrame = () => {
 
 const primeDragWindowConstraints = async () => {
     if (!isWinOrLinux || !isDragging.value) return;
-    window.electronAPI?.setLyricWindowResizable?.(false);
-    originalMinMax.value = await window.electronAPI?.getLyricWindowMinMax?.();
-    if (!isDragging.value) return;
-    if (!originalMinMax.value) return;
+    const token = ++dragConstraintToken;
+    try {
+        window.electronAPI?.setLyricWindowResizable?.(false);
+        const minMax = await window.electronAPI?.getLyricWindowMinMax?.();
+        if (token !== dragConstraintToken || !isDragging.value) return;
+        originalMinMax.value = minMax || null;
+        if (!originalMinMax.value) return;
 
-    window.electronAPI?.setLyricWindowMinMax?.(
-        dragStartSize.value.width,
-        dragStartSize.value.height,
-        dragStartSize.value.width,
-        dragStartSize.value.height
-    );
+        window.electronAPI?.setLyricWindowMinMax?.(
+            dragStartSize.value.width,
+            dragStartSize.value.height,
+            dragStartSize.value.width,
+            dragStartSize.value.height
+        );
+    } catch (_) {
+        if (token === dragConstraintToken) originalMinMax.value = null;
+    }
 };
 
 const onDragStart = async (e) => {
@@ -416,8 +507,8 @@ const onDragStart = async (e) => {
         const useBounds = contentBounds || await window.electronAPI?.getLyricWindowBounds?.();
         if (!useBounds) return;
 
-        dragStartSize.value = { width: useBounds.width, height: useBounds.height };
-        dragCurrentPos.value = { x: useBounds.x, y: useBounds.y };
+        setDragWindowBounds(useBounds);
+        originalMinMax.value = null;
         isDragging.value = true;
         dragStartScreen.value = { x: e.screenX, y: e.screenY };
         resetPendingDragDelta();
@@ -425,8 +516,7 @@ const onDragStart = async (e) => {
         // 防止选中文本
         document.body.style.userSelect = 'none';
         // 监听全局移动/松开，避免移出手柄就终止
-        document.addEventListener('mousemove', onDragMove);
-        document.addEventListener('mouseup', onDragEnd);
+        addDragDocumentListeners();
         primeDragWindowConstraints();
     } catch (_) {}
 };
@@ -452,18 +542,7 @@ const onDragEnd = () => {
     if (!isWinOrLinux || !isDragging.value) return;
     releaseDragFrame();
     flushPendingDragMove();
-    isDragging.value = false;
-    document.body.style.userSelect = '';
-    // 恢复窗口 min/max 限制与可调整大小
-    if (originalMinMax.value) {
-        const { minWidth, minHeight, maxWidth, maxHeight } = originalMinMax.value;
-        window.electronAPI?.setLyricWindowMinMax?.(minWidth, minHeight, maxWidth, maxHeight);
-    }
-    originalMinMax.value = null;
-    window.electronAPI?.setLyricWindowResizable?.(true);
-    resetPendingDragDelta();
-    document.removeEventListener('mousemove', onDragMove);
-    document.removeEventListener('mouseup', onDragEnd);
+    resetDragInteractionState({ restoreConstraints: true });
 };
 
 // 启动同步扫描动画
@@ -631,8 +710,7 @@ const handleLyricUpdate = (event, data) => {
             currentSong.value = data.song;
             lyricsArray.value = data.lyrics || [];
             currentLyricIndex.value = -1;
-            // 当歌曲切换时，调用自动选择逻辑
-            autoSelectLyricType();
+            applyCoverBackdrop(data.coverBackdrop);
         } else if (data.type === 'lyric-progress') {
             currentLyricIndex.value = data.currentIndex;
             progress.value = data.progress;
@@ -739,35 +817,6 @@ const selectLyricType = (type) => {
     hideContextMenu();
 };
 
-// 自动选择最佳歌词类型（当歌曲切换时调用）
-const autoSelectLyricType = () => {
-    if (selectedLyricType.value !== 'auto') return; // 如果用户手动选择了类型，不自动切换
-    
-    if (!lyricsArray.value || lyricsArray.value.length === 0) return;
-    
-    // 检查第一句歌词来决定默认选择
-    const firstLyric = lyricsArray.value[0];
-    if (!firstLyric) return;
-    
-    // 翻译优先，没有翻译则选原歌词
-    if (firstLyric.tlyric && firstLyric.tlyric.trim()) {
-        // 有翻译，保持auto模式即可
-        return;
-    } else if (firstLyric.lyric && firstLyric.lyric.trim()) {
-        // 没有翻译但有原歌词，保持auto模式即可
-        return;
-    }
-};
-
-// 获取当前歌词对象
-const getCurrentLyricObj = () => {
-    if (!lyricsArray.value || lyricsArray.value.length === 0) return null;
-    if (currentLyricIndex.value < 0 || currentLyricIndex.value >= lyricsArray.value.length) {
-        return lyricsArray.value[0];
-    }
-    return lyricsArray.value[currentLyricIndex.value];
-};
-
 // 检查当前歌曲是否有特定类型的歌词
 const hasLyricType = (type) => {
     if (!lyricsArray.value || lyricsArray.value.length === 0) return false;
@@ -826,12 +875,13 @@ onUnmounted(() => {
     removeGlobalContextMenuGuard = null;
     document.removeEventListener('click', hideContextMenu);
     document.removeEventListener('mousedown', handleGlobalLeftMouseDown, true);
-    document.removeEventListener('mousemove', onDragMove);
-    document.removeEventListener('mouseup', onDragEnd);
     window.removeEventListener('blur', handleWindowBlur);
-    document.body.style.userSelect = '';
-    resetPendingDragDelta();
-    releaseDragFrame();
+    resetDragInteractionState({ restoreConstraints: true });
+    if (rafAdjust) {
+        cancelAnimationFrame(rafAdjust);
+        rafAdjust = 0;
+    }
+    removeMeasureEl();
 
     // 清理动画
     if (scanAnimationRef.value) {
@@ -920,12 +970,45 @@ onUnmounted(() => {
     bottom: 0;
     z-index: 1;
 
+    .cover-backdrop {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        overflow: hidden;
+        pointer-events: none;
+
+        &::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: var(--cover-backdrop-overlay, rgba(255, 255, 255, 0.28));
+        }
+    }
+
+    .cover-backdrop-image {
+        position: absolute;
+        inset: -12%;
+        display: block;
+        width: 124%;
+        height: 124%;
+        object-fit: cover;
+        filter: blur(38px) saturate(140%) brightness(1.08);
+        transform: scale(1.08);
+        transform-origin: center;
+    }
+
+    .cover-backdrop-siren .cover-backdrop-image {
+        filter: blur(38px) saturate(150%) brightness(1.18);
+    }
+
     .bg-layer {
         position: absolute;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
+        z-index: 1;
 
         &.bg-primary {
             // 原浅色风格：蓝绿色渐变 + 模糊
@@ -939,6 +1022,42 @@ onUnmounted(() => {
             margin: 8px;
         }
     }
+}
+
+.cover-blur-active {
+    .background-layers {
+        .bg-layer.bg-primary {
+            background: rgba(255, 255, 255, 0.22);
+            backdrop-filter: blur(14px);
+        }
+
+        .bg-layer.bg-secondary {
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(0, 0, 0, 0.16);
+        }
+    }
+
+    .song-info-section {
+        background: rgba(255, 255, 255, 0.24);
+    }
+
+    .main-lyric-section {
+        background: rgba(255, 255, 255, 0.18);
+    }
+
+    .progress-section {
+        background: rgba(255, 255, 255, 0.12);
+    }
+}
+
+.desktop-cover-fade-enter-active,
+.desktop-cover-fade-leave-active {
+    transition: opacity 0.35s ease;
+}
+
+.desktop-cover-fade-enter-from,
+.desktop-cover-fade-leave-to {
+    opacity: 0;
 }
 
 // 主内容区域
@@ -1577,6 +1696,13 @@ onUnmounted(() => {
 .dark .arknights-desktop-lyric .progress-section .progress-bar .progress-fill { background: var(--text) !important; }
 .dark .arknights-desktop-lyric .progress-section .progress-indicator { background: var(--text) !important; border-color: var(--border) !important; }
 .dark .arknights-desktop-lyric .status-indicator .status-text { color: var(--muted-text) !important; }
+
+.dark .arknights-desktop-lyric.cover-blur-active .background-layers .bg-primary { background: rgba(28,28,30,0.34) !important; backdrop-filter: blur(14px) !important; }
+.dark .arknights-desktop-lyric.cover-blur-active .background-layers .bg-secondary { background: rgba(28,28,30,0.34) !important; border-color: rgba(255,255,255,0.16) !important; }
+.dark .arknights-desktop-lyric.cover-blur-active .song-info-section,
+.dark .arknights-desktop-lyric.cover-blur-active .main-lyric-section,
+.dark .arknights-desktop-lyric.cover-blur-active .progress-section { background: rgba(28,28,30,0.46) !important; border-color: rgba(255,255,255,0.16) !important; }
+.dark .arknights-desktop-lyric.cover-blur-active .next-lyric-preview { border-top-color: rgba(255,255,255,0.16) !important; }
 
 /* Context menu dark theme */
 .dark .arknights-desktop-lyric .arknights-context-menu { background: var(--panel) !important; border-color: var(--border) !important; color: var(--text) !important; }

@@ -2,6 +2,7 @@ import { watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import pinia from '../store/pinia';
 import { usePlayerStore } from '../store/playerStore';
+import { buildCoverBackdropCandidates } from './coverBackdrop';
 import { getSongDisplayName } from './songName';
 import { PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from './player/playbackTicker';
 import { getIndexedSong } from './songList';
@@ -24,16 +25,31 @@ let removeDesktopLyricClosedListener = null;
 
 const playerStore = usePlayerStore(pinia);
 const {
+    coverBlur,
     currentIndex,
     currentLyricIndex,
     isDesktopLyricOpen,
+    localBase64Img,
     lyricsObjArr,
     playing,
     progress,
     showSongTranslation,
     songId,
     songList,
+    videoIsPlaying,
 } = storeToRefs(playerStore);
+
+function buildCoverBackdropPayload(song) {
+    const shouldShowBackdrop = !!(song && coverBlur.value && !videoIsPlaying.value);
+    const urls = shouldShowBackdrop
+        ? buildCoverBackdropCandidates(song, localBase64Img.value, { includeAlbumPicUrl: true })
+        : [];
+
+    return {
+        urls,
+        isSiren: shouldShowBackdrop && song?.source === 'siren',
+    };
+}
 
 function clearSongChangeTimer() {
     if (!songChangeTimer) return;
@@ -111,6 +127,7 @@ function buildSongChangePayload() {
                   time: Number(row?.time || 0),
               }))
             : [],
+        coverBackdrop: buildCoverBackdropPayload(currentSong),
     };
 }
 
@@ -249,7 +266,15 @@ export const initDesktopLyric = () => {
     );
 
     unwatchSongSnapshot = watch(
-        () => [songId.value, currentIndex.value, lyricsObjArr.value, showSongTranslation.value],
+        () => [
+            songId.value,
+            currentIndex.value,
+            lyricsObjArr.value,
+            showSongTranslation.value,
+            coverBlur.value,
+            localBase64Img.value,
+            videoIsPlaying.value,
+        ],
         () => {
             scheduleSongChangePush(0);
         }

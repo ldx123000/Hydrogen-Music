@@ -168,27 +168,17 @@
 <script setup>
 import { ref, onMounted, onUnmounted, onActivated, onDeactivated, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getPersonalFM, getPersonalFMByMode, fmTrash, getLyric, likeMusic } from '../api/song'
+import { getPersonalFM, getPersonalFMByMode, fmTrash, getLyric } from '../api/song'
 import { getRecommendSongs } from '../api/playlist'
 import { usePlayerStore } from '../store/playerStore'
 import { useUserStore } from '../store/userStore'
-import { useLibraryStore } from '../store/libraryStore'
-import { noticeOpen } from '../utils/dialog'
 import { mapSongsPlayableStatus } from '../utils/songStatus'
 import {
-    applyOptimisticLikeState,
-    createLikeActionToken,
-    getFavoritePlaylistNoticeText,
-    getLikeActionErrorMessage,
-    isActiveLikeActionToken,
+    likeSong as likePlayerSong,
     play,
     preloadGaplessSongPlayback,
-    queueLikeRequest,
     setSongLevel,
-    syncLikelistAfterLikeAction,
-    updateFavoritePlaylistTrack,
 } from '../utils/player/lazy'
-import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
@@ -199,7 +189,6 @@ import { createEmptyLyric } from '../utils/player/lyricPayload'
 const router = useRouter()
 const playerStore = usePlayerStore()
 const userStore = useUserStore()
-const libraryStore = useLibraryStore()
 const { songId, playing, quality, showSongTranslation } = storeToRefs(playerStore)
 const { likelist } = storeToRefs(userStore)
 
@@ -537,7 +526,6 @@ const coverNavigating = ref(false)
 const coverTransitionDirection = ref('neutral')
 const queuedDirection = ref(null)
 const COVER_TRANSITION_FALLBACK_MS = 2500
-const COVER_RELEASE_RATIO_FALLBACK = 0.45
 const COVER_RELEASE_MIN_MS = 180
 const COVER_RELEASE_BUFFER_MS = 16
 const PANEL_INTRO_DURATION_MS = 1500
@@ -791,16 +779,7 @@ const getCoverTransitionDurationMs = () => {
     return durationMs
 }
 
-const getCoverReleaseDelayMs = () => {
-    const transitionDurationMs = getCoverTransitionDurationMs()
-    if (typeof window === 'undefined') return transitionDurationMs
-
-    const host = document.querySelector('.personal-fm')
-    const ratioValue = host ? window.getComputedStyle(host).getPropertyValue('--fm-cover-overlap-release-ratio') : ''
-    const ratio = Number.parseFloat((ratioValue || '').trim())
-
-    return Math.max(COVER_RELEASE_MIN_MS, transitionDurationMs)
-}
+const getCoverReleaseDelayMs = () => Math.max(COVER_RELEASE_MIN_MS, getCoverTransitionDurationMs())
 
 const queueCoverDirection = direction => {
     queuedDirection.value = direction
@@ -955,6 +934,37 @@ const togglePlay = async () => {
     }
 }
 
+const playFmSongFromPool = async nextSongFromPool => {
+    if (!nextSongFromPool) return false
+
+    playedSongs.value.push(nextSongFromPool)
+    rememberRecent(nextSongFromPool.id)
+    currentIndex.value = playedSongs.value.length - 1
+
+    await togglePlay()
+    if (fmSongs.value.length < 2) {
+        void refreshFM({ silent: true })
+    }
+    return true
+}
+
+const playNextFmCandidate = async () => {
+    if (fmSongs.value.length === 0) {
+        await refreshFM({ silent: true })
+    }
+
+    let nextSongFromPool = takeNextFromPool()
+    if (await playFmSongFromPool(nextSongFromPool)) return true
+
+    if (fmSongs.value.length === 0) {
+        await refreshFM({ silent: true })
+        nextSongFromPool = takeNextFromPool()
+        return playFmSongFromPool(nextSongFromPool)
+    }
+
+    return false
+}
+
 const nextSong = async () => {
     // 如果有下一首已播放的歌曲，直接播放
     if (currentIndex.value < playedSongs.value.length - 1) {
@@ -965,41 +975,7 @@ const nextSong = async () => {
         return
     }
 
-    // 如果没有下一首，需要获取新歌曲
-    if (fmSongs.value.length === 0) {
-        await refreshFM({ silent: true })
-    }
-
-    // 从未播放的歌曲中取下一首
-    let nextSongFromPool = takeNextFromPool()
-    if (nextSongFromPool) {
-        // 添加到播放历史并记录近期去重
-        playedSongs.value.push(nextSongFromPool)
-        rememberRecent(nextSongFromPool.id)
-        currentIndex.value = playedSongs.value.length - 1
-
-        await togglePlay()
-        // 低水位预取，保持池内始终有歌可播
-        if (fmSongs.value.length < 2) {
-            refreshFM({ silent: true })
-        }
-    } else {
-        // 如果歌曲池为空，尝试再次刷新
-        if (fmSongs.value.length === 0) {
-            await refreshFM({ silent: true })
-            // 再次尝试获取歌曲
-            nextSongFromPool = takeNextFromPool()
-            if (nextSongFromPool) {
-                playedSongs.value.push(nextSongFromPool)
-                rememberRecent(nextSongFromPool.id)
-                currentIndex.value = playedSongs.value.length - 1
-                await togglePlay()
-                if (fmSongs.value.length < 2) {
-                    refreshFM({ silent: true })
-                }
-            }
-        }
-    }
+    await playNextFmCandidate()
 }
 
 const prevSong = async () => {
@@ -1079,78 +1055,11 @@ const trashSong = async () => {
     }
 }
 
-// 检查并更新我喜欢的音乐歌单
-const updateFavoritePlaylistIfViewing = async () => {
-    // 检查当前是否在查看"我喜欢的音乐"歌单
-    if (libraryStore.libraryInfo && userStore.favoritePlaylistId && libraryStore.libraryInfo.id == userStore.favoritePlaylistId) {
-        try {
-            // 重新获取歌单详情
-            await libraryStore.updatePlaylistDetail(userStore.favoritePlaylistId)
-        } catch (error) {
-            console.error('更新我喜欢的音乐歌单失败:', error)
-        }
-    }
-}
-
 const likeSong = async () => {
     if (!currentSong.value) return
     if (!Array.isArray(likelist.value)) return
 
-    const actionToken = await createLikeActionToken()
-
-    try {
-        // 使用计算属性来判断当前的操作是“喜欢”还是“取消喜欢”
-        const isLiked = !isCurrentSongLiked.value
-
-        // 1) 优先使用官方 /like 接口
-        try {
-            const result = await queueLikeRequest(actionToken, () => likeMusic(currentSong.value.id, isLiked))
-            if (result?.skipped) return
-            if (result && result.code === 200) {
-                if (!(await isActiveLikeActionToken(actionToken))) return
-                const fallbackLikelist = await applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
-                userStore.updateLikelist(fallbackLikelist)
-                noticeOpen(await getFavoritePlaylistNoticeText(isLiked), 2)
-                await syncLikelistAfterLikeAction({
-                    songId: currentSong.value.id,
-                    like: isLiked,
-                    actionToken,
-                    fallbackLikelist,
-                })
-                if (!(await isActiveLikeActionToken(actionToken))) return
-                schedulePlaylistCacheInvalidation()
-                return
-            }
-            throw new Error(await getLikeActionErrorMessage(result, 'likeMusic 返回异常'))
-        } catch (apiErr) {
-            console.warn('PersonalFM likeMusic 失败，尝试使用歌单 tracks:', apiErr.message)
-        }
-
-        // 2) 降级：使用“我喜欢的音乐”歌单 tracks
-        try {
-            const fallbackResult = await updateFavoritePlaylistTrack(currentSong.value.id, isLiked)
-            if (fallbackResult.success) {
-                if (!(await isActiveLikeActionToken(actionToken))) return
-                const fallbackLikelist = await applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
-                userStore.updateLikelist(fallbackLikelist)
-                noticeOpen(isLiked ? `已添加到${fallbackResult.favoritePlaylist?.name || '我喜欢的音乐'}` : '已取消喜欢', 2)
-                await syncLikelistAfterLikeAction({
-                    songId: currentSong.value.id,
-                    like: isLiked,
-                    actionToken,
-                    fallbackLikelist,
-                })
-                if (!(await isActiveLikeActionToken(actionToken))) return
-                schedulePlaylistCacheInvalidation()
-                return
-            }
-            throw new Error(fallbackResult.message || '歌单 tracks 返回异常')
-        } catch (playlistError) {
-            console.error('PersonalFM 歌单 tracks 也失败:', playlistError)
-        }
-    } catch (error) {
-        console.error('Failed to like song:', error)
-    }
+    await likePlayerSong(!isCurrentSongLiked.value, currentSong.value.id)
 }
 
 const refreshFM = async ({ silent = false } = {}) => {

@@ -36,7 +36,13 @@ const songSearchKeyword = ref('');
 const canGoBack = ref(false);
 const canGoForward = ref(false);
 const historyNavPending = ref(false);
-const pendingScrollPolicy = ref('none');
+const SCROLL_POLICY = {
+    NONE: 'none',
+    RESTORE_LAST: 'restore-last',
+    RESTORE_HISTORY: 'restore-history',
+    RESET_TOP: 'reset-top',
+};
+const pendingScrollPolicy = ref(SCROLL_POLICY.NONE);
 const pendingTargetFullPath = ref('');
 const normalizeRouteName = routeName => {
     const normalized = String(routeName || '');
@@ -98,14 +104,21 @@ const saveCurrentDetailScroll = routeLike => {
 const markHistoryNavigationPending = () => {
     historyNavPending.value = true;
 };
+const clearPendingScrollPolicy = () => {
+    pendingScrollPolicy.value = SCROLL_POLICY.NONE;
+    pendingTargetFullPath.value = '';
+};
+const setPendingScrollPolicy = (policy, targetFullPath) => {
+    pendingScrollPolicy.value = policy;
+    pendingTargetFullPath.value = targetFullPath || '';
+};
 const setPendingScrollPolicyForRoute = toRoute => {
     const targetRoute = toRoute || router.currentRoute.value;
     const targetRouteName = normalizeRouteName(targetRoute?.name);
     const targetFullPath = String(targetRoute?.fullPath || '');
-    pendingTargetFullPath.value = targetFullPath;
 
     if (!isRestorableLibraryRouteName(targetRouteName)) {
-        pendingScrollPolicy.value = 'none';
+        clearPendingScrollPolicy();
         historyNavPending.value = false;
         return;
     }
@@ -113,19 +126,19 @@ const setPendingScrollPolicyForRoute = toRoute => {
     const lastFullPath = String(lastLibraryRoute.value?.fullPath || '');
     const shouldRestoreLast = !!restoreLibraryScrollOnActivate.value && !!lastFullPath && targetFullPath == lastFullPath;
     if (shouldRestoreLast) {
-        pendingScrollPolicy.value = 'restore-last';
+        setPendingScrollPolicy(SCROLL_POLICY.RESTORE_LAST, targetFullPath);
         historyNavPending.value = false;
         return;
     }
 
     if (historyNavPending.value) {
-        pendingScrollPolicy.value = 'restore-history';
+        setPendingScrollPolicy(SCROLL_POLICY.RESTORE_HISTORY, targetFullPath);
         historyNavPending.value = false;
         restoreLibraryScrollOnActivate.value = false;
         return;
     }
 
-    pendingScrollPolicy.value = 'reset-top';
+    setPendingScrollPolicy(SCROLL_POLICY.RESET_TOP, targetFullPath);
     historyNavPending.value = false;
     restoreLibraryScrollOnActivate.value = false;
 };
@@ -245,24 +258,23 @@ const applyPendingScrollPolicy = async () => {
 
     const lastFullPath = String(lastLibraryRoute.value?.fullPath || '');
     const shouldRestoreLast = !!restoreLibraryScrollOnActivate.value && !!lastFullPath && currentFullPath == lastFullPath;
-    const activePolicy = shouldRestoreLast ? 'restore-last' : pendingScrollPolicy.value;
-    if (activePolicy == 'none') return;
+    const activePolicy = shouldRestoreLast ? SCROLL_POLICY.RESTORE_LAST : pendingScrollPolicy.value;
+    if (activePolicy == SCROLL_POLICY.NONE) return;
 
-    if (pendingTargetFullPath.value && currentFullPath != pendingTargetFullPath.value && activePolicy != 'restore-last') return;
+    if (pendingTargetFullPath.value && currentFullPath != pendingTargetFullPath.value && activePolicy != SCROLL_POLICY.RESTORE_LAST) return;
 
-    if (activePolicy == 'restore-last') {
+    if (activePolicy == SCROLL_POLICY.RESTORE_LAST) {
         const restored = await applyScrollTopForRoute(lastLibraryScrollTop.value, currentRoute, {
             reapplyAfterHydration: true,
             skipReapplyIfUserScrolled: true,
         });
         if (!restored) return;
         restoreLibraryScrollOnActivate.value = false;
-        pendingScrollPolicy.value = 'none';
-        pendingTargetFullPath.value = '';
+        clearPendingScrollPolicy();
         return;
     }
 
-    if (activePolicy == 'restore-history') {
+    if (activePolicy == SCROLL_POLICY.RESTORE_HISTORY) {
         const rememberedTop = getDetailScroll(currentFullPath);
         const targetTop = rememberedTop === null ? 0 : rememberedTop;
         const restored = await applyScrollTopForRoute(targetTop, currentRoute, {
@@ -270,18 +282,16 @@ const applyPendingScrollPolicy = async () => {
             skipReapplyIfUserScrolled: true,
         });
         if (!restored) return;
-        pendingScrollPolicy.value = 'none';
-        pendingTargetFullPath.value = '';
+        clearPendingScrollPolicy();
         return;
     }
 
-    if (activePolicy == 'reset-top') {
+    if (activePolicy == SCROLL_POLICY.RESET_TOP) {
         const reset = await applyScrollTopForRoute(0, currentRoute, {
             reapplyAfterHydration: false,
         });
         if (!reset) return;
-        pendingScrollPolicy.value = 'none';
-        pendingTargetFullPath.value = '';
+        clearPendingScrollPolicy();
     }
 };
 
@@ -293,8 +303,7 @@ onBeforeRouteLeave((to, from, next) => {
     const toRouteName = normalizeRouteName(to.name);
     if (!isRestorableLibraryRouteName(toRouteName)) {
         historyNavPending.value = false;
-        pendingScrollPolicy.value = 'none';
-        pendingTargetFullPath.value = '';
+        clearPendingScrollPolicy();
     }
     if (to.name == 'mymusic') {
         if (!isLogin()) router.push('/login');
@@ -446,8 +455,6 @@ const librarySub = id => {
             timestamp: new Date().getTime(),
         };
         subPlaylist(params).then(result => {
-            console.log(id);
-            console.log(result);
             if (result.code == 200) {
                 subHandle(id);
                 if (params.t == 1) noticeOpen('收藏成功', 2);
@@ -494,7 +501,7 @@ watch(
     async () => {
         await nextTick();
         updateNavState();
-        if (pendingScrollPolicy.value == 'none') setPendingScrollPolicyForRoute(router.currentRoute.value);
+        if (pendingScrollPolicy.value == SCROLL_POLICY.NONE) setPendingScrollPolicyForRoute(router.currentRoute.value);
         await applyPendingScrollPolicy();
     },
     { immediate: true }
@@ -502,12 +509,12 @@ watch(
 
 onActivated(async () => {
     updateNavState();
-    if (pendingScrollPolicy.value == 'none') setPendingScrollPolicyForRoute(router.currentRoute.value);
+    if (pendingScrollPolicy.value == SCROLL_POLICY.NONE) setPendingScrollPolicyForRoute(router.currentRoute.value);
     await applyPendingScrollPolicy();
 });
 onMounted(async () => {
     window.addEventListener('popstate', markHistoryNavigationPending);
-    if (pendingScrollPolicy.value == 'none') setPendingScrollPolicyForRoute(router.currentRoute.value);
+    if (pendingScrollPolicy.value == SCROLL_POLICY.NONE) setPendingScrollPolicyForRoute(router.currentRoute.value);
     await applyPendingScrollPolicy();
 });
 onDeactivated(() => {

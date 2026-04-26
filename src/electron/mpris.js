@@ -72,7 +72,6 @@ function createMpris(window){
   });
 
   ipcMain.on('switchRepeatMode', (e, mode) => {
-    console.log(mode);
     switch (mode) {
       case 'off':
         player.loopStatus = Player.LOOP_STATUS_NONE;

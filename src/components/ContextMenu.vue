@@ -156,13 +156,9 @@
     // 检查当前是否在查看被删除歌曲的歌单
     if (libraryStore.libraryInfo && otherStore.selectedPlaylist && 
         libraryStore.libraryInfo.id == otherStore.selectedPlaylist.id) {
-        
-        console.log('当前正在查看被删除歌曲的歌单，正在更新歌单内容...')
-        
         try {
             // 重新获取歌单详情
             await libraryStore.updatePlaylistDetail(otherStore.selectedPlaylist.id)
-            console.log('歌单已更新')
         } catch (error) {
             console.error('更新歌单失败:', error)
         }
@@ -177,8 +173,6 @@
         otherStore.selectedPlaylist.id == userStore.favoritePlaylistId
       
       if (isFromFavoritePlaylist) {
-        console.log('从我喜欢的音乐删除歌曲，同步更新喜欢列表...')
-        
         // 从本地喜欢列表中移除该歌曲
         if (Array.isArray(userStore.likelist) && userStore.likelist.includes(otherStore.selectedItem.id)) {
           const likeIndex = userStore.likelist.indexOf(otherStore.selectedItem.id)
@@ -189,7 +183,6 @@
         try {
           const res = await getLikelist(userStore.user.userId)
           userStore.updateLikelist(res?.ids)
-          console.log('喜欢列表已同步更新')
         } catch (error) {
           console.error('同步喜欢列表失败:', error)
         }

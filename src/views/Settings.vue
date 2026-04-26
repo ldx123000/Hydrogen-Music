@@ -61,6 +61,8 @@ const showUpdateDialog = ref(false)
 const newVersion = ref('')
 let updateListenersInitialized = false
 let removeUpdateListeners = null
+const PERFORMANCE_CONFIRM_MESSAGE = '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？'
+const GAPLESS_CONFIRM_MESSAGE = '开启后会提前预缓冲下一首音频，可能增加网络流量和内存占用，确定开启吗？'
 
 const loadVipInfo = async () => {
     const requestUserId = userStore.user?.userId
@@ -341,41 +343,22 @@ const clearMusicVideo = () => {
         else noticeOpen('删除失败', 3)
     })
 }
-const setMusicVideo = async () => {
-    if (!playerStore.musicVideo) {
-        dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openMusicVideo)
+const togglePlayerFlag = key => {
+    playerStore[key] = !playerStore[key]
+}
+const setConfirmedPlayerFlag = (key, message) => {
+    if (playerStore[key]) {
+        togglePlayerFlag(key)
         return
     }
-    openMusicVideo(true)
+    dialogOpen('确定开启', message, flag => {
+        if (flag) togglePlayerFlag(key)
+    })
 }
-const openMusicVideo = flag => {
-    if (flag) playerStore.musicVideo = !playerStore.musicVideo
-}
-const setLyricBlur = () => {
-    if (!playerStore.lyricBlur) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openLyricBlur)
-    else openLyricBlur(true)
-}
-const openLyricBlur = flag => {
-    if (flag) playerStore.lyricBlur = !playerStore.lyricBlur
-}
-
-const setCoverBlur = () => {
-    if (!playerStore.coverBlur) dialogOpen('确定开启', '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？', openCoverBlur)
-    else openCoverBlur(true)
-}
-const openCoverBlur = flag => {
-    if (flag) playerStore.coverBlur = !playerStore.coverBlur
-}
-const setGaplessPlayback = () => {
-    if (!playerStore.gaplessPlayback) {
-        dialogOpen('确定开启', '开启后会提前预缓冲下一首音频，可能增加网络流量和内存占用，确定开启吗？', openGaplessPlayback)
-        return
-    }
-    openGaplessPlayback(true)
-}
-const openGaplessPlayback = flag => {
-    if (flag) playerStore.gaplessPlayback = !playerStore.gaplessPlayback
-}
+const setMusicVideo = () => setConfirmedPlayerFlag('musicVideo', PERFORMANCE_CONFIRM_MESSAGE)
+const setLyricBlur = () => setConfirmedPlayerFlag('lyricBlur', PERFORMANCE_CONFIRM_MESSAGE)
+const setCoverBlur = () => setConfirmedPlayerFlag('coverBlur', PERFORMANCE_CONFIRM_MESSAGE)
+const setGaplessPlayback = () => setConfirmedPlayerFlag('gaplessPlayback', GAPLESS_CONFIRM_MESSAGE)
 const userLogout = async () => {
     if (!isLogin()) {
         noticeOpen('您已退出账号', 2)

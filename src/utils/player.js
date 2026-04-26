@@ -222,33 +222,57 @@ const LIKE_REQUEST_COOLDOWN_MS = 1200
 let likeActionToken = 0
 let likeRequestQueue = Promise.resolve()
 let nextLikeRequestAvailableAt = 0
+const PLAYBACK_DIRECTION_NEXT = 1
+const PLAYBACK_DIRECTION_PREVIOUS = -1
 
 function isPersonalFMContext() {
-    return !!(listInfo.value && listInfo.value.type === 'personalfm')
+    return listInfo.value?.type === 'personalfm'
+}
+
+function getActivePlaybackQueue() {
+    const isShuffleMode = playMode.value == 3
+    const activeList = isShuffleMode ? shuffledList.value : songList.value
+    const list = Array.isArray(activeList) ? activeList : []
+    const rawIndex = Number(isShuffleMode ? shuffleIndex.value : currentIndex.value)
+    const activeIndex = Number.isInteger(rawIndex) && rawIndex >= 0 && rawIndex < list.length ? rawIndex : 0
+
+    return {
+        isShuffleMode,
+        list,
+        activeIndex,
+    }
+}
+
+function getPlaybackTarget(direction = PLAYBACK_DIRECTION_NEXT, options = {}) {
+    if (isPersonalFMContext()) return null
+
+    const { list, activeIndex, isShuffleMode } = getActivePlaybackQueue()
+    if (list.length === 0) return null
+    if (options.skipSingleCurrent && list.length === 1 && String(list[0]?.id || '') === String(songId.value || '')) return null
+    if (options.stopAtSequentialEnd && !isShuffleMode && playMode.value == 0 && direction > 0 && activeIndex >= list.length - 1) return null
+
+    const step = direction < 0 ? -1 : 1
+    let targetIndex = activeIndex + step
+    if (targetIndex < 0) targetIndex = list.length - 1
+    else if (targetIndex >= list.length) targetIndex = 0
+
+    const targetSong = list[targetIndex] || null
+    if (!targetSong) return null
+
+    return {
+        song: targetSong,
+        id: targetSong.id,
+        index: targetIndex,
+    }
 }
 
 function getNextSongPlaybackCandidate() {
-    if (isPersonalFMContext()) return null
     if (playMode.value == 2) return null
 
-    const isShuffleMode = playMode.value == 3
-    const list = Array.isArray(isShuffleMode ? shuffledList.value : songList.value) ? (isShuffleMode ? shuffledList.value : songList.value) : []
-    if (list.length === 0) return null
-    if (list.length === 1 && String(list[0]?.id || '') === String(songId.value || '')) return null
-
-    const rawIndex = Number(isShuffleMode ? shuffleIndex.value : currentIndex.value)
-    const activeIndex = Number.isInteger(rawIndex) && rawIndex >= 0 && rawIndex < list.length ? rawIndex : 0
-    if (!isShuffleMode && playMode.value == 0 && activeIndex >= list.length - 1) return null
-
-    const nextIndex = activeIndex >= list.length - 1 ? 0 : activeIndex + 1
-    const nextSong = list[nextIndex] || null
-    if (!nextSong) return null
-
-    return {
-        song: nextSong,
-        id: nextSong.id,
-        index: nextIndex,
-    }
+    return getPlaybackTarget(PLAYBACK_DIRECTION_NEXT, {
+        skipSingleCurrent: true,
+        stopAtSequentialEnd: true,
+    })
 }
 
 function scheduleNextSongAssetPrefetch() {
@@ -281,7 +305,7 @@ function isGaplessPreloadUsable(entry, song, url = '') {
     return !!(entry.howl && typeof entry.howl.play === 'function' && entry.howl.state?.() !== 'unloaded')
 }
 
-async function resolveGaplessPlaybackInfo(song, options = {}) {
+async function resolveSongPlaybackInfo(song, options = {}) {
     if (!song || typeof song !== 'object') return null
     if (song.type === 'local') {
         const localPath = song.url || song.path || song.dirPath
@@ -290,18 +314,46 @@ async function resolveGaplessPlaybackInfo(song, options = {}) {
             url: windowApi?.toFileUrl ? windowApi.toFileUrl(localPath) : localPath,
             localPath,
             trackInfo: null,
+            isSiren: false,
         }
     }
 
     if (isSirenSong(song)) {
-        const sirenPlayback = await resolveSirenSongPlayback(song)
-        return sirenPlayback?.streamUrl ? { url: sirenPlayback.streamUrl, trackInfo: null } : null
+        const sirenPlayback = await resolveSirenSongPlayback(song, options.force ? { force: true } : {})
+        return sirenPlayback?.streamUrl
+            ? {
+                url: sirenPlayback.streamUrl,
+                lyricUrl: sirenPlayback.lyricUrl,
+                trackInfo: null,
+                isSiren: true,
+            }
+            : null
     }
 
-    if (!song.id) return null
+    const playbackId = options.id ?? song.id
+    if (!playbackId) return null
+
+    if (options.checkAvailability) {
+        const availability = await checkMusic(playbackId)
+        if (availability?.success != true) {
+            return {
+                unavailable: true,
+                availability,
+            }
+        }
+    }
+
     const preferredQuality = getPreferredQuality(options.quality ?? quality.value)
-    const trackInfo = await resolveTrackByQualityPreference(song.id, preferredQuality)
-    return trackInfo?.url ? { url: trackInfo.url, trackInfo } : null
+    const trackInfo = await resolveTrackByQualityPreference(playbackId, preferredQuality, {
+        force: options.force === true,
+    })
+    return trackInfo?.url
+        ? {
+            url: trackInfo.url,
+            trackInfo,
+            isSiren: false,
+        }
+        : null
 }
 
 export function preloadGaplessSongPlayback(song, options = {}) {
@@ -323,7 +375,7 @@ export function preloadGaplessSongPlayback(song, options = {}) {
         try {
             if (token !== gaplessPreloadToken || !gaplessPlayback.value) return null
 
-            const playbackInfo = await resolveGaplessPlaybackInfo(song, { quality: preferredQuality })
+            const playbackInfo = await resolveSongPlaybackInfo(song, { quality: preferredQuality })
             if (token !== gaplessPreloadToken || !gaplessPlayback.value || !playbackInfo?.url) return null
 
             const nextHowl = markRaw(await createDecodedAudioPlayer(playbackInfo.url, {
@@ -435,6 +487,24 @@ async function loadRemoteLyricForSong(targetSongId, emptyFallback = false) {
         restorePlayerLyricAfterSongChange()
         return false
     }
+}
+
+function hydrateSongAssets(song, targetSongId, options = {}) {
+    if (options.resetLyric !== false) resetCurrentLyricState()
+    if (!song) return Promise.resolve(false)
+
+    if (song.type === 'local') {
+        loadLocalCoverForSong(song, targetSongId)
+        return loadLocalLyricForSong(song, targetSongId)
+    }
+
+    if (isSirenSong(song)) {
+        return loadSirenLyricForSong(song, targetSongId, options.lyricUrl)
+    }
+
+    if (applyPrefetchedLyricForSong(song, targetSongId)) return Promise.resolve(true)
+
+    return loadRemoteLyricForSong(targetSongId, options.emptyFallback === true)
 }
 
 function resetSongSwitchState() {
@@ -556,53 +626,10 @@ watch(
  * 基于当前歌曲ID检查并加载对应的视频
  */
 export function checkAndLoadVideoForCurrentSong() {
-    // 首先清理现有的视频状态
-    unloadMusicVideo()
-
-    const targetSongId = songId.value
-
-    // 检查是否启用了音乐视频功能
-    if (!musicVideo.value || !targetSongId) {
-        return
-    }
-
-    // 检查用户是否主动关闭了该歌曲的视频显示
-    if (closedVideoMemory.has(targetSongId)) {
-        return
-    }
-
-    // 立即检查当前歌曲是否有对应的视频文件
-    verifyStoredMusicVideo(targetSongId).then(result => {
-        // 验证歌曲ID是否仍然匹配（防止快速切歌）
-        if (result && result !== '404' && result !== false && result.data &&
-            result.data.path && result.data.id === targetSongId &&
-            songId.value && songId.value === targetSongId) {
-
-            // 再次检查记忆状态（防止异步过程中状态变化）
-            if (closedVideoMemory.has(targetSongId)) {
-                return
-            }
-
-            currentMusicVideo.value = result.data
-
-            // 等待音乐开始播放后再启动视频检查
-            setTimeout(() => {
-                // 再次确认歌曲ID仍然匹配且未被用户关闭
-                if (songId.value === targetSongId && currentMusicVideo.value &&
-                    currentMusicVideo.value.id === targetSongId &&
-                    !closedVideoMemory.has(targetSongId)) {
-
-                    // 根据歌曲类型启动对应的视频时间检查
-                    if (getCurrentSong()?.type === 'local') {
-                        startLocalMusicVideo()
-                    } else {
-                        startMusicVideo()
-                    }
-                }
-            }, 500)
-        }
-    }).catch(error => {
-        console.error('检查视频文件时出错:', error)
+    loadMusicVideoForSong(songId.value, {
+        respectEnabled: true,
+        respectClosedMemory: true,
+        startDelay: 500,
     })
 }
 
@@ -786,17 +813,12 @@ async function refreshStreamAndResume(eventType, error) {
     const resumePosition = getSafeCurrentSeek()
 
     try {
-        let nextStreamUrl = ''
-        let trackInfo = null
-
-        if (isSirenSong(currentSong)) {
-            const sirenPlayback = await resolveSirenSongPlayback(currentSong, { force: true })
-            nextStreamUrl = sirenPlayback?.streamUrl || ''
-        } else {
-            const preferredQuality = getPreferredQuality(quality.value)
-            trackInfo = await resolveTrackByQualityPreference(targetSongId, preferredQuality)
-            nextStreamUrl = trackInfo?.url || ''
-        }
+        const playbackInfo = await resolveSongPlaybackInfo(currentSong, {
+            id: targetSongId,
+            quality: quality.value,
+            force: true,
+        })
+        const nextStreamUrl = playbackInfo?.url || ''
 
         // 防止旧歌曲的异步刷新覆盖当前已切换的新歌曲。
         if (token !== streamRefreshToken || songId.value !== targetSongId || currentMusic.value !== targetHowl) {
@@ -804,17 +826,13 @@ async function refreshStreamAndResume(eventType, error) {
         }
 
         if (!nextStreamUrl) {
-            console.error('刷新歌曲播放地址失败：未返回url', trackInfo)
+            console.error('刷新歌曲播放地址失败：未返回url', playbackInfo?.trackInfo)
             noticeOpen('当前歌曲链接已失效，请尝试切换下一首', 2)
             return
         }
 
         try {
-            if (isSirenSong(currentSong)) {
-                applySirenTrackInfo(currentSong, nextStreamUrl)
-            } else if (trackInfo) {
-                setSongLevel(trackInfo.level, trackInfo)
-            }
+            applyPlaybackInfoToCurrentSong(currentSong, playbackInfo)
         } catch (err) {
             console.warn('更新歌曲音质信息失败:', err)
         }
@@ -982,22 +1000,10 @@ function takeGaplessPreloadForCurrentSong(url) {
 }
 
 function hydrateGaplessStartedSongAssets(targetSong, targetSongId) {
-    resetCurrentLyricState()
-
-    if (targetSong.type === 'local') {
-        loadLocalCoverForSong(targetSong, targetSongId)
-        void loadLocalLyricForSong(targetSong, targetSongId)
-        return
-    }
-
-    if (isSirenSong(targetSong)) {
-        void loadSirenLyricForSong(targetSong, targetSongId)
-        return
-    }
-
-    if (applyPrefetchedLyricForSong(targetSong, targetSongId)) return
-
-    void loadRemoteLyricForSong(targetSongId, true)
+    void hydrateSongAssets(targetSong, targetSongId, {
+        resetLyric: true,
+        emptyFallback: true,
+    })
 }
 
 function fadeOutPreviousHowlForGapless(previousHowl, nextHowl) {
@@ -1027,10 +1033,11 @@ function resetPlaybackStateForGaplessStart() {
 }
 
 function applyGaplessTrackInfo(targetSong, entry) {
-    if (entry.trackInfo) setSongLevel(entry.trackInfo.level, entry.trackInfo)
-    if (isSirenSong(targetSong)) {
-        applySirenTrackInfo(targetSong, entry.url)
-    }
+    applyPlaybackInfoToCurrentSong(targetSong, {
+        url: entry.url,
+        trackInfo: entry.trackInfo,
+        isSiren: isSirenSong(targetSong),
+    })
 }
 
 function applyGaplessTargetState(target) {
@@ -1156,7 +1163,7 @@ function handlePlaybackEnded() {
     stopProgressSampling()
     if (tryStartGaplessNextFromEnd()) return
 
-    if (listInfo.value && listInfo.value.type === 'personalfm') {
+    if (isPersonalFMContext()) {
         if (playMode.value == 2) {
             const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
                 detail: { action: 'loop' }
@@ -1272,7 +1279,7 @@ export function addToList(listType, songlist, listMeta = null) {
             // ['', 'mymusic', 'dj', ':id']
             if (parts.length >= 4 && parts[2] === 'dj' && parts[3]) {
                 listId = parts[3]
-            } else if (listInfo.value && listInfo.value.type === 'dj' && listInfo.value.id) {
+            } else if (listInfo.value?.type === 'dj' && listInfo.value.id) {
                 // 回退到当前播放器内已有的电台信息
                 listId = listInfo.value.id
             }
@@ -1372,39 +1379,77 @@ export function unloadMusicVideo() {
         }
     }
 }
-export function loadMusicVideo(id) {
-    // 强制清理任何现有的视频状态
+
+function isValidMusicVideoResult(result, targetSongId) {
+    return !!(
+        result &&
+        result !== '404' &&
+        result.data?.path &&
+        result.data.id === targetSongId
+    )
+}
+
+function startCurrentMusicVideoSampling(targetSongId, { respectClosedMemory = false } = {}) {
+    if (
+        songId.value !== targetSongId ||
+        !currentMusicVideo.value ||
+        currentMusicVideo.value.id !== targetSongId ||
+        (respectClosedMemory && closedVideoMemory.has(targetSongId))
+    ) {
+        return
+    }
+
+    startMusicVideoSampling()
+}
+
+function loadMusicVideoForSong(targetSongId, options = {}) {
     unloadMusicVideo()
 
-    // FM模式下需要稍长的延迟，等待FM切歌异步操作完成
-    const delay = listInfo.value && listInfo.value.type === 'personalfm' ? 300 : 100
+    if (!targetSongId) return
+    if (options.respectEnabled && !musicVideo.value) return
+    if (options.respectClosedMemory && closedVideoMemory.has(targetSongId)) return
 
-    // 等待一个短暂的时间确保清理完成，然后检查视频
-    setTimeout(() => {
-        verifyStoredMusicVideo(id).then(result => {
-            // 严格检查 - 只有明确返回有效结果且文件存在时才加载视频
-            if (result && result !== '404' && result !== false && result.data && result.data.path && result.data.id === id) {
-                // 再次验证当前歌曲ID是否仍然匹配（防止快速切歌导致的异步问题）
-                if (songId.value === id) {
-                    currentMusicVideo.value = result.data
+    const initialDelay = Math.max(0, Number(options.initialDelay) || 0)
+    const startDelay = Math.max(0, Number(options.startDelay) || 0)
+    const clearOnMiss = options.clearOnMiss === true
 
-                    // 为所有类型的音乐启动视频检查
-                    if (getCurrentSong()?.type == 'local') {
-                        startLocalMusicVideo()
-                    } else {
-                        startMusicVideo()
-                    }
-                }
-            } else {
-                // 确保彻底清理
-                unloadMusicVideo()
+    const verifyAndLoadMusicVideo = () => {
+        verifyStoredMusicVideo(targetSongId).then(result => {
+            if (!isValidMusicVideoResult(result, targetSongId)) {
+                if (clearOnMiss) unloadMusicVideo()
+                return
             }
+            if (songId.value !== targetSongId) return
+            if (options.respectClosedMemory && closedVideoMemory.has(targetSongId)) return
+
+            currentMusicVideo.value = result.data
+
+            const startSampling = () => {
+                startCurrentMusicVideoSampling(targetSongId, {
+                    respectClosedMemory: options.respectClosedMemory === true,
+                })
+            }
+
+            if (startDelay > 0) setTimeout(startSampling, startDelay)
+            else startSampling()
         }).catch(error => {
             console.error('检查视频文件时出错:', error)
-            // 出错时确保清理
-            unloadMusicVideo()
+            if (clearOnMiss) unloadMusicVideo()
         })
-    }, delay)
+    }
+
+    if (initialDelay > 0) setTimeout(verifyAndLoadMusicVideo, initialDelay)
+    else verifyAndLoadMusicVideo()
+}
+
+export function loadMusicVideo(id) {
+    // FM模式下需要稍长的延迟，等待FM切歌异步操作完成
+    const initialDelay = isPersonalFMContext() ? 300 : 100
+
+    loadMusicVideoForSong(id, {
+        initialDelay,
+        clearOnMiss: true,
+    })
 }
 
 export function addSong(id, index, autoplay, isLocal) {
@@ -1466,6 +1511,18 @@ export function setSongLevel(level, streamInfo = null) {
     // 保持旧字段兼容：quality 表示当前曲目实际返回档位，而非用户偏好。
     currentSong.quality = normalizedLevel
 }
+
+function applyPlaybackInfoToCurrentSong(targetSong, playbackInfo) {
+    if (!targetSong || !playbackInfo) return
+    if (playbackInfo.isSiren) {
+        applySirenTrackInfo(targetSong, playbackInfo.url)
+        return
+    }
+    if (playbackInfo.trackInfo) {
+        setSongLevel(playbackInfo.trackInfo.level, playbackInfo.trackInfo)
+    }
+}
+
 export async function getLocalLyric(filePath) {
     const lyric = await windowApi.getLocalMusicLyric(filePath)
     if (lyric && typeof lyric === 'object') return lyric
@@ -1489,20 +1546,20 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
     resetCurrentLyricState()
 
     if (isLocal) {
-        loadLocalCoverForSong(targetSong, targetSongId)
-        const localPath = targetSong.url
-        const fileUrl = windowApi?.toFileUrl ? windowApi.toFileUrl(localPath) : localPath
-        play(fileUrl, autoplay)
-        await loadLocalLyricForSong(targetSong, targetSongId)
+        const playbackInfo = await resolveSongPlaybackInfo(targetSong)
+        if (songId.value !== targetSongId) return
+        if (!playbackInfo?.url) return
+        play(playbackInfo.url, autoplay)
+        await hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
         return
     }
     if (isSirenSong(targetSong)) {
         clearCurrentSongLevel(targetSong)
         try {
-            const sirenPlayback = await resolveSirenSongPlayback(targetSong)
+            const playbackInfo = await resolveSongPlaybackInfo(targetSong)
             if (songId.value !== targetSongId) return
 
-            if (!sirenPlayback?.streamUrl) {
+            if (!playbackInfo?.url) {
                 noticeOpen('当前歌曲无法播放', 2)
                 stopProgressSampling()
                 playing.value = false
@@ -1512,19 +1569,21 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
                 return
             }
 
-            play(sirenPlayback.streamUrl, autoplay)
+            play(playbackInfo.url, autoplay)
 
             // 在音频加载完成后设置塞壬歌曲音质信息
             const sirenHowl = getCurrentHowl()
             if (sirenHowl) {
-                const sirenStreamUrl = sirenPlayback.streamUrl
                 sirenHowl.once('load', () => {
                     if (songId.value !== targetSongId) return
-                    applySirenTrackInfo(targetSong, sirenStreamUrl)
+                    applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
                 })
             }
 
-            await loadSirenLyricForSong(targetSong, targetSongId, sirenPlayback.lyricUrl)
+            await hydrateSongAssets(targetSong, targetSongId, {
+                resetLyric: false,
+                lyricUrl: playbackInfo.lyricUrl,
+            })
         } catch (error) {
             console.error('获取塞壬歌曲播放地址失败:', error)
             noticeOpen('当前歌曲无法播放', 2)
@@ -1537,29 +1596,26 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         return
     }
     try {
-        const result = await checkMusic(id)
+        const playbackInfo = await resolveSongPlaybackInfo(targetSong, {
+            id,
+            quality: quality.value,
+            checkAvailability: true,
+        })
         if (songId.value !== targetSongId) return
 
-        if (result.success != true) {
+        if (playbackInfo?.unavailable) {
             handlePlaybackLoadFailure(null, { advance: true })
             return
         }
 
-        const preferredQuality = getPreferredQuality(quality.value)
-        const trackInfo = await resolveTrackByQualityPreference(id, preferredQuality)
-        if (songId.value !== targetSongId) return
-
-        if (!trackInfo || !trackInfo.url) {
+        if (!playbackInfo || !playbackInfo.url) {
             handlePlaybackLoadFailure(null, { advance: true })
             return
         }
 
-        play(trackInfo.url, autoplay)
-        setSongLevel(trackInfo.level, trackInfo)
-
-        if (applyPrefetchedLyricForSong(targetSong, targetSongId)) return
-
-        void loadRemoteLyricForSong(id)
+        play(playbackInfo.url, autoplay)
+        applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
+        void hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
     } catch (error) {
         if (songId.value !== targetSongId) return
         handlePlaybackLoadFailure(error, { advance: !isTransientPlaybackRequestError(error) })
@@ -1626,8 +1682,7 @@ export function pauseMusic() {
 
 export function playLast() {
     // FM模式下的特殊逻辑：触发自定义事件播放上一首FM歌曲
-    if (listInfo.value && listInfo.value.type === 'personalfm') {
-        // FM模式下的特殊逻辑
+    if (isPersonalFMContext()) {
         const fmPreviousEvent = new CustomEvent('fmPreviousResponse', {
             detail: { action: 'previous' }
         })
@@ -1635,33 +1690,13 @@ export function playLast() {
         return
     }
 
-    // 非FM模式下的原有逻辑
-    let id = null
-    let index = null
-    if (playMode.value != 3) {
-        if (currentIndex.value - 1 < 0) {
-            index = songList.value.length - 1
-            id = songList.value[index].id
-        } else {
-            id = songList.value[currentIndex.value - 1].id
-            index = currentIndex.value - 1
-        }
-    }
-    if (playMode.value == 3) {
-        if (shuffleIndex.value - 1 < 0) {
-            index = shuffledList.value.length - 1
-            id = shuffledList.value[index].id
-        } else {
-            index = shuffleIndex.value - 1
-            id = shuffledList.value[index].id
-        }
-    }
-    addSong(id, index, true)
+    const target = getPlaybackTarget(PLAYBACK_DIRECTION_PREVIOUS)
+    if (!target) return
+    addSong(target.id, target.index, true)
 }
 export function playNext() {
     // FM模式下的特殊逻辑：触发自定义事件播放下一首FM歌曲
-    if (listInfo.value && listInfo.value.type === 'personalfm') {
-        // FM模式下的特殊逻辑
+    if (isPersonalFMContext()) {
         const fmNextEvent = new CustomEvent('fmNextResponse', {
             detail: { action: 'next' }
         })
@@ -1669,28 +1704,9 @@ export function playNext() {
         return
     }
 
-    // 非FM模式下的原有逻辑
-    let id = null
-    let index = null
-    if (playMode.value != 3) {
-        if (songList.value.length - 1 == currentIndex.value) {
-            index = 0
-            id = songList.value[index].id
-        } else {
-            index = currentIndex.value + 1
-            id = songList.value[index].id
-        }
-    }
-    if (playMode.value == 3) {
-        if (shuffleIndex.value == shuffledList.value.length - 1) {
-            index = 0
-            id = shuffledList.value[index].id
-        } else {
-            index = shuffleIndex.value + 1
-            id = shuffledList.value[index].id
-        }
-    }
-    addSong(id, index, true)
+    const target = getPlaybackTarget(PLAYBACK_DIRECTION_NEXT)
+    if (!target) return
+    addSong(target.id, target.index, true)
 }
 const clearLycAnimation = () => {
     isLyricDelay.value = false
@@ -1967,9 +1983,11 @@ export async function syncLikelistAfterLikeAction({ songId, like, actionToken, f
     return nextLikelist
 }
 
-function finalizeLikeActionSideEffects() {
-    otherStore.addPlaylistShow = false
+function finalizeLikeActionSideEffects({ clickMyPlaylist = true, closeAddPlaylist = true } = {}) {
+    if (closeAddPlaylist) otherStore.addPlaylistShow = false
     schedulePlaylistCacheInvalidation()
+
+    if (!clickMyPlaylist) return
 
     try {
         if (libraryStore.listType1 == 0 && libraryStore.listType2 == 0) {
@@ -1983,73 +2001,89 @@ function finalizeLikeActionSideEffects() {
     }
 }
 
-export async function likeSong(like) {
-    const songIdValue = songId.value
+export async function likeSong(like, targetSongId = songId.value) {
+    const songIdValue = targetSongId
+    const isExplicitTargetSong = arguments.length > 1
+    const noticeLikeFailure = message => {
+        if (!isExplicitTargetSong) noticeOpen(message, 2)
+    }
 
     // 检查前置条件
     if (!songIdValue) {
         console.error('likeSong失败: 没有当前歌曲ID')
-        noticeOpen("操作失败：没有选中的歌曲", 2)
+        noticeLikeFailure("操作失败：没有选中的歌曲")
         return
     }
 
     if (!userStore.user || !userStore.user.userId) {
         console.error('likeSong失败: 用户信息未加载')
-        noticeOpen("操作失败：用户信息未加载，请稍后重试", 2)
+        noticeLikeFailure("操作失败：用户信息未加载，请稍后重试")
         return
     }
 
     if (!Array.isArray(userStore.likelist)) {
         console.error('likeSong失败: 喜欢列表未加载')
-        noticeOpen("操作失败：喜欢列表未加载，请稍后重试", 2)
+        noticeLikeFailure("操作失败：喜欢列表未加载，请稍后重试")
         return
     }
 
     const actionToken = createLikeActionToken()
+    const finalizeLikeActionForTarget = () => {
+        const useCurrentPlayerSideEffects = !isExplicitTargetSong && songIdValue == songId.value
+        finalizeLikeActionSideEffects({
+            clickMyPlaylist: useCurrentPlayerSideEffects,
+            closeAddPlaylist: useCurrentPlayerSideEffects,
+        })
+    }
+    const applySuccessfulLikeAction = async noticeText => {
+        if (!isActiveLikeActionToken(actionToken)) return false
+        const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
+        userStore.updateLikelist(fallbackLikelist)
+        noticeOpen(noticeText, 2)
+        await syncLikelistAfterLikeAction({
+            songId: songIdValue,
+            like,
+            actionToken,
+            fallbackLikelist,
+        })
+        if (!isActiveLikeActionToken(actionToken)) return false
+        finalizeLikeActionForTarget()
+        return true
+    }
+    const applyFavoritePlaylistFallback = async failureReason => {
+        if (!isActiveLikeActionToken(actionToken)) return false
+        console.warn('官方 /like API 失败，尝试使用歌单 tracks:', failureReason)
+        try {
+            const fallbackResult = await updateFavoritePlaylistTrack(songIdValue, like)
+            if (fallbackResult.success) {
+                const noticeText = like ? `已添加到${fallbackResult.favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}` : '已取消喜欢'
+                return applySuccessfulLikeAction(noticeText)
+            }
+
+            console.error('歌单 tracks 降级也失败:', fallbackResult.result || fallbackResult.message)
+            const errorMsg = fallbackResult.message || failureReason || '未知错误'
+            noticeLikeFailure(`喜欢/取消喜欢 音乐失败：${errorMsg}`)
+        } catch (fallbackError) {
+            console.error('歌单 tracks 降级异常:', fallbackError)
+            const errorMsg = fallbackError?.response?.data?.message || fallbackError?.message || failureReason || '网络错误'
+            noticeLikeFailure(`喜欢/取消喜欢 音乐失败：${errorMsg}`)
+        }
+        return false
+    }
 
     try {
         const result = await queueLikeRequest(actionToken, () => likeMusic(songIdValue, like))
         if (result?.skipped) return
 
         if (result && result.code == 200) {
-            if (!isActiveLikeActionToken(actionToken)) return
-            const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
-            userStore.updateLikelist(fallbackLikelist)
-            noticeOpen(await getFavoritePlaylistNoticeText(like), 2)
-            await syncLikelistAfterLikeAction({
-                songId: songIdValue,
-                like,
-                actionToken,
-                fallbackLikelist,
-            })
-            if (!isActiveLikeActionToken(actionToken)) return
-            finalizeLikeActionSideEffects()
+            await applySuccessfulLikeAction(await getFavoritePlaylistNoticeText(like))
         } else {
-            console.warn('官方 /like API 失败，尝试使用歌单 tracks:', getLikeActionErrorMessage(result))
-            const fallbackResult = await updateFavoritePlaylistTrack(songIdValue, like)
-            if (fallbackResult.success) {
-                if (!isActiveLikeActionToken(actionToken)) return
-                const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
-                userStore.updateLikelist(fallbackLikelist)
-                noticeOpen(like ? `已添加到${fallbackResult.favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}` : '已取消喜欢', 2)
-                await syncLikelistAfterLikeAction({
-                    songId: songIdValue,
-                    like,
-                    actionToken,
-                    fallbackLikelist,
-                })
-                if (!isActiveLikeActionToken(actionToken)) return
-                finalizeLikeActionSideEffects()
-            } else {
-                console.error('歌单 tracks 降级也失败:', fallbackResult.result || fallbackResult.message)
-                const errorMsg = fallbackResult.message || getLikeActionErrorMessage(result)
-                noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
-            }
+            await applyFavoritePlaylistFallback(getLikeActionErrorMessage(result))
         }
     } catch (error) {
         console.error('调用 /like API 异常:', error)
         const errorMsg = error?.response?.data?.message || error?.message || '网络错误'
-        noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
+        await applyFavoritePlaylistFallback(errorMsg)
     }
 }
 
@@ -2070,7 +2104,7 @@ async function updateFavoritePlaylistIfViewing() {
 export function addToNext(nextSong, autoplay) {
     // FM页面已离开但播放器状态仍是personalfm时，playNext会被FM分支拦截导致无法播放
     // 在“立即播放”场景下自动退出FM上下文，确保后续走普通切歌逻辑
-    if (listInfo.value && listInfo.value.type === 'personalfm' && autoplay) {
+    if (isPersonalFMContext() && autoplay) {
         let isOnPersonalFMRoute = false
         try {
             const hash = (typeof window !== 'undefined' && window.location && window.location.hash) ? window.location.hash : ''
@@ -2201,7 +2235,7 @@ export function musicVideoCheck(seek, update) {
     }
 
     // 检查当前歌曲ID是否匹配，FM模式下需要特殊处理
-    const isPersonalFM = listInfo.value && listInfo.value.type === 'personalfm'
+    const isPersonalFM = isPersonalFMContext()
 
     if (!songId.value || !currentMusicVideo.value.id) {
         unloadMusicVideo()

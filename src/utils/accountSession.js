@@ -79,7 +79,7 @@ export async function initializeCurrentAccountSession() {
         return null
     }
 
-    await clearAccountScopedState({ clearCookies: false, clearSessionCookies: true })
+    await clearAccountScopedState({ clearCookies: false, clearSessionCookies: true, clearStores: false })
     invalidateNcmApiCookieCache()
 
     try {

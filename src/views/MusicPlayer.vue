@@ -10,6 +10,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
 import { readCommentCountCache, writeCommentCountCache } from '../utils/commentCountCache';
+import { buildCoverBackdropCandidates } from '../utils/coverBackdrop';
 import { getIndexedSongOrFirst } from '../utils/songList';
 const playerStore = usePlayerStore();
 
@@ -33,44 +34,11 @@ watch(rightPanelMode, (newMode, oldMode) => {
 // 当播放电台节目时，右侧显示电台简介而非歌词
 const isDj = computed(() => playerStore.listInfo && playerStore.listInfo.type === 'dj');
 
-const withCoverParam = (url, size = 512) => {
-    const normalizedUrl = typeof url === 'string' ? url.trim() : '';
-    if (!normalizedUrl) return null;
-    if (normalizedUrl.startsWith('data:') || normalizedUrl.startsWith('blob:')) return normalizedUrl;
-
-    const nextParam = `param=${size}y${size}`;
-    if (/(?:\?|&)param=\d+y\d+/.test(normalizedUrl)) {
-        return normalizedUrl.replace(/([?&])param=\d+y\d+/, `$1${nextParam}`);
-    }
-
-    const hasQuery = normalizedUrl.includes('?');
-    return `${normalizedUrl}${hasQuery ? '&' : '?'}${nextParam}`;
-};
-
 const coverBgCandidateIndex = ref(0);
 
 const coverBgCandidates = computed(() => {
     const song = getIndexedSongOrFirst(playerStore.songList, playerStore.currentIndex);
-    if (!song) return [];
-    if (song.type === 'local') return playerStore.localBase64Img ? [playerStore.localBase64Img] : [];
-
-    const candidates = [];
-    const pushCandidate = url => {
-        const normalizedUrl = typeof url === 'string' ? url.trim() : '';
-        if (!normalizedUrl) return;
-
-        const sizedUrl = withCoverParam(normalizedUrl, 512);
-        if (sizedUrl && !candidates.includes(sizedUrl)) candidates.push(sizedUrl);
-        if (sizedUrl !== normalizedUrl && !candidates.includes(normalizedUrl)) candidates.push(normalizedUrl);
-    };
-
-    pushCandidate(song.blurPicUrl);
-    pushCandidate(song.coverDeUrl);
-    pushCandidate(song.coverUrl);
-    pushCandidate(song.al?.picUrl);
-    pushCandidate(song.img1v1Url);
-
-    return candidates;
+    return buildCoverBackdropCandidates(song, playerStore.localBase64Img);
 });
 
 watch(
@@ -86,11 +54,10 @@ const coverBgUrl = computed(() => {
 });
 
 const handleCoverBgError = () => {
-    if (coverBgCandidateIndex.value >= coverBgCandidates.value.length - 1) {
-        coverBgCandidateIndex.value = coverBgCandidates.value.length;
-        return;
-    }
-    coverBgCandidateIndex.value += 1;
+    coverBgCandidateIndex.value = Math.min(
+        coverBgCandidateIndex.value + 1,
+        coverBgCandidates.value.length
+    );
 };
 
 const showCoverBackdrop = computed(() => {

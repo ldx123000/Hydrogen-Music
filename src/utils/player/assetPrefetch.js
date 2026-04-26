@@ -3,6 +3,7 @@ import { getSirenLyricText, getSirenSong } from '../../api/siren'
 import { getPreferredQuality } from '../quality'
 import { resolveTrackByQualityPreference } from '../musicUrlResolver'
 import { getSirenSourceId, isSirenSong } from '../siren'
+import { withCoverParam } from '../coverBackdrop'
 import { runIdleTask } from './idleTask'
 import { createEmptyLyric, normalizeLyricPayload } from './lyricPayload'
 
@@ -51,19 +52,6 @@ function rememberAssets(key, assets) {
     if (assetCache.size <= PREFETCH_CACHE_LIMIT) return
     const oldestKey = assetCache.keys().next().value
     if (oldestKey) assetCache.delete(oldestKey)
-}
-
-function withCoverParam(url, size) {
-    const normalizedUrl = typeof url === 'string' ? url.trim() : ''
-    if (!normalizedUrl) return ''
-    if (normalizedUrl.startsWith('data:') || normalizedUrl.startsWith('blob:')) return normalizedUrl
-
-    const nextParam = `param=${size}y${size}`
-    if (/(?:\?|&)param=\d+y\d+/.test(normalizedUrl)) {
-        return normalizedUrl.replace(/([?&])param=\d+y\d+/, `$1${nextParam}`)
-    }
-
-    return `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}${nextParam}`
 }
 
 function pushCoverCandidate(candidates, url) {
