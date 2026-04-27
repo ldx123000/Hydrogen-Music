@@ -5,12 +5,15 @@ const axios = require('axios')
 const Store = require('electron-store').default
 const path = require('path')
 const { nanoid } = require('nanoid')
+const { spawn } = require('child_process')
 let NodeID3 = null
 let Metaflac = null
-let Sharp = null
+let ffmpegPath = null
 try { NodeID3 = require('node-id3') } catch (_) { NodeID3 = null }
 try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
-try { Sharp = require('sharp') } catch (_) { Sharp = null }
+try { ffmpegPath = require('ffmpeg-static') } catch (_) { ffmpegPath = null }
+
+const COVER_TRANSCODE_TIMEOUT_MS = 10000
 
 const moduleState = {
   initialized: false,
@@ -42,13 +45,114 @@ function updateWindowProgress(progress) {
   } catch (_) {}
 }
 
+function inferCoverImageMime(buffer, contentType = '', sourceUrl = '') {
+  const headerMime = String(contentType || '').split(';')[0].trim().toLowerCase()
+  if (headerMime === 'image/png' || headerMime === 'image/jpeg' || headerMime === 'image/jpg' || headerMime === 'image/webp') {
+    return headerMime === 'image/jpg' ? 'image/jpeg' : headerMime
+  }
+
+  const buf = Buffer.from(buffer || [])
+  if (buf.length > 12 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return 'image/png'
+  if (buf.length > 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'image/jpeg'
+  if (buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp'
+
+  const lowerUrl = String(sourceUrl || '').split('?')[0].toLowerCase()
+  if (lowerUrl.endsWith('.png')) return 'image/png'
+  if (lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')) return 'image/jpeg'
+  if (lowerUrl.endsWith('.webp')) return 'image/webp'
+
+  return ''
+}
+
+function convertCoverWithFfmpeg(buffer) {
+  if (!ffmpegPath) return Promise.resolve(null)
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpegPath, [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-i', 'pipe:0',
+      '-frames:v', '1',
+      '-f', 'image2pipe',
+      '-vcodec', 'png',
+      'pipe:1',
+    ], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    const stdoutChunks = []
+    const stderrChunks = []
+    let settled = false
+
+    const finish = (error, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (error) reject(error)
+      else resolve(value)
+    }
+
+    const timeout = setTimeout(() => {
+      try { child.kill() } catch (_) {}
+      finish(new Error('cover transcode timed out'))
+    }, COVER_TRANSCODE_TIMEOUT_MS)
+
+    child.stdout.on('data', chunk => stdoutChunks.push(chunk))
+    child.stderr.on('data', chunk => stderrChunks.push(chunk))
+    child.stdin.on('error', () => {})
+    child.on('error', error => finish(error))
+    child.on('close', code => {
+      if (settled) return
+
+      const output = Buffer.concat(stdoutChunks)
+      if (code === 0 && output.length > 0) {
+        finish(null, {
+          buffer: output,
+          mime: 'image/png',
+        })
+        return
+      }
+
+      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim()
+      finish(new Error(stderr || `ffmpeg exited with code ${code}`))
+    })
+
+    child.stdin.end(buffer)
+  })
+}
+
+async function prepareCoverForEmbedding(buffer, contentType, sourceUrl) {
+  const mime = inferCoverImageMime(buffer, contentType, sourceUrl)
+  if (mime === 'image/png' || mime === 'image/jpeg') {
+    return {
+      buffer,
+      mime,
+    }
+  }
+
+  try {
+    const converted = await convertCoverWithFfmpeg(buffer)
+    if (converted) return converted
+  } catch (error) {
+    console.warn('封面转码失败，将尝试原图内嵌:', error && error.message ? error.message : error)
+  }
+
+  return {
+    buffer,
+    mime,
+  }
+}
+
 function sanitize(name) {
   try {
-    return String(name || '')
+    const normalized = String(name || '')
       .replace(/[\\/:*?"<>|]/g, ' ')
+      .replace(/[\u0000-\u001f]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
+      .replace(/[. ]+$/g, '')
       .slice(0, 120) || 'unknown'
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(normalized)) return `_${normalized}`
+    return normalized
   } catch (_) {
     return 'unknown'
   }
@@ -246,37 +350,15 @@ async function finalizeDownloadMetadata(item, context, settings) {
         const resp = await axios.get(context.coverUrl, { responseType: 'arraybuffer', timeout: 15000 })
         const buf = Buffer.from(resp.data)
         const contentType = (resp.headers && resp.headers['content-type']) || ''
-        const lowerUrl = context.coverUrl.split('?')[0].toLowerCase()
-        const isWebp = contentType.includes('webp') || lowerUrl.endsWith('.webp')
-        const isPngResp = contentType.includes('png') || lowerUrl.endsWith('.png')
-        const isJpegResp = contentType.includes('jpeg') || contentType.includes('jpg') || lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')
-
-        let embedBuf = buf
-        let embedMime = isPngResp ? 'image/png' : (isJpegResp ? 'image/jpeg' : (isWebp ? 'image/webp' : ''))
-        if (Sharp) {
-          try {
-            if (isWebp || (!isPngResp && !isJpegResp)) {
-              const img = Sharp(buf)
-              const meta = await img.metadata().catch(() => ({}))
-              const hasAlpha = !!meta.hasAlpha
-              if (hasAlpha) {
-                embedBuf = await img.toFormat('png').toBuffer()
-                embedMime = 'image/png'
-              } else {
-                embedBuf = await img.toFormat('jpeg', { mozjpeg: true, quality: 90 }).toBuffer()
-                embedMime = 'image/jpeg'
-              }
-            }
-          } catch (convErr) {
-            console.warn('封面转码失败，将尝试原图内嵌:', convErr && convErr.message ? convErr.message : convErr)
-          }
-        }
+        const preparedCover = await prepareCoverForEmbedding(buf, contentType, context.coverUrl)
+        const embedBuf = preparedCover.buffer
+        const embedMime = preparedCover.mime
         try {
           const extLower = (parsed.ext || '').toLowerCase()
           const isPngEmbed = (embedMime || '').includes('png')
           const isJpegEmbed = (embedMime || '').includes('jpeg') || (embedMime || '').includes('jpg')
           if (NodeID3 && extLower === '.mp3') {
-            const mime = isPngEmbed ? 'image/png' : (isJpegEmbed ? 'image/jpeg' : 'image/jpeg')
+            const mime = embedMime || 'image/jpeg'
             NodeID3.update({ image: { mime, type: { id: 3, name: 'front cover' }, description: 'Cover', imageBuffer: embedBuf } }, audioPath)
           } else if (Metaflac && extLower === '.flac') {
             if (isPngEmbed || isJpegEmbed) {

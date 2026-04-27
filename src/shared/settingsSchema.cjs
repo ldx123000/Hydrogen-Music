@@ -31,6 +31,12 @@ function normalizeCustomText(value, fallback) {
     return value.replace(/[\n\r\f]/g, ' ').trim().slice(0, 120)
 }
 
+function normalizeOptionalPathText(value) {
+    if (typeof value !== 'string') return null
+    const trimmedValue = value.trim()
+    return trimmedValue || null
+}
+
 function normalizeMusicSettings(music = {}) {
     const normalized = { ...music }
     normalized.searchAssistLimit = normalizeSearchAssistLimit(normalized.searchAssistLimit)
@@ -71,8 +77,10 @@ function normalizeSettings(settings = {}) {
     }
 
     normalized.local.localFolder = Array.isArray(normalized.local.localFolder)
-        ? normalized.local.localFolder.slice()
+        ? Array.from(new Set(normalized.local.localFolder.map(normalizeOptionalPathText).filter(Boolean)))
         : []
+    normalized.local.videoFolder = normalizeOptionalPathText(normalized.local.videoFolder)
+    normalized.local.downloadFolder = normalizeOptionalPathText(normalized.local.downloadFolder)
     return normalized
 }
 

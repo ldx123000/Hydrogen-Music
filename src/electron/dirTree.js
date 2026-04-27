@@ -220,6 +220,19 @@ async function scanDirectory(dirPath, displayName, progressReporter, parseWithLi
         return { dirTree: dirTreeNode, metadata: metadataNode }
     }
 
+    const metadataChildren = []
+    const fileTasks = entries
+        .map((entry, index) => ({ entry, index, targetPath: path.join(dirPath, entry.name) }))
+        .filter(({ entry }) => entry.isFile())
+        .map(({ entry, index, targetPath }) => (
+            createMusicFileNode(targetPath, entry.name, progressReporter, parseWithLimit)
+                .then(node => ({ index, node }))
+                .catch(error => {
+                    console.warn('处理文件失败:', targetPath, error)
+                    return { index, node: null }
+                })
+        ))
+
     for (let i = 0; i < entries.length; i++) {
         const entry = entries[i]
         const targetPath = path.join(dirPath, entry.name)
@@ -228,17 +241,22 @@ async function scanDirectory(dirPath, displayName, progressReporter, parseWithLi
             if (entry.isDirectory()) {
                 const childResult = await scanDirectory(targetPath, entry.name, progressReporter, parseWithLimit)
                 dirTreeNode.children.push(childResult.dirTree)
-                metadataNode.children.push(childResult.metadata)
+                metadataChildren.push({ index: i, node: childResult.metadata })
                 continue
             }
-
-            if (!entry.isFile()) continue
-            const musicNode = await createMusicFileNode(targetPath, entry.name, progressReporter, parseWithLimit)
-            if (musicNode) metadataNode.children.push(musicNode)
         } catch (error) {
             console.warn('处理文件失败:', targetPath, error)
         }
     }
+
+    const musicNodes = await Promise.all(fileTasks)
+    for (const result of musicNodes) {
+        if (result.node) metadataChildren.push(result)
+    }
+
+    metadataChildren
+        .sort((a, b) => a.index - b.index)
+        .forEach(({ node }) => metadataNode.children.push(node))
 
     return {
         dirTree: dirTreeNode,

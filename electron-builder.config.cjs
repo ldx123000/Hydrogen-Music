@@ -34,8 +34,8 @@ function detectRequestedTargets(argv) {
 
 function shouldExcludeLinuxOnlyDependencies() {
   const requestedTargets = detectRequestedTargets(process.argv);
-  if (requestedTargets.mac || requestedTargets.win) return true;
   if (requestedTargets.linux) return false;
+  if (requestedTargets.mac || requestedTargets.win) return true;
   return process.platform !== 'linux';
 }
 
@@ -56,13 +56,9 @@ const BASE_FILE_PATTERNS = [
   '!src/assets/fonts{,/**/*}',
   '!**/node_modules/**/*.d.ts',
   '!**/node_modules/**/*.map',
-  '!**/node_modules/sharp/vendor/**/include{,/**/*}',
-  '!**/node_modules/sharp/src{,/**/*}',
-  '!**/node_modules/sharp/install{,/**/*}',
-  '!**/node_modules/sharp/binding.gyp',
-  '!**/node_modules/sharp/lib/index.d.ts',
-  '!**/node_modules/sharp/node_modules/node-addon-api{,/**/*}',
-  '!**/node_modules/sharp/node_modules/.bin{,/**/*}',
+  '!**/node_modules/@neteasecloudmusicapienhanced/api/public{,/**/*}',
+  '!**/node_modules/@neteasecloudmusicapienhanced/api/data/deviceid.txt',
+  '!**/node_modules/@neteasecloudmusicapienhanced/api/node_modules/xml2js/lib/xml2js.bc.js',
   ...NODE_MODULE_PRUNE_DIRS.flatMap((name) => [
     `!**/node_modules/**/${name}`,
     `!**/node_modules/**/${name}/**`,
@@ -87,15 +83,15 @@ module.exports = {
   // Electron locale naming differs across platforms, so keep both macOS and Windows/Linux variants.
   electronLanguages: ['en', 'en-US', 'zh_CN', 'zh_TW', 'zh-CN', 'zh-TW'],
   asarUnpack: [
-    '**/node_modules/sharp/**',
     '**/node_modules/ffmpeg-static/**',
   ],
   directories: {
     output: 'release/${version}',
   },
-  files: shouldExcludeLinuxOnlyDependencies()
-    ? [...BASE_FILE_PATTERNS, ...LINUX_ONLY_DEPENDENCY_EXCLUDES]
-    : BASE_FILE_PATTERNS,
+  files: [
+    ...BASE_FILE_PATTERNS,
+    ...(shouldExcludeLinuxOnlyDependencies() ? LINUX_ONLY_DEPENDENCY_EXCLUDES : []),
+  ],
   onNodeModuleFile: (filePath) => {
     const normalizedPath = filePath.replace(/\\/g, '/');
     return KEEP_NODE_MODULE_FILE.test(normalizedPath);

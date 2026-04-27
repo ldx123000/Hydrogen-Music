@@ -3,7 +3,7 @@ const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
 const { parseFile } = require('music-metadata')
-const { spawn } = require('child_process')
+const { spawn, execFile } = require('child_process')
 const { loadLocalLyricPayload } = require('./localLyrics')
 const { registerSettingsIpc } = require('./ipc/settingsIpc')
 const { listSystemFonts } = require('./systemFonts')
@@ -92,6 +92,76 @@ function attachWindowStateListeners(win) {
         try { win.removeListener('unmaximize', onWindowStateChange) } catch (_) {}
         try { win.removeListener('restore', onWindowStateChange) } catch (_) {}
     }
+}
+
+function getOpenDirectoryProperties(platform = process.platform) {
+    const properties = ['openDirectory']
+    if (platform === 'darwin') properties.push('createDirectory')
+    return properties
+}
+
+function trimTrailingDirectorySeparator(targetPath) {
+    const value = String(targetPath || '').trim()
+    if (!value) return ''
+    const parsedPath = path.parse(value)
+    if (value === parsedPath.root) return value
+    return value.replace(/[\\/]+$/, '')
+}
+
+function normalizeSelectedDirectoryPath(targetPath) {
+    const normalizedPath = trimTrailingDirectorySeparator(targetPath)
+    if (!normalizedPath) return null
+
+    try {
+        const stats = fs.statSync(normalizedPath)
+        if (stats.isDirectory()) return normalizedPath
+        if (stats.isFile()) return path.dirname(normalizedPath)
+    } catch (_) {}
+
+    return normalizedPath
+}
+
+function chooseMacDirectoryWithAppleScript() {
+    return new Promise(resolve => {
+        execFile(
+            '/usr/bin/osascript',
+            ['-e', 'POSIX path of (choose folder with prompt "选择文件夹")'],
+            { windowsHide: true },
+            (error, stdout = '', stderr = '') => {
+                if (!error) {
+                    resolve({
+                        canceled: false,
+                        path: normalizeSelectedDirectoryPath(stdout),
+                        fallback: false,
+                    })
+                    return
+                }
+
+                const message = `${error.message || ''}\n${stderr || ''}`.toLowerCase()
+                if (message.includes('user canceled') || message.includes('-128')) {
+                    resolve({ canceled: true, path: null, fallback: false })
+                    return
+                }
+
+                resolve({ canceled: false, path: null, fallback: true })
+            }
+        )
+    })
+}
+
+async function showOpenDirectoryDialog(win) {
+    if (process.platform === 'darwin') {
+        const macResult = await chooseMacDirectoryWithAppleScript()
+        if (macResult.canceled || macResult.path || !macResult.fallback) return macResult.path
+    }
+
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        title: '选择文件夹',
+        buttonLabel: '选择',
+        properties: getOpenDirectoryProperties(),
+    })
+    if (canceled) return null
+    return Array.isArray(filePaths) && filePaths[0] ? normalizeSelectedDirectoryPath(filePaths[0]) : null
 }
 
 module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
@@ -665,9 +735,10 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     ipcMain.on('window-close', async () => {
         const settings = await settingsStore.get('settings')
-        if (settings.other.quitApp == 'minimize') {
+        const quitAppPreference = settings?.other?.quitApp === 'quit' ? 'quit' : 'minimize'
+        if (quitAppPreference == 'minimize') {
             win.hide()
-        } else if (settings.other.quitApp == 'quit') {
+        } else if (quitAppPreference == 'quit') {
             win.close()
         }
     })
@@ -735,18 +806,16 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     registerSettingsIpc({ ipcMain, settingsStore, win, registerShortcuts })
     ipcMain.handle('system-fonts:list', () => listSystemFonts())
-    ipcMain.handle('dialog:openFile', async () => {
+    const handleOpenDirectoryDialog = async () => {
         try {
-            const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-                properties: ['openDirectory', 'createDirectory', 'promptToCreate']
-            })
-            if (canceled) return null
-            return Array.isArray(filePaths) && filePaths[0] ? filePaths[0] : null
+            return await showOpenDirectoryDialog(win)
         } catch (error) {
             console.error('打开目录选择器失败:', error)
             return null
         }
-    })
+    }
+    ipcMain.handle('dialog:openDirectory', handleOpenDirectoryDialog)
+    ipcMain.handle('dialog:openFile', handleOpenDirectoryDialog)
     ipcMain.on('register-shortcuts', () => {
         registerShortcuts(win, app)
     })
@@ -771,6 +840,14 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.on('open-local-folder', (e, targetPath) => {
         const normalizedTargetPath = normalizeAllowedMediaPath(targetPath, { allowDirectory: true })
         if (!normalizedTargetPath) return
+
+        try {
+            const stat = fs.statSync(normalizedTargetPath)
+            if (stat.isDirectory()) {
+                shell.openPath(normalizedTargetPath)
+                return
+            }
+        } catch (_) {}
 
         shell.showItemInFolder(normalizedTargetPath)
     })
@@ -997,7 +1074,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 if (returnCode == 'cancel') return
                 returnCode = 'cancel'
                 try { requestCancel && requestCancel(reason) } catch (_) {}
-                try { transcodeProc && transcodeProc.kill('SIGKILL') } catch (_) {}
+                try { transcodeProc && transcodeProc.kill() } catch (_) {}
                 try { writer && !writer.destroyed && writer.destroy(new Error(reason)) } catch (_) {}
             }
 

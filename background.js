@@ -27,6 +27,24 @@ let ncmApiReadyPayload = null;
 const ncmApiReadyWaiters = [];
 const NCM_API_COOKIE_URLS = ['http://localhost:36530', 'http://127.0.0.1:36530']
 
+function applyEarlyChromiumSwitches() {
+    try {
+        app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport')
+        app.commandLine.appendSwitch('ignore-gpu-blocklist')
+    } catch (_) {}
+}
+
+function getQuitAppPreference() {
+    try {
+        const Store = require('electron-store').default
+        const settingsStore = new Store({ name: 'settings' })
+        const settings = settingsStore.get('settings')
+        return settings?.other?.quitApp === 'quit' ? 'quit' : 'minimize'
+    } catch (_) {
+        return 'minimize'
+    }
+}
+
 function resolveNcmApiReady(payload) {
     if (ncmApiReadyResolved) return;
     ncmApiReadyResolved = true;
@@ -83,16 +101,9 @@ if (!gotTheLock) {
     );
   }
 
-
+  applyEarlyChromiumSwitches()
 
   app.whenReady().then(async () => {
-    // 尝试启用平台 HEVC 硬件解码（在支持的平台上）
-    try {
-      app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport')
-      // 某些平台可能需要忽略 GPU 黑名单以启用硬件解码
-      app.commandLine.appendSwitch('ignore-gpu-blocklist')
-    } catch (_) {}
-
     process.on('uncaughtException', (err) => {
       console.error('捕获到未处理异常:', err)
     })
@@ -396,44 +407,38 @@ const createWindow = () => {
         }
     }, 2500)
     winstate.manage(win)
-    win.on('close', async (event) => {
+    win.on('close', (event) => {
         if (forceQuit) {
             // 如果是强制退出 (Cmd+Q)，则不阻止默认行为
             myWindow = null;
             return;
         }
 
+        const quitAppPreference = getQuitAppPreference()
+
         // 在macOS上，'close'事件通常意味着窗口将被销毁，而不是隐藏
         if (process.platform === 'darwin') {
-            // 如果用户设置为“最小化”，则阻止关闭并隐藏窗口
-            const Store = require('electron-store').default
-            const settingsStore = new Store({ name: 'settings' })
-            const settings = await settingsStore.get('settings');
-            if (settings && settings.other && settings.other.quitApp === 'minimize') {
-                event.preventDefault();
+            event.preventDefault();
+            if (quitAppPreference === 'minimize') {
                 win.hide();
             } else {
-                // 否则，允许窗口关闭，但不退出应用
-                // `window-all-closed`事件会处理后续逻辑
-                myWindow = null;
+                win.webContents.send('player-save');
+                setTimeout(() => {
+                    app.quit();
+                }, 500);
             }
         } else {
             // 在非macOS平台上，保留您原有的逻辑
             event.preventDefault();
-            const Store = require('electron-store').default
-            const settingsStore = new Store({ name: 'settings' })
-            const settings = await settingsStore.get('settings');
-            if (settings && settings.other && settings.other.quitApp === 'minimize') {
+            if (quitAppPreference === 'minimize') {
                 win.hide();
-            } else if (settings && settings.other && settings.other.quitApp === 'quit') {
+            } else {
                 win.webContents.send('player-save');
                 // 在发送保存指令后，需要一个机制来真正退出
                 // 监听 'player-saved' 是一个好方法，但为了简单起见，我们设置一个超时
                 setTimeout(() => {
                     app.quit();
                 }, 500);
-            } else {
-                app.quit(); // 默认行为
             }
         }
     });

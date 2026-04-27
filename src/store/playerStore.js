@@ -1,12 +1,64 @@
 import { defineStore } from "pinia";
 
+function readInitialProgress() {
+    try {
+        if (typeof localStorage === 'undefined') return 0
+        const raw = localStorage.getItem('playerStore')
+        if (!raw) return 0
+        const parsed = JSON.parse(raw)
+        const progress = Number(parsed?.progress)
+        return Number.isFinite(progress) && progress > 0 ? progress : 0
+    } catch (_) {
+        return 0
+    }
+}
+
+function createDedupedLocalStorage() {
+    const lastValues = new Map()
+    const getStorage = () => typeof localStorage === 'undefined' ? null : localStorage
+
+    return {
+        getItem(key) {
+            const storage = getStorage()
+            if (!storage) return null
+
+            const value = storage.getItem(key)
+            lastValues.set(key, value)
+            return value
+        },
+        setItem(key, value) {
+            const storage = getStorage()
+            if (!storage) return
+
+            const nextValue = String(value)
+            const previousValue = lastValues.has(key)
+                ? lastValues.get(key)
+                : storage.getItem(key)
+
+            if (previousValue === nextValue) return
+
+            storage.setItem(key, nextValue)
+            lastValues.set(key, nextValue)
+        },
+        removeItem(key) {
+            const storage = getStorage()
+            if (!storage) return
+
+            storage.removeItem(key)
+            lastValues.delete(key)
+        },
+    }
+}
+
+const playerPersistStorage = createDedupedLocalStorage()
+
 export const usePlayerStore = defineStore('playerStore', {
     state: () => {
         return {
             widgetState: true,//是否开启widget
             currentMusic: null,//播放列表的索引
             playing: false,//是否正在播放
-            progress: 0,//进度条
+            progress: readInitialProgress(),//进度条
             volume: 0.3,//音量
             // volumeBeforeMuted: 0,//静音前音量
             playMode: 0,//0为顺序播放，1为列表循环，2为单曲循环，3为随机播放
@@ -50,7 +102,7 @@ export const usePlayerStore = defineStore('playerStore', {
     actions: {
     },
     persist: {
-        storage: localStorage,
-        pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur','showSongTranslation','gaplessPlayback','coverBlur']
+        storage: playerPersistStorage,
+        pick: ['volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur','showSongTranslation','gaplessPlayback','coverBlur']
     },
 })

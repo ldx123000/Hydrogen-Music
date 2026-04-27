@@ -42,6 +42,7 @@ const playerStore = usePlayerStore(pinia)
 const { libraryInfo } = storeToRefs(libraryStore)
 const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation, gaplessPlayback } = storeToRefs(playerStore)
 
+const PLAYBACK_SNAPSHOT_PERSIST_INTERVAL_MS = 5000
 let isProgress = false
 let loadLast = true
 let playModeOne = false //为true代表顺序播放已全部结束
@@ -60,6 +61,8 @@ const GAPLESS_CROSSFADE_MS = 700
 const fadeInDurationByHowl = new WeakMap()
 let disposeGaplessTransitionTicker = null
 let gaplessTransitionInProgress = false
+let playbackSnapshotPersistTimer = null
+let lastPlaybackSnapshotPersistAt = 0
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -704,6 +707,8 @@ export function loadLastSong() {
             if (list) {
                 songList.value = list.songList
                 shuffledList.value = list.shuffledList
+                const storedProgress = normalizePersistedProgress(list.progress)
+                if (storedProgress !== null) progress.value = storedProgress
             }
             syncWindowsTaskbarPlaybackState()
             if (songList.value) {
@@ -731,6 +736,49 @@ function getSafeCurrentSeek() {
         console.warn('获取播放进度失败:', error)
     }
     return typeof progress.value === 'number' && !Number.isNaN(progress.value) ? progress.value : 0
+}
+
+function normalizePersistedProgress(value) {
+    const progressValue = Number(value)
+    if (!Number.isFinite(progressValue) || progressValue < 0) return null
+    return progressValue
+}
+
+function buildPersistedPlaylistPayload() {
+    return {
+        songList: songList.value,
+        shuffledList: shuffledList.value,
+        progress: getSafeCurrentSeek(),
+        songId: songId.value,
+        currentIndex: currentIndex.value,
+        updatedAt: Date.now(),
+    }
+}
+
+function clearPlaybackSnapshotPersistTimer() {
+    if (!playbackSnapshotPersistTimer) return
+    clearTimeout(playbackSnapshotPersistTimer)
+    playbackSnapshotPersistTimer = null
+}
+
+function persistPlaybackSnapshotNow() {
+    clearPlaybackSnapshotPersistTimer()
+    if (!songList.value) return
+
+    lastPlaybackSnapshotPersistAt = Date.now()
+    saveStoredPlaylist(buildPersistedPlaylistPayload())
+}
+
+function schedulePlaybackSnapshotPersist() {
+    if (!songList.value || playbackSnapshotPersistTimer) return
+
+    const elapsed = Date.now() - lastPlaybackSnapshotPersistAt
+    const delay = Math.max(0, PLAYBACK_SNAPSHOT_PERSIST_INTERVAL_MS - elapsed)
+
+    playbackSnapshotPersistTimer = setTimeout(() => {
+        playbackSnapshotPersistTimer = null
+        persistPlaybackSnapshotNow()
+    }, delay)
 }
 
 function stopProgressSampling() {
@@ -1216,6 +1264,7 @@ export function startProgress() {
     progress.value = clampPlaybackProgress(currentHowl.seek(), durationLimit)
     disposeProgressTicker = subscribePlaybackTick(snapshot => {
         progress.value = clampPlaybackProgress(snapshot.seek, snapshot.duration)
+        schedulePlaybackSnapshotPersist()
     }, {
         id: 'player-progress',
         interval: PLAYBACK_TICK_FAST_INTERVAL_MS,
@@ -1671,6 +1720,7 @@ export function startMusic() {
 export function pauseMusic() {
     stopProgressSampling()
     const currentHowl = getCurrentHowl()
+    persistPlaybackSnapshotNow()
     if (playing.value && currentHowl && typeof currentHowl.fade === 'function' && typeof currentHowl.once === 'function') {
         currentHowl.fade(volume.value, 0, 200)
         currentHowl.once('fade', () => {
@@ -1749,6 +1799,7 @@ export function changeProgress(toTime) {
             detail: { duration: Math.floor(time.value || 0), toTime: normalizedTime }
         }))
     } catch (_) {}
+    persistPlaybackSnapshotNow()
 }
 //控制拖拽进度条
 export function changeProgressByDragStart() {
@@ -2219,11 +2270,7 @@ export function addToNextLocal(song, autoplay) {
     addToNext(localMusicHandle([song], true), autoplay)
 }
 export function savePlaylist() {
-    const list = {
-        songList: songList.value,
-        shuffledList: shuffledList.value
-    }
-    saveStoredPlaylist(list)
+    saveStoredPlaylist(buildPersistedPlaylistPayload())
 }
 export function songTime(dt) {
     return formatSongTime(dt)
@@ -2429,10 +2476,7 @@ export function initPlayerExternalBridge() {
         },
         onBeforeQuit() {
             windowApi.downloadPause('shutdown')
-            persistPlaylistBeforeExit({
-                songList: songList.value,
-                shuffledList: shuffledList.value
-            })
+            persistPlaylistBeforeExit(buildPersistedPlaylistPayload())
         },
         onSetPosition(positionSeconds) {
             changeProgress(positionSeconds)

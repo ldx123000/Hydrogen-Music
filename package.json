@@ -30,8 +30,7 @@
     "metaflac-js": "^1.0.5",
     "music-metadata": "^11.9.0",
     "nanoid": "^5.1.6",
-    "node-id3": "^0.2.9",
-    "sharp": "^0.32.6"
+    "node-id3": "^0.2.9"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",

@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron')
+const { pathToFileURL } = require('url')
 const TRUSTED_RESOURCE_ERROR_MARKER = '__hydrogenMusicTrustedResourceError'
 
 function subscribeChannel(channel, callback) {
@@ -216,8 +217,14 @@ function sendPlayerCurrentTrackTime(t) {
 
 function toFileUrl(filePathOrUrl) {
     if (!filePathOrUrl || typeof filePathOrUrl !== 'string') return ''
-    if (filePathOrUrl.startsWith('file://')) return filePathOrUrl
-    const normalized = String(filePathOrUrl).replace(/\\/g, '/')
+    const value = filePathOrUrl.trim()
+    if (!value) return ''
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value)) return value
+    try {
+        return pathToFileURL(value).toString()
+    } catch (_) {}
+
+    const normalized = value.replace(/\\/g, '/')
     // If it already looks like a URL (http/https/etc.), return as-is
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(normalized)) return normalized
 
@@ -265,7 +272,8 @@ contextBridge.exposeInMainWorld('windowApi', {
     setSettings,
     getSettings: () => ipcRenderer.invoke('get-settings'),
     getSystemFonts: () => ipcRenderer.invoke('system-fonts:list'),
-    openFile: () => ipcRenderer.invoke('dialog:openFile'),
+    openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
+    openFile: () => ipcRenderer.invoke('dialog:openDirectory'),
     clearLocalMusicData,
     persistLocalMusicDerived: (payload) => ipcRenderer.send('persist-local-music-derived', payload),
     registerShortcuts,

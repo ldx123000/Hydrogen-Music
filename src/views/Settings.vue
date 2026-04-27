@@ -275,11 +275,12 @@ const routerChange = () => {
 
 const openDirectoryPicker = async () => {
     try {
-        if (!windowApi || typeof windowApi.openFile !== 'function') {
+        const openDirectory = windowApi?.openDirectory || windowApi?.openFile
+        if (typeof openDirectory !== 'function') {
             noticeOpen('目录选择器不可用', 2)
             return null
         }
-        return await windowApi.openFile()
+        return await openDirectory()
     } catch (error) {
         console.error('打开目录选择器失败:', error)
         noticeOpen('打开目录选择器失败', 2)
@@ -624,7 +625,7 @@ const clearFmRecent = () => {
                         <div class="option" v-if="playerStore.musicVideo">
                             <div class="option-name">音乐视频缓存</div>
                             <div class="select-download-folder">
-                                <div class="selected-folder" :title="downloadFolder">{{ videoFolder ? videoFolder : '待选择' }}</div>
+                                <div class="selected-folder" :title="videoFolder">{{ videoFolder ? videoFolder : '待选择' }}</div>
                                 <div class="select-option" @click="selectFolder('video')">选择</div>
                             </div>
                         </div>
