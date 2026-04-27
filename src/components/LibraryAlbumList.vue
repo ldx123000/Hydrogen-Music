@@ -1,5 +1,4 @@
 <script setup>
-  import { ref, computed } from 'vue'
   import { formatTime } from '../utils/time'
   import { useRouter } from 'vue-router'
   import { usePlayerStore } from '../store/playerStore';
@@ -9,9 +8,7 @@
   const playerStore = usePlayerStore()
 
   //专辑日期
-  const publishTime = computed(() => (time) => {
-    return formatTime(time, "YYYY-MM-DD")
-  })
+  const publishTime = time => formatTime(time, "YYYY-MM-DD")
 
   const checkAlbum = (albumId) => {
     playerStore.forbidLastRouter = true
@@ -22,7 +19,7 @@
 <template>
   <div class="library-content">
     <div class="library-album-list">
-        <div class="list-item" @click="checkAlbum(item.id)" v-for="(item, index) in props.albumlist">
+        <div class="list-item" @click="checkAlbum(item.id)" v-for="(item, index) in props.albumlist" :key="item.id || index">
             <div class="item-title" :class="{'item-title-full': props.type == 'search'}">
                 <div class="item-img">
                     <div class="album-back"></div>

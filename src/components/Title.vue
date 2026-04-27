@@ -8,6 +8,8 @@
   import { storeToRefs } from 'pinia';
   import { getSongDisplayName } from '../utils/songName';
   import { getIndexedSong } from '../utils/songList';
+  import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop';
+  import { useStableImageSource } from '../composables/useStableImageSource';
   const router = useRouter()
   const playerStore = usePlayerStore()
   const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, localBase64Img, progress, time, playerShow, showSongTranslation } = storeToRefs(playerStore)
@@ -35,7 +37,8 @@
   })
 
   const currentSong = computed(() => getIndexedSong(songList.value, currentIndex.value))
-  const currentSongCoverUrl = computed(() => currentSong.value?.coverUrl || currentSong.value?.al?.picUrl || '')
+  const currentSongCoverUrl = computed(() => withCoverParam(getSongCoverUrl(currentSong.value), 100))
+  const displayedCurrentSongCoverUrl = useStableImageSource(currentSongCoverUrl)
 
   const backHome = () => {
     if(widgetState.value) router.push('/')
@@ -60,7 +63,7 @@
     <div class="title-player" :class="{'title-player-in': videoIsPlaying && !playerShow}" v-if="musicVideo && currentSong" @click="playerShow = true">
       <div class="player-content" :class="{'player-content-in': videoIsPlaying && !playerShow}">
         <div class="cover">
-          <img v-if="currentSong.type != 'local'" :src="currentSongCoverUrl ? currentSongCoverUrl + '?param=100y100' : ''" alt="">
+          <img v-if="currentSong.type != 'local' && displayedCurrentSongCoverUrl" :src="displayedCurrentSongCoverUrl" alt="">
           <img v-else-if="localBase64Img" :src="localBase64Img" alt="">
           <img v-else src="https://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=140y140" alt="">
         </div>

@@ -82,7 +82,7 @@
                                     @click="handleCoverSlotClick(item)"
                                 >
                                     <template v-if="item.song && !item.isPlaceholder">
-                                        <img :src="getFmSongCover(item.song) || '/src/assets/default-cover.png'" :alt="item.song.name || 'FM Cover'" />
+                                        <img :src="getFmSongCover(item.song, 512) || '/src/assets/default-cover.png'" :alt="item.song.name || 'FM Cover'" />
                                         <div v-if="item.role === 'center'" class="fm-play-overlay">
                                             <svg v-if="!isPlaying" width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M8 5v14l11-7z" />
@@ -183,8 +183,9 @@ import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
 import { getSongDisplayName } from '../utils/songName'
-import { getPrefetchedSongAssets, prefetchSongAssetList } from '../utils/player/assetPrefetch'
+import { getPrefetchedSongAssets, hydrateRemoteSongMetadata, prefetchSongAssetList } from '../utils/player/assetPrefetch'
 import { createEmptyLyric } from '../utils/player/lyricPayload'
+import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop'
 
 const router = useRouter()
 const playerStore = usePlayerStore()
@@ -254,23 +255,23 @@ function safeParseArray(raw) {
     }
 }
 
+function isBlankValue(value) {
+    return value == null || value === ''
+}
+
+function firstPresentValue(...values) {
+    return values.find(value => !isBlankValue(value)) ?? null
+}
+
 function normalizeSongId(id) {
-    if (id === null || id === undefined || id === '') return null
+    if (isBlankValue(id)) return null
     return String(id)
 }
 
 function getPrimarySongId(song) {
     if (!song || typeof song != 'object') return null
-    if (song.id !== undefined && song.id !== null && song.id !== '') return song.id
-    if (song.songId !== undefined && song.songId !== null && song.songId !== '') return song.songId
-    if (song.trackId !== undefined && song.trackId !== null && song.trackId !== '') return song.trackId
-    const nestedSong = song.song
-    if (nestedSong && typeof nestedSong == 'object') {
-        if (nestedSong.id !== undefined && nestedSong.id !== null && nestedSong.id !== '') return nestedSong.id
-        if (nestedSong.songId !== undefined && nestedSong.songId !== null && nestedSong.songId !== '') return nestedSong.songId
-        if (nestedSong.trackId !== undefined && nestedSong.trackId !== null && nestedSong.trackId !== '') return nestedSong.trackId
-    }
-    return null
+    const nestedSong = song.song && typeof song.song == 'object' ? song.song : null
+    return firstPresentValue(song.id, song.songId, song.trackId, nestedSong?.id, nestedSong?.songId, nestedSong?.trackId)
 }
 
 function getFmSongArtists(song) {
@@ -301,22 +302,10 @@ function getFmSongAlbum(song) {
     return null
 }
 
-function getFmSongCover(song) {
-    if (!song || typeof song != 'object') return null
-    if (song.coverUrl) return song.coverUrl
-    if (song.al?.picUrl) return song.al.picUrl
-    if (song.album?.picUrl) return song.album.picUrl
-    if (song.blurPicUrl) return song.blurPicUrl
-    if (song.img1v1Url) return song.img1v1Url
-    const nestedSong = song.song
-    if (nestedSong && typeof nestedSong == 'object') {
-        if (nestedSong.coverUrl) return nestedSong.coverUrl
-        if (nestedSong.al?.picUrl) return nestedSong.al.picUrl
-        if (nestedSong.album?.picUrl) return nestedSong.album.picUrl
-        if (nestedSong.blurPicUrl) return nestedSong.blurPicUrl
-        if (nestedSong.img1v1Url) return nestedSong.img1v1Url
-    }
-    return null
+function getFmSongCover(song, size = null) {
+    const coverUrl = getSongCoverUrl(song)
+    if (!coverUrl) return null
+    return size ? withCoverParam(coverUrl, size) : coverUrl
 }
 
 function getFmSongArtistsText(song) {
@@ -332,16 +321,12 @@ function getFmSongAlbumName(song) {
 
 function getArtistId(artist) {
     if (!artist || typeof artist != 'object') return null
-    if (artist.id !== undefined && artist.id !== null && artist.id !== '') return artist.id
-    if (artist.artistId !== undefined && artist.artistId !== null && artist.artistId !== '') return artist.artistId
-    return null
+    return firstPresentValue(artist.id, artist.artistId)
 }
 
 function getAlbumId(album) {
     if (!album || typeof album != 'object') return null
-    if (album.id !== undefined && album.id !== null && album.id !== '') return album.id
-    if (album.albumId !== undefined && album.albumId !== null && album.albumId !== '') return album.albumId
-    return null
+    return firstPresentValue(album.id, album.albumId)
 }
 
 function canOpenArtist(artist) {
@@ -377,8 +362,6 @@ function normalizeFmSong(song) {
     const rawAlbum = getFmSongAlbum(song)
     const album = rawAlbum && typeof rawAlbum == 'object' ? { ...rawAlbum } : {}
     const coverUrl = getFmSongCover(song)
-
-    if (coverUrl && !album.picUrl) album.picUrl = coverUrl
 
     const parsedDuration = Number(song.dt ?? song.duration ?? song.song?.dt ?? song.song?.duration ?? 0)
     const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 0
@@ -538,7 +521,7 @@ let skipIntroOnNextActivated = true
 
 function getCurrentFmUserId() {
     const userId = userStore?.user?.userId
-    return userId === undefined || userId === null || userId === '' ? null : String(userId)
+    return isBlankValue(userId) ? null : String(userId)
 }
 
 function isActiveFmRefresh(token, userId) {
@@ -597,11 +580,12 @@ function getPrefetchedFmLyric(...songs) {
 }
 
 function scheduleNextCandidateAssetPrefetch() {
-    const candidates = [nextCandidateSong.value, fmSongs.value[0], fmSongs.value[1]].filter(Boolean)
+    const candidates = [currentSong.value, nextCandidateSong.value, fmSongs.value[0], fmSongs.value[1]].filter(Boolean)
     if (candidates.length === 0) return
-    void prefetchSongAssetList(candidates, { quality: quality.value, limit: 2 })
-    if (playerStore.gaplessPlayback) {
-        void preloadGaplessSongPlayback(candidates[0], { quality: quality.value })
+    void prefetchSongAssetList(candidates, { quality: quality.value, limit: 3, immediate: true })
+    const gaplessCandidate = nextCandidateSong.value || fmSongs.value[0] || fmSongs.value[1] || null
+    if (playerStore.gaplessPlayback && gaplessCandidate) {
+        void preloadGaplessSongPlayback(gaplessCandidate, { quality: quality.value })
     }
 }
 
@@ -875,6 +859,7 @@ const togglePlay = async () => {
             console.error('Invalid current FM song shape:', sourceSong)
             return
         }
+        const metadataTask = hydrateRemoteSongMetadata(normalizedCurrentSong)
 
         const preferredQuality = getPreferredQuality(quality.value)
         const trackInfo = await resolveTrackByQualityPreference(targetSongId, preferredQuality)
@@ -904,6 +889,15 @@ const togglePlay = async () => {
             playerStore.lyric = null
             playerStore.lyricsObjArr = null
             playerStore.currentLyricIndex = -1
+            void metadataTask.then(() => {
+                if (playerStore.songId !== targetSongId) return
+                Object.assign(sourceSong, normalizedCurrentSong, { type: 'fm' })
+                const activeSong = playerStore.songList?.[0]
+                if (activeSong?.id === targetSongId) {
+                    Object.assign(activeSong, normalizedCurrentSong, { type: 'fm' })
+                    try { window.dispatchEvent(new CustomEvent('mediaSession:updateArtwork')) } catch (_) {}
+                }
+            })
             await setSongLevel(trackInfo.level, trackInfo)
 
             // 直接播放音乐

@@ -15,6 +15,8 @@
   import { storeToRefs } from 'pinia'
   import { getSongDisplayName } from '../utils/songName'
   import { getIndexedSong } from '../utils/songList'
+  import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop'
+  import { useStableImageSource } from '../composables/useStableImageSource'
   const router = useRouter()
   const userStore = useUserStore()
   const playerStore = usePlayerStore()
@@ -81,9 +83,9 @@
     && !isCurrentSirenSong.value
   ))
   const currentSongCoverUrl = computed(() => {
-    const coverUrl = currentSong.value?.coverUrl || currentSong.value?.al?.picUrl || ''
-    return coverUrl ? `${coverUrl}?param=128y128` : ''
+    return withCoverParam(getSongCoverUrl(currentSong.value), 128)
   })
+  const displayedCurrentSongCoverUrl = useStableImageSource(currentSongCoverUrl)
   const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '', showSongTranslation.value))
 
   watch(() => volume.value, () => {
@@ -154,7 +156,7 @@
     </div>
     <div class="music-info">
         <div class="music-img" @click="showPlayer()">
-            <img v-if="currentSong && !isCurrentLocalSong && currentSongCoverUrl" :src="currentSongCoverUrl" alt="">
+            <img v-if="currentSong && !isCurrentLocalSong && displayedCurrentSongCoverUrl" :src="displayedCurrentSongCoverUrl" alt="">
             <img v-else-if="currentSong && isCurrentLocalSong && localBase64Img" :src="localBase64Img" alt="">
             <img v-else-if="currentSong && isCurrentLocalSong" src="https://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=128y128" alt="">
             <div class="open-player">

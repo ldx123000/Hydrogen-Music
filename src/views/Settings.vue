@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onActivated, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, onActivated, onBeforeUnmount, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { noticeOpen, dialogOpen } from '@/utils/dialog'
 import { applySettingsSnapshot, initSettings } from '@/utils/initApp'
@@ -8,10 +8,13 @@ import { isLogin } from '@/utils/authority'
 import { useUserStore } from '@/store/userStore'
 import { usePlayerStore } from '@/store/playerStore'
 import Selector from '../components/Selector.vue'
+import FontSelector from '../components/FontSelector.vue'
 import UpdateDialog from '../components/UpdateDialog.vue'
 import { setTheme, getSavedTheme } from '@/utils/theme'
 import { logoutCurrentAccountSession } from '@/utils/accountSession'
 import { getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
+import { applyCustomFontStyle, syncDesktopLyricCustomFont } from '@/utils/setFont'
+import { buildFontOptions, loadSystemFontOptions, resolveSystemFontLabel, resolveSystemFontValue } from '@/utils/fontResolver'
 import settingsSchema from '@/shared/settingsSchema.js'
 
 const { MUSIC_LEVEL_OPTIONS, normalizeSettings } = settingsSchema
@@ -55,6 +58,17 @@ const shortcutsList = ref(null)
 const selectedShortcut = ref(null)
 const newShortcut = ref([])
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!']
+const customFont = ref('')
+const customFontLabel = ref('')
+const systemFonts = ref([])
+const systemFontsLoading = ref(false)
+let systemFontsLoadPromise = null
+
+const fontOptions = computed(() => buildFontOptions({
+    systemFonts: systemFonts.value,
+    customFont: customFont.value,
+    customFontLabel: customFontLabel.value,
+}))
 
 // 更新相关状态
 const showUpdateDialog = ref(false)
@@ -101,12 +115,13 @@ const applySettingsToForm = settings => {
     shortcutsList.value = normalizedSettings.shortcuts
     globalShortcuts.value = normalizedSettings.other.globalShortcuts
     quitApp.value = normalizedSettings.other.quitApp
+    customFont.value = normalizedSettings.other.customFont
+    customFontLabel.value = normalizedSettings.other.customFontLabel
 }
 
 onActivated(() => {
-    void getSettingsSnapshot().then(settings => {
-        applySettingsToForm(settings)
-    })
+    void getSettingsSnapshot().then(applySettingsToForm)
+    void loadSystemFonts()
 
     // Initialize theme selection
     try {
@@ -130,8 +145,7 @@ watch(
             const isLeavingToPlayer = prev === true && now === false
             const inSettings = router.currentRoute.value?.name === 'settings'
             if (isLeavingToPlayer && inSettings) {
-                const snapshot = setAppSettings()
-                initSettings({ settings: snapshot, hydrateLocalMusic: true })
+                saveSettings()
                 noticeOpen('设置已保存', 2)
             }
         } catch (_) {
@@ -192,6 +206,8 @@ const setAppSettings = () => {
         other: {
             globalShortcuts: globalShortcuts.value,
             quitApp: quitApp.value,
+            customFont: customFont.value,
+            customFontLabel: customFont.value ? customFontLabel.value : '',
         },
     }
 
@@ -199,15 +215,56 @@ const setAppSettings = () => {
     const snapshot = setCachedSettingsSnapshot(normalizedSettings)
     windowApi.setSettings(JSON.stringify(normalizedSettings))
     applySettingsSnapshot(snapshot, { hydrateLocalMusic: false })
+    syncDesktopLyricCustomFont(snapshot?.other?.customFont, snapshot?.other?.customFontLabel)
     return snapshot
+}
+
+const saveSettings = () => {
+    initSettings({ settings: setAppSettings(), hydrateLocalMusic: true })
+}
+
+const setCustomFont = (font, option = null) => {
+    const rawFont = typeof font === 'string' ? font : customFont.value
+    const resolvedFont = resolveSystemFontValue(rawFont)
+    const fallbackLabel = option?.label || customFontLabel.value || rawFont
+    const resolvedLabel = resolvedFont
+        ? String(resolveSystemFontLabel(resolvedFont, fallbackLabel, systemFonts.value)).trim()
+        : ''
+    const appliedFont = applyCustomFontStyle(resolvedFont, resolvedLabel)
+    customFont.value = appliedFont
+    customFontLabel.value = appliedFont ? resolvedLabel : ''
+}
+
+const refreshCustomFont = () => {
+    if (customFont.value) setCustomFont(customFont.value)
+    return systemFonts.value
+}
+
+const loadSystemFonts = async () => {
+    if (systemFonts.value.length > 0) {
+        return refreshCustomFont()
+    }
+    if (systemFontsLoadPromise) return systemFontsLoadPromise
+
+    systemFontsLoading.value = true
+    systemFontsLoadPromise = loadSystemFontOptions()
+        .then(fonts => {
+            systemFonts.value = Array.isArray(fonts) ? fonts : []
+            return refreshCustomFont()
+        })
+        .finally(() => {
+            systemFontsLoading.value = false
+            systemFontsLoadPromise = null
+        })
+
+    return systemFontsLoadPromise
 }
 
 // apply theme immediately when user changes
 watch(theme, val => setTheme(val))
 
 onBeforeRouteLeave((to, from, next) => {
-    const snapshot = setAppSettings()
-    initSettings({ settings: snapshot, hydrateLocalMusic: true })
+    saveSettings()
     next()
     noticeOpen('设置已保存', 2)
 })
@@ -371,8 +428,8 @@ const userLogout = async () => {
 }
 const save = () => {
     selectedShortcut.value = null
-    setAppSettings()
-    initSettings()
+    setCustomFont()
+    saveSettings()
     noticeOpen('设置已保存', 2)
 }
 const toGithub = () => {
@@ -660,6 +717,18 @@ const clearFmRecent = () => {
                             <div class="option-name">主题</div>
                             <div class="option-operation">
                                 <Selector v-model="theme" :options="themeOptions"></Selector>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">自定义字体</div>
+                            <div class="option-operation">
+                                <FontSelector
+                                    v-model="customFont"
+                                    :options="fontOptions"
+                                    :loading="systemFontsLoading"
+                                    @open="loadSystemFonts"
+                                    @change="setCustomFont"
+                                ></FontSelector>
                             </div>
                         </div>
                         <div class="option">

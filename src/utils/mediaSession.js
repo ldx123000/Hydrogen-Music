@@ -5,6 +5,7 @@ import { usePlayerStore } from '../store/playerStore'
 import { startMusic, pauseMusic, playNext, playLast, changeProgress } from './player/lazy'
 import { getSongDisplayName } from './songName'
 import { getIndexedSongOrFirst } from './songList'
+import { getSongCoverUrl, withCoverParam } from './coverBackdrop'
 
 function getCurrentTrack(storeRefs) {
   const { songList, currentIndex } = storeRefs
@@ -16,11 +17,10 @@ function getArtworkForTrack(track, localBase64) {
   if (localBase64) {
     arts.push({ src: localBase64 })
   }
-  const cover = (track && (track.coverUrl || (track.al && track.al.picUrl) || track.blurPicUrl || track.img1v1Url)) || null
+  const cover = getSongCoverUrl(track) || null
   if (cover) {
     // Use a single stable size to avoid artwork swaps in OS UI
-    const sizes = [256]
-    sizes.forEach(sz => arts.push({ src: `${cover}?param=${sz}y${sz}` }))
+    arts.push({ src: withCoverParam(cover, 256) })
   }
   return arts
 }

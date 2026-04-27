@@ -253,8 +253,14 @@ const createWindow = () => {
         return { action: 'deny' }
     })
 
+    // IPC must be ready before loading the renderer. Packaged loadFile can finish
+    // much faster than the dev server and otherwise race early settings/font calls.
+    const IpcMainEvent = require('./src/electron/ipcMain')
+    IpcMainEvent(win, app, { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow: () => lyricWindow })
+
     // 监听来自 ipcMain 的菜单更新事件（仅 macOS 生效，并加强负载校验）
-    const { updateApplicationMenu } = require('./src/electron/shortcuts')
+    const registerShortcuts = require('./src/electron/shortcuts')
+    const { updateApplicationMenu } = registerShortcuts
     win.on('update-dock-menu', async (songInfo) => {
         if (process.platform !== 'darwin') return;
 
@@ -437,14 +443,11 @@ const createWindow = () => {
     // ipcMain.on('player-saved', () => {
     //     app.quit();
     // });
-    //ipcMain初始化（懒加载模块，减少主进程冷启动解析量）
-    const IpcMainEvent = require('./src/electron/ipcMain')
+    // 初始化其余主进程模块
     const MusicDownload = require('./src/electron/download')
     const LocalFiles = require('./src/electron/localmusic')
     const InitTray = require('./src/electron/tray')
-    const registerShortcuts = require('./src/electron/shortcuts')
 
-    IpcMainEvent(win, app, { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow: () => lyricWindow })
     MusicDownload(win)
     LocalFiles(win, app)
     InitTray(win, app, path.resolve(__dirname, './src/assets/icon/' + (process.platform === 'win32' ? 'icon.ico' : 'icon.png')))

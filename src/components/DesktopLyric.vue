@@ -9,9 +9,8 @@
                     :class="{ 'cover-backdrop-siren': coverBackdrop.isSiren }"
                 >
                     <img
-                        :key="coverBackdropUrl"
                         class="cover-backdrop-image"
-                        :src="coverBackdropUrl"
+                        :src="displayedCoverBackdropUrl"
                         alt=""
                         aria-hidden="true"
                         referrerpolicy="no-referrer"
@@ -213,6 +212,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watchEffect } from 'vue';
 import { getSongDisplayName } from '../utils/songName';
+import { useStableImageSource } from '../composables/useStableImageSource';
+import { applyCustomFontStyle } from '../utils/setFont';
 
 // 响应式数据
 const currentSong = ref(null);
@@ -232,7 +233,8 @@ const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
 const enLockText = computed(() => (locked.value ? 'UNLOCK POSITION' : 'LOCK POSITION'));
 const zhLockText = computed(() => (locked.value ? '解锁位置' : '锁定位置'));
 const coverBackdropUrl = computed(() => coverBackdrop.value.urls[coverBackdropCandidateIndex.value] || '');
-const showCoverBackdrop = computed(() => !!coverBackdropUrl.value);
+const displayedCoverBackdropUrl = useStableImageSource(coverBackdropUrl);
+const showCoverBackdrop = computed(() => !!displayedCoverBackdropUrl.value);
 
 const applyCoverBackdrop = backdrop => {
     const urls = Array.isArray(backdrop?.urls)
@@ -716,6 +718,8 @@ const handleLyricUpdate = (event, data) => {
             progress.value = data.progress;
         } else if (data.type === 'play-state') {
             playing.value = data.playing;
+        } else if (data.type === 'settings-change') {
+            applyCustomFontStyle(data.customFont, data.customFontLabel);
         }
     } catch (error) {
         // 静默处理错误

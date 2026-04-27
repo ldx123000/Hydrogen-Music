@@ -42,6 +42,7 @@
     "js-cookie": "^3.0.5",
     "js-md5": "^0.8.3",
     "nodemon": "^3.1.10",
+    "opencc-js": "^1.0.5",
     "pinia": "^3.0.3",
     "pinia-plugin-persistedstate": "^4.5.0",
     "plyr": "^3.8.3",

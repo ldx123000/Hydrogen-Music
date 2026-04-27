@@ -3,7 +3,7 @@
   import { formatTime } from '../utils/time';
   import VueSlider from 'vue-slider-component'
   import { noticeOpen } from '../utils/dialog'
-  import { getCloudDiskData, uploadCloudSong } from '../api/cloud'
+  import { uploadCloudSong } from '../api/cloud'
   import CloudFileList from '../components/CloudFileList.vue'
   import { useUserStore } from '../store/userStore'
   import { useCloudStore } from '../store/cloudStore';
@@ -41,20 +41,15 @@
   const dragDetermined = ref(false)
   const uploadCloudDiskFile = ref()
   const typeSelect = ref(CLOUD_CATEGORY_ALL)
-  const lastLoadedUserId = ref(null)
-  let cloudRefreshToken = 0
   let changeHandler = null
 
+  const cloudSongItems = computed(() => Array.isArray(cloudSongs.value) ? cloudSongs.value : [])
   const selectedCategoryName = computed(() => CLOUD_CATEGORY_LABELS[typeSelect.value] || CLOUD_CATEGORY_LABELS[CLOUD_CATEGORY_ALL])
-  const visibleCloudSongs = computed(() => {
-    const items = Array.isArray(cloudSongs.value) ? cloudSongs.value : []
-    return items.filter(item => matchesCategory(item, typeSelect.value))
-  })
+  const visibleCloudSongs = computed(() => cloudSongItems.value.filter(item => matchesCategory(item, typeSelect.value)))
   const lastAddedTime = computed(() => {
-    const items = Array.isArray(cloudSongs.value) ? cloudSongs.value : []
     let latestTime = null
 
-    items.forEach(item => {
+    cloudSongItems.value.forEach(item => {
       const addTime = Number(item?.addTime || 0)
       if (!Number.isFinite(addTime) || addTime <= 0) return
       if (latestTime === null || addTime > latestTime) latestTime = addTime
@@ -63,7 +58,7 @@
     return latestTime
   })
 
-  onMounted(async () => {
+  onMounted(() => {
     changeHandler = async (e) => {
       const input = uploadCloudDiskFile.value
       if (!input) return
@@ -94,7 +89,6 @@
     () => userStore.user?.userId ?? null,
     (nextUserId, previousUserId) => {
       if (nextUserId === previousUserId) return
-      lastLoadedUserId.value = null
       cloudStore.resetAccountState()
       if (nextUserId) {
         void refreshCloudData({ force: true })
@@ -132,52 +126,23 @@
 
   function getCurrentUserId() {
     const userId = userStore.user?.userId
-    return userId === undefined || userId === null || userId === '' ? null : String(userId)
+    return userId == null || userId === '' ? null : String(userId)
   }
 
   async function refreshCloudData(options = {}) {
     const { silent = false, force = false } = options
     const currentUserId = getCurrentUserId()
-    const hadCurrentUserData = lastLoadedUserId.value === currentUserId && Array.isArray(cloudSongs.value)
 
     if (!currentUserId) {
-      lastLoadedUserId.value = null
       cloudStore.resetAccountState()
       return false
     }
 
-    if (force || lastLoadedUserId.value !== currentUserId) {
-      cloudStore.resetAccountState()
+    const loaded = await cloudStore.refreshCloudData(currentUserId, { force })
+    if (!loaded && getCurrentUserId() === currentUserId && !silent) {
+      noticeOpen('获取云盘数据失败', 2)
     }
-
-    const requestToken = ++cloudRefreshToken
-
-    try {
-      const params = {
-        limit: 500,
-        offset: 0,
-        timestamp: new Date().getTime(),
-      }
-
-      const result = await getCloudDiskData(params)
-      if (requestToken !== cloudRefreshToken || getCurrentUserId() !== currentUserId) return false
-
-      count.value = Number(result?.count || 0)
-      size.value = Number((((Number(result?.size) || 0) / 1024 / 1024 / 1024)).toFixed(1))
-      maxSize.value = Number((Number(result?.maxSize || 0) / 1024 / 1024 / 1024))
-      cloudSongs.value = Array.isArray(result?.data) ? result.data : []
-      lastLoadedUserId.value = currentUserId
-      return true
-    } catch (error) {
-      if (requestToken !== cloudRefreshToken || getCurrentUserId() !== currentUserId) return false
-
-      console.error('获取云盘数据失败:', error)
-      if (!hadCurrentUserData) {
-        cloudStore.resetAccountState()
-      }
-      if (!silent) noticeOpen('获取云盘数据失败', 2)
-      return false
-    }
+    return loaded
   }
 
   const uploadFile = () => {
@@ -269,8 +234,9 @@
     // 上传完成后刷新云盘信息
     await refreshCloudData()
   }
-  const dropOverlayTitle = computed(() => (dragDetermined.value && !dragHasSupported.value) ? 'UNSUPPORTED' : 'DROP TO UPLOAD')
-  const dropOverlaySub = computed(() => (dragDetermined.value && !dragHasSupported.value) ? '不支持的文件类型' : '释放文件开始上传')
+  const isDropUnsupported = computed(() => dragDetermined.value && !dragHasSupported.value)
+  const dropOverlayTitle = computed(() => isDropUnsupported.value ? 'UNSUPPORTED' : 'DROP TO UPLOAD')
+  const dropOverlaySub = computed(() => isDropUnsupported.value ? '不支持的文件类型' : '释放文件开始上传')
   async function uploadSingle(file) {
     const formData = new FormData()
     formData.append('songFile', file)
@@ -309,9 +275,7 @@
       isUploading.value = false
     }
   }
-  const addTime =(time) => {
-    return formatTime(time, "YYYY-MM-DD HH:mm:ss")
-  }
+  const addTime = time => formatTime(time, "YYYY-MM-DD HH:mm:ss")
 </script>
 
 <template>

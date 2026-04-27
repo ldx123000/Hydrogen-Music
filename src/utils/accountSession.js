@@ -1,14 +1,17 @@
 import pinia from '../store/pinia'
 import { getLikelist, getUserPlaylist, getUserProfile, logout } from '../api/user'
 import { useUserStore } from '../store/userStore'
+import { useCloudStore } from '../store/cloudStore'
 import { isLogin, setCookies } from './authority'
 import { clearAccountScopedState } from './accountState'
 import { invalidateNcmApiCookieCache } from './request'
 import { resolveFavoritePlaylistMeta } from './favoritePlaylist'
+import { runIdleTask } from './player/idleTask'
 
 const userStore = useUserStore(pinia)
 
 let accountSessionToken = 0
+const cloudDiskDataPreloadMaxAge = 5 * 60 * 1000
 
 function nextAccountSessionToken() {
     accountSessionToken += 1
@@ -17,6 +20,19 @@ function nextAccountSessionToken() {
 
 function isAccountSessionTokenActive(token) {
     return token === accountSessionToken
+}
+
+function scheduleCloudDiskDataPreload(profile) {
+    const userId = profile?.userId
+    if (!userId || !userStore.cloudDiskPage) return
+
+    const normalizedUserId = String(userId)
+    void runIdleTask(async () => {
+        if (!isLogin() || String(userStore.user?.userId || '') !== normalizedUserId || !userStore.cloudDiskPage) return
+
+        const cloudStore = useCloudStore(pinia)
+        await cloudStore.refreshCloudData(normalizedUserId, { maxAge: cloudDiskDataPreloadMaxAge })
+    }, { timeout: 1800, fallbackDelay: 900 }).catch(() => {})
 }
 
 async function hydrateAccountSession(token) {
@@ -61,6 +77,7 @@ async function hydrateAccountSession(token) {
         console.error('加载喜欢歌单信息失败:', error)
     }
 
+    scheduleCloudDiskDataPreload(profile)
     return profile
 }
 

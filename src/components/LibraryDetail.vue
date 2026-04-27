@@ -54,12 +54,20 @@ const isRestorableLibraryRouteName = routeName => {
     return normalized == 'playlist' || normalized == 'album' || normalized == 'artist';
 };
 const getLibraryScroller = () => document.getElementById('libraryScroll');
+const notifyLibraryScrollerPositionChanged = scroller => {
+    if (!scroller) return;
+    const emitScroll = () => scroller.dispatchEvent(new Event('scroll'));
+    emitScroll();
+    const frame = window.requestAnimationFrame || (cb => setTimeout(cb, 16));
+    frame(emitScroll);
+};
 const setLibraryScrollTop = (targetTop, scroller = null) => {
     const targetScroller = scroller || getLibraryScroller();
     if (!targetScroller) return false;
     const parsedTop = Number(targetTop);
     const normalizedTop = Number.isFinite(parsedTop) ? Math.max(0, parsedTop) : 0;
     targetScroller.scrollTop = normalizedTop;
+    notifyLibraryScrollerPositionChanged(targetScroller);
     return true;
 };
 const readCurrentLibraryScrollTop = () => {
@@ -424,7 +432,7 @@ const librarySub = id => {
     let params = {
         id: id,
         t: libraryInfo.value.followed ? 0 : 1,
-        timestamp: new Date().getTime(),
+        timestamp: Date.now(),
     };
     if (isSinger.value) {
         subArtist(params).then(result => {
@@ -452,7 +460,7 @@ const librarySub = id => {
         let params = {
             id: id,
             t: libraryInfo.value.followed ? 2 : 1,
-            timestamp: new Date().getTime(),
+            timestamp: Date.now(),
         };
         subPlaylist(params).then(result => {
             if (result.code == 200) {

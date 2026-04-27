@@ -12,6 +12,7 @@ import { getDjProgramComments } from '../api/dj';
 import { readCommentCountCache, writeCommentCountCache } from '../utils/commentCountCache';
 import { buildCoverBackdropCandidates } from '../utils/coverBackdrop';
 import { getIndexedSongOrFirst } from '../utils/songList';
+import { useStableImageSource } from '../composables/useStableImageSource';
 const playerStore = usePlayerStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
@@ -49,9 +50,8 @@ watch(
     { immediate: true }
 );
 
-const coverBgUrl = computed(() => {
-    return coverBgCandidates.value[coverBgCandidateIndex.value] || null;
-});
+const coverBgUrl = computed(() => coverBgCandidates.value[coverBgCandidateIndex.value] || null);
+const displayedCoverBgUrl = useStableImageSource(coverBgUrl);
 
 const handleCoverBgError = () => {
     coverBgCandidateIndex.value = Math.min(
@@ -60,9 +60,7 @@ const handleCoverBgError = () => {
     );
 };
 
-const showCoverBackdrop = computed(() => {
-    return !!playerStore.coverBlur && !!coverBgUrl.value && !playerStore.videoIsPlaying;
-});
+const showCoverBackdrop = computed(() => !!playerStore.coverBlur && !!displayedCoverBgUrl.value && !playerStore.videoIsPlaying);
 
 // 当切到本地歌曲时，若右侧是评论区则自动切回歌词，避免无按钮无法关闭
 const currentTrack = computed(() => {
@@ -194,10 +192,9 @@ watch(currentTrack, (song) => {
                 :class="{ 'back-drop-siren': isCurrentSirenSong }"
             >
                 <img
-                    v-if="coverBgUrl"
-                    :key="coverBgUrl"
+                    v-if="displayedCoverBgUrl"
                     class="back-drop-image"
-                    :src="coverBgUrl"
+                    :src="displayedCoverBgUrl"
                     alt=""
                     aria-hidden="true"
                     referrerpolicy="no-referrer"

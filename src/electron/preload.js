@@ -264,6 +264,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     hidePlayer,
     setSettings,
     getSettings: () => ipcRenderer.invoke('get-settings'),
+    getSystemFonts: () => ipcRenderer.invoke('system-fonts:list'),
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
     clearLocalMusicData,
     persistLocalMusicDerived: (payload) => ipcRenderer.send('persist-local-music-derived', payload),

@@ -266,7 +266,13 @@ function getPlaybackTarget(direction = PLAYBACK_DIRECTION_NEXT, options = {}) {
     }
 }
 
-function getNextSongPlaybackCandidate() {
+function getNextButtonPlaybackCandidate() {
+    return getPlaybackTarget(PLAYBACK_DIRECTION_NEXT, {
+        skipSingleCurrent: true,
+    })
+}
+
+function getNextAutoPlaybackCandidate() {
     if (playMode.value == 2) return null
 
     return getPlaybackTarget(PLAYBACK_DIRECTION_NEXT, {
@@ -276,12 +282,12 @@ function getNextSongPlaybackCandidate() {
 }
 
 function scheduleNextSongAssetPrefetch() {
-    const nextSong = getNextSongPlaybackCandidate()?.song || null
+    const nextSong = getNextButtonPlaybackCandidate()?.song || null
     if (!nextSong) {
         if (gaplessPlayback.value) clearGaplessPreload()
         return
     }
-    void prefetchSongAssets(nextSong, { quality: quality.value })
+    void prefetchSongAssets(nextSong, { quality: quality.value, immediate: true })
     if (gaplessPlayback.value) {
         void preloadGaplessSongPlayback(nextSong, { quality: quality.value })
     }
@@ -599,6 +605,7 @@ function applyPlayMode(mode, options = {}) {
     }
 
     if (syncExternal) syncPlayModeExternalState(nextMode)
+    scheduleNextSongAssetPrefetch()
     return nextMode
 }
 watch(
@@ -1070,7 +1077,7 @@ function dispatchGaplessTargetStarted(target) {
 }
 
 function startGaplessTarget(target, entry, options = {}) {
-    if (!target?.song || target.id === undefined || target.id === null || !entry?.howl) return false
+    if (!target?.song || target.id == null || !entry?.howl) return false
 
     const previousHowl = getCurrentHowl()
     resetPlaybackStateForGaplessStart()
@@ -1100,7 +1107,7 @@ function getGaplessStartTarget(entry) {
         }
     }
 
-    const candidate = getNextSongPlaybackCandidate()
+    const candidate = getNextAutoPlaybackCandidate()
     if (!candidate) return null
     return {
         song: candidate.song,
@@ -1916,7 +1923,7 @@ export async function getFavoritePlaylistId() {
             uid: userStore.user.userId,
             limit: 50,
             offset: 0,
-            timestamp: new Date().getTime()
+            timestamp: Date.now()
         }
 
         const result = await getUserPlaylist(params)
@@ -1937,6 +1944,26 @@ export async function getFavoritePlaylistNoticeText(like) {
 
     const favoritePlaylist = await getFavoritePlaylistId()
     return `已添加到${favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}`
+}
+
+function applyFavoritePlaylistDetailStale(playlistId, like) {
+    if (!playlistId) return
+    libraryStore.invalidatePlaylistDetailCache(playlistId)
+    if (typeof like == 'boolean') {
+        libraryStore.updatePlaylistOverviewTrackCount(playlistId, like ? 1 : -1)
+    }
+}
+
+async function markFavoritePlaylistDetailStale(like = null) {
+    schedulePlaylistCacheInvalidation()
+    libraryStore.markPlaylistOverviewStale()
+
+    try {
+        const favoritePlaylist = await getFavoritePlaylistId()
+        applyFavoritePlaylistDetailStale(favoritePlaylist?.id, like)
+    } catch (_) {
+        applyFavoritePlaylistDetailStale(userStore.favoritePlaylistId, like)
+    }
 }
 
 export function isPlaylistTrackOperationSuccess(result) {
@@ -1962,7 +1989,7 @@ export async function updateFavoritePlaylistTrack(songId, like) {
         op: like ? 'add' : 'del',
         pid: favoritePlaylist.id,
         tracks: songId,
-        timestamp: new Date().getTime(),
+        timestamp: Date.now(),
     }
 
     const result = await updatePlaylist(params)
@@ -2037,6 +2064,8 @@ export async function likeSong(like, targetSongId = songId.value) {
     }
     const applySuccessfulLikeAction = async noticeText => {
         if (!isActiveLikeActionToken(actionToken)) return false
+        await markFavoritePlaylistDetailStale(like)
+        if (!isActiveLikeActionToken(actionToken)) return false
         const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
         userStore.updateLikelist(fallbackLikelist)
         noticeOpen(noticeText, 2)
@@ -2088,13 +2117,17 @@ export async function likeSong(like, targetSongId = songId.value) {
 }
 
 async function updateFavoritePlaylistIfViewing() {
-    // 检查当前是否在查看"我喜欢的音乐"歌单
-    if (libraryStore.libraryInfo && userStore.favoritePlaylistId &&
-        libraryStore.libraryInfo.id == userStore.favoritePlaylistId) {
+    const favoritePlaylist = await getFavoritePlaylistId()
+    const favoritePlaylistId = favoritePlaylist?.id || userStore.favoritePlaylistId
+    if (!favoritePlaylistId) return
 
+    // 检查当前是否在查看"我喜欢的音乐"歌单
+    if (libraryStore.libraryInfo && libraryStore.libraryInfo.id == favoritePlaylistId) {
         try {
+            schedulePlaylistCacheInvalidation()
+            libraryStore.invalidatePlaylistDetailCache(favoritePlaylistId)
             // 重新获取歌单详情
-            await libraryStore.updatePlaylistDetail(userStore.favoritePlaylistId)
+            await libraryStore.updatePlaylistDetail(favoritePlaylistId, { deferRemaining: true })
         } catch (error) {
             console.error('更新我喜欢的音乐歌单失败:', error)
         }

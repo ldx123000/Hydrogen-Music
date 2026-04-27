@@ -25,6 +25,11 @@ export function normalizeMusicLevel(level) {
     return AVAILABLE_MUSIC_LEVELS.has(level) ? level : DEFAULT_MUSIC_LEVEL
 }
 
+function normalizeCustomText(value, fallback) {
+    if (typeof value !== 'string') return fallback
+    return value.replace(/[\n\r\f]/g, ' ').trim().slice(0, 120)
+}
+
 export function normalizeMusicSettings(music = {}) {
     const normalized = { ...music }
     normalized.searchAssistLimit = normalizeSearchAssistLimit(normalized.searchAssistLimit)
@@ -32,6 +37,14 @@ export function normalizeMusicSettings(music = {}) {
     normalized.showSongTranslation = normalized.showSongTranslation !== false
     normalized.gaplessPlayback = normalized.gaplessPlayback === true
     delete normalized.levelMigratedToLosslessV1
+    return normalized
+}
+
+function normalizeOtherSettings(other = {}) {
+    const normalized = { ...other }
+    normalized.customFont = normalizeCustomText(normalized.customFont, DEFAULT_SETTINGS.other.customFont)
+    normalized.customFontLabel = normalizeCustomText(normalized.customFontLabel, DEFAULT_SETTINGS.other.customFontLabel)
+    if (!normalized.customFont) normalized.customFontLabel = DEFAULT_SETTINGS.other.customFontLabel
     return normalized
 }
 
@@ -50,10 +63,10 @@ export function normalizeSettings(settings = {}) {
             ...(source.local && typeof source.local === 'object' ? source.local : {}),
         },
         shortcuts: Array.isArray(source.shortcuts) ? clonePlain(source.shortcuts) : defaults.shortcuts,
-        other: {
+        other: normalizeOtherSettings({
             ...defaults.other,
             ...(source.other && typeof source.other === 'object' ? source.other : {}),
-        },
+        }),
     }
 
     normalized.local.localFolder = Array.isArray(normalized.local.localFolder)

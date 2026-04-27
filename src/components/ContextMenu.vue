@@ -9,8 +9,7 @@
   import { useOtherStore } from '../store/otherStore';
   import { usePlayerStore } from '../store/playerStore'
   import { useUserStore } from '../store/userStore';
-  import { getLikelist } from '../api/user';
-  import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
+  import { getLikelist, getUserPlaylistCount, getUserPlaylist } from '../api/user'
   import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
   import { storeToRefs } from 'pinia';
   const router = useRouter()
@@ -73,7 +72,7 @@
         uid: userStore.user.userId,
         limit: 500,
         offset: 0,
-        timestamp: new Date().getTime(),
+        timestamp: Date.now(),
       }
       const list = await getUserPlaylist(params)
       if (list && Array.isArray(list.playlist)) {
@@ -121,9 +120,9 @@
         await updateLikelistIfFromFavorite()
         
         // 如果当前正在查看该歌单，实时更新歌单内容
-        await updateCurrentPlaylistIfViewing()
+        await updateCurrentPlaylistIfViewing(otherStore.selectedPlaylist.id)
         
-        updatePlaylistCache()
+        updatePlaylistCache(otherStore.selectedPlaylist.id)
         const isFavoritePlaylist = userStore.favoritePlaylistId && otherStore.selectedPlaylist.id == userStore.favoritePlaylistId
         noticeOpen(isFavoritePlaylist ? '已取消喜欢' : '删除成功', 2)
       } else {
@@ -135,10 +134,16 @@
     }
   }
 
-  const updatePlaylistCache = () => {
+  const markPlaylistDetailStale = playlistId => {
+    schedulePlaylistCacheInvalidation()
+    libraryStore.markPlaylistOverviewStale()
+    if (playlistId) libraryStore.invalidatePlaylistDetailCache(playlistId)
+  }
+
+  const updatePlaylistCache = playlistId => {
     otherStore.addPlaylistShow = false
     createActive.value = false
-    schedulePlaylistCacheInvalidation()
+    markPlaylistDetailStale(playlistId)
     try {
       if(listType1.value == 0 && listType2.value == 0) {
         const myPlaylistElement = document.getElementById('myPlaylist')
@@ -152,13 +157,14 @@
   }
 
   // 检查并更新当前查看的歌单
-  const updateCurrentPlaylistIfViewing = async () => {
+  const updateCurrentPlaylistIfViewing = async playlistId => {
+    if (!playlistId) return
     // 检查当前是否在查看被删除歌曲的歌单
-    if (libraryStore.libraryInfo && otherStore.selectedPlaylist && 
-        libraryStore.libraryInfo.id == otherStore.selectedPlaylist.id) {
+    if (libraryStore.libraryInfo && libraryStore.libraryInfo.id == playlistId) {
         try {
+            markPlaylistDetailStale(playlistId)
             // 重新获取歌单详情
-            await libraryStore.updatePlaylistDetail(otherStore.selectedPlaylist.id)
+            await libraryStore.updatePlaylistDetail(playlistId, { deferRemaining: true })
         } catch (error) {
             console.error('更新歌单失败:', error)
         }
@@ -281,8 +287,10 @@
       }
       updatePlaylist(params).then(result => {
         if(isPlaylistUpdateSuccess(result)) {
-          updatePlaylistCache()
-          noticeOpen(`已添加到${playlist.name}`, 2)
+          updateCurrentPlaylistIfViewing(playlist.id).finally(() => {
+            updatePlaylistCache(playlist.id)
+            noticeOpen(`已添加到${playlist.name}`, 2)
+          })
         }else {
           noticeOpen('添加至歌单错误', 2)
         }

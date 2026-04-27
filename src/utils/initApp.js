@@ -8,6 +8,8 @@ import { hasStoredBiliSession, migrateLegacyBiliSession } from './biliSession'
 import { migrateLegacyAuthSession } from './authority'
 import { getSettingsSnapshot, setCachedSettingsSnapshot } from './settingsSnapshot'
 import { initPlayerExternalBridge, loadLastSong } from './player/lazy'
+import { applyCustomFontStyle, syncDesktopLyricCustomFont } from './setFont'
+import { resolveSystemFontOptionAsync, resolveSystemFontValueAsync } from './fontResolver'
 import settingsSchema from '../shared/settingsSchema.js'
 
 const { normalizeSettings } = settingsSchema
@@ -25,6 +27,7 @@ let sirenDurationPreloadScheduled = false
 let lastSongRestoreScheduled = false
 let localMusicModulePromise = null
 let downloadManagerModulePromise = null
+let customFontResolveToken = 0
 
 function loadLocalMusicModule() {
     if (!localMusicModulePromise) localMusicModulePromise = import('./locaMusic')
@@ -104,9 +107,65 @@ export function applySettingsSnapshot(settings, options = {}) {
     searchAssistLimit.value = normalizedSettings?.music?.searchAssistLimit
     showSongTranslation.value = normalizedSettings?.music?.showSongTranslation !== false
     gaplessPlayback.value = normalizedSettings?.music?.gaplessPlayback === true
+    applyCustomFontSetting(normalizedSettings)
 
     applyLocalSettings(normalizedSettings, options)
     return normalizedSettings
+}
+
+function persistResolvedCustomFont(settings, resolvedCustomFont, resolvedCustomFontLabel = '') {
+    if (!settings || !resolvedCustomFont) return
+
+    const previousOther = settings.other || {}
+    const previousCustomFont = previousOther.customFont || ''
+    const previousCustomFontLabel = previousOther.customFontLabel || ''
+    const customFontLabel = resolvedCustomFontLabel || previousCustomFontLabel || previousCustomFont
+    if (
+        previousCustomFont === resolvedCustomFont
+        && previousCustomFontLabel === customFontLabel
+    ) return
+
+    const nextSettings = normalizeSettings({
+        ...settings,
+        other: {
+            ...previousOther,
+            customFont: resolvedCustomFont,
+            customFontLabel,
+        },
+    })
+
+    setCachedSettingsSnapshot(nextSettings)
+    try {
+        if (typeof windowApi !== 'undefined') windowApi?.setSettings?.(JSON.stringify(nextSettings))
+    } catch (_) {}
+}
+
+function applyCustomFontSetting(settings) {
+    const customFont = settings?.other?.customFont
+    const customFontLabel = settings?.other?.customFontLabel || ''
+    const insertedFont = applyCustomFontStyle(customFont, customFontLabel)
+    const token = ++customFontResolveToken
+
+    if (!insertedFont) {
+        syncDesktopLyricCustomFont('', '')
+        return
+    }
+
+    const needsDisplayLabelResolve = !customFontLabel || customFontLabel === insertedFont
+    const resolveFont = needsDisplayLabelResolve
+        ? resolveSystemFontOptionAsync(insertedFont, customFontLabel || insertedFont)
+        : resolveSystemFontValueAsync(insertedFont).then(value => ({ value, label: customFontLabel }))
+
+    void resolveFont
+        .then(({ value: resolvedFont, label: resolvedFontLabel }) => {
+            if (token !== customFontResolveToken) return
+            if (!resolvedFont) return
+
+            applyCustomFontStyle(resolvedFont, resolvedFontLabel)
+            syncDesktopLyricCustomFont(resolvedFont, resolvedFontLabel)
+            persistResolvedCustomFont(settings, resolvedFont, resolvedFontLabel)
+        })
+        .catch(() => {})
 }
 
 export async function initSettings(options = {}) {

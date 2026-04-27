@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { RecycleScroller } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { songTime } from '../utils/time'
@@ -55,6 +55,7 @@ const props = defineProps({
     },
 })
 const hoverRowKey = ref(null)
+const recycleScroller = ref(null)
 const rowKeyBySong = new WeakMap()
 let rowKeySeed = 0
 
@@ -83,6 +84,29 @@ const scrollerItems = computed(() => {
     }))
 })
 const queueSongs = computed(() => (Array.isArray(props.queueSonglist) ? props.queueSonglist : props.songlist))
+
+const refreshRecycleScroller = async () => {
+    await nextTick()
+    const scroller = recycleScroller.value
+    if (!scroller) return
+
+    const refresh = () => {
+        scroller.handleResize?.()
+        scroller.updateVisibleItems?.(true)
+    }
+    refresh()
+    const frame = window.requestAnimationFrame || (cb => setTimeout(cb, 16))
+    frame(refresh)
+}
+const scheduleRecycleScrollerRefresh = () => {
+    void refreshRecycleScroller()
+}
+
+watch(scrollerItems, scheduleRecycleScrollerRefresh, { flush: 'post' })
+
+onMounted(scheduleRecycleScrollerRefresh)
+
+onActivated(scheduleRecycleScrollerRefresh)
 
 const checkArtist = artistId => {
     if (!props.artistRouteEnabled || !artistId) return
@@ -153,7 +177,7 @@ const openMenu = (e, item) => {
 
 <template>
     <div class="library-content">
-        <RecycleScroller v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="42" key-field="rowKey" v-slot="{ item }">
+        <RecycleScroller ref="recycleScroller" v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="42" key-field="rowKey" v-slot="{ item }">
             <div
                 class="list-item"
                 :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': item.song.playable !== undefined && !item.song.playable, 'list-item-vip': item.song.vipOnly }"

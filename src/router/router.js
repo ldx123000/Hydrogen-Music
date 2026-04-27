@@ -2,26 +2,41 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { isLogin } from '../utils/authority'
 import { noticeOpen } from '../utils/dialog'
 import { ensureDeferredAppInit } from '../utils/initApp'
-// 路由组件全部切换为懒加载，减小首屏体积
-const HomePage = () => import('../views/HomePage.vue')
-const CloudDisk = () => import('../views/CloudDisk.vue')
-const PersonalFMPage = () => import('../views/PersonalFMPage.vue')
-const LoginPage = () => import('../views/LoginPage.vue')
-const LoginContent = () => import('../components/LoginContent.vue')
-const MyMusic = () => import('../views/MyMusic.vue')
-const SirenPage = () => import('../views/SirenPage.vue')
-const LibraryDetail = () => import('../components/LibraryDetail.vue')
-const RecommendSongs = () => import('../components/RecommendSongs.vue')
-const LocalMusicDetail = () => import('../components/LocalMusicDetail.vue')
-const SearchResult = () => import('../views/SearchResult.vue')
-const Settings = () => import('../views/Settings.vue')
-const RadioDetail = () => import('../components/RadioDetail.vue')
-
+import { runIdleTask } from '../utils/player/idleTask'
 import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
 import { useLocalStore } from '../store/localStore'
 import { storeToRefs } from 'pinia'
 import { useOtherStore } from '../store/otherStore'
+
+function createRouteLoader(loader) {
+    let promise = null
+    return () => {
+        if (!promise) {
+            promise = loader().catch(error => {
+                promise = null
+                throw error
+            })
+        }
+        return promise
+    }
+}
+
+// 路由组件保持懒加载，同时支持首屏后空闲预热
+const HomePage = createRouteLoader(() => import('../views/HomePage.vue'))
+const CloudDisk = createRouteLoader(() => import('../views/CloudDisk.vue'))
+const PersonalFMPage = createRouteLoader(() => import('../views/PersonalFMPage.vue'))
+const LoginPage = createRouteLoader(() => import('../views/LoginPage.vue'))
+const LoginContent = createRouteLoader(() => import('../components/LoginContent.vue'))
+const MyMusic = createRouteLoader(() => import('../views/MyMusic.vue'))
+const SirenPage = createRouteLoader(() => import('../views/SirenPage.vue'))
+const LibraryDetail = createRouteLoader(() => import('../components/LibraryDetail.vue'))
+const RecommendSongs = createRouteLoader(() => import('../components/RecommendSongs.vue'))
+const LocalMusicDetail = createRouteLoader(() => import('../components/LocalMusicDetail.vue'))
+const SearchResult = createRouteLoader(() => import('../views/SearchResult.vue'))
+const Settings = createRouteLoader(() => import('../views/Settings.vue'))
+const RadioDetail = createRouteLoader(() => import('../components/RadioDetail.vue'))
+
 const userStore = useUserStore()
 const libraryStore = useLibraryStore()
 const { updateLibraryDetail } = libraryStore
@@ -29,6 +44,43 @@ const { libraryInfo } = storeToRefs(libraryStore)
 const localStore = useLocalStore()
 const otherStore = useOtherStore()
 const hasDifferentLibraryId = (to, from) => String(to?.params?.id || '') != String(from?.params?.id || '')
+const routeComponentPreloadLoaders = [
+    HomePage,
+    MyMusic,
+    CloudDisk,
+    PersonalFMPage,
+    LibraryDetail,
+    RecommendSongs,
+    LocalMusicDetail,
+    RadioDetail,
+    SearchResult,
+    Settings,
+    SirenPage,
+    LoginPage,
+    LoginContent,
+]
+const routeComponentPreloadBatchSize = 2
+let routeComponentPreloadStarted = false
+
+async function preloadRouteComponentBatch(startIndex = 0) {
+    if (typeof window === 'undefined' || startIndex >= routeComponentPreloadLoaders.length) return
+
+    await runIdleTask(async () => {
+        const batch = routeComponentPreloadLoaders.slice(
+            startIndex,
+            startIndex + routeComponentPreloadBatchSize
+        )
+        await Promise.allSettled(batch.map(loader => loader()))
+    }, { timeout: 1500, fallbackDelay: 700 })
+
+    void preloadRouteComponentBatch(startIndex + routeComponentPreloadBatchSize)
+}
+
+function scheduleRouteComponentPreload() {
+    if (routeComponentPreloadStarted || typeof window === 'undefined') return
+    routeComponentPreloadStarted = true
+    void preloadRouteComponentBatch()
+}
 
 const routes = [
     {
@@ -220,6 +272,10 @@ router.beforeEach((to, from, next) => {
     }
 
     next()
+})
+
+router.afterEach(() => {
+    scheduleRouteComponentPreload()
 })
 
 export default router

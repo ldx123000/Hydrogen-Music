@@ -16,7 +16,7 @@
   const { user } = storeToRefs(userStore)
   const libraryStore = useLibraryStore()
   const { changeLibraryList, updateUserPlaylistCount, updateUserPlaylist } = libraryStore
-  const { libraryList, libraryListAlbum, libraryListAritist, listType1, listType2 } = storeToRefs(libraryStore)
+  const { libraryList, libraryListAlbum, libraryListAritist, listType1, listType2, playlistOverviewVersion } = storeToRefs(libraryStore)
   const localStore = useLocalStore()
 
   const typeTracker = ref(0)
@@ -26,6 +26,7 @@
   const typeThree = ref(0)
   const typeFour = ref(0)
   const lastLoadedUserId = ref(null)
+  const lastHandledPlaylistOverviewVersion = ref(playlistOverviewVersion.value)
   const SUB_ALBUM_PAGE_SIZE = 100
   let libraryRequestToken = 0
 
@@ -34,7 +35,7 @@
 
   function getCurrentUserId() {
     const userId = user.value?.userId
-    return userId === undefined || userId === null || userId === '' ? null : String(userId)
+    return userId == null || userId === '' ? null : String(userId)
   }
 
   function isLibraryRequestActive(requestToken, requestUserId) {
@@ -70,6 +71,7 @@
       if (!isLibraryRequestActive(requestToken, requestUserId)) return false
 
       updateUserPlaylist(Array.isArray(list?.playlist) ? list.playlist : [])
+      lastHandledPlaylistOverviewVersion.value = playlistOverviewVersion.value
       lastLoadedUserId.value = requestUserId
       return true
     } catch (error) {
@@ -204,12 +206,6 @@
   
   function changeTracker(num) {
     listType1.value = num
-    if(num == 0) {
-        option.value = num
-        typeTracker.value = num
-        void refreshCurrentSection()
-        return
-    }
     option.value = num
     typeTracker.value = num
     void refreshCurrentSection()
@@ -246,9 +242,20 @@
     }
   )
 
+  watch(
+    () => playlistOverviewVersion.value,
+    version => {
+      if (version === lastHandledPlaylistOverviewVersion.value) return
+      if (option.value != 0) return
+      void refreshCurrentSection()
+    }
+  )
+
   onActivated(() => {
     const currentUserId = getCurrentUserId()
-    if ((option.value == 0 || option.value == 1) && currentUserId && lastLoadedUserId.value !== currentUserId) {
+    const needsUserReload = (option.value == 0 || option.value == 1) && currentUserId && lastLoadedUserId.value !== currentUserId
+    const needsPlaylistOverviewReload = option.value == 0 && playlistOverviewVersion.value !== lastHandledPlaylistOverviewVersion.value
+    if (needsUserReload || needsPlaylistOverviewReload) {
       void refreshCurrentSection()
     }
   })

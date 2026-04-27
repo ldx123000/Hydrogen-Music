@@ -13,9 +13,10 @@ import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
-import { withCoverParam } from '../utils/coverBackdrop';
+import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop';
 import { getSongDisplayName } from '../utils/songName';
 import { getIndexedSong } from '../utils/songList';
+import { useStableImageSource } from '../composables/useStableImageSource';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -131,10 +132,9 @@ const showOnlineCurrentSongActions = computed(() => !isDjMode.value && showRemot
 const showCommentPanelAction = computed(() => showRemoteCurrentSong.value && !isCurrentSirenSong.value);
 
 const currentSongCoverUrl = computed(() => {
-    const song = currentSong.value;
-    const coverUrl = song?.coverUrl || song?.al?.picUrl || song?.blurPicUrl || song?.img1v1Url || '';
-    return withCoverParam(coverUrl, 640);
+    return withCoverParam(getSongCoverUrl(currentSong.value), 1024);
 });
+const displayedRemoteCoverUrl = useStableImageSource(currentSongCoverUrl);
 
 // 当前电台订阅状态与rid
 const djSubed = ref(false);
@@ -265,12 +265,10 @@ const toggleDjSub = async isSubscribe => {
     <div class="player-container">
         <div class="player">
             <div class="player-cover">
-                <div class="cover" :class="{ 'cover-change': playerChangeSong, 'back-Video': videoIsPlaying }" @click="backToVideo()">
-                    <!-- Force re-create <img> when song changes so old cover doesn't persist -->
+                <div class="cover" :class="{ 'back-Video': videoIsPlaying }" @click="backToVideo()">
                     <img
-                        v-if="showRemoteCurrentSong"
-                        :key="'remote-' + (songId || currentSong?.id) + '-' + currentSongCoverUrl"
-                        :src="currentSongCoverUrl"
+                        v-if="showRemoteCurrentSong && displayedRemoteCoverUrl"
+                        :src="displayedRemoteCoverUrl"
                         alt=""
                     />
                     <img v-else-if="currentSong?.type === 'local' && localBase64Img" :key="'local-' + (songId || currentSong?.id)" :src="localBase64Img" alt="" />
@@ -929,10 +927,6 @@ const toggleDjSub = async isSubscribe => {
                         }
                     }
                 }
-            }
-            .cover-change {
-                opacity: 0;
-                transform: scale(0.95);
             }
             .back-Video {
                 &:hover {

@@ -1,23 +1,28 @@
-import { getLyric } from '../../api/song'
+import { getLyric, getSongDetail } from '../../api/song'
 import { getSirenLyricText, getSirenSong } from '../../api/siren'
 import { getPreferredQuality } from '../quality'
 import { resolveTrackByQualityPreference } from '../musicUrlResolver'
 import { getSirenSourceId, isSirenSong } from '../siren'
-import { withCoverParam } from '../coverBackdrop'
+import { getSongCoverUrl, normalizeCoverUrl, withCoverParam } from '../coverBackdrop'
 import { runIdleTask } from './idleTask'
 import { createEmptyLyric, normalizeLyricPayload } from './lyricPayload'
 
 const PREFETCH_CACHE_LIMIT = 80
 const IDLE_TIMEOUT_MS = 1800
 const IMAGE_LOAD_TIMEOUT_MS = 10000
-const IMAGE_COVER_SIZES = [512, 640]
-const COVER_FIELDS = ['coverUrl', 'coverDeUrl', 'al.picUrl', 'album.picUrl', 'blurPicUrl', 'img1v1Url']
+const IMAGE_COVER_SIZES = [100, 128, 256, 512, 640, 1024]
+const COVER_FIELDS = ['al.picUrl', 'album.picUrl', 'coverUrl', 'coverDeUrl', 'blurPicUrl', 'img1v1Url']
+const QUALITY_FIELDS = ['l', 'm', 'h', 'sq', 'hr']
 
 const assetCache = new Map()
 const pendingPrefetches = new Map()
 
+function isBlankValue(value) {
+    return value == null || value === ''
+}
+
 function normalizeId(value) {
-    if (value === null || value === undefined || value === '') return ''
+    if (isBlankValue(value)) return ''
     return String(value)
 }
 
@@ -55,7 +60,7 @@ function rememberAssets(key, assets) {
 }
 
 function pushCoverCandidate(candidates, url) {
-    const normalizedUrl = typeof url === 'string' ? url.trim() : ''
+    const normalizedUrl = normalizeCoverUrl(url)
     if (!normalizedUrl) return
 
     for (const size of IMAGE_COVER_SIZES) {
@@ -78,6 +83,7 @@ function getSongCoverCandidates(song) {
     const candidates = []
     if (!song || typeof song !== 'object') return candidates
 
+    pushCoverCandidate(candidates, getSongCoverUrl(song))
     pushSongCoverFields(candidates, song)
 
     const nestedSong = song.song
@@ -86,6 +92,97 @@ function getSongCoverCandidates(song) {
     }
 
     return candidates
+}
+
+function getSongAlbumCoverUrl(song) {
+    if (!song || typeof song !== 'object') return ''
+    const nestedSong = song.song && typeof song.song === 'object' ? song.song : null
+    return normalizeCoverUrl(
+        song.al?.picUrl ||
+        song.album?.picUrl ||
+        nestedSong?.al?.picUrl ||
+        nestedSong?.album?.picUrl ||
+        ''
+    )
+}
+
+function hasRemoteSongMetadata(song) {
+    if (!song || typeof song !== 'object') return true
+    return !!(
+        song.name &&
+        Array.isArray(song.ar) &&
+        song.ar.length > 0 &&
+        getSongAlbumCoverUrl(song)
+    )
+}
+
+function shouldHydrateRemoteSongMetadata(song) {
+    if (!song?.id || typeof song !== 'object') return false
+    if (song.type === 'fm') return true
+    return !hasRemoteSongMetadata(song)
+}
+
+function assignIfMissing(target, key, value) {
+    if (!isBlankValue(target[key])) return
+    if (isBlankValue(value)) return
+    target[key] = value
+}
+
+function assignArrayIfMissing(target, key, value) {
+    if (Array.isArray(target[key]) && target[key].length > 0) return
+    if (!Array.isArray(value) || value.length === 0) return
+    target[key] = value
+}
+
+function mergeAlbumMetadata(targetAlbum, sourceAlbum) {
+    if (!sourceAlbum || typeof sourceAlbum !== 'object') return targetAlbum || null
+    const nextAlbum = targetAlbum && typeof targetAlbum === 'object' ? targetAlbum : {}
+    assignIfMissing(nextAlbum, 'id', sourceAlbum.id)
+    assignIfMissing(nextAlbum, 'name', sourceAlbum.name)
+    if (sourceAlbum.picUrl) nextAlbum.picUrl = normalizeCoverUrl(sourceAlbum.picUrl)
+    if (sourceAlbum.blurPicUrl) nextAlbum.blurPicUrl = normalizeCoverUrl(sourceAlbum.blurPicUrl)
+    return nextAlbum
+}
+
+function mergeSongMetadata(song, detail) {
+    if (!song || typeof song !== 'object' || !detail || typeof detail !== 'object') return
+
+    assignIfMissing(song, 'name', detail.name)
+    assignIfMissing(song, 'dt', detail.dt)
+    assignIfMissing(song, 'duration', detail.dt || detail.duration)
+    const detailCoverUrl = getSongCoverUrl(detail)
+    if (detailCoverUrl) song.coverUrl = detailCoverUrl
+    if (detail.blurPicUrl) song.blurPicUrl = normalizeCoverUrl(detail.blurPicUrl)
+    if (detail.img1v1Url) song.img1v1Url = normalizeCoverUrl(detail.img1v1Url)
+    assignArrayIfMissing(song, 'ar', detail.ar)
+    assignArrayIfMissing(song, 'tns', detail.tns)
+    assignArrayIfMissing(song, 'transNames', detail.transNames)
+
+    const detailAlbum = detail.al || detail.album
+    const mergedAl = mergeAlbumMetadata(song.al, detailAlbum)
+    if (mergedAl) song.al = mergedAl
+    const mergedAlbum = mergeAlbumMetadata(song.album, detailAlbum)
+    if (mergedAlbum) {
+        song.album = mergedAlbum
+    } else if (!song.album && mergedAl) {
+        song.album = mergedAl
+    }
+
+    QUALITY_FIELDS.forEach(levelKey => {
+        assignIfMissing(song, levelKey, detail[levelKey])
+    })
+}
+
+export async function hydrateRemoteSongMetadata(song) {
+    if (!shouldHydrateRemoteSongMetadata(song)) return
+
+    try {
+        const result = await getSongDetail(song.id)
+        const detail = Array.isArray(result?.songs) ? result.songs[0] : null
+        mergeSongMetadata(song, detail)
+    } catch (_) {
+        // Metadata prefetch is best-effort; normal playback can still continue.
+    }
 }
 
 function preloadImage(url) {
@@ -182,13 +279,17 @@ async function prefetchSongAssetsNow(song, options = {}) {
             getLocalLyric(song).then(lyric => assignLyricAsset(assets, lyric))
         )
     } else {
+        const sirenSong = isSirenSong(song)
+        const metadataTask = sirenSong ? Promise.resolve() : hydrateRemoteSongMetadata(song)
         tasks.push(
-            preloadCoverCandidates(song).then(coverUrl => {
-                assets.coverUrl = coverUrl
-            })
+            metadataTask
+                .then(() => preloadCoverCandidates(song))
+                .then(coverUrl => {
+                    assets.coverUrl = coverUrl
+                })
         )
 
-        if (isSirenSong(song)) {
+        if (sirenSong) {
             tasks.push(
                 getSirenLyric(song).then(lyric => assignLyricAsset(assets, lyric))
             )
