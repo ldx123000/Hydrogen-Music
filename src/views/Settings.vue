@@ -56,6 +56,10 @@ const musicLevelOptions = ref([
         value: 'jymaster',
     },
 ])
+const coverSize = ref(400)
+const coverSizeOptions = ref([
+    480, 400, 240, 150, 135, 120, 110, 100, 93, 64
+].map(v => ({ label: String(v), value: v })))
 const lyricSize = ref(20)
 const tlyricSize = ref(13)
 const rlyricSize = ref(12)
@@ -127,6 +131,7 @@ onActivated(() => {
         rlyricSize.value = settings.music.rlyricSize
         lyricInterlude.value = settings.music.lyricInterlude
         searchAssistLimit.value = normalizeSearchAssistLimit(settings.music.searchAssistLimit)
+        coverSize.value = settings.music.coverSize ?? 400
         playerStore.showSongTranslation = settings?.music?.showSongTranslation !== false
         videoFolder.value = settings.local.videoFolder
         downloadFolder.value = settings.local.downloadFolder
@@ -203,6 +208,7 @@ const setAppSettings = () => {
             lyricInterlude: lyricInterlude.value,
             searchAssistLimit: normalizeSearchAssistLimit(searchAssistLimit.value),
             showSongTranslation: playerStore.showSongTranslation,
+            coverSize: coverSize.value,
         },
         local: {
             videoFolder: videoFolder.value,
@@ -511,6 +517,12 @@ const clearFmRecent = () => {
                                         <div class="toggle-on" v-show="playerStore.showSongTranslation"></div>
                                     </Transition>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">图片大小</div>
+                            <div class="option-operation">
+                                <Selector v-model="coverSize" :options="coverSizeOptions"></Selector>
                             </div>
                         </div>
                         <div class="option">

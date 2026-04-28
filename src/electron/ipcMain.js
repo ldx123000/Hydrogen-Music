@@ -177,6 +177,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
                     lyricInterlude: 13,
                     searchAssistLimit: 8,
                     showSongTranslation: true,
+                    coverSize: 400,
                 },
                 local: {
                     videoFolder: null,

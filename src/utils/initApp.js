@@ -43,6 +43,13 @@ export const initSettings = () => {
         }
     })
 }
+export const resolveImageUrl = async (url) => {
+    if (!url || !url.includes('{size}')) return url
+    const settings = await windowApi.getSettings()
+    const size = settings?.music?.coverSize ?? 400
+    return url.replace(/\{size\}/g, size)
+}
+
 //初始化
 export const init = async () => {
     initSettings()
