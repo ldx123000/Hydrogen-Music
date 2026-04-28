@@ -4,6 +4,7 @@
   import { useLibraryStore } from '../store/libraryStore'
   import { usePlayerStore } from '../store/playerStore';
   import { useOtherStore } from '../store/otherStore';
+  import { resolveImageUrl } from '../utils/initApp'
   import { storeToRefs } from 'pinia'
   const libraryStore = useLibraryStore()
   const { libraryList, libraryInfo, listType1, listType2, lastLibraryRoute, restoreLibraryScrollOnActivate } = storeToRefs(libraryStore)
@@ -100,7 +101,7 @@
   <div id="libraryListScroll" class="library-list">
     <div class="list-item" :class="{'list-item-selected': (item.id == router.currentRoute.value.fullPath.split('/')[3] && listType2 != 2) || (otherStore.currentVideoId == item.vid && listType2 == 2)}" v-for="(item, index) in libraryList" @click="showDetail(index, item)" @contextmenu="openMenu($event,item)">
         <div class="item-img">
-            <img :src="(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl) + '?param=128y128'" alt="">
+            <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl)" alt="">
         </div>
         <div class="item-other">
             <span class="item-name">{{(item.name ?? item.title)}}</span>

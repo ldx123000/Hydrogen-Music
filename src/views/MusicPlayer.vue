@@ -9,6 +9,7 @@ import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
+import { resolveImageUrl } from '../utils/initApp';
 const playerStore = usePlayerStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
@@ -31,14 +32,7 @@ watch(rightPanelMode, (newMode, oldMode) => {
 // 当播放电台节目时，右侧显示电台简介而非歌词
 const isDj = computed(() => playerStore.listInfo && playerStore.listInfo.type === 'dj');
 
-const withCoverParam = (url, size = 512) => {
-    if (!url) return null;
-    if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-    const hasQuery = url.includes('?');
-    const hasParam = /(?:\\?|&)param=\\d+y\\d+/.test(url);
-    if (hasParam) return url;
-    return `${url}${hasQuery ? '&' : '?'}param=${size}y${size}`;
-};
+const withCoverParam = (url) => resolveImageUrl(url || '')
 
 const coverBgUrl = computed(() => {
     const list = playerStore.songList || [];

@@ -8,6 +8,7 @@ import { subAlbum } from '../api/album';
 import { subArtist } from '../api/artist';
 import { formatTime } from '../utils/time';
 import { playAll } from '../utils/player';
+import { resolveImageUrl } from '../utils/initApp';
 import { scheduleAlbumSublistCacheInvalidation, scheduleArtistSublistCacheInvalidation } from '../utils/cacheInvalidation';
 import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
 import LibrarySongList from './LibrarySongList.vue';
@@ -556,7 +557,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
         <div class="library-introduce">
             <div class="introduce">
                 <div class="introduce-img" :class="{ 'introduce-img-circle': isSinger }">
-                    <img :src="(libraryInfo.coverImgUrl || libraryInfo.blurPicUrl || libraryInfo.img1v1Url) + '?param=300y300'" alt="" />
+                    <img :src="resolveImageUrl(libraryInfo.coverImgUrl || libraryInfo.blurPicUrl || libraryInfo.img1v1Url)" alt="" />
                 </div>
                 <div class="introduce-info">
                     <span class="introduce-name">{{ libraryInfo.name }}</span>

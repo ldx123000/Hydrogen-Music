@@ -8,7 +8,7 @@ import { getPreferredQuality } from './quality'
 import { initializeCurrentAccountSession } from './accountSession'
 
 const playerStore = usePlayerStore()
-const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation } = storeToRefs(playerStore)
+const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation, coverSize } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 
 export const initSettings = () => {
@@ -21,6 +21,7 @@ export const initSettings = () => {
         lyricInterludeTime.value = settings.music.lyricInterlude
         searchAssistLimit.value = Number.isFinite(rawSearchAssistLimit) ? Math.max(1, rawSearchAssistLimit) : 8
         showSongTranslation.value = settings?.music?.showSongTranslation !== false
+        coverSize.value = settings?.music?.coverSize ?? 400
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp
@@ -43,11 +44,14 @@ export const initSettings = () => {
         }
     })
 }
-export const resolveImageUrl = async (url) => {
-    if (!url || !url.includes('{size}')) return url
-    const settings = await windowApi.getSettings()
-    const size = settings?.music?.coverSize ?? 400
-    return url.replace(/\{size\}/g, size)
+export const resolveImageUrl = (url) => {
+    if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url
+    const size = playerStore.coverSize ?? 400
+    return url
+        .replace('http://', 'https://')
+        .replace(/\{size\}/g, size)
+        .replace(/([?&])param=\d+y\d+/, `$1param=${size}y${size}`)
+        .replace(/^(https?:\/\/[^?]*)$/, `$1?param=${size}y${size}`)
 }
 
 //初始化

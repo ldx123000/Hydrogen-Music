@@ -3,6 +3,7 @@
   import { formatTime } from '../utils/time'
   import { useRouter } from 'vue-router'
   import { usePlayerStore } from '../store/playerStore';
+  import { resolveImageUrl } from '../utils/initApp'
 
   const router = useRouter()
   const props = defineProps(['albumlist', 'type'])
@@ -26,7 +27,7 @@
             <div class="item-title" :class="{'item-title-full': props.type == 'search'}">
                 <div class="item-img">
                     <div class="album-back"></div>
-                    <img v-lazy :src="item.blurPicUrl + '?param=150y150'" alt="">
+                    <img v-lazy :src="resolveImageUrl(item.blurPicUrl)" alt="">
                 </div>
                 <div class="item-info">
                     <span class="item-name">{{item.name}}</span>

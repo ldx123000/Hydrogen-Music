@@ -7,6 +7,7 @@
   import { useLibraryStore } from '../store/libraryStore'
   import { useLocalStore } from '../store/localStore';
   import { usePlayerStore } from '../store/playerStore';
+  import { resolveImageUrl } from '../utils/initApp';
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()
   const playerStore = usePlayerStore()
@@ -103,7 +104,7 @@
     <div class="item-list">
         <div class="item" v-for="(item,index) in recommendationList">
             <div class="item-img" :class="recType == 1 ? 'item-img-circle' : 'item-img-sqaure'" @click="checkDetail(item.id)">
-                <img :src="(item.coverImgUrl || item.img1v1Url || item.picUrl) + '?param=450y450'" alt="">
+                <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl)" alt="">
             </div>
             <div class="item-name" :class="{'item-name-center': recType == 1}">{{item.name}}</div>
             <div class="item-sub" @click="checkArtist(item.artist.id)" v-if="item.artist">{{ item.artist.name }}</div>

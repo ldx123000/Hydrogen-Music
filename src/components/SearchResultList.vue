@@ -2,6 +2,7 @@
   import { useRouter } from 'vue-router';
   import { usePlayerStore } from '../store/playerStore';
   import { useOtherStore } from '../store/otherStore';
+  import { resolveImageUrl } from '../utils/initApp';
 
   const router = useRouter()
   const playerStore = usePlayerStore()
@@ -20,7 +21,7 @@
     <div class="item-list">
         <div class="item" v-for="(item,index) in listdata">
             <div class="item-img" :class="type == 'artist' ? 'item-img-circle' : 'item-img-sqaure'" @click="checkDetail(item.id)">
-                <img v-lazy :src="(item.coverImgUrl || item.img1v1Url || item.picUrl || item.cover) + '?param=300y300'" alt="">
+                <img v-lazy :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl || item.cover)" alt="">
             </div>
             <div class="item-name" :class="{'item-name-center': type == 'artist'}">{{item.name}}</div>
         </div>

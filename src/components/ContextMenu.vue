@@ -9,6 +9,7 @@
   import { useOtherStore } from '../store/otherStore';
   import { usePlayerStore } from '../store/playerStore'
   import { useUserStore } from '../store/userStore';
+  import { resolveImageUrl } from '../utils/initApp'
   import { getLikelist } from '../api/user';
   import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
   import { extractPlaylistItems } from '../utils/accountSession'
@@ -331,7 +332,7 @@
             </div>
             <div class="list" @click="addToMyPlaylist(item)" v-show="!justNewPlaylist" v-for="(item, index) in libraryStore.playlistUserCreated">
               <div class="list-img">
-                <img :src="(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl) + '?param=150y150'" alt="">
+                <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl)" alt="">
               </div>
               <span class="list-name">{{(item.name ?? item.title)}}</span>
             </div>

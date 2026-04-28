@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { getDjSubList, getDjPrograms } from '../api/dj'
 import { getLyric } from '../api/song'
 import { usePlayerStore } from '../store/playerStore'
+import { resolveImageUrl } from '../utils/initApp'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
 
@@ -102,7 +103,7 @@ const playLatestProgram = async (radio) => {
           title="播放最新节目"
         >
           <div class="cover">
-            <img :src="(radio.picUrl || radio.intervenePicUrl) + '?param=240y240'" alt="" />
+            <img :src="resolveImageUrl(radio.picUrl || radio.intervenePicUrl)" alt="" />
             <div class="overlay">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />

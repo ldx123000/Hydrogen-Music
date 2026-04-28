@@ -12,6 +12,7 @@
   import { useUserStore } from '../store/userStore'
   import { usePlayerStore } from '../store/playerStore'
   import { useOtherStore } from '../store/otherStore'
+  import { resolveImageUrl } from '../utils/initApp'
   import { storeToRefs } from 'pinia'
   import { getSongDisplayName } from '../utils/songName'
   const router = useRouter()
@@ -55,7 +56,7 @@
   const isCurrentSirenSong = computed(() => currentSong.value?.source === 'siren')
   const currentSongCoverUrl = computed(() => {
     const coverUrl = currentSong.value?.coverUrl || currentSong.value?.al?.picUrl || ''
-    return coverUrl ? `${coverUrl}?param=128y128` : ''
+    return coverUrl ? resolveImageUrl(coverUrl) : ''
   })
   const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '', showSongTranslation.value))
 
@@ -129,7 +130,7 @@
         <div class="music-img" @click="showPlayer()">
             <img v-if="currentSong && !isCurrentLocalSong && currentSongCoverUrl" :src="currentSongCoverUrl" alt="">
             <img v-else-if="currentSong && isCurrentLocalSong && localBase64Img" :src="localBase64Img" alt="">
-            <img v-else-if="currentSong && isCurrentLocalSong" src="http://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg?param=128y128" alt="">
+            <img v-else-if="currentSong && isCurrentLocalSong" :src="resolveImageUrl('https://p3.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg')" alt="">
             <div class="open-player">
                 <svg t="1670207990373" class="open-player-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5640" width="200" height="200"><path d="M960.1 699.7l-72.8 72.8L512 397.1 136.7 772.5l-72.8-72.8L512 251.5z" fill="#ffffff" p-id="5641"></path></svg>
             </div>

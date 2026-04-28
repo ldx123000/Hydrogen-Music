@@ -4,6 +4,7 @@ import { onBeforeRouteUpdate, useRouter } from 'vue-router'
 import { getDjDetail, getDjPrograms } from '../api/dj'
 import { usePlayerStore } from '../store/playerStore'
 import { playAll } from '../utils/player'
+import { resolveImageUrl } from '../utils/initApp'
 import LibrarySongList from './LibrarySongList.vue'
 
 const router = useRouter()
@@ -21,7 +22,7 @@ const rid = computed(() => router.currentRoute.value.params.id)
 
 const coverImg = computed(() => {
   const url = radioInfo.value?.picUrl || radioInfo.value?.intervenePicUrl || ''
-  return url ? `${url}?param=300y300` : ''
+  return url ? resolveImageUrl(url) : ''
 })
 
 const totalCount = computed(() => radioInfo.value?.programCount || 0)

@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { usePlayerStore } from '../store/playerStore'
 import { startMusic, pauseMusic, playNext, playLast, changeProgress } from './player'
 import { getSongDisplayName } from './songName'
+import { resolveImageUrl } from './initApp'
 
 function getCurrentTrack(storeRefs) {
   const { songList, currentIndex } = storeRefs
@@ -21,7 +22,7 @@ function getArtworkForTrack(track, localBase64) {
   if (cover) {
     // Use a single stable size to avoid artwork swaps in OS UI
     const sizes = [256]
-    sizes.forEach(sz => arts.push({ src: `${cover}?param=${sz}y${sz}` }))
+    sizes.forEach(sz => arts.push({ src: resolveImageUrl(cover) }))
   }
   return arts
 }

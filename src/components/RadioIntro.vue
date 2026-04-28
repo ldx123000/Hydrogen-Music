@@ -3,6 +3,7 @@ import { ref, watch, onMounted, computed } from 'vue'
 import { usePlayerStore } from '../store/playerStore'
 import { storeToRefs } from 'pinia'
 import { getDjDetail } from '../api/dj'
+import { resolveImageUrl } from '../utils/initApp'
 
 const playerStore = usePlayerStore()
 const { listInfo } = storeToRefs(playerStore)
@@ -31,7 +32,7 @@ const loadDetail = async () => {
 watch(rid, () => { detail.value = null; if (rid.value) loadDetail() })
 onMounted(loadDetail)
 
-const coverUrl = computed(() => (detail.value?.picUrl || detail.value?.intervenePicUrl) ? `${detail.value.picUrl || detail.value.intervenePicUrl}?param=300y300` : '')
+const coverUrl = computed(() => resolveImageUrl(detail.value?.picUrl || detail.value?.intervenePicUrl || ''))
 const name = computed(() => detail.value?.name || '电台')
 const djName = computed(() => detail.value?.dj?.nickname || '')
 const desc = computed(() => detail.value?.desc || detail.value?.rcmdtext || '暂无简介')

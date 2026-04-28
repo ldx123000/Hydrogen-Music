@@ -12,6 +12,7 @@ import { mapSongsPlayableStatus } from '../utils/songStatus'
 import { addToNext } from '../utils/player'
 import { noticeOpen } from '../utils/dialog'
 import { copyToClipboard } from '../utils/clipboard'
+import { resolveImageUrl } from '../utils/initApp'
 
 const props = defineProps({
   visible: {
@@ -50,12 +51,7 @@ const normalizeUrl = value => {
   return value.trim()
 }
 
-const withCoverParam = (url, size = 720) => {
-  if (!url) return ''
-  if (url.startsWith('data:') || url.startsWith('blob:')) return url
-  if (/(?:\?|&)param=\d+y\d+/.test(url)) return url
-  return `${url}${url.includes('?') ? '&' : '?'}param=${size}y${size}`
-}
+const withCoverParam = (url) => resolveImageUrl(url || '')
 
 const formatCount = value => {
   const num = Number(value)

@@ -6,6 +6,7 @@
   import { addSong, setShuffledList } from '../utils/player'
   import { usePlayerStore } from '../store/playerStore'
   import { useLocalStore } from '../store/localStore'
+  import { resolveImageUrl } from '../utils/initApp'
 
   const props = defineProps({
     items: {
@@ -61,7 +62,7 @@
 
   function getItemCover(item) {
     const picUrl = item?.simpleSong?.al?.picUrl || item?.simpleSong?.album?.picUrl || ''
-    return picUrl ? `${picUrl}?param=90y90` : ''
+    return picUrl ? resolveImageUrl(picUrl) : ''
   }
 
   function getItemTitle(item) {

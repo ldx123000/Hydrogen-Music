@@ -6,6 +6,7 @@
   import { usePlayerStore } from '../store/playerStore';
   import { storeToRefs } from 'pinia';
   import { getSongDisplayName } from '../utils/songName';
+  import { resolveImageUrl } from '../utils/initApp';
 
   const router = useRouter()
   const playerStore = usePlayerStore()
@@ -25,7 +26,7 @@
   }
   const getImgUrl = (item) => {
     let img = item.picUrl || item.blurPicUrl
-    return img.replace('http://', 'https://') + '?param=90y90'
+    return resolveImageUrl(img.replace('http://', 'https://'))
   }
   const play = (song) => {
     let picUrl = {
