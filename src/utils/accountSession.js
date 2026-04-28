@@ -1,5 +1,6 @@
 import pinia from '../store/pinia'
 import { getUserPlaylist, getUserProfile, logout } from '../api/user'
+import { refreshLoginToken } from '../api/login'
 import { useUserStore } from '../store/userStore'
 import { resolveFavoritePlaylistMeta } from './player'
 import { isLogin, setCookies, getCookie } from './authority'
@@ -47,12 +48,28 @@ function normalizeUserProfile(profileResult = {}) {
     }
 }
 
-function extractPlaylistItems(playlistResult = {}) {
-    if (Array.isArray(playlistResult?.playlist)) return playlistResult.playlist
-    if (Array.isArray(playlistResult?.info)) return playlistResult.info
-    if (Array.isArray(playlistResult?.data?.info)) return playlistResult.data.info
-    if (Array.isArray(playlistResult?.data?.playlist)) return playlistResult.data.playlist
-    return []
+export function normalizePlaylistItem(item) {
+    if (item.listid === undefined) return item
+    return {
+        ...item,
+        id: item.listid,
+        name: item.is_def === 1 ? '我喜欢的音乐' : item.name,
+        coverImgUrl: item.pic || '',
+        picUrl: item.pic || '',
+        trackCount: item.list_count ?? 0,
+        creator: { userId: String(item.userid ?? '') },
+        is_mine: item.is_mine,
+    }
+}
+
+export function extractPlaylistItems(playlistResult = {}) {
+    let items = null
+    if (Array.isArray(playlistResult?.playlist)) items = playlistResult.playlist
+    else if (Array.isArray(playlistResult?.info)) items = playlistResult.info
+    else if (Array.isArray(playlistResult?.data?.info)) items = playlistResult.data.info
+    else if (Array.isArray(playlistResult?.data?.playlist)) items = playlistResult.data.playlist
+    else return []
+    return items.map(normalizePlaylistItem)
 }
 
 async function hydrateAccountSession(token) {
@@ -105,6 +122,8 @@ export async function initializeCurrentAccountSession() {
     invalidateNcmApiCookieCache()
 
     try {
+        await refreshLoginToken({ token: getCookie('token'), userid: getCookie('userid') }).catch(() => {})
+        invalidateNcmApiCookieCache()
         return await hydrateAccountSession(token)
     } catch (error) {
         await clearCurrentAccountSessionState(token)
@@ -115,7 +134,8 @@ export async function initializeCurrentAccountSession() {
 export async function applyLoginSession(data) {
     const token = nextAccountSessionToken()
 
-    await clearCurrentAccountSessionState(token)
+    await clearAccountScopedState({ clearCookies: false })
+    invalidateNcmApiCookieCache()
     if (!isAccountSessionTokenActive(token)) return null
 
     setCookies(data)

@@ -68,8 +68,13 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.playlistCount = listCount
         },
         updateUserPlaylist(playlist) {
-            this.playlistUserCreated = playlist.splice(0, this.playlistCount.createdPlaylistCount)
-            this.playlistUserSub = playlist.splice(0, this.playlistCount.subPlaylistCount)
+            if (playlist.length > 0 && playlist[0].is_mine !== undefined) {
+                this.playlistUserCreated = playlist.filter(p => p.is_mine === 1)
+                this.playlistUserSub = playlist.filter(p => p.is_mine === 0)
+            } else {
+                this.playlistUserCreated = playlist.splice(0, this.playlistCount?.createdPlaylistCount ?? playlist.length)
+                this.playlistUserSub = playlist.splice(0, this.playlistCount?.subPlaylistCount ?? playlist.length)
+            }
         },
         resetPlaylistHydration() {
             this.playlistHydration = createPlaylistHydrationState()

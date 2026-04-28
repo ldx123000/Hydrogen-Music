@@ -12,7 +12,7 @@ const libraryStore = useLibraryStore(pinia)
 const request = axios.create({
     baseURL: 'http://localhost:36530',
     withCredentials: true,
-    timeout: 10000,
+    timeout: 20000,
 });
 
 const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
@@ -63,7 +63,7 @@ request.interceptors.request.use(function (config) {
 
   if (!skipAuthCookie && isLogin()) {
     const authCookieString = buildAuthCookieString()
-    if (authCookieString) config.params.cookie = authCookieString
+    if (authCookieString) config.headers['Cookie'] = authCookieString
   }
 
   if (libraryStore.needTimestamp.indexOf(config.url) != -1) {

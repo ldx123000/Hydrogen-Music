@@ -152,6 +152,14 @@ export function loginByPhone(params = {}) {
     })
 }
 
+export function refreshLoginToken({ token, userid } = {}) {
+    return request({
+        url: '/login/token',
+        method: 'get',
+        params: { token, userid },
+    })
+}
+
 /**
  * 调用此接口，可退出登录。
  * @returns

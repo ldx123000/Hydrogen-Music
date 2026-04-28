@@ -207,7 +207,9 @@
   onActivated(() => {
     if (firstLoadMode.value !== 0) return
 
-    if (loginCompleted.value || qrStatus.value === 4 || !qrKey.value || !qrcodeImg.value) {
+    if (loginCompleted.value || qrStatus.value === 4) return
+
+    if (!qrKey.value || !qrcodeImg.value) {
       loadData()
       return
     }

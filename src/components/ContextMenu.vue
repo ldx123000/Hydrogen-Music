@@ -11,6 +11,7 @@
   import { useUserStore } from '../store/userStore';
   import { getLikelist } from '../api/user';
   import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
+  import { extractPlaylistItems } from '../utils/accountSession'
   import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
   import { storeToRefs } from 'pinia';
   const router = useRouter()
@@ -70,15 +71,12 @@
       libraryStore.updateUserPlaylistCount(count)
 
       const params = {
-        uid: userStore.user.userId,
-        limit: 500,
-        offset: 0,
+        page: 1,
+        pagesize: 500,
         timestamp: new Date().getTime(),
       }
       const list = await getUserPlaylist(params)
-      if (list && Array.isArray(list.playlist)) {
-        libraryStore.updateUserPlaylist(list.playlist)
-      }
+      libraryStore.updateUserPlaylist(extractPlaylistItems(list))
     } catch (e) {
       // 静默失败，弹窗仍可显示，后续可再次尝试
       console.error('加载用户歌单失败:', e)
