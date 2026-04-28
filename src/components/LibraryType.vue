@@ -69,7 +69,7 @@
       const list = await getUserPlaylist(params)
       if (!isLibraryRequestActive(requestToken, requestUserId)) return false
 
-      updateUserPlaylist(extractPlaylistItems(list))
+      updateUserPlaylist(extractPlaylistItems(list, requestUserId))
       lastLoadedUserId.value = requestUserId
       return true
     } catch (error) {
@@ -243,7 +243,8 @@
       if (option.value == 0 || option.value == 1) {
         void refreshCurrentSection()
       }
-    }
+    },
+    { flush: 'post' }
   )
 
   onActivated(() => {

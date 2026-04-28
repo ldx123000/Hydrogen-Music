@@ -34,7 +34,7 @@ import request from '../utils/request'
  */
   export function getUserPlaylistCount() {
     return request({
-      url: '/user/subcount',
+      url: '/user/detail',
       method: 'get',
       params: {
         timestamp: new Date().getTime(),

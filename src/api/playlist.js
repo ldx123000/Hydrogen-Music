@@ -6,10 +6,11 @@ import request from "../utils/request";
  */
 export function getRecommendedSongList(num) {
     return request({
-        url: '/personalized',
+        url: '/top/playlist',
         method: 'get',
         params: {
-            limit: num
+            category_id: 0,
+            pagesize: num
         }
     })
 }
@@ -36,7 +37,7 @@ export function getPlaylistDetail(params) {
     return request({
       url: '/playlist/detail',
       method: 'get',
-      params,
+      params: { ids: params.id || params.ids, ...params },
     });
 }
 

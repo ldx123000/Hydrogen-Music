@@ -6,7 +6,7 @@ import { buildIdWithTimestamp, buildOperationParams, buildPaginationParams } fro
  * @param {number} limit - 取出数量，默认10
  */
 export function getNewestSong(limit = 10) {
-    return get('/personalized/newsong', { limit });
+    return get('/top/song', { pagesize: limit });
 }
 
 /**
@@ -23,7 +23,7 @@ export function getSongDetail(ids) {
  * @param {string|number} id - 音乐ID
  */
 export function checkMusic(id) {
-    return getById('/check/music', id, {}, false);
+    return Promise.resolve({ success: true, message: 'ok' });
 }
 
 /**
@@ -32,8 +32,8 @@ export function checkMusic(id) {
  * @param {string} level - 播放音质等级：standard/higher/exhigh/lossless/hires/jyeffect/sky/dolby/jymaster
  * @param {object} requestParams - 额外透传给 /song/url/v1 的请求参数（如 ua、cookie）
  */
-export function getMusicUrl(id, level = 'lossless', requestParams = {}) {
-    return get('/song/url/v1', { ...requestParams, id, level });
+export function getMusicUrl(hash, quality = 'flac', requestParams = {}) {
+    return get('/song/url', { ...requestParams, hash, quality });
 }
 
 /**
@@ -50,15 +50,19 @@ export function likeMusic(id, like = true) {
  * 获取音乐歌词
  * @param {string|number} id - 音乐ID
  */
-export function getLyric(id) {
-    return getById('/lyric', id, {}, false);
+export async function getLyric(hash) {
+    const searchRes = await get('/search/lyric', { hash, fmt: 'lrc', decode: true });
+    const info = searchRes?.candidates?.[0];
+    if (!info) return { lrc: { lyric: '' } };
+    const lyric = await get('/lyric', { id: info.id, accesskey: info.accesskey, fmt: 'lrc', decode: true });
+    return lyric;
 }
 
 /**
  * 获取私人FM
  */
 export function getPersonalFM() {
-    return get('/personal_fm', buildIdWithTimestamp(''));
+    return get('/personal/fm', {});
 }
 
 /**
@@ -93,22 +97,11 @@ export function fmTrash(id) {
  * @param {number} options.offset - 偏移数量，默认0
  * @param {number} options.before - 分页参数，用于获取超过5000条评论
  */
-export function getMusicComments(id, { limit = 20, offset = 0, before, ...extraParams } = {}) {
-    // 支持旧的调用方式（传入params对象）
+export function getMusicComments(id, { limit = 20, offset = 0, ...extraParams } = {}) {
     if (typeof id === 'object') {
-        return get('/comment/music', { ...id, timestamp: new Date().getTime() });
+        return get('/comment/music', { mixsongid: id.id, page: Math.floor((id.offset || 0) / (id.limit || 20)) + 1, pagesize: id.limit || 20 });
     }
-    
-    const params = {
-        id,
-        limit,
-        offset,
-        ...(before && { before }),
-        ...extraParams,
-        timestamp: new Date().getTime()
-    };
-    
-    return get('/comment/music', params);
+    return get('/comment/music', { mixsongid: id, page: Math.floor(offset / limit) + 1, pagesize: limit, ...extraParams });
 }
 
 /**

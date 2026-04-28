@@ -6,7 +6,7 @@ import { buildTypeParams, buildIdWithTimestamp, buildOperationParams, buildPagin
  * @param {number} type - 1:华语 2:欧美 3:韩国 4:日本
  */
 export function getRecommendedArtists(type) {
-    return get('/top/artists', buildTypeParams(type));
+    return get('/artist/lists', { type });
 }
 
 /**
@@ -22,11 +22,10 @@ export function getUserSubArtists() {
  * @param {object} extraParams - 额外参数
  */
 export function getArtistDetail(id, extraParams = {}) {
-    // 支持旧的调用方式（传入params对象）
     if (typeof id === 'object') {
-        return get('/artists', id);
+        return get('/artist/detail', id);
     }
-    return getById('/artists', id, extraParams, false);
+    return get('/artist/detail', { id, ...extraParams });
 }
 
 /**
@@ -35,11 +34,10 @@ export function getArtistDetail(id, extraParams = {}) {
  * @param {object} extraParams - 额外参数
  */
 export function getArtistTopSong(id, extraParams = {}) {
-    // 支持旧的调用方式（传入params对象）
     if (typeof id === 'object') {
-        return get('/artist/top/song', id);
+        return get('/artist/audios', id);
     }
-    return getById('/artist/top/song', id, extraParams, false);
+    return get('/artist/audios', { id, ...extraParams });
 }
 
 /**
@@ -50,15 +48,11 @@ export function getArtistTopSong(id, extraParams = {}) {
  * @param {number} options.offset - 偏移数量，默认0
  */
 export function getArtistAlbum(id, { limit = 30, offset = 0, ...extraParams } = {}) {
-    // 支持旧的调用方式（传入params对象）
     if (typeof id === 'object') {
-        return get('/artist/album', id);
+        return get('/artist/albums', id);
     }
-    const paginationParams = buildPaginationParams(
-        offset ? Math.floor(offset / limit) + 1 : 1,
-        limit
-    );
-    return get('/artist/album', { id, ...paginationParams, ...extraParams });
+    const page = offset ? Math.floor(offset / limit) + 1 : 1;
+    return get('/artist/albums', { id, page, pagesize: limit, ...extraParams });
 }
 
 /**

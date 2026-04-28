@@ -5,15 +5,11 @@ import request from "../utils/request";
  * @param {number} id 
  * @returns 
  */
-export function getBanner(id) {
+export function getBanner() {
     return request({
-        url: '/banner',
+        url: '/pc/diantai',
         method: 'get',
-        params: {
-            type: id
-        }
-    }).then(data => {
-        return data
+        params: {}
     })
 }
 
@@ -27,7 +23,7 @@ export function getBanner(id) {
  */
 export function search(params) {
     return request({
-        url: '/cloudsearch',
+        url: '/search',
         method: 'get',
         params,
     })
@@ -40,7 +36,7 @@ export function search(params) {
  */
 export function searchHotDetail(params = {}) {
     return request({
-        url: '/search/hot/detail',
+        url: '/search/hot',
         method: 'get',
         params,
     })
