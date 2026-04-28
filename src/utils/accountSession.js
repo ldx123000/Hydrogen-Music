@@ -48,12 +48,12 @@ function normalizeUserProfile(profileResult = {}) {
     }
 }
 
-export function normalizePlaylistItem(item, currentUserId) {
+export function normalizePlaylistItem(item) {
     if (item.listid === undefined) return item
-    let isMine = item.is_mine
-    if (isMine === undefined && item.list_create_userid !== undefined && currentUserId) {
-        isMine = String(item.list_create_userid) === String(currentUserId) ? 1 : 0
-    }
+    const currentUserId = getCookie('userid')
+    const isMine = currentUserId && item.list_create_userid !== undefined
+        ? String(item.list_create_userid) === String(currentUserId) ? 1 : 0
+        : item.is_mine
     return {
         ...item,
         id: item.listid,
@@ -66,14 +66,14 @@ export function normalizePlaylistItem(item, currentUserId) {
     }
 }
 
-export function extractPlaylistItems(playlistResult = {}, currentUserId) {
+export function extractPlaylistItems(playlistResult = {}) {
     let items = null
     if (Array.isArray(playlistResult?.playlist)) items = playlistResult.playlist
     else if (Array.isArray(playlistResult?.info)) items = playlistResult.info
     else if (Array.isArray(playlistResult?.data?.info)) items = playlistResult.data.info
     else if (Array.isArray(playlistResult?.data?.playlist)) items = playlistResult.data.playlist
     else return []
-    return items.map(item => normalizePlaylistItem(item, currentUserId))
+    return items.map(normalizePlaylistItem)
 }
 
 async function hydrateAccountSession(token) {
@@ -95,7 +95,7 @@ async function hydrateAccountSession(token) {
             pagesize: 50,
         })
         if (isAccountSessionTokenActive(token)) {
-            userStore.updateFavoritePlaylistMeta(resolveFavoritePlaylistMeta(extractPlaylistItems(playlistResult, profile?.userId)))
+            userStore.updateFavoritePlaylistMeta(resolveFavoritePlaylistMeta(extractPlaylistItems(playlistResult)))
         }
     } catch (error) {
         if (isAccountSessionTokenActive(token)) {

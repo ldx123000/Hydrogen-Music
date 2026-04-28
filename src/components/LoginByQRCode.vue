@@ -121,7 +121,9 @@
   }
 
   const checkQR = () => {
-    if (loginCompleted.value || qrStatus.value === 4) {
+    if (loginCompleted.value) return
+
+    if (qrStatus.value === 4) {
       firstLoadMode.value = 0
       loadData()
       return

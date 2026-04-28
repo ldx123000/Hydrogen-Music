@@ -69,7 +69,7 @@
       const list = await getUserPlaylist(params)
       if (!isLibraryRequestActive(requestToken, requestUserId)) return false
 
-      updateUserPlaylist(extractPlaylistItems(list, requestUserId))
+      updateUserPlaylist(extractPlaylistItems(list))
       lastLoadedUserId.value = requestUserId
       return true
     } catch (error) {
