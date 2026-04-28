@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getCookie, isLogin } from '../utils/authority'
+import { getCookie, isLogin, setCookies } from '../utils/authority'
 import pinia from "../store/pinia";
 import { useLibraryStore } from '../store/libraryStore'
 import { useUserStore } from '../store/userStore'
@@ -76,7 +76,16 @@ request.interceptors.request.use(function (config) {
   return Promise.reject(error)
 });
 
+function persistSetCookieHeader(response) {
+  const setCookieHeader = response?.headers?.['set-cookie']
+  if (!setCookieHeader) return
+  const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader]
+  const cookieString = cookies.map(c => c.split(';')[0]).join('; ')
+  if (cookieString) setCookies({ cookie: cookieString })
+}
+
 request.interceptors.response.use(function (response) {
+    persistSetCookieHeader(response)
     const url = response?.config?.url || ''
     const data = response?.data
 

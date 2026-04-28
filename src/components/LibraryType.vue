@@ -54,9 +54,8 @@
     }
 
     const params = {
-      uid: requestUserId,
-      limit: 500,
-      offset: 0,
+      page: 1,
+      pagesize: 500,
       timestamp: Date.now()
     }
 

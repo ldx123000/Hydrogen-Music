@@ -14,12 +14,9 @@ import request from '../utils/request'
   }
 
 /**
- * 登录后调用此接口 , 传入用户 id, 可以获取用户歌单
- * 必选参数 : uid : 用户 id
- * 可选参数 :
- * limit : 返回数量 , 默认为 30
- * offset : 偏移数量，用于分页 , 如 :( 页数 -1)*30, 其中 30 为 limit 的值 , 默认为 0
- * @returns 
+ * 登录后调用此接口，可以获取用户的所有创建以及收藏的歌单
+ * 可选参数 : page 页数, pagesize 每页数量(默认30)
+ * @returns
  */
   export function getUserPlaylist(params) {
     return request({

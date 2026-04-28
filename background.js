@@ -217,7 +217,7 @@ const createWindow = () => {
     });
 
     if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
-        win.loadURL('http://localhost:5174/')
+        win.loadURL('http://localhost:5173/')
         win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
             console.warn('Dev server not available, fallback to dist:', errorCode, errorDescription)
             try { win.loadFile(indexHtml) } catch (e) { console.error('Fallback loadFile failed:', e) }
@@ -436,7 +436,7 @@ const createLyricWindow = () => {
 
     const lyricHtml = path.join(process.env.DIST, 'dist/desktop-lyric.html')
     if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
-        lyricWin.loadURL('http://localhost:5174/desktop-lyric.html')
+        lyricWin.loadURL('http://localhost:5173/desktop-lyric.html')
         lyricWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
             console.warn('Dev server not available (desktop lyric), fallback to dist:', errorCode, errorDescription)
             try { lyricWin.loadFile(lyricHtml) } catch (e) { console.error('Fallback lyric loadFile failed:', e) }

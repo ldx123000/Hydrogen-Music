@@ -53,10 +53,10 @@ export function searchHotDetail(params = {}) {
  * @param {*} params
  * @returns
  */
-export function searchSuggest(params) {
+export function searchSuggest(keywords) {
     return request({
         url: '/search/suggest',
         method: 'get',
-        params,
+        params: { keywords },
     })
 }

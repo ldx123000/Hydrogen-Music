@@ -2,7 +2,7 @@ import pinia from '../store/pinia'
 import { getUserPlaylist, getUserProfile, logout } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { resolveFavoritePlaylistMeta } from './player'
-import { isLogin, setCookies } from './authority'
+import { isLogin, setCookies, getCookie } from './authority'
 import { clearAccountScopedState } from './accountState'
 import { invalidateNcmApiCookieCache } from './request'
 
@@ -29,7 +29,7 @@ function pickFirstValue(...values) {
 
 function normalizeUserProfile(profileResult = {}) {
     const raw = profileResult?.data || profileResult?.profile || profileResult || {}
-    const userId = pickFirstValue(raw.userId, raw.userid, raw.id)
+    const userId = pickFirstValue(raw.userId, raw.userid, raw.id, getCookie('userid'))
     const nickname = pickFirstValue(raw.nickname, raw.k_nickname, raw.fx_nickname, raw.name)
     const avatarUrl = pickFirstValue(raw.avatarUrl, raw.pic, raw.k_pic, raw.fx_pic, raw.avatar)
     const backgroundUrl = pickFirstValue(raw.backgroundUrl, raw.backgroundPicUrl, raw.bg_pic)
@@ -70,7 +70,6 @@ async function hydrateAccountSession(token) {
 
     try {
         const playlistResult = await getUserPlaylist({
-            userid: profile.userId,
             page: 1,
             pagesize: 50,
         })

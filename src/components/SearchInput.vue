@@ -99,40 +99,13 @@ function appendSuggestItem(list, keywordSet, keyword, type, source) {
 }
 
 function parseWebSuggestItems(data) {
-    const result = data?.result || {}
-    const groupOrder = Array.isArray(result.order) && result.order.length ? result.order : ['songs', 'artists', 'playlists', 'albums']
-    const parsers = {
-        songs: {
-            list: Array.isArray(result.songs) ? result.songs : [],
-            type: 1,
-            getKeyword: item => item?.name,
-        },
-        artists: {
-            list: Array.isArray(result.artists) ? result.artists : [],
-            type: 100,
-            getKeyword: item => item?.name,
-        },
-        playlists: {
-            list: Array.isArray(result.playlists) ? result.playlists : [],
-            type: 1000,
-            getKeyword: item => item?.name,
-        },
-        albums: {
-            list: Array.isArray(result.albums) ? result.albums : [],
-            type: 10,
-            getKeyword: item => item?.name,
-        },
-    }
-
+    const groups = Array.isArray(data?.data) ? data.data : []
     const items = []
-    for (let i = 0; i < groupOrder.length; i++) {
-        const group = parsers[groupOrder[i]]
-        if (!group) continue
-        for (let j = 0; j < group.list.length; j++) {
-            items.push({
-                keyword: group.getKeyword(group.list[j]),
-                type: group.type,
-            })
+    for (let i = 0; i < groups.length; i++) {
+        const records = Array.isArray(groups[i]?.RecordDatas) ? groups[i].RecordDatas : []
+        for (let j = 0; j < records.length; j++) {
+            const hint = JTrim(records[j]?.HintInfo)
+            if (hint) items.push({ keyword: hint, type: 0 })
         }
     }
     return items
@@ -310,33 +283,14 @@ async function fetchSuggestList(keyword) {
     loadingSuggest.value = true
 
     try {
-        const [mobileResult, webResult] = await Promise.allSettled([
-            searchSuggest({
-                keywords: value,
-                type: 'mobile',
-            }),
-            searchSuggest({
-                keywords: value,
-                type: 'web',
-            }),
-        ])
+        const result = await searchSuggest(value)
         if (seq != requestSeq.value) return
 
         const keywordSet = new Set()
         const list = []
-
-        if (mobileResult.status === 'fulfilled') {
-            const allMatch = Array.isArray(mobileResult.value?.result?.allMatch) ? mobileResult.value.result.allMatch : []
-            for (let i = 0; i < allMatch.length; i++) {
-                appendSuggestItem(list, keywordSet, allMatch[i]?.keyword, allMatch[i]?.type || 0, 'mobile')
-            }
-        }
-
-        if (webResult.status === 'fulfilled') {
-            const webItems = parseWebSuggestItems(webResult.value)
-            for (let i = 0; i < webItems.length; i++) {
-                appendSuggestItem(list, keywordSet, webItems[i].keyword, webItems[i].type, 'web')
-            }
+        const webItems = parseWebSuggestItems(result)
+        for (let i = 0; i < webItems.length; i++) {
+            appendSuggestItem(list, keywordSet, webItems[i].keyword, webItems[i].type, 'web')
         }
 
         suggestList.value = list

@@ -1352,9 +1352,8 @@ export async function getFavoritePlaylistId() {
 
     try {
         const params = {
-            uid: userStore.user.userId,
-            limit: 50,
-            offset: 0,
+            page: 1,
+            pagesize: 50,
             timestamp: new Date().getTime()
         }
 
