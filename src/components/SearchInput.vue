@@ -111,6 +111,48 @@ function parseWebSuggestItems(data) {
     return items
 }
 
+function parseHotListItems(data) {
+    const groupedList = Array.isArray(data?.data?.list) ? data.data.list : []
+    if (groupedList.length > 0) {
+        const parsed = []
+        const keywordSet = new Set()
+
+        for (let i = 0; i < groupedList.length; i++) {
+            const groupName = JTrim(groupedList[i]?.name)
+            const keywords = Array.isArray(groupedList[i]?.keywords) ? groupedList[i].keywords : []
+
+            for (let j = 0; j < keywords.length; j++) {
+                const keyword = JTrim(keywords[j]?.keyword || keywords[j]?.searchWord || '')
+                if (!keyword) continue
+
+                const normalized = normalizeSuggestKey(keyword)
+                if (!normalized || keywordSet.has(normalized)) continue
+                keywordSet.add(normalized)
+
+                parsed.push({
+                    order: parsed.length + 1,
+                    keyword,
+                    iconType: keywords[j]?.icon || keywords[j]?.iconType || 0,
+                    content: JTrim(keywords[j]?.reason || keywords[j]?.content || ''),
+                    category: groupName,
+                })
+            }
+        }
+
+        return parsed
+    }
+
+    const fallbackList = Array.isArray(data?.data) ? data.data : []
+    return fallbackList
+        .map((item, index) => ({
+            order: index + 1,
+            keyword: JTrim(item?.searchWord || item?.keyword || ''),
+            iconType: item?.iconType || item?.icon || 0,
+            content: item?.content || item?.reason || '',
+        }))
+        .filter(item => item.keyword)
+}
+
 async function setActiveAssistIndex(index, align = 'nearest') {
     const listLength = currentList.value.length
     if (!assistVisible.value || listLength === 0) {
@@ -251,15 +293,7 @@ async function fetchHotList() {
     loadingHot.value = true
     try {
         const data = await searchHotDetail()
-        const list = Array.isArray(data?.data) ? data.data : []
-        hotList.value = list
-            .map((item, index) => ({
-                order: index + 1,
-                keyword: JTrim(item?.searchWord),
-                iconType: item?.iconType || 0,
-                content: item?.content || '',
-            }))
-            .filter(item => item.keyword)
+        hotList.value = parseHotListItems(data)
         hotLoaded.value = true
     } catch (_) {
         hotList.value = []

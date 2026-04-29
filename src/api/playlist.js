@@ -27,16 +27,19 @@ function normalizePlaylistArtists(song) {
 export function normalizePlaylistSong(song = {}) {
   const rawAlbum = song?.albuminfo || song?.album || {}
   const albumId = rawAlbum?.id ?? rawAlbum?.albumId ?? song?.album_id ?? null
-  const albumName = rawAlbum?.name ?? song?.album_name ?? ''
-  const coverUrl = song?.cover || rawAlbum?.picUrl || rawAlbum?.coverUrl || song?.trans_param?.union_cover || null
+  const albumName = rawAlbum?.name ?? rawAlbum?.album_name ?? song?.album_name ?? song?.albumName ?? ''
+  const coverTemplate = song?.cover || song?.sizable_cover || rawAlbum?.picUrl || rawAlbum?.coverUrl || song?.trans_param?.union_cover || null
+  const coverUrl = typeof coverTemplate == 'string' ? coverTemplate.replace('{size}', '480') : coverTemplate
   const artists = normalizePlaylistArtists(song)
   const primaryId = song?.mixsongid ?? song?.audio_id ?? song?.id ?? song?.songId ?? song?.hash ?? song?.fileid ?? null
-  const duration = Number(song?.timelen ?? song?.duration ?? song?.dt ?? 0)
+  const durationSeconds = Number(song?.time_length ?? song?.timelength_320 ?? song?.timeLength ?? 0)
+  const rawDuration = Number(song?.timelen ?? song?.duration ?? song?.dt ?? 0)
+  const duration = rawDuration > 1000 ? rawDuration : durationSeconds > 0 ? durationSeconds * 1000 : rawDuration
 
   return {
     ...song,
-    id: primaryId,
-    name: (song?.name || song?.songName || '').replace(/^.*?\s*-\s*/, '').replace(/\.(mp3|flac|ogg|aac|wav|m4a|wma|ape|opus)$/i, ''),
+    id: primaryId ?? song?.hash ?? null,
+    name: (song?.name || song?.songName || song?.songname || song?.filename || '').replace(/^.*?\s*-\s*/, '').replace(/\.(mp3|flac|ogg|aac|wav|m4a|wma|ape|opus)$/i, ''),
     ar: artists,
     artists,
     al: {
@@ -154,11 +157,9 @@ export async function getPlaylistAll(params) {
  */
 export function getRecommendSongs(params) {
     return request({
-      url: '/recommend/songs',
+      url: '/everyday/recommend',
       method: 'get',
-      params: {
-        
-      },
+      params,
     });
 }
 

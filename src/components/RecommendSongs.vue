@@ -23,12 +23,32 @@ const dropdownRef = ref(null);
 const dateOptionRefs = ref([]);
 const activeOptionIndex = ref(-1);
 
+const historyTitleMap = ref({});
+
+const padDatePart = value => String(value).padStart(2, '0');
+
+const formatDateToken = value => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length == 8) return digits;
+    return raw;
+};
+
+const formatDateDisplay = value => {
+    const token = formatDateToken(value);
+    if (/^\d{8}$/.test(token)) {
+        return `${token.slice(0, 4)}-${token.slice(4, 6)}-${token.slice(6, 8)}`;
+    }
+    return String(value || '');
+};
+
 const todayDate = computed(() => {
     const now = new Date();
     const year = now.getFullYear();
-    const month = `${now.getMonth() + 1}`.padStart(2, '0');
-    const day = `${now.getDate()}`.padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const month = padDatePart(now.getMonth() + 1);
+    const day = padDatePart(now.getDate());
+    return `${year}${month}${day}`;
 });
 
 const reachedDailyUpdateTime = computed(() => {
@@ -171,18 +191,26 @@ const handleDateDropdownKeydown = async event => {
 };
 
 const normalizeDateList = result => {
-    const source = result?.data?.list || result?.data?.dates || result?.data?.dateList || result?.dates || result?.dateList || result?.data || [];
-    if (!Array.isArray(source)) return [];
+    const source = result?.data?.lists || result?.data?.list || result?.data?.dates || result?.data?.dateList || result?.lists || result?.dates || result?.dateList || result?.data || [];
+    if (!Array.isArray(source)) {
+        historyTitleMap.value = {};
+        return [];
+    }
     const nameMap = {};
+    const titleMap = {};
     const dates = source.map(item => {
         if (typeof item == 'string') return item;
         if (item?.date) {
-            if (item.history_name) nameMap[item.date] = item.history_name;
-            return item.date;
+            const normalizedDate = formatDateToken(item.date);
+            if (!normalizedDate) return null;
+            if (item.history_name) nameMap[normalizedDate] = item.history_name;
+            if (item.history_title) titleMap[normalizedDate] = item.history_title;
+            return normalizedDate;
         }
         return null;
     }).filter(Boolean);
     historyNameMap.value = nameMap;
+    historyTitleMap.value = titleMap;
     return dates;
 };
 
@@ -213,7 +241,7 @@ const loadRecommendSongs = async date => {
 };
 
 const applyDateFromRouteQuery = () => {
-    const queryDate = typeof route.query.date == 'string' ? route.query.date : '';
+    const queryDate = formatDateToken(typeof route.query.date == 'string' ? route.query.date : '');
     if (queryDate && hasDateOption(queryDate)) {
         selectedDate.value = queryDate;
         return;
@@ -236,8 +264,9 @@ const loadHistoryDates = async () => {
 };
 
 const formatDateLabel = date => {
-    if (date == todayDate.value) return `今天 (${date})`;
-    return date;
+    const displayDate = formatDateDisplay(date);
+    if (date == todayDate.value) return `今天 (${displayDate})`;
+    return historyTitleMap.value[date] || displayDate;
 };
 
 watch(selectedDate, async (date, oldDate) => {
@@ -250,7 +279,7 @@ watch(
     () => route.query.date,
     async () => {
         if (!initialized.value) return;
-        const queryDate = typeof route.query.date == 'string' ? route.query.date : '';
+        const queryDate = formatDateToken(typeof route.query.date == 'string' ? route.query.date : '');
         const targetDate = queryDate && hasDateOption(queryDate) ? queryDate : dateOptions.value[0] || '';
         if (targetDate == selectedDate.value) return;
 
@@ -287,7 +316,7 @@ onMounted(async () => {
     await loadHistoryDates();
     applyDateFromRouteQuery();
 
-    if (typeof route.query.date == 'string' && !hasDateOption(route.query.date)) {
+    if (typeof route.query.date == 'string' && !hasDateOption(formatDateToken(route.query.date))) {
         await syncRouteDateQuery(selectedDate.value);
     }
 

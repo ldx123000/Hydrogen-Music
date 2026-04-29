@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail } from '../api/playlist'
+import { getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail, normalizePlaylistSong } from '../api/playlist'
 import { getAlbumDetail, albumDynamic } from '../api/album'
 import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum } from '../api/artist'
 import { getArtistMV } from '../api/mv'
@@ -23,6 +23,16 @@ const createSearchIndexState = () => ({
 })
 
 const getSearchEntryKey = (entry, fallbackKey = '0') => String(entry?.id ?? fallbackKey)
+const normalizeRecommendSongList = result => {
+    const directSongs = result?.data?.song_list || result?.song_list || []
+    if (Array.isArray(directSongs) && directSongs.length > 0) return directSongs
+
+    const nestedLists = result?.data?.lists || result?.lists || []
+    if (!Array.isArray(nestedLists) || nestedLists.length == 0) return []
+
+    const firstList = nestedLists.find(item => Array.isArray(item?.song_list) && item.song_list.length > 0) || nestedLists[0]
+    return Array.isArray(firstList?.song_list) ? firstList.song_list : []
+}
 
 export const useLibraryStore = defineStore('libraryStore', {
     state: () => {
@@ -466,11 +476,8 @@ export const useLibraryStore = defineStore('libraryStore', {
         async updateRecommendSongs(date, historyName) {
             const request = date ? getHistoryRecommendSongsDetail({ date, history_name: historyName }) : getRecommendSongs()
             await request.then(result => {
-                const dailySongs = result?.data?.dailySongs || []
-                const historySongs = result?.data?.songs || result?.data?.dailySongs || result?.songs || []
-                const songs = date ? historySongs : dailySongs
-
-                this.librarySongs = mapSongsPlayableStatus(songs) || []
+                const songs = normalizeRecommendSongList(result)
+                this.librarySongs = mapSongsPlayableStatus(songs.map(song => normalizePlaylistSong(song))) || []
                 this.indexLibrarySongs(this.librarySongs)
             })
         },
