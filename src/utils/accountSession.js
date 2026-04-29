@@ -56,7 +56,9 @@ export function normalizePlaylistItem(item) {
         : item.is_mine
     return {
         ...item,
-        id: item.listid,
+        id: item.list_create_listid || item.listid,
+        list_create_listid: item.list_create_listid || item.listid,
+        global_collection_id: item.list_create_gid || item.global_collection_id || null,
         name: item.name,
         coverImgUrl: item.pic || '',
         picUrl: item.pic || '',

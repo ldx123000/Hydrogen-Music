@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { getPlaylistDetail, getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail } from '../api/playlist'
+import { getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail } from '../api/playlist'
 import { getAlbumDetail, albumDynamic } from '../api/album'
 import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum } from '../api/artist'
 import { getArtistMV } from '../api/mv'
@@ -207,7 +207,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 await task.catch(() => null)
             }
         },
-        async hydratePlaylistRemaining(id, totalTracks, token, initialLoaded = 0) {
+        async hydratePlaylistRemaining(id, totalTracks, token, initialLoaded = 0, gid = null) {
             const offsets = []
             for (let offset = PLAYLIST_PAGE_SIZE; offset < totalTracks; offset += PLAYLIST_PAGE_SIZE) {
                 offsets.push(offset)
@@ -223,6 +223,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                     const offset = queue.shift()
                     const params = {
                         id,
+                        gid,
                         limit: PLAYLIST_PAGE_SIZE,
                         offset,
                     }
@@ -263,6 +264,8 @@ export const useLibraryStore = defineStore('libraryStore', {
         async updatePlaylistDetail(id, options = {}) {
             const { deferRemaining = false } = options
             const playlistId = String(id || '')
+            const listItem = Array.isArray(this.libraryList) ? this.libraryList.find(p => String(p.id) === playlistId) : null
+            const resolvedCollectionId = listItem?.global_collection_id || playlistId
             const token = `${playlistId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             this.playlistHydrationToken = token
             this.playlistHydrationPromise = null
@@ -273,28 +276,29 @@ export const useLibraryStore = defineStore('libraryStore', {
                 status: 'loading',
             })
 
-            const params = {
-                id: playlistId,
-                limit: PLAYLIST_PAGE_SIZE,
-                offset: 0,
-            }
             try {
-                const [playlistDetailResult, playlistTrackResult] = await Promise.all([
-                    getPlaylistDetail(params),
-                    getPlaylistAll(params),
-                ])
+                const playlist = listItem || null
+
+                const trackParams = {
+                    id: playlistId,
+                    gid: listItem?.global_collection_id || null,
+                    limit: PLAYLIST_PAGE_SIZE,
+                    offset: 0,
+                }
+                const playlistTrackResult = await getPlaylistAll(trackParams)
                 if (this.playlistHydrationToken != token) return
 
-                const playlist = playlistDetailResult?.playlist || playlistDetailResult?.data?.info?.[0] || playlistDetailResult?.data?.info || playlistDetailResult?.info || null
                 const firstBatchSongs = mapSongsPlayableStatus(playlistTrackResult?.songs || [], playlistTrackResult?.privileges || []) || []
                 
                 const fallbackPlaylist = {
                     ...playlist,
-                    id: playlist?.id || playlist?.listid || playlist?.global_collection_id || playlistId,
-                    name: playlist?.name || playlist?.listname || playlist?.specialname || '歌单详情',
+                    id: playlist?.id || playlist?.list_create_listid || playlist?.listid || playlistId,
+                    name: playlist?.name || playlist?.listname || playlist?.specialname || '歌单',
                     coverImgUrl: playlist?.coverImgUrl || playlist?.pic || playlist?.imgurl || firstBatchSongs[0]?.coverUrl || firstBatchSongs[0]?.al?.picUrl || '',
-                    trackCount: playlist?.trackCount || playlist?.songcount || firstBatchSongs.length,
-                    creator: playlist?.creator || { nickname: playlist?.username || '' }
+                    trackCount: playlist?.trackCount || playlist?.count || playlist?.list_count || playlist?.songcount || firstBatchSongs.length,
+                    createTime: playlist?.createTime || (playlist?.create_time ? playlist.create_time * 1000 : null),
+                    description: playlist?.description || playlist?.intro || playlist?.briefDesc || '',
+                    creator: playlist?.creator || { nickname: playlist?.list_create_username || playlist?.username || '' },
                 }
 
                 const totalTracks = Number(fallbackPlaylist?.trackIds?.length || fallbackPlaylist?.trackCount || firstBatchSongs.length || 0)
@@ -323,7 +327,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                     status: 'loading',
                 })
 
-                const hydrationTask = this.hydratePlaylistRemaining(playlistId, totalTracks, token, loadedTracks)
+                const hydrationTask = this.hydratePlaylistRemaining(playlistId, totalTracks, token, loadedTracks, listItem?.global_collection_id || null)
                     .then(remainingSongs => {
                         if (this.playlistHydrationToken != token) return
                         if (Array.isArray(remainingSongs) && remainingSongs.length > 0) {

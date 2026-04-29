@@ -120,7 +120,7 @@ async function fetchPlaylistPage(id, page, pagesize, rest) {
 }
 
 export async function getPlaylistAll(params) {
-    const { id, limit, offset, ...rest } = params || {}
+    const { id, gid, limit, offset, ...rest } = params || {}
     const pagesize = Math.min(limit || 999, 999)
     const page = offset != null && limit ? Math.floor(offset / limit) + 1 : 1
     try {
@@ -131,14 +131,15 @@ export async function getPlaylistAll(params) {
         }
         return { songs, privileges: [] }
     } catch {
+        const fallbackId = gid || id
         const fallback = await request({
             url: '/playlist/track/all',
             method: 'get',
-            params,
+            params: { id: fallbackId, page, pagesize, ...rest },
         })
         return {
             ...fallback,
-            songs: normalizePlaylistSongs(fallback?.songs || fallback?.data?.info || fallback?.info || []),
+            songs: normalizePlaylistSongs(fallback?.songs || fallback?.data?.songs || fallback?.data?.info || fallback?.info || []),
             privileges: Array.isArray(fallback?.privileges) ? fallback.privileges : [],
         }
     }
