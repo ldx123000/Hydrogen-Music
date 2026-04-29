@@ -844,11 +844,13 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     display: flex;
                     flex-direction: column;
                     span {
-                        font: 11px SourceHanSansCN-Bold;
+                        font: 12px SourceHanSansCN-Bold;
+                        -webkit-font-smoothing: antialiased;
+                        text-rendering: optimizeLegibility;
                     }
                     .introduce-author {
                         width: 100%;
-                        font-size: 12px;
+                        font-size: 13px;
                         color: var(--ld-text);
                         transition: 0.2s;
                         overflow: hidden;
@@ -863,6 +865,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     }
                     .introduce-num {
                         color: var(--ld-muted);
+                        font-size: 12px;
                     }
                     .library-operation {
                         margin-top: 10px;
@@ -1104,9 +1107,10 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                 }
                 span {
                     margin: 0 5px;
-                    font: 12px SourceHanSansCN-Bold;
+                    font: 14px SourceHanSansCN-Bold;
                     color: var(--ld-text);
                     white-space: nowrap;
+                    letter-spacing: 0.15px;
                 }
             }
             .playall-line {
@@ -1116,8 +1120,9 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             }
             .playall-en {
                 margin-left: 4px;
-                font: 8px Geometos;
+                font: 10px Bender-Bold;
                 color: var(--ld-line);
+                letter-spacing: 0.6px;
                 transition: 0.2s;
                 &:hover {
                     cursor: pointer;

@@ -53,12 +53,12 @@ const commentCountBadgeRx = computed(() => 4.6);
 
 const commentCountFontSize = computed(() => {
     const len = commentCountLen.value;
-    if (len <= 1) return 8.0;
-    if (len === 2) return 7.6;
-    if (len === 3) return 7.2;
-    if (len === 4) return 6.6;
-    if (len === 5) return 6.1;
-    return 5.7;
+    if (len <= 1) return 8.4;
+    if (len === 2) return 8.0;
+    if (len === 3) return 7.6;
+    if (len === 4) return 7.1;
+    if (len === 5) return 6.6;
+    return 6.2;
 });
 
 const router = useRouter();
@@ -1072,8 +1072,12 @@ const toggleDjSub = async isSubscribe => {
                     }
                 }
                 .music-author {
-                    font-size: 10px;
+                    font-size: clamp(12px, 1.35vh, 14px);
+                    line-height: 1.35;
+                    letter-spacing: 0.15px;
                     color: var(--muted-text);
+                    -webkit-font-smoothing: antialiased;
+                    text-rendering: optimizeLegibility;
                     .author {
                         transition: 0.2s;
                         &:hover {
@@ -1244,7 +1248,7 @@ const toggleDjSub = async isSubscribe => {
             fill: #ffffff;
             opacity: 1;
             font-family: SourceHanSansCN-Bold;
-            font-size: 6.8px;
+            font-size: 7.2px;
             font-weight: 700;
             letter-spacing: 0;
         }

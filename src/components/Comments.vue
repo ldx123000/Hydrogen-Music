@@ -1350,10 +1350,10 @@ onUnmounted(() => {
         margin-right: 6px;
     }
 
-    .section-count {
+.section-count {
         font-family: Bender-Bold, monospace;
-        font-size: 11px;
-        color: rgba(0, 0, 0, 0.6);
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.72);
     }
 
     .section-line {
@@ -1413,6 +1413,8 @@ onUnmounted(() => {
     .card-content {
         position: relative;
         padding: 12px 14px;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
     }
 }
 
@@ -1451,7 +1453,7 @@ onUnmounted(() => {
 
     .username {
         font-family: SourceHanSansCN-Bold;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: bold;
         color: #000;
         text-align: left;
@@ -1459,8 +1461,8 @@ onUnmounted(() => {
 
     .timestamp {
         font-family: Bender-Bold, monospace;
-        font-size: 9px;
-        color: rgba(0, 0, 0, 0.5);
+        font-size: 11px;
+        color: rgba(0, 0, 0, 0.62);
         letter-spacing: 0.5px;
         text-align: left;
     }
@@ -1553,9 +1555,9 @@ onUnmounted(() => {
 
         .control-text {
             font-family: Bender-Bold, monospace;
-            font-size: 9px;
-            color: rgba(0, 0, 0, 0.6);
-            letter-spacing: 0.5px;
+            font-size: 11px;
+            color: rgba(0, 0, 0, 0.72);
+            letter-spacing: 0.35px;
             font-weight: bold;
         }
     }
@@ -1571,11 +1573,11 @@ onUnmounted(() => {
         padding: 4px 8px;
         background: rgba(0, 0, 0, 0.08);
         cursor: pointer;
-        font-family: Bender-Bold, monospace;
-        font-size: 9px;
+        font-family: SourceHanSansCN-Bold;
+        font-size: 12px;
         font-weight: bold;
-        letter-spacing: 0.5px;
-        color: rgba(0, 0, 0, 0.68);
+        letter-spacing: 0.2px;
+        color: rgba(0, 0, 0, 0.76);
         transition: all 0.2s;
         border-radius: 0;
         outline: none;
@@ -1653,16 +1655,16 @@ onUnmounted(() => {
 
     .floor-username {
         font-family: SourceHanSansCN-Bold;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: bold;
         color: rgba(0, 0, 0, 0.82);
     }
 
     .floor-time {
         font-family: Bender-Bold, monospace;
-        font-size: 9px;
+        font-size: 10px;
         letter-spacing: 0.4px;
-        color: rgba(0, 0, 0, 0.5);
+        color: rgba(0, 0, 0, 0.58);
     }
 
     .floor-text {
@@ -1707,10 +1709,10 @@ onUnmounted(() => {
 
         .floor-control-text {
             font-family: Bender-Bold, monospace;
-            font-size: 8px;
+            font-size: 10px;
             font-weight: bold;
             letter-spacing: 0.4px;
-            color: rgba(0, 0, 0, 0.58);
+            color: rgba(0, 0, 0, 0.68);
         }
 
         &.active {
@@ -1736,11 +1738,11 @@ onUnmounted(() => {
         margin-top: 8px;
         border: none;
         background: rgba(0, 0, 0, 0.08);
-        color: rgba(0, 0, 0, 0.68);
-        font-family: Bender-Bold, monospace;
-        font-size: 9px;
+        color: rgba(0, 0, 0, 0.74);
+        font-family: SourceHanSansCN-Bold;
+        font-size: 12px;
         font-weight: bold;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.2px;
         padding: 4px 8px;
         cursor: pointer;
         transition: all 0.2s;
@@ -1768,10 +1770,10 @@ onUnmounted(() => {
 
     .floor-status {
         margin-top: 8px;
-        font-family: Bender-Bold, monospace;
-        font-size: 9px;
-        letter-spacing: 0.5px;
-        color: rgba(0, 0, 0, 0.56);
+        font-family: SourceHanSansCN-Bold;
+        font-size: 11px;
+        letter-spacing: 0.2px;
+        color: rgba(0, 0, 0, 0.64);
     }
 
     .floor-error {
@@ -1880,15 +1882,15 @@ onUnmounted(() => {
 
         .reply-prefix {
             font-family: Bender-Bold, monospace;
-            font-size: 8px;
-            color: rgba(0, 0, 0, 0.6);
+            font-size: 10px;
+            color: rgba(0, 0, 0, 0.7);
             margin-right: 6px;
-            letter-spacing: 1px;
+            letter-spacing: 0.8px;
         }
 
         .reply-target {
             font-family: SourceHanSansCN-Bold;
-            font-size: 10px;
+            font-size: 12px;
             color: #000;
             font-weight: bold;
             flex: 1;
@@ -1965,8 +1967,8 @@ onUnmounted(() => {
 
         .reply-shortcut-hint {
             font-family: Bender-Bold, monospace;
-            font-size: 9px;
-            color: rgba(0, 0, 0, 0.5);
+            font-size: 10px;
+            color: rgba(0, 0, 0, 0.58);
             letter-spacing: 0.5px;
         }
 
@@ -1981,7 +1983,7 @@ onUnmounted(() => {
             border: none;
             cursor: pointer;
             font-family: Bender-Bold, monospace;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: bold;
             letter-spacing: 0.5px;
             transition: all 0.2s;
@@ -2066,7 +2068,7 @@ onUnmounted(() => {
         .floor-toggle,
         .floor-more,
         .floor-status {
-            font-size: 9px;
+            font-size: 11px;
         }
 
         .floor-text {
@@ -2082,7 +2084,7 @@ onUnmounted(() => {
         }
 
         .floor-control-item .floor-control-text {
-            font-size: 8px;
+            font-size: 9px;
         }
     }
 }
