@@ -8,6 +8,7 @@
   import { useLocalStore } from '../store/localStore';
   import { usePlayerStore } from '../store/playerStore';
   import { resolveImageUrl } from '../utils/initApp';
+  import SkeletonBox from './base/SkeletonBox.vue';
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()
   const playerStore = usePlayerStore()
@@ -101,7 +102,14 @@
         </div>
         <div class="header-title-cn">{{recTitle}}</div>
     </div>
-    <div class="item-list">
+    <div class="item-list" v-if="!recommendationLoaded">
+        <div class="item" v-for="i in 5" :key="i">
+          <SkeletonBox width="100%" height="10vw" style="margin-bottom:8px" :border-radius="recType == 1 ? '50%' : '2px'" />
+          <SkeletonBox width="70%" height="1.5vw" style="margin-bottom:4px" />
+          <SkeletonBox width="45%" height="1.2vw" />
+        </div>
+    </div>
+    <div class="item-list" v-else>
         <div class="item" v-for="(item,index) in recommendationList">
             <div class="item-img" :class="recType == 1 ? 'item-img-circle' : 'item-img-sqaure'" @click="checkDetail(item.id)">
                 <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl)" alt="">

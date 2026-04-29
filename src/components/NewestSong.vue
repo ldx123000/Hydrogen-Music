@@ -7,6 +7,7 @@
   import { storeToRefs } from 'pinia';
   import { getSongDisplayName } from '../utils/songName';
   import { resolveImageUrl } from '../utils/initApp';
+  import SkeletonBox from './base/SkeletonBox.vue';
 
   const router = useRouter()
   const playerStore = usePlayerStore()
@@ -53,7 +54,18 @@
 <template>
   <div class="newest-song">
     <div class="newest-song-title">最新歌曲</div>
-    <div class="song-list">
+    <div class="song-list" v-if="!newestSongList">
+      <div class="list-item skeleton-item" v-for="i in 4" :key="i">
+        <div class="item-info">
+          <SkeletonBox width="3.45vw" height="3.45vw" style="margin-right:1vw;flex-shrink:0" />
+          <div class="song-other">
+            <SkeletonBox width="60%" height="1.2vw" style="margin-bottom:0.4vw" />
+            <SkeletonBox width="40%" height="1vw" />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="song-list" v-else>
         <div class="list-item" @dblclick="play(item)" v-for="(item, index) in newestSongList">
             <div class="item-info">
                 <div class="song-img">

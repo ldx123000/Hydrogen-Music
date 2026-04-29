@@ -12,6 +12,7 @@ import { resolveImageUrl } from '../utils/initApp';
 import { scheduleAlbumSublistCacheInvalidation, scheduleArtistSublistCacheInvalidation } from '../utils/cacheInvalidation';
 import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
 import LibrarySongList from './LibrarySongList.vue';
+import SkeletonBox from './base/SkeletonBox.vue';
 import LibraryAlbumList from './LibraryAlbumList.vue';
 import LibraryMVList from '../components/LibraryMVList.vue';
 import SongFilterInput from './SongFilterInput.vue';
@@ -523,7 +524,21 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
 </script>
 
 <template>
-    <div class="library-detail" v-if="libraryInfo">
+    <div class="library-detail-skeleton" v-if="!libraryInfo">
+        <div style="display:flex;gap:10px;margin-bottom:16px">
+            <SkeletonBox width="150px" height="150px" />
+            <div style="flex:1;display:flex;flex-direction:column;gap:10px;justify-content:center">
+                <SkeletonBox width="60%" height="22px" />
+                <SkeletonBox width="35%" height="14px" />
+                <SkeletonBox width="25%" height="14px" />
+            </div>
+        </div>
+        <SkeletonBox width="100%" height="1px" style="margin-bottom:12px" />
+        <div style="display:flex;flex-direction:column;gap:10px">
+            <SkeletonBox v-for="i in 8" :key="i" width="100%" height="36px" />
+        </div>
+    </div>
+    <div class="library-detail" v-else-if="libraryInfo">
         <div class="view-control">
             <svg
                 t="1669039513804"
@@ -718,8 +733,12 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
 </template>
 
 <style scoped lang="scss">
+.library-detail-skeleton {
+    width: 100%;
+    height: 100%;
+    padding: 32px 4px;
+}
 .library-detail {
-    --ld-text: #000000;
     --ld-muted: rgb(122, 122, 122);
     --ld-secondary: rgb(78, 78, 78);
     --ld-line: rgb(154, 154, 154);

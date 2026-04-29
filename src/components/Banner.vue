@@ -2,6 +2,8 @@
   import {  ref, onActivated } from 'vue'
   import { onBeforeRouteLeave } from 'vue-router';
   import { getBanner } from '../api/other';
+  import SkeletonBox from './base/SkeletonBox.vue';
+  const bannerLoaded = ref(false)
   const bannerSessionCache = new Map()
   const emit = defineEmits(['open-breaking-news'])
   const timer1 = ref(null)
@@ -24,6 +26,7 @@
       const banners = Array.isArray(bannerData?.banners) ? bannerData.banners : [{}]
       bannerSessionCache.set(type, banners)
       bannerList.value = banners
+      bannerLoaded.value = true
   }
 
   onActivated(async () => {
@@ -120,7 +123,10 @@
 
 <template>
   <div>
-    <div class="banner">
+    <div v-if="!bannerLoaded" class="banner-skeleton">
+      <SkeletonBox width="35vw" height="13.7vw" />
+    </div>
+    <div v-else class="banner">
         <div class="banner-header">
             <div class="banner-title">BREAKING NEWS</div>
             <div class="banner-timer">
