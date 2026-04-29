@@ -94,8 +94,15 @@ const changeOptionsVisible = () => (option.value = !option.value);
 }
 
 .selector-head{
-  padding: 2px 10px;
+  padding: 0 10px;
   width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.35);
+  font: 13px SourceHanSansCN-Bold;
+  cursor: pointer;
 }
 .selector-head,.selector-option-item{
     white-space: nowrap;

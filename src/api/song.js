@@ -32,8 +32,30 @@ export function checkMusic(id) {
  * @param {string} level - 播放音质等级：standard/higher/exhigh/lossless/hires/jyeffect/sky/dolby/jymaster
  * @param {object} requestParams - 额外透传给 /song/url/v1 的请求参数（如 ua、cookie）
  */
-export function getMusicUrl(hash, quality = 'flac', requestParams = {}) {
-    return get('/song/url', { ...requestParams, hash, quality });
+function extractPlayableUrl(value) {
+    if (!value) return ''
+    if (typeof value === 'string') return value
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const url = extractPlayableUrl(item)
+            if (url) return url
+        }
+        return ''
+    }
+    if (typeof value !== 'object') return ''
+    const direct = value.url || value.play_url || value.playurl || value.music_url || value.downurl
+    if (direct) return extractPlayableUrl(direct)
+    if (Array.isArray(value.backupdownurl) && value.backupdownurl[0]) return value.backupdownurl[0]
+    if (Array.isArray(value.tracker_url) && value.tracker_url[0]) return value.tracker_url[0]
+    return ''
+}
+
+export async function getMusicUrl(hash, quality = 'flac', requestParams = {}) {
+    const raw = await get('/song/url', { ...requestParams, hash, quality })
+    const body = raw?.body || raw?.data || raw || {}
+    const url = extractPlayableUrl(body)
+    const type = body?.extName || body?.ext || 'mp3'
+    return { data: [{ url: url || null, level: quality, type }] }
 }
 
 /**

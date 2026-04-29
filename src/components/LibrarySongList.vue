@@ -324,7 +324,6 @@ const openMenu = (e, item) => {
                     -webkit-line-clamp: 1;
                     word-break: break-all;
                     .item-name-text {
-                        position: relative;
                     }
                     .item-vip-tag {
                         flex: 0 0 auto;

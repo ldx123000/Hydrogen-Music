@@ -36,7 +36,7 @@ export function normalizePlaylistSong(song = {}) {
   return {
     ...song,
     id: primaryId,
-    name: song?.name || song?.songName || '',
+    name: (song?.name || song?.songName || '').replace(/^.*?\s*-\s*/, '').replace(/\.(mp3|flac|ogg|aac|wav|m4a|wma|ape|opus)$/i, ''),
     ar: artists,
     artists,
     al: {
@@ -110,20 +110,26 @@ export function getPlaylistDetail(params) {
  * @param {*} params 
  * @returns 
  */
+async function fetchPlaylistPage(id, page, pagesize, rest) {
+    const result = await request({
+        url: '/playlist/track/all/new',
+        method: 'get',
+        params: { listid: id, page, pagesize, ...rest },
+    })
+    return normalizePlaylistSongs(result?.data?.info || result?.info || [])
+}
+
 export async function getPlaylistAll(params) {
     const { id, limit, offset, ...rest } = params || {}
+    const pagesize = Math.min(limit || 999, 999)
     const page = offset != null && limit ? Math.floor(offset / limit) + 1 : 1
-    const pagesize = limit || 30
     try {
-        const result = await request({
-            url: '/playlist/track/all/new',
-            method: 'get',
-            params: { listid: id, page, pagesize, ...rest },
-        })
-        return {
-          songs: normalizePlaylistSongs(result?.data?.info || result?.info || []),
-            privileges: []
+        const songs = await fetchPlaylistPage(id, page, pagesize, rest)
+        if (songs.length >= 999) {
+            const songs2 = await fetchPlaylistPage(id, page + 1, pagesize, rest)
+            return { songs: [...songs, ...songs2], privileges: [] }
         }
+        return { songs, privileges: [] }
     } catch {
         const fallback = await request({
             url: '/playlist/track/all',
@@ -131,9 +137,9 @@ export async function getPlaylistAll(params) {
             params,
         })
         return {
-          ...fallback,
-          songs: normalizePlaylistSongs(fallback?.songs || fallback?.data?.info || fallback?.info || []),
-          privileges: Array.isArray(fallback?.privileges) ? fallback.privileges : [],
+            ...fallback,
+            songs: normalizePlaylistSongs(fallback?.songs || fallback?.data?.info || fallback?.info || []),
+            privileges: Array.isArray(fallback?.privileges) ? fallback.privileges : [],
         }
     }
 }

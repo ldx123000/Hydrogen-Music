@@ -7,7 +7,7 @@ import { getSongDetail } from '../api/song'
 import { mapSongsPlayableStatus } from "../utils/songStatus";
 import { buildAlbumSearchText, buildCloudSongSearchText, buildMVSearchText } from "../utils/songFilter";
 
-const PLAYLIST_PAGE_SIZE = 100
+const PLAYLIST_PAGE_SIZE = 999
 const PLAYLIST_HYDRATION_CONCURRENCY = 4
 
 const createPlaylistHydrationState = ({ id = null, total = 0, loaded = 0, status = 'idle' } = {}) => ({

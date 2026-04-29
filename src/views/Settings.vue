@@ -17,43 +17,23 @@ const userStore = useUserStore()
 const playerStore = usePlayerStore()
 
 const vipInfo = ref(null)
-const musicLevel = ref('lossless')
+const musicLevel = ref('flac')
 const musicLevelOptions = ref([
     {
-        label: '标准',
-        value: 'standard',
+        label: '标准 (128kbps MP3)',
+        value: '128',
     },
     {
-        label: '较高',
-        value: 'higher',
+        label: '高品质 (320kbps MP3)',
+        value: '320',
     },
     {
-        label: '极高',
-        value: 'exhigh',
+        label: '无损 (FLAC)',
+        value: 'flac',
     },
     {
-        label: '无损',
-        value: 'lossless',
-    },
-    {
-        label: 'Hi-Res',
-        value: 'hires',
-    },
-    {
-        label: '高清环绕声',
-        value: 'jyeffect',
-    },
-    {
-        label: '沉浸环绕声',
-        value: 'sky',
-    },
-    {
-        label: '杜比全景声',
-        value: 'dolby',
-    },
-    {
-        label: '超清母带',
-        value: 'jymaster',
+        label: '高清无损',
+        value: 'high',
     },
 ])
 const coverSize = ref(400)
@@ -481,7 +461,7 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">音质选择</div>
                             <div class="option-operation">
-                                <Selector v-model="musicLevel" :options="musicLevelOptions" :maxItems="9"></Selector>
+                                <Selector v-model="musicLevel" :options="musicLevelOptions" :maxItems="4"></Selector>
                             </div>
                         </div>
                         <div class="option">

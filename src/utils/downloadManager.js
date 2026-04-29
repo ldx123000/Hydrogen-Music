@@ -89,7 +89,7 @@ export const initDownloadManager = () => {
             return
         }
 
-        let id = downloadList.value[currentIndex].id
+        let id = downloadList.value[currentIndex].hash
         checkMusic(id).then(async result => {
             if(result.success == true) {
                 const preferredQuality = getPreferredQuality(quality.value)
