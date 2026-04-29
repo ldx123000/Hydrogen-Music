@@ -26,15 +26,11 @@
     newestSongLoaded = true
   }
   const getImgUrl = (item) => {
-    let img = item.picUrl || item.blurPicUrl
+    let img = item?.picUrl || item?.blurPicUrl || item?.coverUrl || item?.al?.picUrl || ''
+    if (!img) return ''
     return resolveImageUrl(img.replace('http://', 'https://'))
   }
   const play = (song) => {
-    let picUrl = {
-        picUrl: song.picUrl
-    }
-    song.al = picUrl
-    song.ar = song.song.artists
     addToNext(song, true)
   }
   const togglePlay = (song) => {
@@ -66,7 +62,7 @@
       </div>
     </div>
     <div class="song-list" v-else>
-        <div class="list-item" @dblclick="play(item)" v-for="(item, index) in newestSongList">
+        <div class="list-item" @dblclick="play(item)" v-for="(item, index) in newestSongList" :key="item.id || index">
             <div class="item-info">
                 <div class="song-img">
                     <img v-lazy :src="getImgUrl(item)" alt="">
@@ -74,7 +70,7 @@
                 <div class="song-other">
                     <div class="song-name">{{getSongDisplayName(item, '', showSongTranslation)}}</div>
                     <div class="song-author">
-                        <span @click="checkArtist(singer.id)" v-for="(singer, index) in item.song.artists">{{singer.name}}{{index == item.song.artists.length -1 ? '' : '/'}}</span>
+                        <span @click="checkArtist(singer.id)" v-for="(singer, index) in item.ar || []" :key="`${item.id || index}-${singer.id || singer.name}`">{{singer.name}}{{index == (item.ar?.length || 0) -1 ? '' : '/'}}</span>
                     </div>
                 </div>
             </div>

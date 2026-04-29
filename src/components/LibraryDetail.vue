@@ -312,7 +312,7 @@ onBeforeRouteUpdate(async (to, from, next) => {
     setPendingScrollPolicyForRoute(to);
 
     const normalizedToName = normalizeRouteName(to.name);
-    const detailLoadOptions = normalizedToName == 'playlist' ? { deferRemaining: true } : {};
+    const detailLoadOptions = normalizedToName == 'playlist' ? { deferRemaining: true, routeQuery: to.query } : {};
     await updateLibraryDetail(to.params.id, normalizedToName, detailLoadOptions);
     libraryTypeCheck(to.name);
     artistPageType.value = 0;

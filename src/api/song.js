@@ -5,8 +5,72 @@ import { buildIdWithTimestamp, buildOperationParams, buildPaginationParams } fro
  * 获取推荐新音乐
  * @param {number} limit - 取出数量，默认10
  */
+function normalizeNewestSongArtists(song = {}) {
+    const authors = Array.isArray(song?.authors) ? song.authors : []
+    if (authors.length > 0) {
+        return authors
+            .map(item => {
+                const name = item?.author_name || item?.name || ''
+                if (!name) return null
+                return {
+                    id: item?.author_id ?? item?.id ?? null,
+                    name,
+                }
+            })
+            .filter(Boolean)
+    }
+
+    const fallbackName = song?.author_name || ''
+    if (!fallbackName) return []
+
+    return fallbackName
+        .split(/、|\/|,|，/)
+        .map(name => name.trim())
+        .filter(Boolean)
+        .map(name => ({ id: null, name }))
+}
+
+function normalizeNewestSongItem(song = {}) {
+    const artists = normalizeNewestSongArtists(song)
+    const cover = song?.album_sizable_cover || song?.trans_param?.union_cover || song?.sizable_cover || song?.picUrl || song?.blurPicUrl || ''
+    const coverUrl = typeof cover === 'string' ? cover.replace('{size}', '480') : cover
+    const duration = Number(song?.timelength ?? song?.duration ?? song?.dt ?? 0) || 0
+
+    return {
+        ...song,
+        id: song?.audio_id ?? song?.album_audio_id ?? song?.id ?? null,
+        hash: song?.hash || '',
+        name: song?.songname || song?.name || song?.filename || '',
+        ar: artists,
+        artists,
+        al: {
+            id: song?.album_id ?? null,
+            name: song?.album_name || '',
+            picUrl: coverUrl,
+        },
+        album: {
+            id: song?.album_id ?? null,
+            name: song?.album_name || '',
+            picUrl: coverUrl,
+        },
+        picUrl: coverUrl,
+        blurPicUrl: coverUrl,
+        coverUrl,
+        dt: duration,
+        duration,
+        source: 'top-song',
+        type: 'song',
+    }
+}
+
 export function getNewestSong(limit = 10) {
-    return get('/top/song', { pagesize: limit });
+    return get('/top/song', { pagesize: limit }).then(result => {
+        const rawList = Array.isArray(result?.data) ? result.data : Array.isArray(result?.result) ? result.result : []
+        return {
+            ...result,
+            result: rawList.map(item => normalizeNewestSongItem(item)).filter(item => item.id && item.name),
+        }
+    });
 }
 
 /**
@@ -50,8 +114,32 @@ function extractPlayableUrl(value) {
     return ''
 }
 
-export async function getMusicUrl(hash, quality = 'flac', requestParams = {}) {
-    const raw = await get('/song/url', { ...requestParams, hash, quality })
+function isHashLike(value) {
+    return typeof value === 'string' && /^[A-Fa-f0-9]{32}$/.test(value.trim())
+}
+
+function buildSongUrlParams(input, quality, requestParams = {}) {
+    const source = input && typeof input === 'object' ? input : {}
+    const primitiveValue = input && typeof input !== 'object' ? String(input) : ''
+    const hash = String(
+        source?.hash ||
+        source?.FileHash ||
+        source?.file_hash ||
+        source?.deprecated?.hash ||
+        source?.audio_info?.hash_128 ||
+        source?.audio_info?.hash_320 ||
+        (isHashLike(primitiveValue) ? primitiveValue : '')
+    ).trim()
+    const albumAudioId = source?.album_audio_id || source?.mixsongid || source?.mixsong_id || (!isHashLike(primitiveValue) ? primitiveValue : '')
+
+    const params = { ...requestParams, quality }
+    if (hash) params.hash = hash
+    if (albumAudioId) params.album_audio_id = albumAudioId
+    return params
+}
+
+export async function getMusicUrl(input, quality = 'flac', requestParams = {}) {
+    const raw = await get('/song/url', buildSongUrlParams(input, quality, requestParams))
     const body = raw?.body || raw?.data || raw || {}
     const url = extractPlayableUrl(body)
     const type = body?.extName || body?.ext || 'mp3'

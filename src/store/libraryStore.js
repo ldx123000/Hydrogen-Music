@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail, normalizePlaylistSong } from '../api/playlist'
+import { getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail, normalizePlaylistSong, getRankInfo, getRankSongs } from '../api/playlist'
 import { getAlbumDetail, albumDynamic } from '../api/album'
 import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum } from '../api/artist'
 import { getArtistMV } from '../api/mv'
@@ -272,9 +272,13 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.libraryMV = null
         },
         async updatePlaylistDetail(id, options = {}) {
-            const { deferRemaining = false } = options
+            const { deferRemaining = false, routeQuery = {} } = options
             const playlistId = String(id || '')
             const listItem = Array.isArray(this.libraryList) ? this.libraryList.find(p => String(p.id) === playlistId) : null
+            const seededPlaylist = !listItem && String(this.libraryInfo?.id || '') == playlistId ? this.libraryInfo : null
+            const routeQuerySource = String(routeQuery?.source || '')
+            const routeRankCid = routeQuery?.rankCid ? String(routeQuery.rankCid) : ''
+            const isRankPlaylist = routeQuerySource == 'rank' || seededPlaylist?.source == 'rank'
             const resolvedCollectionId = listItem?.global_collection_id || playlistId
             const token = `${playlistId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             this.playlistHydrationToken = token
@@ -287,7 +291,48 @@ export const useLibraryStore = defineStore('libraryStore', {
             })
 
             try {
-                const playlist = listItem || null
+                if (isRankPlaylist) {
+                    const rankInfoResult = await getRankInfo(playlistId, routeRankCid ? { rank_cid: routeRankCid } : {})
+                    if (this.playlistHydrationToken != token) return
+
+                    const rankInfo = rankInfoResult?.data || rankInfoResult || {}
+                    const rankSongsResult = await getRankSongs({
+                        rankid: playlistId,
+                        rank_cid: routeRankCid || rankInfo?.rank_cid || '',
+                        page: 1,
+                        pagesize: 500,
+                    })
+                    if (this.playlistHydrationToken != token) return
+
+                    const rankSongs = mapSongsPlayableStatus(rankSongsResult?.songs || [], rankSongsResult?.privileges || []) || []
+                    const rankCover = rankInfo?.imgurl || rankInfo?.img_9 || rankInfo?.banner_9 || rankInfo?.album_img_9 || seededPlaylist?.coverImgUrl || ''
+                    const coverImgUrl = typeof rankCover == 'string' ? rankCover.replace('{size}', '480') : rankCover
+                    const trackCount = Number(rankSongsResult?.data?.total ?? rankInfo?.extra?.resp?.all_total ?? rankSongs.length) || rankSongs.length
+
+                    this.libraryInfo = {
+                        ...(seededPlaylist || {}),
+                        id: rankInfo?.rankid ?? seededPlaylist?.id ?? playlistId,
+                        name: rankInfo?.rankname || seededPlaylist?.name || '排行榜',
+                        coverImgUrl,
+                        trackCount,
+                        description: rankInfo?.intro || seededPlaylist?.description || '',
+                        updateFrequency: rankInfo?.update_frequency || seededPlaylist?.updateFrequency || '',
+                        rank_cid: routeRankCid || rankInfo?.rank_cid || seededPlaylist?.rank_cid || '',
+                        source: 'rank',
+                    }
+                    this.librarySongs = rankSongs
+                    this.indexLibrarySongs(rankSongs)
+                    this.playlistHydration = createPlaylistHydrationState({
+                        id: playlistId,
+                        total: trackCount,
+                        loaded: rankSongs.length,
+                        status: 'completed',
+                    })
+                    this.libraryChangeAnimation = false
+                    return
+                }
+
+                const playlist = listItem || seededPlaylist || null
 
                 const trackParams = {
                     id: playlistId,

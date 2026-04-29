@@ -7,15 +7,17 @@ function normalizePlaylistArtists(song) {
       ? song.ar
       : Array.isArray(song?.artists)
         ? song.artists
+        : Array.isArray(song?.authors)
+          ? song.authors
         : []
 
   return sourceArtists
     .map(artist => {
       if (!artist) return null
-      const name = artist?.name ?? artist?.singername ?? artist?.artistName ?? ''
+      const name = artist?.name ?? artist?.singername ?? artist?.artistName ?? artist?.author_name ?? ''
       if (!name) return null
       return {
-        id: artist?.id ?? artist?.singerid ?? artist?.artistId ?? null,
+        id: artist?.id ?? artist?.singerid ?? artist?.artistId ?? artist?.author_id ?? null,
         name,
         publish: artist?.publish,
         type: artist?.type,
@@ -25,20 +27,25 @@ function normalizePlaylistArtists(song) {
 }
 
 export function normalizePlaylistSong(song = {}) {
-  const rawAlbum = song?.albuminfo || song?.album || {}
+  const rawAlbum = song?.albuminfo || song?.album_info || song?.album || {}
   const albumId = rawAlbum?.id ?? rawAlbum?.albumId ?? song?.album_id ?? null
   const albumName = rawAlbum?.name ?? rawAlbum?.album_name ?? song?.album_name ?? song?.albumName ?? ''
-  const coverTemplate = song?.cover || song?.sizable_cover || rawAlbum?.picUrl || rawAlbum?.coverUrl || song?.trans_param?.union_cover || null
+  const coverTemplate = song?.cover || song?.sizable_cover || rawAlbum?.sizable_cover || rawAlbum?.picUrl || rawAlbum?.coverUrl || song?.album_sizable_cover || song?.trans_param?.union_cover || null
   const coverUrl = typeof coverTemplate == 'string' ? coverTemplate.replace('{size}', '480') : coverTemplate
   const artists = normalizePlaylistArtists(song)
-  const primaryId = song?.mixsongid ?? song?.audio_id ?? song?.id ?? song?.songId ?? song?.hash ?? song?.fileid ?? null
+  const primaryId = song?.album_audio_id ?? song?.mixsongid ?? song?.audio_id ?? song?.id ?? song?.songId ?? song?.hash ?? song?.fileid ?? null
+  const normalizedHash = song?.hash || song?.FileHash || song?.file_hash || song?.deprecated?.hash || song?.audio_info?.hash_128 || song?.audio_info?.hash_320 || song?.trans_param?.hash_offset?.offset_hash || ''
   const durationSeconds = Number(song?.time_length ?? song?.timelength_320 ?? song?.timeLength ?? 0)
-  const rawDuration = Number(song?.timelen ?? song?.duration ?? song?.dt ?? 0)
+  const rawDuration = Number(song?.timelen ?? song?.duration ?? song?.dt ?? song?.timelength ?? song?.audio_info?.duration_128 ?? 0)
   const duration = rawDuration > 1000 ? rawDuration : durationSeconds > 0 ? durationSeconds * 1000 : rawDuration
 
   return {
     ...song,
     id: primaryId ?? song?.hash ?? null,
+    hash: normalizedHash,
+    mixsongid: song?.mixsongid ?? song?.mixsong_id ?? song?.album_audio_id ?? '',
+    mixsong_id: song?.mixsong_id ?? song?.mixsongid ?? song?.album_audio_id ?? '',
+    album_audio_id: song?.album_audio_id ?? song?.mixsongid ?? song?.mixsong_id ?? '',
     name: (song?.name || song?.songName || song?.songname || song?.filename || '').replace(/^.*?\s*-\s*/, '').replace(/\.(mp3|flac|ogg|aac|wav|m4a|wma|ape|opus)$/i, ''),
     ar: artists,
     artists,
@@ -64,6 +71,29 @@ export function normalizePlaylistSongs(songs) {
   return Array.isArray(songs) ? songs.map(normalizePlaylistSong) : []
 }
 
+function normalizeRecommendedPlaylist(item = {}) {
+  const rawCover = item?.imgurl || item?.flexible_cover || item?.pic || ''
+  const coverImgUrl = typeof rawCover === 'string' ? rawCover.replace('{size}', '480') : rawCover
+  const creatorName = item?.nickname || item?.list_create_username || item?.username || item?.singername || ''
+
+  return {
+    ...item,
+    id: item?.specialid ?? item?.listid ?? item?.id ?? item?.global_collection_id ?? null,
+    global_collection_id: item?.global_collection_id || null,
+    name: item?.specialname || item?.name || item?.listname || '歌单',
+    coverImgUrl,
+    picUrl: coverImgUrl,
+    trackCount: Number(item?.songcount ?? item?.list_count ?? item?.count ?? 0) || 0,
+    playCount: Number(item?.play_count ?? item?.playcount ?? 0) || 0,
+    description: item?.intro || item?.description || '',
+    updateFrequency: item?.show || '',
+    creator: {
+      userId: item?.suid ?? item?.userid ?? null,
+      nickname: creatorName,
+    },
+  }
+}
+
 /**
  * 获取推荐歌单
  * @param {number} num 
@@ -76,17 +106,82 @@ export function getRecommendedSongList(num) {
             category_id: 0,
             pagesize: num
         }
+    }).then(result => {
+        const rawList = result?.data?.special_list || result?.special_list || result?.data?.list || result?.list || []
+        return {
+            ...result,
+            result: Array.isArray(rawList) ? rawList.map(item => normalizeRecommendedPlaylist(item)) : [],
+        }
     })
 }
 
 export function getTopList() {
+    const normalizeRankItem = (item = {}) => {
+      const rawCover = item?.imgurl || item?.img_9 || item?.banner_9 || item?.album_img_9 || ''
+      const coverImgUrl = typeof rawCover === 'string' ? rawCover.replace('{size}', '480') : rawCover
+      return {
+        ...item,
+        id: item?.rankid ?? item?.id ?? null,
+        name: item?.rankname || item?.name || '排行榜',
+        coverImgUrl,
+        picUrl: coverImgUrl,
+        updateFrequency: item?.update_frequency || '',
+        description: item?.intro || '',
+      }
+    }
+
     return request({
-      url: '/toplist',
+      url: '/rank/top',
+      method: 'get',
+    })
+      .then(result => {
+        const rawList = result?.data?.list || result?.list || []
+        return {
+          ...result,
+          list: Array.isArray(rawList) ? rawList.map(item => normalizeRankItem(item)) : [],
+        }
+      })
+      .catch(() =>
+        request({
+          url: '/rank/list',
+          method: 'get',
+          params: { withsong: 0 },
+        }).then(result => {
+          const rawList = result?.data?.info || result?.info || []
+          return {
+            ...result,
+            list: Array.isArray(rawList) ? rawList.map(item => normalizeRankItem(item)) : [],
+          }
+        })
+      )
+}
+
+export function getRankInfo(rankid, extraParams = {}) {
+    return request({
+      url: '/rank/info',
+      method: 'get',
+      params: { rankid, ...extraParams },
+    })
+}
+
+export function getRankSongs({ rankid, rank_cid, page = 1, pagesize = 500 } = {}) {
+    return request({
+      url: '/rank/audio',
       method: 'get',
       params: {
-
+        rankid,
+        ...(rank_cid ? { rank_cid } : {}),
+        page,
+        pagesize,
+      },
+    }).then(result => {
+      const rawSongs = result?.data?.songlist || result?.songlist || []
+      return {
+        ...result,
+        songs: normalizePlaylistSongs(rawSongs),
+        privileges: [],
       }
-    });
+    })
 }
 
 /**

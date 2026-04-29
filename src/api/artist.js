@@ -6,7 +6,27 @@ import { buildTypeParams, buildIdWithTimestamp, buildOperationParams, buildPagin
  * @param {number} type - 1:华语 2:欧美 3:韩国 4:日本
  */
 export function getRecommendedArtists(type) {
-    return get('/artist/lists', { type });
+    return get('/artist/lists', { type, hotsize: 50 }).then(result => {
+        const sections = Array.isArray(result?.data?.info) ? result.data.info : Array.isArray(result?.info) ? result.info : []
+        const rawArtists = sections.flatMap(section => (Array.isArray(section?.singer) ? section.singer : []))
+
+        return {
+            ...result,
+            artists: rawArtists.map(item => {
+                const rawCover = item?.imgurl || item?.sizable_avatar || item?.dycover?.first_frame_image || ''
+                const picUrl = typeof rawCover === 'string' ? rawCover.replace('{size}', '480') : rawCover
+
+                return {
+                    ...item,
+                    id: item?.singerid ?? item?.id ?? null,
+                    name: item?.singername || item?.name || '',
+                    picUrl,
+                    img1v1Url: picUrl,
+                    fansCount: Number(item?.fanscount ?? item?.follow ?? 0) || 0,
+                }
+            }),
+        }
+    });
 }
 
 /**

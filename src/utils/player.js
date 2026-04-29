@@ -410,7 +410,7 @@ async function refreshStreamAndResume(eventType, error) {
             nextStreamUrl = sirenPlayback?.streamUrl || ''
         } else {
             const preferredQuality = getPreferredQuality(quality.value)
-            trackInfo = await resolveTrackByQualityPreference(currentSong.hash, preferredQuality)
+            trackInfo = await resolveTrackByQualityPreference(currentSong, preferredQuality)
             nextStreamUrl = trackInfo?.url || ''
         }
 
@@ -965,7 +965,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
     await checkMusic(id).then(result => {
         if (result.success == true) {
             const preferredQuality = getPreferredQuality(quality.value)
-            resolveTrackByQualityPreference(targetSong.hash, preferredQuality).then(trackInfo => {
+            resolveTrackByQualityPreference(targetSong, preferredQuality).then(trackInfo => {
                 if (!trackInfo || !trackInfo.url) {
                     noticeOpen('当前歌曲无法播放', 2)
                     clearInterval(musicProgress)

@@ -36,57 +36,108 @@
   }
   //随机选取数据
   const shuffleData = (originData, limit, total) => {
-    let indexs = [];
-    while (indexs.length < limit) {
-        let num = parseInt(Math.random() * total)
-        if (!indexs.includes(num)) indexs.push(num)
-        else indexs = [];
+    const source = Array.isArray(originData) ? originData : []
+    const maxCount = Math.min(limit, source.length, total || source.length)
+    if (maxCount <= 0) return []
+
+    const pool = source.slice()
+    const selected = []
+    while (selected.length < maxCount && pool.length > 0) {
+        const index = Math.floor(Math.random() * pool.length)
+        selected.push(pool.splice(index, 1)[0])
     }
-    return originData.filter((item,index) => {
-        return indexs.includes(index)
-    });
+    return selected
+  }
+
+  const pickRankItems = (items, limit = 5) => {
+    const source = Array.isArray(items) ? items : []
+    if (source.length <= limit) return source
+
+    const preferredIndexes = [0, 3, 8, 11, 15]
+    const selected = preferredIndexes
+      .filter(index => index < source.length)
+      .map(index => source[index])
+
+    if (selected.length >= limit) return selected.slice(0, limit)
+
+    const usedIds = new Set(selected.map(item => item?.id))
+    for (const item of source) {
+      if (selected.length >= limit) break
+      if (usedIds.has(item?.id)) continue
+      selected.push(item)
+      usedIds.add(item?.id)
+    }
+
+    return selected
   }
 
   //加载数据
   async function loadData(artistNation,limit,albumNation,recType) {
-    if(recType == 0) {
-        const listData = await getRecommendedSongList(limit)
-        recommendationList.value = listData.result
-        setTitle("推荐歌单", "RECOMMENDED SONG LIST")
-    } else if(recType == 1) {
-        const listData = await getRecommendedArtists(artistNation)
-        setTitle("推荐歌手", "RECOMMENDED ARTISTS")
-        recommendationList.value = shuffleData(listData.artists, 5, 50)
-    } else if(recType == 2) {
+      recommendationList.value = []
+      recommendationLoaded = false
+      if(recType == 0) {
+          const listData = await getRecommendedSongList(limit)
+          recommendationList.value = Array.isArray(listData.result) ? listData.result : []
+          setTitle("推荐歌单", "RECOMMENDED SONG LIST")
+      } else if(recType == 1) {
+          const listData = await getRecommendedArtists(artistNation)
+          setTitle("推荐歌手", "RECOMMENDED ARTISTS")
+          recommendationList.value = shuffleData(listData.artists, 5, (listData.artists || []).length)
+      } else if(recType == 2) {
         const listData = await getNewAlbum({
             limit: limit,
             area: albumNation
         })
         setTitle("最新专辑", "NEWEST ALBUM")
-        recommendationList.value = listData.albums
-    } else if(recType == 3) {
+        recommendationList.value = Array.isArray(listData.albums) ? listData.albums : []
+      } else if(recType == 3) {
         const listData = await getTopList()
         setTitle("排行榜", "TOP LIST")
-        //选取指定排行榜
-        let indexs = [0,3,8,11,15]
-        recommendationList.value = listData.list.filter((item,index) => {
-            return indexs.includes(index)
-        });;
+        recommendationList.value = pickRankItems(listData.list, 5)
     }
     recommendationLoaded = true
     // console.log(recommendationList.value)
   }
 
-  const checkDetail = (id) => {
-    libraryStore.libraryInfo = null
+  const checkDetail = (item) => {
+    const id = item?.id
+    if (!id) return
     localStore.currentSelectedSongs = null
-    if(props.recType == 0) router.push('/mymusic/playlist/' + id)
+    if(props.recType == 0) {
+      libraryStore.libraryInfo = {
+        id,
+        name: item?.name || '歌单',
+        coverImgUrl: item?.coverImgUrl || item?.picUrl || '',
+        trackCount: item?.trackCount || 0,
+        description: item?.description || '',
+        creator: item?.creator || null,
+      }
+      router.push('/mymusic/playlist/' + id)
+    }
     if(props.recType == 1) router.push('/mymusic/artist/' + id)
     if(props.recType == 2) router.push('/mymusic/album/' + id)
-    if(props.recType == 3) router.push('/mymusic/playlist/' + id)
+    if(props.recType == 3) {
+      libraryStore.libraryInfo = {
+        id,
+        name: item?.name || '排行榜',
+        coverImgUrl: item?.coverImgUrl || item?.picUrl || '',
+        description: item?.description || '',
+        updateFrequency: item?.updateFrequency || '',
+        rank_cid: item?.rank_cid || '',
+        source: 'rank',
+      }
+      router.push({
+        path: '/mymusic/playlist/' + id,
+        query: {
+          source: 'rank',
+          ...(item?.rank_cid ? { rankCid: item.rank_cid } : {}),
+        },
+      })
+    }
     playerStore.forbidLastRouter = true
   }
   const checkArtist = (artistId) => {
+    if (!artistId) return
     router.push('/mymusic/artist/' + artistId)
     playerStore.forbidLastRouter = true
   }
@@ -110,8 +161,8 @@
         </div>
     </div>
     <div class="item-list" v-else>
-        <div class="item" v-for="(item,index) in recommendationList">
-            <div class="item-img" :class="recType == 1 ? 'item-img-circle' : 'item-img-sqaure'" @click="checkDetail(item.id)">
+        <div class="item" v-for="(item,index) in recommendationList" :key="`${recType}-${item.id || index}`">
+            <div class="item-img" :class="recType == 1 ? 'item-img-circle' : 'item-img-sqaure'" @click="checkDetail(item)">
                 <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl)" alt="">
             </div>
             <div class="item-name" :class="{'item-name-center': recType == 1}">{{item.name}}</div>
