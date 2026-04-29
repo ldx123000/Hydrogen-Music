@@ -1,8 +1,9 @@
 import pinia from '../store/pinia'
+import { refreshLogin } from '../api/login'
 import { getLikelist, getUserPlaylist, getUserProfile, logout } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { useCloudStore } from '../store/cloudStore'
-import { isLogin, setCookies } from './authority'
+import { getCookie, isLogin, setCookies, updateStoredAuthCookies } from './authority'
 import { clearAccountScopedState } from './accountState'
 import { invalidateNcmApiCookieCache } from './request'
 import { resolveFavoritePlaylistMeta } from './favoritePlaylist'
@@ -33,6 +34,18 @@ function scheduleCloudDiskDataPreload(profile) {
         const cloudStore = useCloudStore(pinia)
         await cloudStore.refreshCloudData(normalizedUserId, { maxAge: cloudDiskDataPreloadMaxAge })
     }, { timeout: 1800, fallbackDelay: 900 }).catch(() => {})
+}
+
+async function ensureCsrfCookie() {
+    if (getCookie('__csrf')) return
+
+    try {
+        const refreshResult = await refreshLogin()
+        updateStoredAuthCookies(refreshResult)
+        invalidateNcmApiCookieCache()
+    } catch (error) {
+        console.warn('刷新网易云登录 Cookie 失败:', error)
+    }
 }
 
 async function hydrateAccountSession(token) {
@@ -98,6 +111,7 @@ export async function initializeCurrentAccountSession() {
 
     await clearAccountScopedState({ clearCookies: false, clearSessionCookies: true, clearStores: false })
     invalidateNcmApiCookieCache()
+    await ensureCsrfCookie()
 
     try {
         return await hydrateAccountSession(token)
@@ -115,6 +129,7 @@ export async function applyLoginSession(data) {
 
     setCookies(data)
     invalidateNcmApiCookieCache()
+    await ensureCsrfCookie()
 
     try {
         return await hydrateAccountSession(token)

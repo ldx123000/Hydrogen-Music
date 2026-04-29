@@ -1,6 +1,6 @@
 const http = require('http')
 
-// 尝试加载增强版API（新包名）
+// 启动内置的增强版网易云 API 服务。
 let enhancedApi = null;
 try {
     enhancedApi = require('@neteasecloudmusicapienhanced/api');
@@ -79,7 +79,6 @@ async function waitForApiReachable(url, timeoutMs = API_READY_TIMEOUT_MS, interv
     throw lastError || new Error('ncm-api-unreachable')
 }
 
-//启动网易云音乐API（可选）
 module.exports = async function startNeteaseMusicApi() {
     if (enhancedApi && enhancedApi.serveNcmApi) {
         try {

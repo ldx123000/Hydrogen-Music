@@ -9,22 +9,12 @@ const libraryStore = useLibraryStore(pinia)
 
 import { noticeOpen } from "./dialog";
 
-// 检查是否有增强版API可用（新包名）
-let enhancedApi = null;
-try {
-    if (typeof require === 'function') {
-      enhancedApi = require('@neteasecloudmusicapienhanced/api');
-    }
-} catch (e) {
-    console.log('@neteasecloudmusicapienhanced/api 未找到，使用传统请求方式');
-}
-
 const request = axios.create({
-    baseURL: 'http://localhost:36530', // 保持向后兼容，但会优先使用增强版API
-    withCredentials: true,
-    timeout: 10000,
+  baseURL: 'http://localhost:36530',
+  withCredentials: true,
+  timeout: 10000,
 });
-const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T', '__csrf']
 const NCM_API_READY_TIMEOUT_MS = 10000
 let ncmApiReadyPromise = null
 const defaultAdapter = typeof axios.getAdapter === 'function'
@@ -141,7 +131,7 @@ function normalizeHeaders(headers) {
     if (axios.AxiosHeaders && typeof axios.AxiosHeaders.from === 'function') {
       return axios.AxiosHeaders.from(headers || {}).toJSON()
     }
-  } catch (_) {}
+  } catch (_) { }
 
   if (!headers || typeof headers !== 'object') return {}
   return { ...headers }
@@ -261,24 +251,21 @@ function triggerAutoLogout(reason) {
 request.interceptors.request.use(async function (config) {
   await ensureNcmApiReady()
   config.params = config.params || {}
+  config.headers = config.headers || {}
 
-  if (enhancedApi && config.useEnhancedApi) {
-    return config;
-  }
-  
-  if(config.url != '/login/qr/check') {
+  if (config.url != '/login/qr/check') {
     const authCookieString = isLogin() ? buildAuthCookieString() : ''
     const mergedCookieString = mergeCookieStrings(authCookieString, config.params.cookie)
     if (mergedCookieString) config.params.cookie = mergedCookieString
   }
-  if(libraryStore.needTimestamp.indexOf(config.url) != -1) {
+  if (libraryStore.needTimestamp.indexOf(config.url) != -1) {
     config.params.timestamp = new Date().getTime()
   }
-  
+
   // 添加国内IP伪装来解决524环境异常错误
   config.headers['X-Real-IP'] = '211.161.244.70'; // 国内IP地址
   config.headers['X-Forwarded-For'] = '211.161.244.70';
-  
+
   // 在发送请求之前做些什么
   return config;
 }, function (error) {
@@ -289,48 +276,45 @@ request.interceptors.request.use(async function (config) {
 
 // 响应拦截器
 request.interceptors.response.use(function (response) {
-    const url = response?.config?.url || ''
-    const data = response?.data
+  const url = response?.config?.url || ''
+  const data = response?.data
 
-    // 跳过登录/登出相关接口的自动判断
-    const isAuthApi = url.startsWith('/login') || url === '/logout'
-    if (!isAuthApi && data && typeof data === 'object') {
-      const code = data.code
-      const text = data.msg || data.message || ''
-      // NCM 未登录常见返回：code=301 或者 message/msgs 提示需要登录
-      if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
-        triggerAutoLogout('登录状态已失效，已自动退出');
-      }
+  // 跳过登录/登出相关接口的自动判断
+  const isAuthApi = url.startsWith('/login') || url === '/logout'
+  if (!isAuthApi && data && typeof data === 'object') {
+    const code = data.code
+    const text = data.msg || data.message || ''
+    // NCM 未登录常见返回：code=301 或者 message/msgs 提示需要登录
+    if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
+      triggerAutoLogout('登录状态已失效，已自动退出');
     }
-    return data
-  }, function (error) {
-    const url = error?.config?.url || ''
-    const status = error?.response?.status
-    const msg = error?.response?.data?.message || error?.response?.data?.msg
-    const code = error?.response?.data?.code
+  }
+  return data
+}, function (error) {
+  const url = error?.config?.url || ''
+  const status = error?.response?.status
+  const msg = error?.response?.data?.message || error?.response?.data?.msg
+  const code = error?.response?.data?.code
 
-    // 若后端以HTTP身份错误返回，直接触发自动登出
-    if (status === 401 || status === 403) {
-      triggerAutoLogout('登录已过期，请重新登录');
-    } else {
-      // 后端也可能以200以外的状态携带业务code
-      const text = error?.response?.data?.msg || error?.response?.data?.message || ''
-      if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
-        triggerAutoLogout('登录状态已失效，已自动退出');
-      }
+  // 若后端以HTTP身份错误返回，直接触发自动登出
+  if (status === 401 || status === 403) {
+    triggerAutoLogout('登录已过期，请重新登录');
+  } else {
+    // 后端也可能以200以外的状态携带业务code
+    const text = error?.response?.data?.msg || error?.response?.data?.message || ''
+    if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
+      triggerAutoLogout('登录状态已失效，已自动退出');
     }
+  }
 
-    // 对 /like 与 /playlist/tracks 的错误不进行全局提示，这些操作由调用方负责降级与提示
-    const suppressGlobalNotice = url === '/like' || url === '/playlist/tracks'
-    if (!suppressGlobalNotice) {
-      if (msg) noticeOpen(`请求错误：${msg}`, 2)
-      else if (status) noticeOpen(`请求错误 (${status})`, 2)
-      else noticeOpen('请求错误', 2)
-    }
-    return Promise.reject(error);
-  });
+  // 对 /like 与 /playlist/tracks 的错误不进行全局提示，这些操作由调用方负责降级与提示
+  const suppressGlobalNotice = url === '/like' || url === '/playlist/tracks'
+  if (!suppressGlobalNotice) {
+    if (msg) noticeOpen(`请求错误：${msg}`, 2)
+    else if (status) noticeOpen(`请求错误 (${status})`, 2)
+    else noticeOpen('请求错误', 2)
+  }
+  return Promise.reject(error);
+});
 
 export default request;
-
-// 导出API实例以供其他模块使用
-export { enhancedApi };

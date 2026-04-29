@@ -1,6 +1,6 @@
 import Cookies from "js-cookie";
 
-const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+const AUTH_COOKIE_KEYS = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T', '__csrf']
 const AUTH_COOKIE_STORAGE_PREFIX = 'cookie:'
 
 function getSessionStore() {
@@ -101,6 +101,12 @@ export function setCookies(data) {
   persistAuthCookies(cookieMap)
 }
 
+export function updateStoredAuthCookies(data) {
+  const cookieMap = extractAuthCookieValues(data?.cookie || '')
+  persistAuthCookies(cookieMap)
+  return cookieMap
+}
+
 // 获取 Cookie - 登录态持久化到 localStorage，并兼容当前会话中的旧值。
 export function getCookie(key) {
   const storedValue = readStoredAuthCookie(key)
@@ -116,7 +122,7 @@ export function isLogin() {
 // 清理登录相关Cookie与本地存储（不影响其他设置）
 export function clearLoginCookies() {
   try {
-    const keys = ['MUSIC_U', 'MUSIC_A_T', 'MUSIC_R_T']
+    const keys = AUTH_COOKIE_KEYS
     keys.forEach((k) => {
       clearStoredAuthCookie(k)
       // 通过设置过期来移除浏览器 cookie

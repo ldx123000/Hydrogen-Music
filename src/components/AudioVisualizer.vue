@@ -11,6 +11,8 @@ const FLAT_LEVEL = 0.08
 const FREQUENCY_VALUE_SCALE = 256
 const RETRY_ATTACH_LIMIT = 16
 const DEFAULT_BAR_GAP = 2
+const EMPTY_ANALYSER_FRAME_LIMIT = 72
+const ANALYSER_REATTACH_COOLDOWN_MS = 1200
 
 const playerStore = usePlayerStore()
 const {
@@ -40,7 +42,11 @@ let analyserData = null
 let attachedPlayback = null
 let mediaAudioContext = null
 let mediaStreamSource = null
+let mediaStream = null
+let playbackEventCleanup = null
 let resizeObserver = null
+let emptyAnalyserFrames = 0
+let lastAnalyserReattachAt = 0
 
 function resetFlat() {
     levels.value = createFlatLevels()
@@ -70,15 +76,55 @@ function clearAttachTimer() {
     attachTimer = null
 }
 
-function resetAnalyser() {
+function disconnectMediaStreamSource() {
+    if (mediaStreamSource) {
+        try { mediaStreamSource.disconnect() } catch (_) {}
+    }
+    mediaStreamSource = null
+    mediaStream = null
+}
+
+function clearPlaybackEventListeners() {
+    if (!playbackEventCleanup) return
+    playbackEventCleanup()
+    playbackEventCleanup = null
+}
+
+function resetAnalyser(options = {}) {
+    const keepPlayback = options.keepPlayback === true
     clearAttachTimer()
     analyser = null
     analyserData = null
-    attachedPlayback = null
+    emptyAnalyserFrames = 0
 
-    if (mediaStreamSource) {
-        try { mediaStreamSource.disconnect() } catch (_) {}
-        mediaStreamSource = null
+    disconnectMediaStreamSource()
+
+    if (!keepPlayback) {
+        clearPlaybackEventListeners()
+        attachedPlayback = null
+    }
+}
+
+function refreshAnalyserForPlayback(playback) {
+    if (!visible.value || currentMusic.value !== playback) return
+
+    resetAnalyser({ keepPlayback: true })
+    attachedPlayback = playback
+    tryAttachAnalyser()
+
+    if (!animationFrame) {
+        animationFrame = window.requestAnimationFrame(drawFrame)
+    }
+}
+
+function bindPlaybackEventListeners(playback) {
+    clearPlaybackEventListeners()
+    if (!playback || typeof playback.on !== 'function') return
+
+    const handlePlaybackStart = () => refreshAnalyserForPlayback(playback)
+    playback.on('play', handlePlaybackStart)
+    playbackEventCleanup = () => {
+        try { playback.off?.('play', handlePlaybackStart) } catch (_) {}
     }
 }
 
@@ -120,10 +166,11 @@ function getHowlBufferAnalyser(playback) {
     const context = source?.context
     if (!source || !context || typeof context.createAnalyser !== 'function') return null
 
-    if (!playback.__hmTopVisualizerAnalyser) {
+    if (!playback.__hmTopVisualizerAnalyser || playback.__hmTopVisualizerAnalyserSource !== source) {
         const nextAnalyser = configureAnalyser(context.createAnalyser())
         source.connect(nextAnalyser)
         playback.__hmTopVisualizerAnalyser = nextAnalyser
+        playback.__hmTopVisualizerAnalyserSource = source
     }
 
     return configureAnalyser(playback.__hmTopVisualizerAnalyser)
@@ -144,14 +191,16 @@ function getHowlMediaElement(playback) {
 }
 
 function getMediaStreamAnalyser(playback) {
-    if (mediaStreamSource) return analyser
+    const tracks = typeof mediaStream?.getAudioTracks === 'function' ? mediaStream.getAudioTracks() : []
+    if (mediaStreamSource && analyser && tracks.some(track => track.readyState === 'live')) return analyser
+    disconnectMediaStreamSource()
 
     const mediaElement = getHowlMediaElement(playback)
     const capture = mediaElement?.captureStream || mediaElement?.mozCaptureStream
     if (!mediaElement || typeof capture !== 'function') return null
 
     const stream = capture.call(mediaElement)
-    if (!stream || stream.getAudioTracks().length === 0) return null
+    if (!stream || typeof stream.getAudioTracks !== 'function' || stream.getAudioTracks().length === 0) return null
 
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext
     if (!AudioContextCtor) return null
@@ -162,6 +211,7 @@ function getMediaStreamAnalyser(playback) {
     }
 
     const nextAnalyser = configureAnalyser(mediaAudioContext.createAnalyser())
+    mediaStream = stream
     mediaStreamSource = mediaAudioContext.createMediaStreamSource(stream)
     mediaStreamSource.connect(nextAnalyser)
     return nextAnalyser
@@ -177,6 +227,7 @@ function tryAttachAnalyser(retryCount = 0) {
     if (attachedPlayback !== playback) {
         resetAnalyser()
         attachedPlayback = playback
+        bindPlaybackEventListeners(playback)
     }
 
     try {
@@ -223,6 +274,26 @@ function buildAnalyserLevels() {
     return nextLevels
 }
 
+function reattachStaleAnalyser() {
+    if (!analyser || !playing.value || !visible.value) {
+        emptyAnalyserFrames = 0
+        return false
+    }
+
+    emptyAnalyserFrames += 1
+    if (emptyAnalyserFrames < EMPTY_ANALYSER_FRAME_LIMIT) return false
+
+    const now = Date.now()
+    if (now - lastAnalyserReattachAt < ANALYSER_REATTACH_COOLDOWN_MS) return false
+
+    lastAnalyserReattachAt = now
+    const playback = currentMusic.value
+    resetAnalyser({ keepPlayback: true })
+    attachedPlayback = playback
+    tryAttachAnalyser()
+    return true
+}
+
 function drawFrame() {
     if (!visible.value) {
         animationFrame = 0
@@ -230,6 +301,7 @@ function drawFrame() {
     }
 
     if (!playing.value) {
+        emptyAnalyserFrames = 0
         if (settleFlat()) animationFrame = window.requestAnimationFrame(drawFrame)
         else animationFrame = 0
         return
@@ -238,10 +310,12 @@ function drawFrame() {
     const analyserLevels = buildAnalyserLevels()
 
     if (analyserLevels) {
+        emptyAnalyserFrames = 0
         levels.value = analyserLevels
     } else {
+        const reattaching = reattachStaleAnalyser()
         settleFlat()
-        if (!analyser && !attachTimer) tryAttachAnalyser()
+        if (!reattaching && !analyser && !attachTimer) tryAttachAnalyser()
     }
 
     animationFrame = window.requestAnimationFrame(drawFrame)
@@ -258,6 +332,7 @@ function start() {
 
 function stop() {
     clearAttachTimer()
+    emptyAnalyserFrames = 0
     if (animationFrame) {
         window.cancelAnimationFrame(animationFrame)
         animationFrame = 0

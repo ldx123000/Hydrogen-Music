@@ -162,6 +162,9 @@ function whenNcmApiReady() {
 function requestNcmApi(request) {
     return ipcRenderer.invoke('ncm-api-request', request)
 }
+function submitNcmClientLog(request) {
+    return ipcRenderer.invoke('ncm-client-log-submit', request)
+}
 function requestTrustedResource(request) {
     return ipcRenderer.invoke('trusted-resource-request', request).then((response) => {
         if (response && typeof response === 'object' && response[TRUSTED_RESOURCE_ERROR_MARKER]) {
@@ -298,6 +301,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     checkForUpdate,
     whenNcmApiReady,
     requestNcmApi,
+    submitNcmClientLog,
     requestTrustedResource,
     requestAudioArrayBuffer,
     readLocalAudioBuffer,

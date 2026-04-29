@@ -29,6 +29,7 @@ import { createEmptyLyric } from './player/lyricPayload'
 import { verifyStoredMusicVideo } from './musicVideoLookup'
 import { isSeekInMusicVideoTiming, isValidMusicVideoTiming } from './musicVideoTiming'
 import { getIndexedSong, getIndexedSongOrFirst } from './songList'
+import { reportNcmPlaybackEnd, reportNcmPlaybackStart } from './ncmRecentPlayReporter'
 import {
     DEFAULT_FAVORITE_PLAYLIST_NAME,
     normalizeFavoritePlaylistMeta,
@@ -738,6 +739,29 @@ function getSafeCurrentSeek() {
     return typeof progress.value === 'number' && !Number.isNaN(progress.value) ? progress.value : 0
 }
 
+function getCurrentPlaybackElapsedSeconds(useDurationFallback = false) {
+    const seek = getSafeCurrentSeek()
+    if (!useDurationFallback) return seek
+
+    const duration = normalizePlaybackDuration(time.value || currentMusic.value?.duration?.())
+    if (duration > 0 && (!seek || Math.abs(duration - seek) <= 1.5)) return duration
+    return seek || duration
+}
+
+function reportCurrentNcmPlaybackStart() {
+    reportNcmPlaybackStart(getCurrentSong(), {
+        listInfo: listInfo.value,
+    })
+}
+
+function reportCurrentNcmPlaybackEnd(end = 'interrupt', useDurationFallback = false) {
+    reportNcmPlaybackEnd(getCurrentSong(), {
+        end,
+        listInfo: listInfo.value,
+        elapsedSeconds: getCurrentPlaybackElapsedSeconds(useDurationFallback),
+    })
+}
+
 function normalizePersistedProgress(value) {
     const progressValue = Number(value)
     if (!Number.isFinite(progressValue) || progressValue < 0) return null
@@ -1033,6 +1057,7 @@ function handlePlaybackStarted(playback) {
     windowApi.playOrPauseMusicCheck(playing.value)
     syncWindowsTaskbarPlaybackState()
     updateWindowTitleDock()
+    reportCurrentNcmPlaybackStart()
 }
 
 function handlePlaybackPaused(playback) {
@@ -1128,6 +1153,7 @@ function startGaplessTarget(target, entry, options = {}) {
     if (!target?.song || target.id == null || !entry?.howl) return false
 
     const previousHowl = getCurrentHowl()
+    reportCurrentNcmPlaybackEnd('playend', true)
     resetPlaybackStateForGaplessStart()
     applyGaplessTargetState(target)
     syncWindowsTaskbarPlaybackState()
@@ -1215,6 +1241,7 @@ function startGaplessTransitionMonitor() {
 }
 
 function handlePlaybackEnded() {
+    reportCurrentNcmPlaybackEnd('playend', true)
     stopProgressSampling()
     if (tryStartGaplessNextFromEnd()) return
 
@@ -1509,6 +1536,7 @@ export function loadMusicVideo(id) {
 }
 
 export function addSong(id, index, autoplay, isLocal) {
+    reportCurrentNcmPlaybackEnd('interrupt')
     // 先停止旧的进度计时，避免残留计时在下一秒把UI回写为上一首的进度
     stopProgressSampling()
     resetSongSwitchState()

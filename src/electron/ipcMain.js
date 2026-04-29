@@ -18,9 +18,16 @@ const {
     normalizePlainObject,
     normalizeResponseType,
     normalizeTimeout,
+    parseCookieString,
     parseUrlSafely,
     sanitizePathToken,
 } = require('./ipcHelpers')
+let ncmCrypto = null
+try {
+    ncmCrypto = require('@neteasecloudmusicapienhanced/api/util/crypto.js')
+} catch (_) {
+    ncmCrypto = null
+}
 let ffmpegPath = null
 try {
     ffmpegPath = require('ffmpeg-static')
@@ -211,6 +218,10 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const ncmApiRetryDelays = Object.freeze([300, 900])
     const trustedResourceRetryDelays = Object.freeze([500])
     const trustedResourceErrorMarker = '__hydrogenMusicTrustedResourceError'
+    const ncmClientLogEndpoint = 'https://clientlogusf.music.163.com/weapi/feedback/weblog'
+    const ncmOfficialReferer = 'https://music.163.com/'
+    const ncmWebUserAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0'
+    const allowedNcmClientLogActions = new Set(['startplay', 'play'])
 
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
@@ -543,6 +554,33 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
         if (cookieMap.size === 0) return ''
         return Array.from(cookieMap.entries()).map(([name, value]) => `${name}=${value}`).join('; ')
+    }
+
+    const normalizeNcmClientLogs = logs => {
+        if (!Array.isArray(logs)) return []
+
+        return logs.slice(0, 8).map(log => {
+            const action = typeof log?.action === 'string' ? log.action.trim() : ''
+            const json = log?.json && typeof log.json === 'object' && !Array.isArray(log.json) ? log.json : null
+            if (!allowedNcmClientLogActions.has(action) || !json) return null
+            return { action, json }
+        }).filter(Boolean)
+    }
+
+    const buildNcmClientLogPayload = (logs, csrfToken = '') => {
+        if (!ncmCrypto || typeof ncmCrypto.weapi !== 'function') {
+            throw new Error('ncm-weapi-encrypt-unavailable')
+        }
+
+        return ncmCrypto.weapi({
+            logs: JSON.stringify(logs),
+            csrf_token: csrfToken || '',
+        })
+    }
+
+    const buildNcmClientLogUrl = csrfToken => {
+        const suffix = csrfToken ? `?csrf_token=${encodeURIComponent(csrfToken)}` : ''
+        return `${ncmClientLogEndpoint}${suffix}`
     }
 
     const parseSetCookieHeader = rawCookie => {
@@ -884,6 +922,62 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             }, method === 'get' ? ncmApiRetryDelays : [])
 
             await syncNcmApiResponseCookies(parsedUrl, response.headers || {})
+
+            return {
+                status: response.status,
+                statusText: response.statusText || '',
+                data: response.data,
+                headers: response.headers || {},
+            }
+        } catch (error) {
+            return buildNcmApiErrorResponse(error)
+        }
+    })
+    ipcMain.removeHandler('ncm-client-log-submit')
+    ipcMain.handle('ncm-client-log-submit', async (_event, request = {}) => {
+        const logs = normalizeNcmClientLogs(request?.logs)
+        if (logs.length === 0) {
+            return {
+                status: 400,
+                statusText: 'Bad Request',
+                data: { code: 400, msg: 'empty-ncm-client-log' },
+                headers: {},
+            }
+        }
+
+        const sessionCookieString = await getNcmApiSessionCookieString()
+        const requestCookieString = typeof request?.cookie === 'string' ? request.cookie : ''
+        const cookieString = mergeCookieStrings(sessionCookieString, requestCookieString)
+        const cookieMap = parseCookieString(cookieString)
+        if (!cookieString || !cookieMap.has('MUSIC_U')) {
+            return {
+                status: 401,
+                statusText: 'Unauthorized',
+                data: { code: 401, msg: 'ncm-login-cookie-required' },
+                headers: {},
+            }
+        }
+
+        const csrfToken = cookieMap.get('__csrf') || ''
+        const timeout = normalizeTimeout(request?.timeout || 8000)
+
+        try {
+            const encryptedPayload = buildNcmClientLogPayload(logs, csrfToken)
+            const response = await requestWithTransientRetry({
+                url: buildNcmClientLogUrl(csrfToken),
+                method: 'post',
+                data: new URLSearchParams(encryptedPayload).toString(),
+                headers: {
+                    Cookie: cookieString,
+                    Origin: ncmOfficialReferer.replace(/\/$/, ''),
+                    Referer: ncmOfficialReferer,
+                    'User-Agent': ncmWebUserAgent,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                timeout,
+                responseType: normalizeResponseType(request?.responseType),
+                validateStatus: () => true,
+            }, trustedResourceRetryDelays)
 
             return {
                 status: response.status,

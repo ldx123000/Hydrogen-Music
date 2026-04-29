@@ -53,6 +53,19 @@ export function checkQRcodeStatus(key) {
 }
 
 /**
+ * 刷新登录 Cookie。
+ */
+export function refreshLogin() {
+    return request({
+        url: '/login/refresh',
+        method: 'post',
+        params: {
+            timestamp: new Date().getTime(),
+        },
+    })
+}
+
+/**
  * 必选参数 :
  * email: 163 网易邮箱
  * password: 密码
