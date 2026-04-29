@@ -1,7 +1,7 @@
 <script setup>
   import { onActivated, ref, watch } from 'vue'
   import router from '../router/router'
-  import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
+  import { getUserProfile, getUserPlaylist } from '../api/user'
   import { extractPlaylistItems } from '../utils/accountSession'
   import { getUserSubAlbum } from '../api/album'
   import { getUserSubArtists } from '../api/artist'
@@ -61,7 +61,7 @@
     }
 
     try {
-      const listCount = await getUserPlaylistCount()
+      const listCount = await getUserProfile()
       if (!isLibraryRequestActive(requestToken, requestUserId)) return false
 
       updateUserPlaylistCount(listCount)

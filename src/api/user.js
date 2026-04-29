@@ -26,21 +26,6 @@ import request from '../utils/request'
     });
   }
 
-/**
- * 获取用户信息 , 歌单，收藏，mv, dj 数量
- * 说明 : 登录后调用此接口 , 可以获取用户信息
- * @param {*} params 
- * @returns 
- */
-  export function getUserPlaylistCount() {
-    return request({
-      url: '/user/detail',
-      method: 'get',
-      params: {
-        timestamp: new Date().getTime(),
-      }
-    });
-  }
 
 /**
  * 说明 : 调用此接口 , 可退出登录

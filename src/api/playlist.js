@@ -121,11 +121,11 @@ async function fetchPlaylistPage(id, page, pagesize, rest) {
 
 export async function getPlaylistAll(params) {
     const { id, gid, limit, offset, ...rest } = params || {}
-    const pagesize = Math.min(limit || 999, 999)
+    const pagesize = Math.min(limit || 300, 300)
     const page = offset != null && limit ? Math.floor(offset / limit) + 1 : 1
     try {
         const songs = await fetchPlaylistPage(id, page, pagesize, rest)
-        if (songs.length >= 999) {
+        if (songs.length >= 300) {
             const songs2 = await fetchPlaylistPage(id, page + 1, pagesize, rest)
             return { songs: [...songs, ...songs2], privileges: [] }
         }
