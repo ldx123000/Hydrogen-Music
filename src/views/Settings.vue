@@ -105,7 +105,7 @@ const loadVipInfo = async () => {
 onActivated(() => {
     windowApi.getSettings().then(settings => {
         if (!settings) return
-        musicLevel.value = settings.music.level
+        musicLevel.value = playerStore.quality ?? settings.music.level
         lyricSize.value = settings.music.lyricSize
         tlyricSize.value = settings.music.tlyricSize
         rlyricSize.value = settings.music.rlyricSize
@@ -203,6 +203,7 @@ const setAppSettings = () => {
             quitApp: quitApp.value,
         },
     }
+    playerStore.quality = musicLevel.value
     windowApi.setSettings(JSON.stringify(settings))
 }
 

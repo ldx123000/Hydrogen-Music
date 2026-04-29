@@ -14,7 +14,7 @@ const localStore = useLocalStore()
 export const initSettings = () => {
     windowApi.getSettings().then(settings => {
         const rawSearchAssistLimit = Number.parseInt(settings?.music?.searchAssistLimit, 10)
-        quality.value = getPreferredQuality(settings?.music?.level)
+        if (!quality.value) quality.value = getPreferredQuality(settings?.music?.level)
         lyricSize.value = settings.music.lyricSize
         tlyricSize.value = settings.music.tlyricSize
         rlyricSize.value = settings.music.rlyricSize

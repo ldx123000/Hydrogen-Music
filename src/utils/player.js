@@ -978,7 +978,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
                 play(trackInfo.url, autoplay)
                 setSongLevel(trackInfo.level, trackInfo)
             })
-            getLyric(id).then(songLiric => {
+            getLyric(targetSong.hash).then(songLiric => {
                 if (songId.value !== targetSongId) return
                 lyric.value = songLiric
                 restorePlayerLyricAfterSongChange()

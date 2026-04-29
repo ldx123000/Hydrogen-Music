@@ -923,7 +923,7 @@ const togglePlay = async () => {
 
             // 获取歌词
             try {
-                const lyricResponse = await getLyric(currentSong.value.id)
+                const lyricResponse = await getLyric(currentSong.value.hash)
                 if (playerStore.songId === targetSongId && lyricResponse && lyricResponse.lrc) {
                     playerStore.lyric = lyricResponse
                 }

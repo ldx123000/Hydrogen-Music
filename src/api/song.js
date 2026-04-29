@@ -73,11 +73,12 @@ export function likeMusic(id, like = true) {
  * @param {string|number} id - 音乐ID
  */
 export async function getLyric(hash) {
-    const searchRes = await get('/search/lyric', { hash, fmt: 'lrc', decode: true });
+    const searchRes = await get('/search/lyric', { hash });
     const info = searchRes?.candidates?.[0];
     if (!info) return { lrc: { lyric: '' } };
     const lyric = await get('/lyric', { id: info.id, accesskey: info.accesskey, fmt: 'lrc', decode: true });
-    return lyric;
+    const lyricText = lyric?.decodeContent || lyric?.lrc?.lyric || '';
+    return { lrc: { lyric: lyricText } };
 }
 
 /**
