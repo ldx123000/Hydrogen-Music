@@ -115,6 +115,7 @@ export const useOtherStore = defineStore('otherStore', {
           currentVideoId: null,
           videoIsFull: false,
           searchResult: {},
+          searchLoading: false,
           searchRequestToken: 0,
           toUpdate: false,
           newVersion: null,
@@ -211,6 +212,14 @@ export const useOtherStore = defineStore('otherStore', {
         async getSearchInfo(keywords) {
             const requestToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             this.searchRequestToken = requestToken
+            this.searchLoading = true
+            this.searchResult = {
+                searchSongs: [],
+                searchAlbums: [],
+                searchArtists: [],
+                searchPlaylists: [],
+                searchMvs: [],
+            }
 
             const requestConfigs = [
                 { type: 1, key: 'searchSongs' },
@@ -220,57 +229,63 @@ export const useOtherStore = defineStore('otherStore', {
                 { type: 1004, key: 'searchMvs', limit: 10 },
             ]
 
-            const results = await Promise.allSettled(requestConfigs.map(config => {
-                const params = {
-                    keywords,
-                    type: config.type,
+            try {
+                const results = await Promise.allSettled(requestConfigs.map(config => {
+                    const params = {
+                        keywords,
+                        type: config.type,
+                    }
+                    if (config.limit) params.limit = config.limit
+                    return search(params)
+                }))
+
+                if (this.searchRequestToken !== requestToken) return
+
+                const nextSearchResult = {
+                    searchSongs: [],
+                    searchAlbums: [],
+                    searchArtists: [],
+                    searchPlaylists: [],
+                    searchMvs: [],
                 }
-                if (config.limit) params.limit = config.limit
-                return search(params)
-            }))
 
-            if (this.searchRequestToken !== requestToken) return
+                results.forEach((result, index) => {
+                    if (result.status !== 'fulfilled') return
+                    const data = result.value
+                    const config = requestConfigs[index]
+                    if (!config || !data?.result) return
 
-            const nextSearchResult = {
-                searchSongs: [],
-                searchAlbums: [],
-                searchArtists: [],
-                searchPlaylists: [],
-                searchMvs: [],
+                    if (config.key === 'searchSongs') {
+                        nextSearchResult.searchSongs = mapSongsPlayableStatus(data.result.songs || [])
+                        return
+                    }
+
+                    if (config.key === 'searchAlbums') {
+                        nextSearchResult.searchAlbums = data.result.albums || []
+                        return
+                    }
+
+                    if (config.key === 'searchArtists') {
+                        nextSearchResult.searchArtists = data.result.artists || []
+                        return
+                    }
+
+                    if (config.key === 'searchPlaylists') {
+                        nextSearchResult.searchPlaylists = data.result.playlists || []
+                        return
+                    }
+
+                    if (config.key === 'searchMvs') {
+                        nextSearchResult.searchMvs = data.result.mvs || []
+                    }
+                })
+
+                this.searchResult = nextSearchResult
+            } finally {
+                if (this.searchRequestToken === requestToken) {
+                    this.searchLoading = false
+                }
             }
-
-            results.forEach((result, index) => {
-                if (result.status !== 'fulfilled') return
-                const data = result.value
-                const config = requestConfigs[index]
-                if (!config || !data?.result) return
-
-                if (config.key === 'searchSongs') {
-                    nextSearchResult.searchSongs = mapSongsPlayableStatus(data.result.songs || [])
-                    return
-                }
-
-                if (config.key === 'searchAlbums') {
-                    nextSearchResult.searchAlbums = data.result.albums || []
-                    return
-                }
-
-                if (config.key === 'searchArtists') {
-                    nextSearchResult.searchArtists = data.result.artists || []
-                    return
-                }
-
-                if (config.key === 'searchPlaylists') {
-                    nextSearchResult.searchPlaylists = data.result.playlists || []
-                    return
-                }
-
-                if (config.key === 'searchMvs') {
-                    nextSearchResult.searchMvs = data.result.mvs || []
-                }
-            })
-
-            this.searchResult = nextSearchResult
         }
     },
 })

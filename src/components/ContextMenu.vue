@@ -10,8 +10,7 @@
   import { usePlayerStore } from '../store/playerStore'
   import { useUserStore } from '../store/userStore';
   import { resolveImageUrl } from '../utils/initApp'
-  import { getLikelist } from '../api/user';
-  import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
+  import { getLikelist, getUserPlaylist } from '../api/user';
   import { extractPlaylistItems } from '../utils/accountSession'
   import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
   import { storeToRefs } from 'pinia';
@@ -68,15 +67,13 @@
       if (!userStore.user || !userStore.user.userId) return
       if (Array.isArray(libraryStore.playlistUserCreated) && libraryStore.playlistUserCreated.length > 0) return
 
-      const count = await getUserPlaylistCount()
-      libraryStore.updateUserPlaylistCount(count)
-
       const params = {
         page: 1,
         pagesize: 500,
         timestamp: new Date().getTime(),
       }
       const list = await getUserPlaylist(params)
+      libraryStore.updateUserPlaylistCount(null)
       libraryStore.updateUserPlaylist(extractPlaylistItems(list))
     } catch (e) {
       // 静默失败，弹窗仍可显示，后续可再次尝试
