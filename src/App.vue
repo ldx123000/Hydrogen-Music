@@ -88,7 +88,7 @@ const handleTitleBarDoubleClick = () => {
         <ContextMenu v-if="otherStore.contextMenuShow || otherStore.addPlaylistShow"></ContextMenu>
     </div>
     <div class="globalDialog">
-        <GlobalDialog v-if="otherStore.dialogShow"></GlobalDialog>
+        <GlobalDialog></GlobalDialog>
     </div>
     <div class="globalNotice">
         <GlobalNotice v-if="otherStore.noticeShow"></GlobalNotice>
