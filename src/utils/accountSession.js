@@ -28,13 +28,49 @@ function pickFirstValue(...values) {
     return null
 }
 
+function formatBirthdayText(value) {
+    const raw = pickFirstValue(value)
+    if (raw === null) return ''
+
+    const numeric = Number(raw)
+    if (Number.isFinite(numeric) && numeric > 100000000000) {
+        const date = new Date(numeric)
+        if (!Number.isNaN(date.getTime())) {
+            const year = date.getFullYear()
+            const month = String(date.getMonth() + 1).padStart(2, '0')
+            const day = String(date.getDate()).padStart(2, '0')
+            return `${year}-${month}-${day}`
+        }
+    }
+
+    const text = String(raw).trim()
+    if (/^\d{8}$/.test(text)) {
+        return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`
+    }
+    return text
+}
+
+function formatLocationText(raw = {}) {
+    const directLocation = pickFirstValue(raw.location, raw.city_name, raw.province_name)
+    if (directLocation) return String(directLocation)
+
+    const province = pickFirstValue(raw.province, raw.provinceName)
+    const city = pickFirstValue(raw.city, raw.cityName)
+    const region = [province, city].filter(Boolean).map(value => String(value))
+    return region.join(' ')
+}
+
 function normalizeUserProfile(profileResult = {}) {
     const raw = profileResult?.data || profileResult?.profile || profileResult || {}
     const userId = pickFirstValue(raw.userId, raw.userid, raw.id, getCookie('userid'))
     const nickname = pickFirstValue(raw.nickname, raw.k_nickname, raw.fx_nickname, raw.name)
     const avatarUrl = pickFirstValue(raw.avatarUrl, raw.pic, raw.k_pic, raw.fx_pic, raw.avatar)
     const backgroundUrl = pickFirstValue(raw.backgroundUrl, raw.backgroundPicUrl, raw.bg_pic)
-    const signature = pickFirstValue(raw.signature, raw.descri)
+    const signature = pickFirstValue(raw.signature, raw.descri, raw.description)
+    const birthdayText = formatBirthdayText(pickFirstValue(raw.birthdayText, raw.birthday, raw.birth))
+    const location = formatLocationText(raw)
+    const createdPlaylistCount = Number(pickFirstValue(raw.createdPlaylistCount, raw.created_playlist_count, raw.create_playlist_count, 0)) || 0
+    const subPlaylistCount = Number(pickFirstValue(raw.subPlaylistCount, raw.subscribe_playlist_count, raw.sub_playlist_count, 0)) || 0
 
     return {
         ...raw,
@@ -44,6 +80,21 @@ function normalizeUserProfile(profileResult = {}) {
         avatarUrl: avatarUrl || '',
         backgroundUrl: backgroundUrl || '',
         signature: signature || '',
+        description: pickFirstValue(raw.description, raw.descri, signature) || '',
+        birthdayText,
+        location: location || '',
+        occupation: pickFirstValue(raw.occupation, raw.job, raw.profession, raw.career) || '',
+        follows: Number(pickFirstValue(raw.follows, raw.follow, 0)) || 0,
+        followeds: Number(pickFirstValue(raw.followeds, raw.fans, raw.follower, 0)) || 0,
+        fans: Number(pickFirstValue(raw.fans, raw.followeds, 0)) || 0,
+        visitors: Number(pickFirstValue(raw.visitors, raw.visit_count, 0)) || 0,
+        hvisitors: Number(pickFirstValue(raw.hvisitors, raw.history_visitors, 0)) || 0,
+        svipLevel: Number(pickFirstValue(raw.svipLevel, raw.svip_level, 0)) || 0,
+        mType: Number(pickFirstValue(raw.mType, raw.m_type, 0)) || 0,
+        yType: Number(pickFirstValue(raw.yType, raw.y_type, 0)) || 0,
+        bookvipValid: Number(pickFirstValue(raw.bookvipValid, raw.bookvip_valid, 0)) || 0,
+        createdPlaylistCount,
+        subPlaylistCount,
         vipType: Number(pickFirstValue(raw.vipType, raw.vip_type, 0)) || 0,
     }
 }

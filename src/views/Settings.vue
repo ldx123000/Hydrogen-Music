@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onActivated, watch } from 'vue'
+import { computed, ref, onActivated, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { noticeOpen, dialogOpen } from '@/utils/dialog'
 import { initSettings } from '@/utils/initApp'
@@ -15,6 +15,30 @@ import { logoutCurrentAccountSession } from '@/utils/accountSession'
 const router = useRouter()
 const userStore = useUserStore()
 const playerStore = usePlayerStore()
+const currentUser = computed(() => userStore.user || {})
+const profileAvatarUrl = computed(() => currentUser.value.avatarUrl || currentUser.value.kAvatarUrl || currentUser.value.fxAvatarUrl || '')
+const profileAliases = computed(() => [currentUser.value.kNickname, currentUser.value.fxNickname].filter(value => value && value !== currentUser.value.nickname))
+const profileVipText = computed(() => {
+    const user = currentUser.value
+    const parts = []
+    if (user.vipType) parts.push(`VIP ${user.vipType}`)
+    if (user.mType) parts.push(`月卡 ${user.mType}`)
+    if (user.yType) parts.push(`年卡 ${user.yType}`)
+    if (user.svipLevel) parts.push(`SVIP ${user.svipLevel}`)
+    if (user.bookvipValid) parts.push(`书包会员 ${user.bookvipValid}`)
+    return parts.length ? parts.join(' · ') : '普通用户'
+})
+const profileDetailList = computed(() => [
+    { label: '个性签名', value: currentUser.value.description || currentUser.value.signature || '未填写' },
+    { label: '所在地', value: currentUser.value.location || '未填写' },
+    { label: '生日', value: currentUser.value.birthdayText || currentUser.value.birthday || '未填写' },
+    { label: '职业', value: currentUser.value.occupation || '未填写' },
+    { label: '会员状态', value: profileVipText.value },
+    { label: '粉丝', value: currentUser.value.fans ?? currentUser.value.followeds ?? '未填写' },
+    { label: '关注', value: currentUser.value.follows ?? '未填写' },
+    { label: '访客', value: currentUser.value.visitors ?? '未填写' },
+    { label: '历史访客', value: currentUser.value.hvisitors ?? '未填写' },
+])
 
 const vipInfo = ref(null)
 const musicLevel = ref('flac')
@@ -438,20 +462,30 @@ const clearFmRecent = () => {
         </div>
         <div class="settings-container">
             <h1 class="settings-title">设置</h1>
-            <div class="settings-user-info" v-if="isLogin()">
-                <div class="user">
-                    <div class="user-head">
-                        <img :src="userStore.user.avatarUrl + '?param=300y300'" alt="" />
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">{{ userStore.user.nickname }}</div>
-                        <div class="user-vip" v-if="vipInfo && userStore.user.vipType != 0">
-                            <img :src="vipInfo.redVipDynamicIconUrl" alt="" />
+            <div class="settings-user-info" v-if="isLogin()" :style="profileAvatarUrl ? { backgroundImage: `linear-gradient(135deg, rgba(255,255,255,0.88), rgba(255,255,255,0.72)), url(${currentUser.backgroundUrl || profileAvatarUrl})` } : {}">
+                <div class="user-top">
+                    <div class="user">
+                        <div class="user-head">
+                            <img :src="profileAvatarUrl + '?param=300y300'" alt="" />
+                        </div>
+                        <div class="user-info">
+                            <div class="user-name">{{ currentUser.nickname }}</div>
+                            <div class="user-alias" v-if="profileAliases.length">{{ profileAliases.join(' / ') }}</div>
+                            <div class="user-signature">{{ currentUser.description || currentUser.signature || '这个用户很懒，什么都没有留下。' }}</div>
+                            <div class="user-vip" v-if="vipInfo && currentUser.vipType != 0">
+                                <img :src="vipInfo.redVipDynamicIconUrl" alt="" />
+                            </div>
                         </div>
                     </div>
+                    <div class="logout" @click="userLogout()">
+                        <span>退出</span>
+                    </div>
                 </div>
-                <div class="logout" @click="userLogout()">
-                    <span>退出</span>
+                <div class="profile-details">
+                    <div class="profile-item" v-for="item in profileDetailList" :key="item.label">
+                        <span class="profile-label">{{ item.label }}</span>
+                        <span class="profile-value">{{ item.value }}</span>
+                    </div>
                 </div>
             </div>
             <div class="settings">
@@ -802,20 +836,34 @@ const clearFmRecent = () => {
             text-align: left;
         }
         .settings-user-info {
-            padding: 10px 40px;
+            padding: 20px 40px;
             width: 100%;
-            height: 100px;
-            background-color: rgba(255, 255, 255, 0.35);
+            min-height: 220px;
+            background-color: rgba(255, 255, 255, 0.42);
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: cover;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.06);
             display: flex;
-            flex-direction: row;
-            align-items: center;
+            flex-direction: column;
             justify-content: space-between;
+            gap: 18px;
+            .user-top {
+                display: flex;
+                flex-direction: row;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 20px;
+            }
             .user {
+                min-width: 0;
                 display: flex;
                 flex-direction: row;
                 align-items: center;
+                gap: 15px;
                 .user-head {
-                    margin-right: 15px;
                     width: 70px;
                     height: 70px;
                     border-radius: 50%;
@@ -826,16 +874,56 @@ const clearFmRecent = () => {
                     }
                 }
                 .user-info {
+                    min-width: 0;
                     .user-name {
                         font: 20px Source Han Sans;
                         font-weight: bold;
                         color: black;
                     }
+                    .user-alias {
+                        margin-top: 4px;
+                        font: 12px SourceHanSansCN-Bold;
+                        color: rgba(0, 0, 0, 0.72);
+                    }
+                    .user-signature {
+                        margin-top: 6px;
+                        max-width: 520px;
+                        font: 13px SourceHanSansCN-Bold;
+                        color: rgba(0, 0, 0, 0.62);
+                        line-height: 1.5;
+                        word-break: break-word;
+                    }
                     .user-vip {
+                        margin-top: 8px;
                         width: 40px;
                         img {
                             width: 100%;
                         }
+                    }
+                }
+            }
+            .profile-details {
+                width: 100%;
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 12px 18px;
+                .profile-item {
+                    padding: 10px 12px;
+                    min-height: 60px;
+                    background-color: rgba(255, 255, 255, 0.34);
+                    border: 1px solid rgba(0, 0, 0, 0.04);
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    gap: 4px;
+                    .profile-label {
+                        font: 12px SourceHanSansCN-Bold;
+                        color: rgba(0, 0, 0, 0.55);
+                    }
+                    .profile-value {
+                        font: 14px SourceHanSansCN-Bold;
+                        color: black;
+                        word-break: break-word;
                     }
                 }
             }
