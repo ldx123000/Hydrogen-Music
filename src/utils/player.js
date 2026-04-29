@@ -1381,11 +1381,25 @@ export function isPlaylistTrackOperationSuccess(result) {
     return !!(result && (
         (result.status === 200 && result.body && result.body.code === 200) ||
         result.code === 200 ||
-        result.status === 200
+        result.status === 200 ||
+        result.status === 1 ||
+        result.error_code === 0
     ))
 }
 
-export async function updateFavoritePlaylistTrack(songId, like) {
+function resolveSongForPlaylistTrackOperation(songInput) {
+    if (songInput && typeof songInput == 'object') return songInput
+
+    const songId = String(songInput || '')
+    if (!songId) return null
+
+    const currentSong = songList.value?.[currentIndex.value]
+    if (currentSong && String(currentSong.id || '') == songId) return currentSong
+
+    return (songList.value || []).find(song => String(song?.id || '') == songId) || null
+}
+
+export async function updateFavoritePlaylistTrack(songInput, like) {
     const favoritePlaylist = await getFavoritePlaylistId()
     if (!favoritePlaylist?.id) {
         return {
@@ -1396,10 +1410,19 @@ export async function updateFavoritePlaylistTrack(songId, like) {
         }
     }
 
+    const selectedSong = resolveSongForPlaylistTrackOperation(songInput)
+    if (like && !selectedSong) {
+        return {
+            success: false,
+            result: null,
+            favoritePlaylist,
+            message: '未找到可添加的歌曲信息',
+        }
+    }
     const params = {
         op: like ? 'add' : 'del',
         pid: favoritePlaylist.id,
-        tracks: songId,
+        tracks: like ? selectedSong : (selectedSong || songInput),
         timestamp: new Date().getTime(),
     }
 

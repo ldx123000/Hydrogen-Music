@@ -114,7 +114,7 @@ request.interceptors.response.use(function (response) {
       }
     }
 
-    const suppressGlobalNotice = url === '/like' || url === '/playlist/tracks'
+    const suppressGlobalNotice = url === '/like' || url === '/playlist/tracks' || url === '/playlist/tracks/add' || url === '/playlist/tracks/del'
     if (!suppressGlobalNotice) {
       if (msg) noticeOpen(`请求错误：${msg}`, 2)
       else if (status) noticeOpen(`请求错误 (${status})`, 2)

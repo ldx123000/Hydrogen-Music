@@ -30,7 +30,9 @@
   const isPlaylistUpdateSuccess = result => !!(result && (
     (result.status === 200 && result.body && result.body.code === 200) ||
     result.code === 200 ||
-    result.status === 200
+    result.status === 200 ||
+    result.status === 1 ||
+    result.error_code === 0
   ))
 
   const getPlaylistDisplayName = playlist => {
@@ -247,10 +249,10 @@
     if(playlistName) {
       let params = {
         name: playlistName,
-        privacy: (isPrivacy.value ? 10 : 0),
+        is_pri: (isPrivacy.value ? 1 : 0),
       }
       createPlaylist(params).then(result => {
-        if(result.code == 200) {
+        if(isPlaylistUpdateSuccess(result)) {
           newPlaylistTitle.value = null
           isPrivacy.value = false
           if(justNewPlaylist.value) {
@@ -260,7 +262,7 @@
             noticeOpen('添加成功', 2)
             return
           }
-          addToMyPlaylist({ id: result.id, name: playlistName })
+          addToMyPlaylist({ id: result?.listid || result?.data?.listid || result?.id, name: playlistName })
         } else {
           noticeOpen('创建歌单错误', 2)
         }
@@ -280,7 +282,7 @@
       let params = {
         op: 'add',
         pid: playlist.id,
-        tracks: otherStore.selectedItem.id
+        tracks: otherStore.selectedItem
       }
       updatePlaylist(params).then(result => {
         if(isPlaylistUpdateSuccess(result)) {

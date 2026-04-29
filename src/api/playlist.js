@@ -325,10 +325,16 @@ export function playlistDynamic(id) {
  * @returns 
  */
 export function createPlaylist(params) {
+  const playlistName = String(params?.name || '').trim()
   return request({
-    url: '/playlist/create',
+    url: '/playlist/add',
     method: 'post',
-    params,
+    params: {
+      name: playlistName,
+      type: 0,
+      source: 0,
+      is_pri: params?.is_pri ?? params?.privacy ?? 0,
+    },
   });
 }
 
@@ -339,12 +345,77 @@ export function createPlaylist(params) {
  * @param {*} params 
  * @returns 
  */
+function normalizePlaylistTrackName(track = {}) {
+    return String(track?.name || track?.songname || track?.filename || '').replace(/[|,]/g, ' ').trim()
+}
+
+function normalizePlaylistTrackHash(track = {}) {
+    return String(track?.hash || track?.FileHash || track?.file_hash || track?.deprecated?.hash || track?.audio_info?.hash_128 || track?.audio_info?.hash_320 || '').trim()
+}
+
+function normalizePlaylistTrackAlbumId(track = {}) {
+    return track?.al?.id || track?.album_id || track?.albumid || track?.albumId || track?.album?.id || 0
+}
+
+function normalizePlaylistTrackMixsongId(track = {}) {
+    return track?.album_audio_id || track?.mixsongid || track?.mixsong_id || track?.id || 0
+}
+
+function buildPlaylistTrackAddEntry(track = {}) {
+    const name = normalizePlaylistTrackName(track)
+    const hash = normalizePlaylistTrackHash(track)
+    const albumId = normalizePlaylistTrackAlbumId(track)
+    const mixsongId = normalizePlaylistTrackMixsongId(track)
+    if (!name || !hash) return ''
+
+    if (albumId || mixsongId) {
+        return `${name}|${hash}|${albumId || 0}|${mixsongId || 0}`
+    }
+    return `${name}|${hash}`
+}
+
 export function updatePlaylist(params) {
-    return request({
-      url: '/playlist/tracks',
-      method: 'post',
-      params,
-    });
+    const operation = String(params?.op || '').toLowerCase()
+    const listid = params?.listid || params?.pid || ''
+
+    if (operation == 'add') {
+        const tracks = Array.isArray(params?.tracks) ? params.tracks : [params?.trackDetail || params?.selectedItem || params?.tracks]
+        const data = tracks
+          .map(track => {
+            if (track && typeof track == 'object') return buildPlaylistTrackAddEntry(track)
+            return ''
+          })
+          .filter(Boolean)
+          .join(',')
+
+        return request({
+          url: '/playlist/tracks/add',
+          method: 'post',
+          params: {
+            listid,
+            data,
+          },
+        });
+    }
+
+    if (operation == 'del') {
+        const trackList = Array.isArray(params?.tracks) ? params.tracks : [params?.tracks]
+        const fileids = (params?.fileids || trackList.map(track => {
+          if (track && typeof track == 'object') return track.fileid || track.file_id || track.id || ''
+          return track || ''
+        }).filter(Boolean).join(','))
+
+        return request({
+          url: '/playlist/tracks/del',
+          method: 'post',
+          params: {
+            listid,
+            fileids,
+          },
+        });
+    }
+
+    return Promise.resolve({ status: 0, error: 'unsupported playlist operation' })
 }
 
 /**
@@ -355,8 +426,10 @@ export function updatePlaylist(params) {
  */
 export function deletePlaylist(params) {
     return request({
-      url: '/playlist/delete',
+      url: '/playlist/del',
       method: 'post',
-      params,
+      params: {
+        listid: params?.id || params?.listid,
+      },
     });
 }

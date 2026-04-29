@@ -1,5 +1,55 @@
 import { get, getById, getWithPagination, operationRequest } from "./base";
-import { buildAreaParams, buildPaginationParams, buildIdWithTimestamp, buildOperationParams } from "./params";
+import { buildIdWithTimestamp, buildOperationParams } from "./params";
+import { getNewestSong } from "./song";
+
+function normalizeAlbumCover(value) {
+    if (typeof value !== 'string') return value || ''
+    return value.replace('{size}', '480')
+}
+
+function normalizeRecommendedAlbum(item = {}) {
+    const rawCover =
+        item?.album_sizable_cover ||
+        item?.sizable_cover ||
+        item?.cover ||
+        item?.album_cover ||
+        item?.blurPicUrl ||
+        item?.picUrl ||
+        item?.imgurl ||
+        ''
+    const cover = normalizeAlbumCover(rawCover)
+    const author = Array.isArray(item?.authors) ? item.authors[0] : item?.artist || null
+    const artistId = author?.author_id ?? author?.id ?? item?.author_id ?? item?.artist_id ?? null
+    const artistName = author?.author_name ?? author?.name ?? item?.author_name ?? item?.artist_name ?? ''
+    const publishTimeSource = item?.publish_date || item?.publishTime || item?.publishtime || ''
+    const publishTime = publishTimeSource ? new Date(publishTimeSource).getTime() || Date.parse(publishTimeSource) || 0 : 0
+
+    return {
+        ...item,
+        id: item?.album_id ?? item?.id ?? null,
+        name: item?.album_name || item?.name || '',
+        blurPicUrl: cover,
+        picUrl: cover,
+        size: Number(item?.songcount ?? item?.size ?? 0) || 0,
+        publishTime,
+        artist: artistId || artistName ? { id: artistId, name: artistName } : null,
+    }
+}
+
+function buildNewestAlbumsFromSongs(songs = [], limit = 30) {
+    const albums = []
+    const seen = new Set()
+
+    for (const song of songs) {
+        const albumId = song?.album_id ?? song?.album_audio_id ?? song?.album?.id
+        if (!albumId || seen.has(String(albumId))) continue
+        seen.add(String(albumId))
+        albums.push(normalizeRecommendedAlbum(song))
+        if (albums.length >= limit) break
+    }
+
+    return albums
+}
 
 /**
  * 登录后调用此接口 ,可获取全部新碟
@@ -9,12 +59,42 @@ import { buildAreaParams, buildPaginationParams, buildIdWithTimestamp, buildOper
  * @param {string} options.area - ALL:全部,ZH:华语,EA:欧美,KR:韩国,JP:日本
  */
 export function getNewAlbum({ limit, offset, area, ...params } = {}) {
-    const paginationParams = buildPaginationParams(
-        offset ? Math.floor(offset / (limit || 30)) + 1 : 1,
-        limit
-    );
-    const areaParams = area ? buildAreaParams(area) : {};
-    return get('/album/new', { ...paginationParams, ...areaParams, ...params });
+    const pageSize = limit || 30
+    const page = offset ? Math.floor(offset / pageSize) + 1 : 1
+    const typeMap = {
+        all: undefined,
+        ALL: undefined,
+        ZH: 1,
+        EA: 2,
+        JP: 3,
+        KR: 4,
+    }
+    const normalizedType = area in typeMap ? typeMap[area] : area
+
+    return get('/top/album', {
+        page,
+        pagesize: pageSize,
+        ...(normalizedType !== undefined && normalizedType !== null && normalizedType !== '' ? { type: normalizedType } : {}),
+        ...params,
+    })
+        .then(result => {
+            const rawAlbums = result?.data?.info || result?.info || result?.data?.albums || result?.albums || []
+            const albums = Array.isArray(rawAlbums) ? rawAlbums.map(item => normalizeRecommendedAlbum(item)).filter(item => item.id && item.name) : []
+            return {
+                ...result,
+                albums,
+            }
+        })
+        .catch(async () => {
+            const fallbackSongs = await getNewestSong(pageSize)
+            const fallbackList = Array.isArray(fallbackSongs?.data) ? fallbackSongs.data : Array.isArray(fallbackSongs?.result) ? fallbackSongs.result : []
+
+            return {
+                status: 1,
+                error_code: 0,
+                albums: buildNewestAlbumsFromSongs(fallbackList, pageSize),
+            }
+        })
 }
 
 /**
