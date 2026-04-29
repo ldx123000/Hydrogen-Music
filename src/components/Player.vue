@@ -1052,7 +1052,8 @@ const toggleDjSub = async isSubscribe => {
                     height: 8px;
                     border: 0.5px solid rgb(105, 105, 105);
                     position: absolute;
-                    top: 1px;
+                    top: 50%;
+                    transform: translateY(-50%);
                     left: -2px;
                     &::after {
                         content: '';
