@@ -1,7 +1,7 @@
 {
   "name": "hydrogenmusic",
   "private": true,
-  "version": "0.5.9",
+  "version": "0.6.0",
   "description": "A modern music player built with Electron and Vue.js",
   "main": "background.js",
   "author": {
@@ -36,7 +36,6 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "electron": "^38.3.0",
     "electron-builder": "^26.1.0",
-    "electron-rebuild": "^3.2.9",
     "howler": "^2.2.4",
     "js-cookie": "^3.0.5",
     "js-md5": "^0.8.3",

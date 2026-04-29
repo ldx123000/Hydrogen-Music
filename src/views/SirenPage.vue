@@ -110,21 +110,20 @@ watch(
         <div class="page-header">
             <div class="page-title-group">
                 <button v-if="isAlbumRoute" class="header-back" type="button" @click="backToAlbums">返回</button>
-                <div class="page-title-block">
+                <div v-if="!isAlbumRoute" class="page-title-block">
                     <h1 class="page-title">{{ isAlbumRoute ? (currentAlbum?.name || '塞壬唱片') : '塞壬唱片' }}</h1>
                     <p class="page-subtitle">
                         {{ isAlbumRoute ? (currentAlbum?.artistNames || '官方音源专区') : 'Monster Siren 官方音源专区' }}
                     </p>
                 </div>
             </div>
-            <div class="page-actions">
+            <div v-if="!isAlbumRoute" class="page-actions">
                 <input
                     v-model="keyword"
                     class="page-search"
-                    :placeholder="isAlbumRoute ? '搜索当前专辑曲目' : '搜索专辑'"
+                    placeholder="搜索专辑"
                     type="text"
                 />
-                <button v-if="isAlbumRoute" class="action-button primary" type="button" @click="playAllSongs">播放全部</button>
                 <button class="action-button" type="button" @click="reloadPage">刷新</button>
             </div>
         </div>
@@ -176,6 +175,20 @@ watch(
                         </div>
                         <p v-if="currentAlbum.intro" class="detail-intro">{{ currentAlbum.intro }}</p>
                     </div>
+                </div>
+
+                <div class="siren-playall" v-if="visibleSongs.length">
+                    <div class="playall" @click="playAllSongs">
+                        <svg t="1668421583939" class="playall-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6964" width="200" height="200">
+                            <path
+                                d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z"
+                                p-id="6965"
+                            ></path>
+                        </svg>
+                        <span>播放全部</span>
+                    </div>
+                    <div class="playall-line"></div>
+                    <span @click="playAllSongs" class="playall-en">PLAYALL</span>
                 </div>
 
                 <div v-if="visibleSongs.length === 0" class="state-block">没有匹配的曲目</div>
@@ -315,7 +328,9 @@ watch(
 }
 
 .album-card {
+    position: relative;
     padding: 10px;
+    border: 1px solid transparent;
     border-radius: 0;
     outline: none;
     background-color: rgba(255, 255, 255, 0.35);
@@ -323,21 +338,79 @@ watch(
     flex-direction: column;
     gap: 12px;
     text-align: left;
-    transition: 0.2s;
+    transform: perspective(900px);
+    transform-origin: center;
+    transition: transform 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease, background-color 0.28s ease;
+    &::before,
+    &::after {
+        content: "";
+        position: absolute;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.28s ease;
+    }
+    &::before {
+        inset: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    &::after {
+        left: 12px;
+        right: 12px;
+        bottom: -7px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.34), transparent);
+    }
     &:hover {
         cursor: pointer;
-        opacity: 0.8;
+        border-color: rgba(0, 0, 0, 0.2);
+        background-color: rgba(255, 255, 255, 0.52);
+        box-shadow: 0 18px 34px rgba(0, 0, 0, 0.14);
+        transform: perspective(900px) rotateX(4deg) translateY(-4px);
+    }
+    &:hover::before,
+    &:hover::after {
+        opacity: 1;
     }
     &:active {
-        transform: scale(0.95);
+        transform: perspective(900px) translateY(-1px) scale(0.98);
     }
 }
 
+:global(html.dark .album-card::after) {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent) !important;
+}
+
 .album-cover {
+    position: relative;
     width: 100%;
     aspect-ratio: 1 / 1;
     overflow: hidden;
     background-color: rgba(0, 0, 0, 0.045);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0);
+    transition: box-shadow 0.28s ease;
+}
+
+.album-cover::after {
+    content: "";
+    position: absolute;
+    top: -58%;
+    left: -24%;
+    width: 150%;
+    height: 150%;
+    background: linear-gradient(rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.18) 48%, rgba(255, 255, 255, 0) 52%);
+    opacity: 0.36;
+    transform: rotate(24deg) translateY(-18%);
+    transition: transform 0.38s ease, opacity 0.38s ease;
+    pointer-events: none;
+}
+
+.album-card:hover .album-cover {
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+}
+
+.album-card:hover .album-cover::after {
+    opacity: 0.92;
+    transform: rotate(24deg) translateY(14%);
 }
 
 .album-cover img {
@@ -417,6 +490,56 @@ watch(
     color: rgba(0, 0, 0, 0.72);
     line-height: 1.7;
     white-space: pre-wrap;
+}
+
+.siren-playall {
+    margin: 10px 0 22px;
+    padding: 0 4px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+
+    .playall {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        transition: 0.2s;
+
+        &:hover {
+            cursor: pointer;
+            opacity: 0.6;
+        }
+
+        svg {
+            width: 17px;
+            height: 17px;
+        }
+
+        span {
+            margin: 0 5px;
+            font: 12px SourceHanSansCN-Bold;
+            color: black;
+            white-space: nowrap;
+        }
+    }
+
+    .playall-line {
+        width: 100%;
+        height: 0.5px;
+        background-color: rgba(0, 0, 0, 0.2);
+    }
+
+    .playall-en {
+        margin-left: 4px;
+        font: 8px Geometos;
+        color: rgba(0, 0, 0, 0.2);
+        transition: 0.2s;
+
+        &:hover {
+            cursor: pointer;
+            color: black;
+        }
+    }
 }
 
 @media screen and (max-width: 900px) {

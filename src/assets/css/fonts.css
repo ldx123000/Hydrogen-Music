@@ -1,11 +1,11 @@
 @font-face {
     font-family: SourceHanSansCN-Heavy;
-    src: url('../fonts/SourceHanSansCN-Heavy.otf');
+    src: url('../fonts/SourceHanSansCN-Heavy.woff2') format('woff2');
     font-display: swap;
 }
 @font-face {
     font-family: SourceHanSansCN-Bold;
-    src: url('../fonts/SourceHanSansCN-Bold.otf');
+    src: url('../fonts/SourceHanSansCN-Bold.woff2') format('woff2');
     font-display: swap;
 }
 @font-face {

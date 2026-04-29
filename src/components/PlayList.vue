@@ -88,8 +88,9 @@
     }
   }
   const getPositon = () => {
-    document.getElementsByClassName('playlist-widget-item')[0].scrollTo({top: currentIndex.value * 37,behavior: 'smooth'})
-    document.getElementsByClassName('playlist-widget-item')[1].scrollTo({top: currentIndex.value * 37,behavior: 'smooth'})
+    Array.from(document.getElementsByClassName('playlist-widget-item')).forEach(element => {
+      element.scrollTo({top: currentIndex.value * 37,behavior: 'smooth'})
+    })
   }
 </script>
 

@@ -1,8 +1,9 @@
 <script setup>
-import { defineAsyncComponent, onMounted, onUnmounted } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import Home from './views/Home.vue';
 import Title from './components/Title.vue';
 import SearchInput from './components/SearchInput.vue';
+import AudioVisualizer from './components/AudioVisualizer.vue';
 import WindowControl from './components/WindowControl.vue';
 import MusicWidget from './components/MusicWidget.vue';
 import { destroyDesktopLyric, initDesktopLyric } from './utils/desktopLyric';
@@ -20,6 +21,9 @@ const Update = defineAsyncComponent(() => import('./components/Update.vue'));
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const visualizerActive = computed(() => {
+    return playerStore.audioVisualizer && playerStore.playerShow && !playerStore.widgetState && !!playerStore.currentMusic;
+});
 const removeCheckUpdateListener = windowApi.checkUpdate((version) => {
     otherStore.toUpdate = true;
     otherStore.newVersion = version;
@@ -48,9 +52,12 @@ const handleTitleBarDoubleClick = () => {
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
     </div>
-    <div class="globalWidget">
+    <div class="globalWidget" :class="{ 'visualizer-active': visualizerActive }">
         <Title class="widget-title"></Title>
-        <SearchInput class="widget-search"></SearchInput>
+        <AudioVisualizer class="widget-visualizer"></AudioVisualizer>
+        <div class="widget-search">
+            <SearchInput></SearchInput>
+        </div>
     </div>
     <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
         <WindowControl></WindowControl>
@@ -125,6 +132,10 @@ const handleTitleBarDoubleClick = () => {
     }
 }
 .globalWidget {
+    --visualizer-width: clamp(260px, 28vw, 340px);
+    --visualizer-gap: 24px;
+    --visualizer-shift: calc(var(--visualizer-width) + var(--visualizer-gap));
+
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -132,14 +143,29 @@ const handleTitleBarDoubleClick = () => {
     top: 22px;
     z-index: 999;
     left: 45px; // 所有平台保持统一的布局位置
+    pointer-events: none;
 
     .widget-title {
+        pointer-events: auto;
+
         &:hover {
             cursor: pointer;
         }
     }
     .widget-search {
         margin-left: 30px;
+        transform: translate3d(calc(-1 * var(--visualizer-shift)), 0, 0);
+        transition: transform 0.72s cubic-bezier(0.16, 1, 0.3, 1);
+        will-change: transform;
+        pointer-events: auto;
+    }
+    .widget-visualizer {
+        flex-shrink: 0;
+    }
+    &.visualizer-active {
+        .widget-search {
+            transform: translate3d(0, 0, 0);
+        }
     }
 }
 .dragBar {
@@ -169,7 +195,7 @@ const handleTitleBarDoubleClick = () => {
     }
 }
 .musicWidget {
-    width: 680px;
+    width: 722px;
     height: 65px;
     position: fixed;
     left: 50%;

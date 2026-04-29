@@ -20,7 +20,8 @@
       "lyricInterlude": 13,
       "searchAssistLimit": 8,
       "showSongTranslation": true,
-      "gaplessPlayback": false
+      "gaplessPlayback": false,
+      "audioVisualizer": false
     },
     "local": {
       "videoFolder": null,

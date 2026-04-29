@@ -1,9 +1,8 @@
 <script setup>
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/time';
 import VueSlider from 'vue-slider-component';
-import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
 import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player/lazy';
 import { getDjDetail, subDj } from '../api/dj';
@@ -17,6 +16,7 @@ import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop';
 import { getSongDisplayName } from '../utils/songName';
 import { getIndexedSong } from '../utils/songList';
 import { useStableImageSource } from '../composables/useStableImageSource';
+const PlayList = defineAsyncComponent(() => import('./PlayList.vue'));
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -95,6 +95,7 @@ const {
     coverBlur,
     showSongTranslation,
 } = storeToRefs(playerStore);
+const playlistWidgetLoaded = ref(false);
 
 const safeSliderRange = computed(() => {
     const currentTime = Number(time.value);
@@ -154,6 +155,9 @@ const loadDjSubStatus = async () => {
 watch(djRid, () => {
     djSubed.value = false;
     if (djRid.value) loadDjSubStatus();
+});
+watch(playlistWidgetShow, shown => {
+    if (shown) playlistWidgetLoaded.value = true;
 });
 
 const checkIsLike = computed(() => id => {
@@ -832,7 +836,7 @@ const toggleDjSub = async isSubscribe => {
             </div>
         </div>
 
-        <PlayList class="playlist-widget-player" :class="{ 'playlist-widget-open': playlistWidgetShow }"></PlayList>
+        <PlayList v-if="playlistWidgetLoaded" class="playlist-widget-player" :class="{ 'playlist-widget-open': playlistWidgetShow }"></PlayList>
 
         <span class="border border1"></span>
         <span class="border border2"></span>

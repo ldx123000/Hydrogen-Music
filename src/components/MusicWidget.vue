@@ -1,10 +1,9 @@
 <script setup>
-  import { computed, ref, watch} from 'vue'
+  import { computed, defineAsyncComponent, ref, watch} from 'vue'
   import { useRouter } from 'vue-router'
   import { songTime2 } from '../utils/time';
   import VueSlider from 'vue-slider-component'
   import '../assets/css/slider.css'
-  import PlayList from './PlayList.vue'
   import OverflowMarquee from './base/OverflowMarquee.vue'
 
   import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player/lazy'
@@ -17,11 +16,13 @@
   import { getIndexedSong } from '../utils/songList'
   import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop'
   import { useStableImageSource } from '../composables/useStableImageSource'
+  const PlayList = defineAsyncComponent(() => import('./PlayList.vue'))
   const router = useRouter()
   const userStore = useUserStore()
   const playerStore = usePlayerStore()
   const otherStore = useOtherStore()
   const { currentMusic, playing, progress, playMode, songList, songId, currentIndex, volume, time, playlistWidgetShow, lyricShow, localBase64Img, listInfo, showSongTranslation, widgetState } =storeToRefs(playerStore)
+  const playlistWidgetLoaded = ref(false)
 
   const safeSliderRange = computed(() => {
     const currentTime = Number(time.value)
@@ -67,6 +68,9 @@
   }
 
   watch(djRid, () => { djSubed.value = false; if (djRid.value) loadDjSubStatus() })
+  watch(playlistWidgetShow, (shown) => {
+    if (shown) playlistWidgetLoaded.value = true
+  })
   const showMusicTime = ref(false)
   const currentSong = computed(() => {
     return getIndexedSong(songList.value, currentIndex.value)
@@ -219,7 +223,7 @@
             <svg t="1668787624519" @click="playlistWidgetShow = !playlistWidgetShow" v-show="!isInFMMode" class="playlist-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="15157" width="200" height="200"><path d="M85.333333 768h426.666667v85.333333H85.333333v-85.333333z m0-298.666667h597.333334v85.333334H85.333333v-85.333334z m0-298.666666h853.333334v85.333333H85.333333V170.666667z m725.333334 476.586666V384h213.333333v85.333333h-128v298.666667a128 128 0 1 1-85.333333-120.746667zM768 810.666667a42.666667 42.666667 0 1 0 0-85.333334 42.666667 42.666667 0 0 0 0 85.333334z" p-id="15158"></path></svg>
         </div>
     </div>
-    <PlayList class="playlist-widget" :class="{'playlist-widget-open': playlistWidgetShow}"></PlayList>
+    <PlayList v-if="playlistWidgetLoaded" class="playlist-widget" :class="{'playlist-widget-open': playlistWidgetShow}"></PlayList>
     <div class="widget-back"></div>
   </div>
 </template>
@@ -350,15 +354,20 @@
         display: flex;
         flex-direction: row;
         align-items: center;
+        width: 476Px;
+        flex: 0 0 476Px;
         .music-control{
             padding: 0 18Px;
+            width: 126Px;
+            box-sizing: border-box;
+            flex: 0 0 126Px;
             display: flex;
             flex-direction: row;
             align-items: center;
             svg{
                 width: 20Px;
                 height: 20Px;
-                transition: transform 0.2s;
+                transition: 0.2s;
                 &:hover{
                     cursor: pointer;
                 }
@@ -372,6 +381,7 @@
         }
         .music-volume{
             width: 120Px;
+            flex: 0 0 120Px;
             .volume-container{
                 width: 100%;
                 height: 7Px;
@@ -414,16 +424,17 @@
             }
         }
         .music-other{
-            margin-left: 30Px;
-            margin-right: 30Px;
+            width: 230Px;
+            box-sizing: border-box;
+            flex: 0 0 230Px;
             display: flex;
             flex-direction: row;
             align-items: center;
+            justify-content: space-evenly;
             svg{
-                margin-right: 22Px;
                 width: 20Px;
                 height: 20Px;
-                flex-shrink: 0;
+                flex: 0 0 20Px;
                 transition: 0.2s;
                 &:hover{
                     cursor: pointer;

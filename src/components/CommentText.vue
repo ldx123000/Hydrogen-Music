@@ -14,12 +14,22 @@
         :key="index"
         :class="{
           'text-segment': segment.type === 'text',
-          'emoji-segment': segment.type === 'emoji'
+          'emoji-segment': segment.type === 'emoji' || segment.type === 'image'
         }"
       >
-        <template v-if="segment.type === 'emoji'">
+        <template v-if="segment.type === 'image'">
+          <img
+            class="emoji emoji-image"
+            :src="segment.src"
+            :alt="segment.original"
+            :title="segment.original"
+            loading="lazy"
+            draggable="false"
+          />
+        </template>
+        <template v-else-if="segment.type === 'emoji'">
           <span 
-            class="emoji" 
+            class="emoji emoji-text"
             :title="segment.original"
           >{{ segment.content }}</span>
         </template>
@@ -172,6 +182,17 @@ const copyText = async () => {
   margin: 0 1px;
   cursor: help;
   transition: transform 0.2s ease;
+}
+
+.emoji-image {
+  width: 1.35em;
+  height: 1.35em;
+  object-fit: contain;
+  vertical-align: -0.24em;
+}
+
+.emoji-text {
+  line-height: 1;
 }
 
 .emoji:hover {

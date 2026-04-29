@@ -7,6 +7,8 @@ function getErrorMessage(error, fallback) {
 }
 
 const DURATION_CACHE_KEY = 'siren_song_durations'
+const DURATION_FETCH_CONCURRENCY = 4
+const DURATION_CACHE_WRITE_INTERVAL_MS = 1000
 
 function loadDurationCache() {
     try {
@@ -16,12 +18,34 @@ function loadDurationCache() {
     }
 }
 
-function saveDurationToCache(sourceId, ms) {
+function saveDurationCacheUpdates(updates) {
     try {
+        const updateKeys = Object.keys(updates || {})
+        if (updateKeys.length === 0) return true
         const cache = loadDurationCache()
-        cache[sourceId] = ms
+        for (const key of updateKeys) {
+            cache[key] = updates[key]
+        }
         localStorage.setItem(DURATION_CACHE_KEY, JSON.stringify(cache))
+        return true
     } catch { /* ignore */ }
+    return false
+}
+
+async function runWithConcurrency(items, limit, worker) {
+    const sourceItems = Array.isArray(items) ? items : []
+    const workerLimit = Math.max(1, Math.min(Number(limit) || 1, sourceItems.length || 1))
+    let nextIndex = 0
+
+    await Promise.all(Array.from({ length: workerLimit }, async () => {
+        while (nextIndex < sourceItems.length) {
+            const currentIndex = nextIndex
+            nextIndex += 1
+            try {
+                await worker(sourceItems[currentIndex], currentIndex)
+            } catch { /* keep preload best-effort */ }
+        }
+    }))
 }
 
 function getAudioDuration(url) {
@@ -154,7 +178,7 @@ export const useSirenStore = defineStore('sirenStore', {
             }
             if (needFetch.length === 0) return
 
-            // 第二步：逐首流水线获取（API → 音频元数据），每完成一首立即更新 UI
+            // 第二步：小并发流水线获取（API -> 音频元数据），每完成一首立即更新 UI
             const triggerUpdate = () => {
                 this.albumDetailsById = { ...this.albumDetailsById }
             }
@@ -168,37 +192,64 @@ export const useSirenStore = defineStore('sirenStore', {
                 }, 300)
             }
 
-            await Promise.allSettled(
-                needFetch.map(async song => {
-                    const sourceId = getSirenSourceId(song)
-                    if (!sourceId) return
+            const pendingDurationCacheUpdates = {}
+            let durationCacheTimer = null
+            const flushDurationCache = () => {
+                const updateKeys = Object.keys(pendingDurationCacheUpdates)
+                if (updateKeys.length === 0) return
+                const updates = {}
+                for (const key of updateKeys) {
+                    updates[key] = pendingDurationCacheUpdates[key]
+                }
+                if (saveDurationCacheUpdates(updates)) {
+                    for (const key of updateKeys) {
+                        delete pendingDurationCacheUpdates[key]
+                    }
+                }
+            }
+            const scheduleDurationCacheFlush = () => {
+                if (durationCacheTimer) return
+                durationCacheTimer = setTimeout(() => {
+                    durationCacheTimer = null
+                    flushDurationCache()
+                }, DURATION_CACHE_WRITE_INTERVAL_MS)
+            }
 
-                    try {
-                        const songData = await getSirenSong(sourceId)
-                        const url = songData?.sourceUrl || song.streamUrl
-                        if (!url) return
+            await runWithConcurrency(needFetch, DURATION_FETCH_CONCURRENCY, async song => {
+                const sourceId = getSirenSourceId(song)
+                if (!sourceId) return
 
-                        if (songData?.sourceUrl) {
-                            song.streamUrl = songData.sourceUrl
-                            song.sourceUrl = songData.sourceUrl
-                        }
+                try {
+                    const songData = await getSirenSong(sourceId)
+                    const url = songData?.sourceUrl || song.streamUrl
+                    if (!url) return
 
-                        const ms = await getAudioDuration(url)
-                        if (!ms) return
+                    if (songData?.sourceUrl) {
+                        song.streamUrl = songData.sourceUrl
+                        song.sourceUrl = songData.sourceUrl
+                    }
 
-                        song.duration = ms
-                        song.dt = ms
-                        saveDurationToCache(sourceId, ms)
-                        batchUpdate()
-                    } catch { /* ignore */ }
-                })
-            )
+                    const ms = await getAudioDuration(url)
+                    if (!ms) return
+
+                    song.duration = ms
+                    song.dt = ms
+                    pendingDurationCacheUpdates[sourceId] = ms
+                    scheduleDurationCacheFlush()
+                    batchUpdate()
+                } catch { /* ignore */ }
+            })
 
             // 最终确保全部更新
             if (batchTimer) {
                 clearTimeout(batchTimer)
                 batchTimer = null
             }
+            if (durationCacheTimer) {
+                clearTimeout(durationCacheTimer)
+                durationCacheTimer = null
+            }
+            flushDurationCache()
             triggerUpdate()
         },
     },

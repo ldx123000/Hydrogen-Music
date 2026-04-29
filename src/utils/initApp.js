@@ -15,7 +15,7 @@ import settingsSchema from '../shared/settingsSchema.js'
 const { normalizeSettings } = settingsSchema
 
 const playerStore = usePlayerStore()
-const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation, gaplessPlayback } = storeToRefs(playerStore)
+const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation, gaplessPlayback, audioVisualizer } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const userStore = useUserStore()
 
@@ -107,6 +107,7 @@ export function applySettingsSnapshot(settings, options = {}) {
     searchAssistLimit.value = normalizedSettings?.music?.searchAssistLimit
     showSongTranslation.value = normalizedSettings?.music?.showSongTranslation !== false
     gaplessPlayback.value = normalizedSettings?.music?.gaplessPlayback === true
+    audioVisualizer.value = normalizedSettings?.music?.audioVisualizer === true
     applyCustomFontSetting(normalizedSettings)
 
     applyLocalSettings(normalizedSettings, options)

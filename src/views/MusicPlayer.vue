@@ -2,10 +2,7 @@
 import Player from '../components/Player.vue';
 import Lyric from '../components/Lyric.vue';
 import ProgramIntro from '../components/ProgramIntro.vue';
-import Comments from '../components/Comments.vue';
-import MusicVideo from '../components/MusicVideo.vue';
-import PlayerVideo from '../components/PlayerVideo.vue';
-import { ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, computed, defineAsyncComponent } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
@@ -14,6 +11,9 @@ import { buildCoverBackdropCandidates } from '../utils/coverBackdrop';
 import { getIndexedSongOrFirst } from '../utils/songList';
 import { useStableImageSource } from '../composables/useStableImageSource';
 const playerStore = usePlayerStore();
+const Comments = defineAsyncComponent(() => import('../components/Comments.vue'));
+const MusicVideo = defineAsyncComponent(() => import('../components/MusicVideo.vue'));
+const PlayerVideo = defineAsyncComponent(() => import('../components/PlayerVideo.vue'));
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
 const rightPanelMode = ref(0);

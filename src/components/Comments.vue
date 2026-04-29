@@ -874,6 +874,12 @@ const {
         transform: scale(1.1);
     }
 
+    :deep(.emoji-image) {
+        width: 18px;
+        height: 18px;
+        vertical-align: -4px;
+    }
+
     // 移除悬停时的复制提示
     &:hover {
         position: relative;

@@ -42,6 +42,7 @@ export function normalizeMusicSettings(music = {}) {
     normalized.level = normalizeMusicLevel(normalized.level)
     normalized.showSongTranslation = normalized.showSongTranslation !== false
     normalized.gaplessPlayback = normalized.gaplessPlayback === true
+    normalized.audioVisualizer = normalized.audioVisualizer === true
     delete normalized.levelMigratedToLosslessV1
     return normalized
 }

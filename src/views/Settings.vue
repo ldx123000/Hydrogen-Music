@@ -107,6 +107,7 @@ const applySettingsToForm = settings => {
     searchAssistLimit.value = normalizedSettings.music.searchAssistLimit
     playerStore.showSongTranslation = normalizedSettings.music.showSongTranslation !== false
     playerStore.gaplessPlayback = normalizedSettings.music.gaplessPlayback === true
+    playerStore.audioVisualizer = normalizedSettings.music.audioVisualizer === true
     videoFolder.value = normalizedSettings.local.videoFolder
     downloadFolder.value = normalizedSettings.local.downloadFolder
     downloadCreateSongFolder.value = !!normalizedSettings.local.downloadCreateSongFolder
@@ -194,6 +195,7 @@ const setAppSettings = () => {
             searchAssistLimit: searchAssistLimit.value,
             showSongTranslation: playerStore.showSongTranslation,
             gaplessPlayback: playerStore.gaplessPlayback,
+            audioVisualizer: playerStore.audioVisualizer,
         },
         local: {
             videoFolder: videoFolder.value,
@@ -417,6 +419,7 @@ const setMusicVideo = () => setConfirmedPlayerFlag('musicVideo', PERFORMANCE_CON
 const setLyricBlur = () => setConfirmedPlayerFlag('lyricBlur', PERFORMANCE_CONFIRM_MESSAGE)
 const setCoverBlur = () => setConfirmedPlayerFlag('coverBlur', PERFORMANCE_CONFIRM_MESSAGE)
 const setGaplessPlayback = () => setConfirmedPlayerFlag('gaplessPlayback', GAPLESS_CONFIRM_MESSAGE)
+const setAudioVisualizer = () => setConfirmedPlayerFlag('audioVisualizer', PERFORMANCE_CONFIRM_MESSAGE)
 const userLogout = async () => {
     if (!isLogin()) {
         noticeOpen('您已退出账号', 2)
@@ -565,6 +568,17 @@ const clearFmRecent = () => {
                                     <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.gaplessPlayback }">{{ playerStore.gaplessPlayback ? '已开启' : '已关闭' }}</div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="playerStore.gaplessPlayback"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">音频可视化</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="setAudioVisualizer()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.audioVisualizer }">{{ playerStore.audioVisualizer ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.audioVisualizer"></div>
                                     </Transition>
                                 </div>
                             </div>
@@ -795,7 +809,7 @@ const clearFmRecent = () => {
                 <div class="app-icon">
                     <img src="../assets/icon/icon.ico" alt="" />
                 </div>
-                <div class="version">V0.5.9</div>
+                <div class="version">V0.6.0</div>
                 <div class="update-check">
                     <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
                 </div>
