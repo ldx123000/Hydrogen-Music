@@ -20,6 +20,7 @@ const currentTrack = computed(() => {
     return list[idx] || null
 })
 const isDj = computed(() => listInfo.value && listInfo.value.type === 'dj')
+const songCommentMutationSupported = computed(() => isDj.value)
 const programId = computed(() => {
     const cur = currentTrack.value
     return cur && (cur.programId || cur.programID || cur.programid)
@@ -28,7 +29,7 @@ const musicCommentId = computed(() => {
     if (isDj.value) return null
     const cur = currentTrack.value
     if (cur?.source === 'siren') return null
-    const curId = cur && (cur.id || cur.songId || cur.musicId)
+    const curId = cur && (cur.mixsongid || cur.mixsong_id || cur.album_audio_id || cur.id || cur.songId || cur.musicId)
     return curId || songId.value || null
 })
 
@@ -242,7 +243,14 @@ const requestCommentFloor = async params => {
         return getDjProgramCommentFloor({ id: programId.value, ...params })
     }
     if (musicCommentId.value) {
-        return getMusicCommentFloor({ id: musicCommentId.value, ...params })
+        return getMusicCommentFloor({
+            id: {
+                mixsongid: musicCommentId.value,
+                special_id: params.special_id,
+                special_child_id: params.special_id,
+            },
+            ...params,
+        })
     }
     return null
 }
@@ -268,6 +276,7 @@ const loadFloorReplies = async (comment, { forceFirstPage = false } = {}) => {
     try {
         const response = await requestCommentFloor({
             parentCommentId: comment.commentId,
+            special_id: comment.special_child_id || comment.specialId || comment.special_id || '',
             limit: FLOOR_REPLY_LIMIT,
             time: isFirstPage ? -1 : state.nextTime,
         })
@@ -444,6 +453,11 @@ const submitComment = async () => {
         return
     }
 
+    if (!songCommentMutationSupported.value) {
+        noticeOpen('当前酷狗后端暂不支持歌曲评论发送/回复', 2)
+        return
+    }
+
     submitting.value = true
 
     try {
@@ -483,6 +497,11 @@ const toggleLikeComment = async comment => {
         return
     }
 
+    if (!songCommentMutationSupported.value) {
+        noticeOpen('当前酷狗后端暂不支持歌曲评论点赞', 2)
+        return
+    }
+
     try {
         let response = null
         if (isDj.value && programId.value) {
@@ -505,6 +524,11 @@ const toggleLikeComment = async comment => {
 
 // 回复评论
 const toggleReply = (comment, rootCommentId = null) => {
+    if (!songCommentMutationSupported.value) {
+        noticeOpen('当前酷狗后端暂不支持歌曲评论回复', 2)
+        return
+    }
+
     const rootId = resolveReplyRootCommentId(comment, rootCommentId)
     if (!rootId) return
 
@@ -654,13 +678,13 @@ onUnmounted(() => {
 
                 <div class="input-content">
                     <div class="input-wrapper">
-                        <textarea v-model="newComment" class="comment-textarea" placeholder="INPUT YOUR COMMENT..." :disabled="submitting" @keydown.enter.ctrl="submitComment"></textarea>
+                        <textarea v-model="newComment" class="comment-textarea" :placeholder="songCommentMutationSupported ? 'INPUT YOUR COMMENT...' : 'CURRENT BACKEND DOES NOT SUPPORT COMMENT POSTING'" :disabled="submitting || !songCommentMutationSupported" @keydown.enter.ctrl="submitComment"></textarea>
                         <div class="input-border"></div>
                     </div>
 
                     <div class="input-actions">
                         <span class="shortcut-hint">CTRL+ENTER</span>
-                        <button class="submit-button" @click="submitComment" :disabled="!newComment.trim() || submitting">
+                        <button class="submit-button" @click="submitComment" :disabled="!songCommentMutationSupported || !newComment.trim() || submitting">
                             <span>{{ submitting ? 'SENDING...' : 'SEND' }}</span>
                         </button>
                     </div>
@@ -713,7 +737,7 @@ onUnmounted(() => {
                         <CommentText :text="comment.content" :enable-emoji="true" :copyable="true" :show-copy-button="false" @copy-success="handleCopySuccess" @copy-error="handleCopyError" />
 
                         <div class="comment-controls">
-                            <div class="control-item like-control" :class="{ active: comment.liked }" @click="toggleLikeComment(comment)">
+                            <div class="control-item like-control" :class="{ active: comment.liked, 'control-item-disabled': !songCommentMutationSupported }" @click="toggleLikeComment(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
                                         <path
@@ -724,7 +748,7 @@ onUnmounted(() => {
                                 <span class="control-text">{{ comment.likedCount > 0 ? comment.likedCount : 'LIKE' }}</span>
                             </div>
 
-                            <div class="control-item reply-control" @click="toggleReply(comment)">
+                            <div class="control-item reply-control" :class="{ 'control-item-disabled': !songCommentMutationSupported }" @click="toggleReply(comment)">
                                 <div class="control-icon">
                                     <svg viewBox="0 0 1024 1024" width="14" height="14">
                                         <path
@@ -763,7 +787,7 @@ onUnmounted(() => {
                                                 @copy-error="handleCopyError"
                                             />
                                             <div class="floor-controls">
-                                                <div class="floor-control-item floor-like" :class="{ active: reply.liked }" @click="toggleLikeComment(reply)">
+                                                <div class="floor-control-item floor-like" :class="{ active: reply.liked, 'floor-control-item-disabled': !songCommentMutationSupported }" @click="toggleLikeComment(reply)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -774,7 +798,7 @@ onUnmounted(() => {
                                                     <span class="floor-control-text">{{ (Number(reply.likedCount) || 0) > 0 ? reply.likedCount : 'LIKE' }}</span>
                                                 </div>
 
-                                                <div class="floor-control-item floor-reply" @click="toggleReply(reply, comment.commentId)">
+                                                <div class="floor-control-item floor-reply" :class="{ 'floor-control-item-disabled': !songCommentMutationSupported }" @click="toggleReply(reply, comment.commentId)">
                                                     <div class="floor-control-icon">
                                                         <svg viewBox="0 0 1024 1024" width="10" height="10">
                                                             <path
@@ -820,7 +844,7 @@ onUnmounted(() => {
                                 </div>
 
                                 <div class="reply-input-wrapper">
-                                    <textarea v-model="newComment" class="reply-textarea" placeholder="INPUT YOUR REPLY..." :disabled="submitting" @keydown.enter.ctrl="submitComment"></textarea>
+                                    <textarea v-model="newComment" class="reply-textarea" :placeholder="songCommentMutationSupported ? 'INPUT YOUR REPLY...' : 'CURRENT BACKEND DOES NOT SUPPORT COMMENT REPLY'" :disabled="submitting || !songCommentMutationSupported" @keydown.enter.ctrl="submitComment"></textarea>
                                     <div class="reply-input-border"></div>
                                 </div>
 
@@ -828,7 +852,7 @@ onUnmounted(() => {
                                     <span class="reply-shortcut-hint">CTRL+ENTER</span>
                                     <div class="reply-buttons">
                                         <button class="cancel-reply-btn" @click="cancelReply()">CANCEL</button>
-                                        <button class="send-reply-btn" @click="submitComment" :disabled="!newComment.trim() || submitting">
+                                        <button class="send-reply-btn" @click="submitComment" :disabled="!songCommentMutationSupported || !newComment.trim() || submitting">
                                             {{ submitting ? 'SENDING...' : 'SEND' }}
                                         </button>
                                     </div>
@@ -1494,6 +1518,16 @@ onUnmounted(() => {
             transform: translateY(-1px);
         }
 
+        &.control-item-disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+
+            &:hover {
+                background: rgba(0, 0, 0, 0.05);
+                transform: none;
+            }
+        }
+
         &.active {
             background: rgba(0, 0, 0, 0.15);
 
@@ -1684,6 +1718,16 @@ onUnmounted(() => {
             .floor-control-text {
                 fill: #ff4757;
                 color: #ff4757;
+            }
+        }
+
+        &.floor-control-item-disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+
+            &:hover {
+                background: rgba(0, 0, 0, 0.05);
+                transform: none;
             }
         }
     }

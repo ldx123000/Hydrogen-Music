@@ -112,6 +112,114 @@ export function fmTrash(id) {
     return getById('/fm_trash', id, {}, false);
 }
 
+function toPositiveNumber(value, fallback = 0) {
+    const num = Number(value)
+    return Number.isFinite(num) && num >= 0 ? num : fallback
+}
+
+function resolveMixsongId(input) {
+    if (input && typeof input === 'object') {
+        return input.mixsongid || input.mixsong_id || input.album_audio_id || input.id || input.songId || input.musicId || null
+    }
+    return input || null
+}
+
+function normalizeCommentTimestamp(value) {
+    if (!value) return Date.now()
+    const num = Number(value)
+    if (Number.isFinite(num) && num > 0) {
+        return num < 1e12 ? num * 1000 : num
+    }
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? Date.now() : parsed
+}
+
+function normalizeCommentUser(item = {}) {
+    return {
+        userId: item.user_id || item.userid || item.userId || 0,
+        nickname: item.user_name || item.nickname || '酷狗用户',
+        avatarUrl: item.user_pic || item.avatarUrl || item.avatar || '',
+    }
+}
+
+function normalizeCommentItem(item = {}) {
+    const commentId = Number(item.id || item.commentId || item.tid || 0)
+    const likedCount = toPositiveNumber(item?.like?.count ?? item?.like?.likenum ?? item?.likedCount, 0)
+    const replyCount = toPositiveNumber(item.reply_num ?? item.comments_num ?? item.replyCount, 0)
+    const specialChildId = item.special_child_id || item.special_id || item.specialChildId || ''
+    const mixsongid = item.album_audio_id || item.mixsongid || item.mixsong_id || ''
+
+    return {
+        commentId,
+        content: item.content || '',
+        time: normalizeCommentTimestamp(item.addtime || item.time || item.createTime || item.timestamp),
+        liked: !!(item?.like?.haslike ?? item?.liked),
+        likedCount,
+        parentCommentId: Number(item.puser_id || item.parentCommentId || item.pid || 0),
+        replyCount,
+        showFloorComment: {
+            replyCount,
+        },
+        special_child_id: specialChildId,
+        special_id: item.special_id || '',
+        specialId: item.special_id || '',
+        special_child_name: item.special_child_name || '',
+        specialChildId: specialChildId,
+        specialChildName: item.special_child_name || '',
+        mixsongid,
+        album_audio_id: mixsongid,
+        user: normalizeCommentUser(item),
+        ipLocation: { location: item.location || '' },
+        likedUsers: [],
+        beReplied: [],
+        raw: item,
+    }
+}
+
+function normalizeMusicCommentsResponse(response, pageSize = 20) {
+    const rawList = Array.isArray(response?.list) ? response.list : Array.isArray(response?.data?.list) ? response.data.list : []
+    const comments = rawList.map(item => normalizeCommentItem(item))
+    const total = toPositiveNumber(response?.count ?? response?.combine_count ?? response?.data?.count, comments.length)
+    const currentPage = toPositiveNumber(response?.page ?? response?.p, 1)
+    const normalizedPageSize = toPositiveNumber(pageSize, 20) || 20
+    const hasMore = currentPage * normalizedPageSize < total
+
+    return {
+        ...(response || {}),
+        code: 200,
+        comments,
+        total,
+        hasMore,
+        cursor: String(currentPage + 1),
+    }
+}
+
+function normalizeMusicCommentFloorResponse(response, pageSize = 20) {
+    const rawList = Array.isArray(response?.list) ? response.list : Array.isArray(response?.data?.list) ? response.data.list : []
+    const comments = rawList.map(item => normalizeCommentItem(item))
+    const normalizedPageSize = toPositiveNumber(pageSize, 20) || 20
+    const lastItem = rawList[rawList.length - 1] || {}
+    const nextTime = toPositiveNumber(lastItem.loadoffset ?? response?.time ?? response?.data?.time, -1)
+
+    return {
+        code: 200,
+        data: {
+            comments,
+            totalCount: comments.length,
+            hasMore: rawList.length >= normalizedPageSize,
+            time: nextTime,
+        },
+    }
+}
+
+function buildUnsupportedCommentActionResponse(action = '操作') {
+    return Promise.resolve({
+        code: 501,
+        unsupported: true,
+        message: `当前酷狗后端暂不支持歌曲评论${action}`,
+    })
+}
+
 /**
  * 获取音乐评论
  * @param {string|number} id - 音乐ID
@@ -121,10 +229,19 @@ export function fmTrash(id) {
  * @param {number} options.before - 分页参数，用于获取超过5000条评论
  */
 export function getMusicComments(id, { limit = 20, offset = 0, ...extraParams } = {}) {
-    if (typeof id === 'object') {
-        return get('/comment/music', { mixsongid: id.id, page: Math.floor((id.offset || 0) / (id.limit || 20)) + 1, pagesize: id.limit || 20 });
-    }
-    return get('/comment/music', { mixsongid: id, page: Math.floor(offset / limit) + 1, pagesize: limit, ...extraParams });
+    const source = typeof id === 'object' ? id : { id, limit, offset, ...extraParams }
+    const mixsongid = resolveMixsongId(source)
+    const requestLimit = toPositiveNumber(source.limit ?? limit, 20) || 20
+    const requestOffset = toPositiveNumber(source.offset ?? offset, 0)
+    const page = Math.floor(requestOffset / requestLimit) + 1
+
+    return get('/comment/music', {
+        mixsongid,
+        page,
+        pagesize: requestLimit,
+        show_classify: source.show_classify ?? 1,
+        show_hotword_list: source.show_hotword_list ?? 1,
+    }).then(response => normalizeMusicCommentsResponse(response, requestLimit))
 }
 
 /**
@@ -153,16 +270,26 @@ function normalizeCommentNewResponse(response) {
  * @param {number|string} params.cursor - 时间排序游标
  */
 export async function getMusicCommentsNew({ id, sortType = 3, pageSize = 20, pageNo = 1, cursor } = {}) {
-    const response = await get('/comment/new', {
-        id,
-        type: 0, // 0 = 歌曲
-        sortType,
-        pageSize,
-        pageNo,
-        ...(cursor !== undefined && cursor !== null && cursor !== '' ? { cursor } : {}),
-        timestamp: new Date().getTime(),
-    });
-    return normalizeCommentNewResponse(response);
+    const mixsongid = resolveMixsongId(id)
+    const response = await get('/comment/music', {
+        mixsongid,
+        page: pageNo,
+        pagesize: pageSize,
+        show_classify: sortType === 2 ? 0 : 1,
+        show_hotword_list: sortType === 2 ? 0 : 1,
+    })
+
+    const normalized = normalizeMusicCommentsResponse(response, pageSize)
+    if (sortType === 2) {
+        return {
+            ...normalized,
+            comments: [],
+            total: normalized.total,
+            hasMore: false,
+            cursor: '',
+        }
+    }
+    return normalized
 }
 
 /**
@@ -174,14 +301,19 @@ export async function getMusicCommentsNew({ id, sortType = 3, pageSize = 20, pag
  * @param {number|string} params.time - 分页游标时间
  */
 export function getMusicCommentFloor({ id, parentCommentId, limit = 20, time = -1 } = {}) {
+    const mixsongid = resolveMixsongId(id)
+    const commentTid = Number(parentCommentId)
+    const specialId = id && typeof id === 'object'
+        ? (id.special_id || id.special_child_id || id.specialId || id.specialChildId || '')
+        : ''
+
     return get('/comment/floor', {
-        id,
-        type: 0, // 0 = 歌曲
-        parentCommentId,
-        limit,
-        time,
-        timestamp: new Date().getTime(),
-    });
+        mixsongid,
+        special_id: specialId,
+        tid: commentTid,
+        page: 1,
+        pagesize: limit,
+    }).then(response => normalizeMusicCommentFloorResponse(response, limit))
 }
 
 /**
@@ -192,27 +324,7 @@ export function getMusicCommentFloor({ id, parentCommentId, limit = 20, time = -
  * @param {object} extraParams - 额外参数
  */
 export function postMusicComment(id, content, commentId = null, extraParams = {}) {
-    // 支持旧的调用方式（传入params对象）
-    if (typeof id === 'object') {
-        return get('/comment', {
-            t: 1,
-            type: 0,
-            ...id,
-            timestamp: new Date().getTime()
-        });
-    }
-    
-    const params = {
-        id,
-        content,
-        t: 1, // 1: 发送, 0: 删除
-        type: 0, // 0: 歌曲
-        ...(commentId && { commentId }),
-        ...extraParams,
-        timestamp: new Date().getTime()
-    };
-    
-    return get('/comment', params);
+    return buildUnsupportedCommentActionResponse(commentId ? '回复' : '发送')
 }
 
 /**
@@ -223,23 +335,5 @@ export function postMusicComment(id, content, commentId = null, extraParams = {}
  * @param {object} extraParams - 额外参数
  */
 export function likeMusicComment(id, cid, isLike = true, extraParams = {}) {
-    // 支持旧的调用方式（传入params对象）
-    if (typeof id === 'object') {
-        return get('/comment/like', {
-            type: 0,
-            ...id,
-            timestamp: new Date().getTime()
-        });
-    }
-    
-    const params = {
-        id,
-        cid,
-        t: isLike ? 1 : 0,
-        type: 0, // 0: 歌曲
-        ...extraParams,
-        timestamp: new Date().getTime()
-    };
-    
-    return get('/comment/like', params);
+    return buildUnsupportedCommentActionResponse(isLike ? '点赞' : '取消点赞')
 }
