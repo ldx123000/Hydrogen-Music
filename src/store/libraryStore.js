@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { getPlaylistDetail, getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail, playlistDynamic } from '../api/playlist'
+import { getPlaylistDetail, getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail } from '../api/playlist'
 import { getAlbumDetail, albumDynamic } from '../api/album'
 import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum } from '../api/artist'
 import { getArtistMV } from '../api/mv'
@@ -279,22 +279,31 @@ export const useLibraryStore = defineStore('libraryStore', {
                 offset: 0,
             }
             try {
-                const [playlistDetailResult, playlistTrackResult, playlistDynamicResult] = await Promise.all([
+                const [playlistDetailResult, playlistTrackResult] = await Promise.all([
                     getPlaylistDetail(params),
                     getPlaylistAll(params),
-                    playlistDynamic(playlistId),
                 ])
                 if (this.playlistHydrationToken != token) return
 
-                const playlist = playlistDetailResult?.playlist || null
+                const playlist = playlistDetailResult?.playlist || playlistDetailResult?.data?.info?.[0] || playlistDetailResult?.data?.info || playlistDetailResult?.info || null
                 const firstBatchSongs = mapSongsPlayableStatus(playlistTrackResult?.songs || [], playlistTrackResult?.privileges || []) || []
-                const totalTracks = Number(playlist?.trackIds?.length || firstBatchSongs.length || 0)
+                
+                const fallbackPlaylist = {
+                    ...playlist,
+                    id: playlist?.id || playlist?.listid || playlist?.global_collection_id || playlistId,
+                    name: playlist?.name || playlist?.listname || playlist?.specialname || '歌单详情',
+                    coverImgUrl: playlist?.coverImgUrl || playlist?.pic || playlist?.imgurl || firstBatchSongs[0]?.coverUrl || firstBatchSongs[0]?.al?.picUrl || '',
+                    trackCount: playlist?.trackCount || playlist?.songcount || firstBatchSongs.length,
+                    creator: playlist?.creator || { nickname: playlist?.username || '' }
+                }
+
+                const totalTracks = Number(fallbackPlaylist?.trackIds?.length || fallbackPlaylist?.trackCount || firstBatchSongs.length || 0)
                 const loadedTracks = Math.min(firstBatchSongs.length, totalTracks)
 
-                this.libraryInfo = playlist
+                this.libraryInfo = fallbackPlaylist
                 this.librarySongs = firstBatchSongs
                 this.indexLibrarySongs(firstBatchSongs)
-                if (this.libraryInfo) this.libraryInfo.followed = !!playlistDynamicResult?.subscribed
+
 
                 if (totalTracks <= loadedTracks) {
                     this.playlistHydration = createPlaylistHydrationState({

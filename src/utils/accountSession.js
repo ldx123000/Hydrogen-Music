@@ -57,10 +57,10 @@ export function normalizePlaylistItem(item) {
     return {
         ...item,
         id: item.listid,
-        name: item.is_def === 1 ? '我喜欢的音乐' : item.name,
+        name: item.name,
         coverImgUrl: item.pic || '',
         picUrl: item.pic || '',
-        trackCount: item.list_count ?? 0,
+        trackCount: item.count ?? item.list_count ?? 0,
         creator: { userId: String(item.userid ?? '') },
         is_mine: isMine,
     }

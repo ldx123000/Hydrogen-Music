@@ -57,13 +57,14 @@ function triggerAutoLogout(reason) {
 
 request.interceptors.request.use(function (config) {
   config.params = config.params || {}
+  config.headers = config.headers || {}
 
   const requestUrl = config.url || ''
   const skipAuthCookie = requestUrl.startsWith('/login/') || requestUrl === '/captcha/sent'
 
   if (!skipAuthCookie && isLogin()) {
     const authCookieString = buildAuthCookieString()
-    if (authCookieString) config.headers['Cookie'] = authCookieString
+    if (authCookieString) config.headers.Authorization = authCookieString
   }
 
   if (libraryStore.needTimestamp.indexOf(config.url) != -1) {

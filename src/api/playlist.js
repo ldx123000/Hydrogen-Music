@@ -1,5 +1,66 @@
 import request from "../utils/request";
 
+function normalizePlaylistArtists(song) {
+  const sourceArtists = Array.isArray(song?.singerinfo)
+    ? song.singerinfo
+    : Array.isArray(song?.ar)
+      ? song.ar
+      : Array.isArray(song?.artists)
+        ? song.artists
+        : []
+
+  return sourceArtists
+    .map(artist => {
+      if (!artist) return null
+      const name = artist?.name ?? artist?.singername ?? artist?.artistName ?? ''
+      if (!name) return null
+      return {
+        id: artist?.id ?? artist?.singerid ?? artist?.artistId ?? null,
+        name,
+        publish: artist?.publish,
+        type: artist?.type,
+      }
+    })
+    .filter(Boolean)
+}
+
+export function normalizePlaylistSong(song = {}) {
+  const rawAlbum = song?.albuminfo || song?.album || {}
+  const albumId = rawAlbum?.id ?? rawAlbum?.albumId ?? song?.album_id ?? null
+  const albumName = rawAlbum?.name ?? song?.album_name ?? ''
+  const coverUrl = song?.cover || rawAlbum?.picUrl || rawAlbum?.coverUrl || song?.trans_param?.union_cover || null
+  const artists = normalizePlaylistArtists(song)
+  const primaryId = song?.mixsongid ?? song?.audio_id ?? song?.id ?? song?.songId ?? song?.hash ?? song?.fileid ?? null
+  const duration = Number(song?.timelen ?? song?.duration ?? song?.dt ?? 0)
+
+  return {
+    ...song,
+    id: primaryId,
+    name: song?.name || song?.songName || '',
+    ar: artists,
+    artists,
+    al: {
+      id: albumId,
+      name: albumName,
+      picUrl: coverUrl,
+    },
+    album: {
+      id: albumId,
+      name: albumName,
+      picUrl: coverUrl,
+    },
+    dt: Number.isFinite(duration) && duration > 0 ? duration : 0,
+    duration: Number.isFinite(duration) && duration > 0 ? duration : 0,
+    coverUrl,
+    source: song?.source || 'playlist',
+    type: song?.type || 'playlist',
+  }
+}
+
+export function normalizePlaylistSongs(songs) {
+  return Array.isArray(songs) ? songs.map(normalizePlaylistSong) : []
+}
+
 /**
  * 获取推荐歌单
  * @param {number} num 
@@ -49,12 +110,32 @@ export function getPlaylistDetail(params) {
  * @param {*} params 
  * @returns 
  */
-export function getPlaylistAll(params) {
-    return request({
-      url: '/playlist/track/all',
-      method: 'get',
-      params,
-    });
+export async function getPlaylistAll(params) {
+    const { id, limit, offset, ...rest } = params || {}
+    const page = offset != null && limit ? Math.floor(offset / limit) + 1 : 1
+    const pagesize = limit || 30
+    try {
+        const result = await request({
+            url: '/playlist/track/all/new',
+            method: 'get',
+            params: { listid: id, page, pagesize, ...rest },
+        })
+        return {
+          songs: normalizePlaylistSongs(result?.data?.info || result?.info || []),
+            privileges: []
+        }
+    } catch {
+        const fallback = await request({
+            url: '/playlist/track/all',
+            method: 'get',
+            params,
+        })
+        return {
+          ...fallback,
+          songs: normalizePlaylistSongs(fallback?.songs || fallback?.data?.info || fallback?.info || []),
+          privileges: Array.isArray(fallback?.privileges) ? fallback.privileges : [],
+        }
+    }
 }
 
 /**
