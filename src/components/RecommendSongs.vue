@@ -12,6 +12,7 @@ const route = useRoute();
 const router = useRouter();
 
 const historyDates = ref([]);
+const historyNameMap = ref({});
 const selectedDate = ref('');
 const loadingDates = ref(false);
 const loadingSongs = ref(false);
@@ -170,9 +171,19 @@ const handleDateDropdownKeydown = async event => {
 };
 
 const normalizeDateList = result => {
-    const source = result?.data?.dates || result?.data?.dateList || result?.dates || result?.dateList || result?.data || [];
+    const source = result?.data?.list || result?.data?.dates || result?.data?.dateList || result?.dates || result?.dateList || result?.data || [];
     if (!Array.isArray(source)) return [];
-    return source.filter(item => typeof item == 'string');
+    const nameMap = {};
+    const dates = source.map(item => {
+        if (typeof item == 'string') return item;
+        if (item?.date) {
+            if (item.history_name) nameMap[item.date] = item.history_name;
+            return item.date;
+        }
+        return null;
+    }).filter(Boolean);
+    historyNameMap.value = nameMap;
+    return dates;
 };
 
 const syncRouteDateQuery = async date => {
@@ -189,10 +200,11 @@ const loadRecommendSongs = async date => {
     }
 
     const shouldUseTodayRecommend = date == todayDate.value && shouldInsertTodayOption.value;
+    const historyName = historyNameMap.value[date];
 
     loadingSongs.value = true;
     try {
-        await libraryStore.updateRecommendSongs(shouldUseTodayRecommend ? '' : date);
+        await libraryStore.updateRecommendSongs(shouldUseTodayRecommend ? '' : date, historyName);
     } catch (e) {
         noticeOpen('获取推荐歌曲失败', 2);
     } finally {

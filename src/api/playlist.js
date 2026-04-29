@@ -168,24 +168,22 @@ export function getRecommendSongs(params) {
  */
 export function getHistoryRecommendSongDates() {
     return request({
-      url: '/history/recommend/songs',
+      url: '/everyday/history',
       method: 'get',
-      params: {
-
-      },
+      params: { mode: 'list' },
     });
 }
 
 /**
  * 获取指定日期的历史日推详情
- * @param {*} params
+ * @param {*} params - { history_name, date }
  * @returns
  */
 export function getHistoryRecommendSongsDetail(params) {
     return request({
-      url: '/history/recommend/songs/detail',
+      url: '/everyday/history',
       method: 'get',
-      params,
+      params: { mode: 'song', ...params },
     });
 }
 

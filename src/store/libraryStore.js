@@ -463,8 +463,8 @@ export const useLibraryStore = defineStore('libraryStore', {
                 this.indexLibraryMVs(this.libraryMV)
             })
         },
-        async updateRecommendSongs(date) {
-            const request = date ? getHistoryRecommendSongsDetail({ date }) : getRecommendSongs()
+        async updateRecommendSongs(date, historyName) {
+            const request = date ? getHistoryRecommendSongsDetail({ date, history_name: historyName }) : getRecommendSongs()
             await request.then(result => {
                 const dailySongs = result?.data?.dailySongs || []
                 const historySongs = result?.data?.songs || result?.data?.dailySongs || result?.songs || []
