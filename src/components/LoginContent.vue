@@ -78,12 +78,17 @@
       clearTimeout(jumpTimer.value)
       jumpTimer.value = null
     }
+    // 先预热目标页面，减少跳转时的空白帧和“闪一下”的感觉
+    void import('../views/MyMusic.vue')
     jumpPage.value = true
+    // 与 .jumpPage 的动画时长对齐，避免动画结束后先露出一帧空白再切路由
     jumpTimer.value = setTimeout(() => {
-      router.push('/mymusic')
-      jumpPage.value = false
+      void router.push('/mymusic').catch(() => {
+        // 跳转失败时恢复登录页，避免卡在缩小态
+        jumpPage.value = false
+      })
       jumpTimer.value = null
-    }, 3000)
+    }, 2800)
   }
 
   watch(() => route.query.mode, () => {

@@ -3,13 +3,13 @@ import { ref, computed, onActivated, onDeactivated, onMounted, onBeforeUnmount, 
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router';
 import { isLogin } from '../utils/authority';
 import { noticeOpen } from '../utils/dialog';
-import { subPlaylist } from '../api/playlist';
+import { collectPlaylist, deletePlaylist } from '../api/playlist';
 import { subAlbum } from '../api/album';
 import { subArtist } from '../api/artist';
 import { formatTime } from '../utils/time';
 import { playAll } from '../utils/player';
 import { resolveImageUrl } from '../utils/initApp';
-import { scheduleAlbumSublistCacheInvalidation, scheduleArtistSublistCacheInvalidation } from '../utils/cacheInvalidation';
+import { scheduleAlbumSublistCacheInvalidation, scheduleArtistSublistCacheInvalidation, schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation';
 import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
 import LibrarySongList from './LibrarySongList.vue';
 import SkeletonBox from './base/SkeletonBox.vue';
@@ -25,7 +25,7 @@ const playerStore = usePlayerStore();
 const localStore = useLocalStore();
 const libraryStore = useLibraryStore();
 const { updateLibraryDetail, updateArtistTopSong, updateArtistAlbum, updateArtistsMV, waitForPlaylistHydration, saveDetailScroll, getDetailScroll } = libraryStore;
-const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration } = storeToRefs(libraryStore);
+const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, playlistUserSub, artistPageType, listType1, listType2, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration } = storeToRefs(libraryStore);
 
 const router = useRouter();
 const isAlbum = ref(false);
@@ -381,7 +381,148 @@ const changeType = type => {
     artistPageType.value = type;
 };
 
-//歌单、专辑、歌手的收藏(极其降智的写法,主要问题是接口缓存的问题,使用时间戳请求数据后他不会自己更新最新缓存，所以设置了2分钟的无缓存时间)
+const isPlaylistUpdateSuccess = result => !!(result && (
+    (result.status === 200 && result.body && result.body.code === 200) ||
+    result.code === 200 ||
+    result.status === 200 ||
+    result.status === 1 ||
+    result.error_code === 0
+));
+
+const currentPlaylistCollectionId = computed(() => String(libraryInfo.value?.global_collection_id || libraryInfo.value?.list_create_gid || ''));
+const isCreatedPlaylist = computed(() => {
+    if (isAlbum.value || isSinger.value) return false;
+    if (Number(libraryInfo.value?.is_mine) === 1) return true;
+
+    const collectionId = currentPlaylistCollectionId.value;
+    const playlistId = String(libraryInfo.value?.list_create_listid || libraryInfo.value?.listid || libraryInfo.value?.id || '');
+
+    return (playlistUserCreated.value || []).some(item => (
+        String(item.id || '') === playlistId
+        || (collectionId && String(item.global_collection_id || '') === collectionId)
+    ));
+});
+
+const playlistFollowedRecord = computed(() => {
+    if (isAlbum.value || isSinger.value || isCreatedPlaylist.value) return null;
+
+    const collectionId = currentPlaylistCollectionId.value;
+    if (!collectionId) return null;
+
+    return (playlistUserSub.value || []).find(item => String(item.global_collection_id || '') === collectionId) || null;
+});
+
+const isPlaylistFollowed = computed(() => {
+    if (isAlbum.value || isSinger.value || isCreatedPlaylist.value) return false;
+    return Boolean(libraryInfo.value?.followed || playlistFollowedRecord.value);
+});
+
+const followedPlaylistId = computed(() => playlistFollowedRecord.value?.id || libraryInfo.value?.followedPlaylistId || null);
+
+const buildCollectedPlaylistEntry = collectedId => {
+    const collectionId = currentPlaylistCollectionId.value;
+    // 收藏后要立刻补一条用户歌单记录，不然侧边栏不会马上显示新收藏的歌单。
+    return {
+        id: collectedId,
+        list_create_listid: collectedId,
+        list_create_gid: collectionId,
+        global_collection_id: collectionId,
+        name: libraryInfo.value?.name || '歌单',
+        coverImgUrl: libraryInfo.value?.coverImgUrl || libraryInfo.value?.picUrl || '',
+        picUrl: libraryInfo.value?.picUrl || libraryInfo.value?.coverImgUrl || '',
+        trackCount: libraryInfo.value?.trackCount || libraryInfo.value?.count || 0,
+        creator: libraryInfo.value?.creator || { nickname: libraryInfo.value?.list_create_username || '' },
+        is_mine: 0,
+    };
+};
+
+const syncCollectedPlaylistState = ({ collectedId = null, remove = false } = {}) => {
+    if (!Array.isArray(playlistUserSub.value)) {
+        playlistUserSub.value = [];
+    }
+
+    const collectionId = currentPlaylistCollectionId.value;
+    if (remove) {
+        const targetId = String(collectedId || '');
+        const removeIndex = playlistUserSub.value.findIndex(item => (
+            String(item.id || '') === targetId
+            || String(item.global_collection_id || '') === collectionId
+        ));
+        if (removeIndex !== -1) playlistUserSub.value.splice(removeIndex, 1);
+        return;
+    }
+
+    if (!collectedId) return;
+    const alreadyExists = playlistUserSub.value.some(item => (
+        String(item.id || '') === String(collectedId)
+        || String(item.global_collection_id || '') === collectionId
+    ));
+    if (alreadyExists) return;
+    playlistUserSub.value.unshift(buildCollectedPlaylistEntry(collectedId));
+};
+
+const togglePlaylistCollect = async () => {
+    try {
+        if (isAlbum.value || isSinger.value || isCreatedPlaylist.value) return;
+
+        const collectionId = currentPlaylistCollectionId.value;
+        if (!collectionId) {
+            noticeOpen('当前歌单信息不完整，暂时无法收藏', 2);
+            return;
+        }
+
+        if (isPlaylistFollowed.value) {
+            const targetId = followedPlaylistId.value;
+            if (!targetId) {
+                noticeOpen('未找到可取消收藏的歌单', 2);
+                return;
+            }
+
+            const result = await deletePlaylist({ id: targetId });
+            if (isPlaylistUpdateSuccess(result)) {
+                syncCollectedPlaylistState({ collectedId: targetId, remove: true });
+                libraryInfo.value.followed = false;
+                libraryInfo.value.followedPlaylistId = null;
+                schedulePlaylistCacheInvalidation();
+                noticeOpen('已取消收藏', 2);
+            } else {
+                noticeOpen('收藏/取消收藏失败', 2);
+            }
+            return;
+        }
+
+        const collectParams = {
+            name: libraryInfo.value?.name || '歌单',
+            type: 1,
+            source: 1,
+            list_create_userid: libraryInfo.value?.list_create_userid || libraryInfo.value?.creator?.userId || '',
+            list_create_listid: libraryInfo.value?.list_create_listid || libraryInfo.value?.listid || '',
+            list_create_gid: libraryInfo.value?.list_create_gid || collectionId,
+        };
+
+        if (!collectParams.list_create_userid || !collectParams.list_create_listid || !collectParams.list_create_gid) {
+            noticeOpen('当前歌单信息不完整，暂时无法收藏', 2);
+            return;
+        }
+
+        const result = await collectPlaylist(collectParams);
+        if (isPlaylistUpdateSuccess(result)) {
+            const collectedId = result?.listid || result?.data?.listid || result?.id;
+            libraryInfo.value.followed = true;
+            libraryInfo.value.followedPlaylistId = collectedId || null;
+            syncCollectedPlaylistState({ collectedId });
+            schedulePlaylistCacheInvalidation();
+            noticeOpen('收藏成功', 2);
+        } else {
+            noticeOpen('收藏/取消收藏失败', 2);
+        }
+    } catch (error) {
+        console.error('歌单收藏操作失败:', error);
+        noticeOpen('收藏/取消收藏失败', 2);
+    }
+};
+
+// 专辑、歌手的收藏状态同步；歌单收藏单独走酷狗的 add/del 接口。
 const subHandle = id => {
     let type1 = null;
     let type2 = null;
@@ -442,22 +583,7 @@ const librarySub = id => {
         });
     }
     if (!isAlbum.value && !isSinger.value) {
-        let params = {
-            id: id,
-            t: libraryInfo.value.followed ? 2 : 1,
-            timestamp: new Date().getTime(),
-        };
-        subPlaylist(params).then(result => {
-            console.log(id);
-            console.log(result);
-            if (result.code == 200) {
-                subHandle(id);
-                if (params.t == 1) noticeOpen('收藏成功', 2);
-                else noticeOpen('已取消收藏', 2);
-            } else {
-                noticeOpen('收藏/取消收藏失败', 2);
-            }
-        });
+        void togglePlaylistCollect();
     }
 };
 
@@ -589,9 +715,9 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                         <span class="introduce-num" v-if="isSinger">{{ libraryInfo.musicSize }}首歌 · {{ libraryInfo.albumSize }}张专辑 · {{ libraryInfo.mvSize }}个MV</span>
                         <div class="library-operation">
                             <template v-if="isLogin()">
-                                <div class="operation-collection operation-item" v-show="(playlistUserCreated || []).findIndex(song => song.id == libraryInfo.id) == -1" @click="librarySub(libraryInfo.id)">
+                                <div class="operation-collection operation-item" v-show="!isCreatedPlaylist" @click="librarySub(libraryInfo.id)">
                                     <svg
-                                        v-show="!libraryInfo.followed"
+                                        v-show="!isPlaylistFollowed"
                                         t="1669112450805"
                                         class="collect-icon"
                                         viewBox="0 0 1024 1024"
@@ -605,7 +731,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                         <path d="M481.48 98.15h63.79V927h-63.79z" p-id="2263"></path>
                                     </svg>
                                     <svg
-                                        v-show="libraryInfo.followed"
+                                        v-show="isPlaylistFollowed"
                                         t="1670744716630"
                                         class="collected-icon"
                                         viewBox="0 0 1024 1024"
@@ -621,7 +747,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                             p-id="2168"
                                         ></path>
                                     </svg>
-                                    <span>{{ libraryInfo.followed ? '已收藏' : '收藏' }}</span>
+                                    <span>{{ isPlaylistFollowed ? '已收藏' : '收藏' }}</span>
                                 </div>
                                 <div class="operation-download operation-item" v-if="!isSinger">
                                     <svg

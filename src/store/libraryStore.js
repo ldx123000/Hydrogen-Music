@@ -362,17 +362,25 @@ export const useLibraryStore = defineStore('libraryStore', {
                 if (this.playlistHydrationToken != token) return
 
                 const firstBatchSongs = mapSongsPlayableStatus(playlistTrackResult?.songs || [], playlistTrackResult?.privileges || []) || []
-                
+                const listInfo = playlistTrackResult?.data?.list_info || playlistTrackResult?.list_info || null
+                const mergedPlaylist = {
+                    ...(playlist || {}),
+                    ...(listInfo || {}),
+                }
+
                 const fallbackPlaylist = {
-                    ...playlist,
-                    id: resolvedPlaylistId || playlist?.id || playlist?.list_create_listid || playlist?.listid || playlistId,
-                    global_collection_id: resolvedCollectionId || playlist?.global_collection_id || null,
-                    name: playlist?.name || playlist?.listname || playlist?.specialname || '歌单',
-                    coverImgUrl: playlist?.coverImgUrl || playlist?.pic || playlist?.imgurl || firstBatchSongs[0]?.coverUrl || firstBatchSongs[0]?.al?.picUrl || '',
-                    trackCount: playlist?.trackCount || playlist?.count || playlist?.list_count || playlist?.songcount || firstBatchSongs.length,
-                    createTime: playlist?.createTime || (playlist?.create_time ? playlist.create_time * 1000 : null),
-                    description: playlist?.description || playlist?.intro || playlist?.briefDesc || '',
-                    creator: playlist?.creator || { nickname: playlist?.list_create_username || playlist?.username || '' },
+                    ...mergedPlaylist,
+                    id: resolvedPlaylistId || mergedPlaylist?.id || mergedPlaylist?.list_create_listid || mergedPlaylist?.listid || playlistId,
+                    global_collection_id: resolvedCollectionId || mergedPlaylist?.global_collection_id || null,
+                    list_create_userid: mergedPlaylist?.list_create_userid || mergedPlaylist?.creator?.userId || mergedPlaylist?.userid || null,
+                    list_create_listid: mergedPlaylist?.list_create_listid || mergedPlaylist?.listid || null,
+                    list_create_gid: mergedPlaylist?.list_create_gid || mergedPlaylist?.global_collection_id || null,
+                    name: mergedPlaylist?.name || mergedPlaylist?.listname || mergedPlaylist?.specialname || '歌单',
+                    coverImgUrl: mergedPlaylist?.coverImgUrl || mergedPlaylist?.pic || mergedPlaylist?.imgurl || firstBatchSongs[0]?.coverUrl || firstBatchSongs[0]?.al?.picUrl || '',
+                    trackCount: mergedPlaylist?.trackCount || mergedPlaylist?.count || mergedPlaylist?.list_count || mergedPlaylist?.songcount || firstBatchSongs.length,
+                    createTime: mergedPlaylist?.createTime || (mergedPlaylist?.create_time ? mergedPlaylist.create_time * 1000 : null),
+                    description: mergedPlaylist?.description || mergedPlaylist?.intro || mergedPlaylist?.briefDesc || '',
+                    creator: mergedPlaylist?.creator || { nickname: mergedPlaylist?.list_create_username || mergedPlaylist?.username || '' },
                 }
 
                 const totalTracks = Number(fallbackPlaylist?.trackIds?.length || fallbackPlaylist?.trackCount || firstBatchSongs.length || 0)

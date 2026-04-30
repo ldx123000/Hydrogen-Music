@@ -354,25 +354,42 @@ export function playlistDynamic(id) {
 }
 
 /**
- * 说明 : 调用此接口 , 传入歌单名字可新建歌单
- * 必选参数 : name : 歌单名
- * 可选参数 :
- * privacy : 是否设置为隐私歌单，默认否，传'10'则设置成隐私歌单
- * type : 歌单类型,默认'NORMAL',传 'VIDEO'则为视频歌单,传 'SHARED'则为共享歌单
- * @param {*} params 
- * @returns 
+ * 调用此接口可新建歌单，也可在 type=1 时收藏已有歌单。
+ * 收藏场景需要补齐原歌单的 creator / listid / gid 信息。
+ * @param {*} params
+ * @returns
  */
 export function createPlaylist(params) {
   const playlistName = String(params?.name || '').trim()
+  const playlistType = Number(params?.type ?? 0)
+  const requestParams = {
+    name: playlistName,
+    type: playlistType,
+    source: params?.source ?? (playlistType === 1 ? 1 : 0),
+    is_pri: params?.is_pri ?? params?.privacy ?? 0,
+  }
+
+  if (params?.list_create_userid != null) requestParams.list_create_userid = params.list_create_userid
+  if (params?.list_create_listid != null) requestParams.list_create_listid = params.list_create_listid
+  if (params?.list_create_gid != null && params.list_create_gid !== '') requestParams.list_create_gid = params.list_create_gid
+
   return request({
     url: '/playlist/add',
     method: 'post',
-    params: {
-      name: playlistName,
-      type: 0,
-      source: 0,
-      is_pri: params?.is_pri ?? params?.privacy ?? 0,
-    },
+    params: requestParams,
+  });
+}
+
+/**
+ * 收藏歌单是 `/playlist/add` 的一个特例，单独包一层方便调用处表达意图。
+ * @param {*} params
+ * @returns
+ */
+export function collectPlaylist(params) {
+  return createPlaylist({
+    ...params,
+    type: 1,
+    source: params?.source ?? 1,
   });
 }
 
