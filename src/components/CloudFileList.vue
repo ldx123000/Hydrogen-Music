@@ -43,7 +43,8 @@
   }, { immediate: true })
 
   function getSongId(item) {
-    const songId = item?.simpleSong?.id
+    // 酷狗云盘歌曲有时只有 hash，没有网易云时代的 simpleSong.id，这里统一兜底。
+    const songId = item?.simpleSong?.id || item?.album_audio_id || item?.hash || item?.id
     return songId === undefined || songId === null || songId === '' ? '' : String(songId)
   }
 
@@ -57,7 +58,7 @@
   }
 
   function getItemKey(item, index) {
-    return String(item?.simpleSong?.id || item?.id || item?.songId || item?.fileName || `cloud-${index}`)
+    return String(getSongId(item) || item?.songId || item?.fileName || `cloud-${index}`)
   }
 
   function getItemCover(item) {
@@ -101,7 +102,13 @@
   function getSelectedSongs() {
     return visibleItems.value
       .filter(item => selectedSongIds.value.includes(getSongId(item)))
-      .map(item => item.simpleSong)
+      .map(item => ({
+        ...(item?.simpleSong || {}),
+        // 下载器优先依赖 hash，这里把云盘外层字段并回歌曲对象。
+        hash: item?.simpleSong?.hash || item?.hash || '',
+        album_audio_id: item?.simpleSong?.album_audio_id || item?.album_audio_id || '',
+        id: item?.simpleSong?.id || getSongId(item),
+      }))
       .filter(Boolean)
   }
 
@@ -123,6 +130,8 @@
       if (result?.code == 200) {
         clearSelect()
         emit('refresh')
+      } else if (result?.code == 501) {
+        noticeOpen(result?.message || '当前后端暂不支持删除云盘歌曲', 2)
       } else {
         noticeOpen('删除失败', 2)
       }
@@ -148,8 +157,18 @@
     const playIndex = playableItems.findIndex(entry => getSongId(entry) == songId)
     if (playIndex == -1) return
 
-    playerStore.songList = playableItems.map(entry => entry.simpleSong).filter(Boolean)
-    addSong(item.simpleSong.id, playIndex, true)
+    playerStore.songList = playableItems
+      .map(entry => ({
+        ...(entry?.simpleSong || {}),
+        // 统一补全云盘歌曲的关键字段，确保播放器能按酷狗 hash 取流。
+        id: entry?.simpleSong?.id || getSongId(entry),
+        hash: entry?.simpleSong?.hash || entry?.hash || '',
+        album_audio_id: entry?.simpleSong?.album_audio_id || entry?.album_audio_id || '',
+        source: 'cloud',
+        type: 'cloud',
+      }))
+      .filter(Boolean)
+    addSong(songId, playIndex, true)
     if (playerStore.playMode == 3) setShuffledList()
   }
 </script>

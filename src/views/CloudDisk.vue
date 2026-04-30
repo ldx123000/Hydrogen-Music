@@ -107,7 +107,8 @@
   }
 
   function hasSongId(item) {
-    return !!item?.simpleSong?.id
+    // 酷狗云盘条目可能只有 hash，没有旧版 simpleSong.id。
+    return !!(item?.simpleSong?.id || item?.album_audio_id || item?.hash || item?.id)
   }
 
   function extractCloudFileExt(item) {
@@ -154,8 +155,8 @@
 
     try {
       const params = {
-        limit: 500,
-        offset: 0,
+        pagesize: 500,
+        page: 1,
         timestamp: new Date().getTime(),
       }
 
@@ -276,6 +277,11 @@
     formData.append('songFile', file)
     const res = await uploadCloudSong(formData)
     if (res && res.code === 200) return res
+    if (res && res.code === 501) {
+      const unsupportedError = new Error(res?.message || '当前后端暂不支持云盘上传')
+      unsupportedError.code = 501
+      throw unsupportedError
+    }
     // axios拦截器会在错误时返回对象而非抛出异常，这里统一当做失败处理
     throw new Error(res?.msg || res?.message || '上传失败')
   }
@@ -293,6 +299,10 @@
             noticeOpen(`${file.name} 上传成功`, 2)
             break
           } catch (err) {
+            if (err?.code === 501) {
+              noticeOpen(err?.message || '当前后端暂不支持云盘上传', 2)
+              return
+            }
             attempt += 1
             if (attempt >= maxRetries) {
               noticeOpen(`上传失败：${file.name}`, 3)
