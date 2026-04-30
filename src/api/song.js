@@ -170,34 +170,74 @@ export async function getLyric(hash) {
 }
 
 /**
- * 获取私人FM
+ * 统一整理酷狗私人漫游接口的返回结构。
+ * 酷狗接口真实歌曲列表位于 data.song_list，旧前端仍按网易云 data 数组读取，
+ * 这里做一层兼容，避免页面端重复判断返回结构。
+ * @param {object} response - 原始接口响应
+ * @returns {object} 兼容后的响应对象，data 恒为歌曲数组
  */
-export function getPersonalFM() {
-    return get('/personal/fm', {});
+function normalizePersonalFMResponse(response) {
+    const songList = Array.isArray(response?.data?.song_list)
+        ? response.data.song_list
+        : Array.isArray(response?.song_list)
+            ? response.song_list
+            : Array.isArray(response?.data)
+                ? response.data
+                : []
+
+    return {
+        ...response,
+        data: songList,
+        fmMeta: response?.data && typeof response.data === 'object' && !Array.isArray(response.data)
+            ? response.data
+            : {},
+    }
 }
 
 /**
- * 按模式获取私人FM（用于救援补充）
- * @param {object} options - 选项
- * @param {string} options.mode - 模式：aidj/DEFAULT/FAMILIAR/EXPLORE/SCENE_RCMD
- * @param {string} options.submode - 子模式（SCENE_RCMD 时可选）
- * @param {number} options.limit - 取回数量
+ * 获取私人漫游歌曲列表。
+ * 文档地址：/personal/fm
+ * @param {object} params - 酷狗私人漫游接口参数
+ * @returns {Promise<object>} 兼容后的响应对象，data 为歌曲数组
  */
-export function getPersonalFMByMode({ mode = 'DEFAULT', submode, limit = 3 } = {}) {
-    return get('/personal/fm/mode', {
-        mode,
-        ...(submode ? { submode } : {}),
-        ...(limit !== undefined && limit !== null ? { limit } : {}),
+export function getPersonalFM(params = {}) {
+    return get('/personal/fm', {
         timestamp: new Date().getTime(),
-    });
+        ...params,
+    }).then(normalizePersonalFMResponse)
 }
 
 /**
- * 将歌曲移至垃圾桶（从私人FM中移除）
- * @param {string|number} id - 歌曲ID
+ * 按模式获取私人漫游。
+ * 旧前端沿用了网易云的 /personal/fm/mode，这里改为对接酷狗文档中的 /personal/fm。
+ * @param {object} options - 选项
+ * @param {string} options.mode - 漫游模式：normal/small/peak
+ * @param {number|string} options.song_pool_id - AI 推荐池：0/1/2
+ * @param {string} options.hash - 当前歌曲 hash
+ * @param {string|number} options.songid - 当前歌曲 songid
+ * @param {string|number} options.playtime - 当前歌曲已播放秒数
+ * @param {string} options.action - play 或 garbage
+ * @param {boolean|number} options.is_overplay - 是否完整播放
+ * @param {number} options.remain_songcnt - 剩余未播放歌曲数
  */
-export function fmTrash(id) {
-    return getById('/fm_trash', id, {}, false);
+export function getPersonalFMByMode(options = {}) {
+    return getPersonalFM(options)
+}
+
+/**
+ * 将私人漫游中的当前歌曲标记为“不喜欢”。
+ * 酷狗文档使用 /personal/fm?action=garbage，而不是网易云的 /fm_trash。
+ * @param {object|string|number} song - 当前歌曲对象或歌曲ID
+ * @param {object} extraParams - 额外的上下文参数，用于提升下一批推荐的准确度
+ */
+export function fmTrash(song, extraParams = {}) {
+    const source = song && typeof song === 'object' ? song : { id: song }
+    return getPersonalFM({
+        action: 'garbage',
+        hash: source?.hash || '',
+        songid: source?.songid || source?.songId || source?.id || '',
+        ...extraParams,
+    });
 }
 
 function toPositiveNumber(value, fallback = 0) {

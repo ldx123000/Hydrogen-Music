@@ -18,17 +18,18 @@ if (packageJson.version !== nextVersion) {
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-console.log(`[release-build] Running: ${npmCommand} run dist:local (version=${nextVersion})`);
+const npmCli = require.resolve('npm/bin/npm-cli.js', { paths: [projectDir] });
+console.log(`[release-build] Running: node ${npmCli} run dist:local (version=${nextVersion})`);
 
-const result = spawnSync(npmCommand, ['run', 'dist:local'], {
+const result = spawnSync(process.execPath, [npmCli, 'run', 'dist:local'], {
   cwd: projectDir,
   stdio: 'inherit',
   env: process.env,
+  windowsHide: true,
 });
 
 if (result.error) {
-  console.error('[release-build] Failed to spawn dist:local:', result.error.message);
+  console.error('[release-build] Failed to spawn dist:local:', result.error);
   process.exit(1);
 }
 
