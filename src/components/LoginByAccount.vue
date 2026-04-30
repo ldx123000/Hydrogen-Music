@@ -1,32 +1,42 @@
 <script setup>
-  import { computed, onActivated, ref } from 'vue'
-  import md5 from 'js-md5'
+  import { computed, onActivated, onUnmounted, ref } from 'vue'
   import DataCheckAnimaton from './DataCheckAnimaton.vue'
   import { noticeOpen } from '../utils/dialog'
-  import { loginByEmail, loginByPhone } from '../api/login'
+  import { loginByPhone, sendPhoneCaptcha } from '../api/login'
   import { loginHandle } from '../utils/handle'
 
-  const props = defineProps(['currentMode'])
   const emits = defineEmits(['jumpTo'])
 
   const accountInput = ref(null)
   const countrycode = ref('+86')
   const accountNumber = ref('')
-  const typePassword = ref('')
+  const phoneCaptcha = ref('')
   const focusTimer = ref(null)
+  const captchaCountdown = ref(0)
+  const captchaSending = ref(false)
+  const captchaTimer = ref(null)
 
   const loginAnimation = ref(false)
   const dataCheckAnimaton = ref(null)
 
-  const isEmailMode = computed(() => Number(props.currentMode) === 0)
+  const captchaButtonText = computed(() => {
+    if (captchaSending.value) return '发送中'
+    if (captchaCountdown.value > 0) return `${captchaCountdown.value}s`
+    return '获取验证码'
+  })
 
   onActivated(() => {
     accountInput.value?.focus()
   })
 
+  onUnmounted(() => {
+    clearCaptchaTimer()
+    if (focusTimer.value) clearTimeout(focusTimer.value)
+  })
+
   const inputFocus = () => {
     accountNumber.value = ''
-    typePassword.value = ''
+    phoneCaptcha.value = ''
 
     focusTimer.value = setTimeout(() => {
       accountInput.value?.focus()
@@ -36,30 +46,51 @@
 
   defineExpose({ inputFocus })
 
-  const validateEmail = () => {
-    const emailReg = /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/
-    if (!accountNumber.value.trim() || !typePassword.value.trim()) {
-      noticeOpen('请输入正确的邮箱或密码', 2)
-      return false
-    }
-    if (!emailReg.test(accountNumber.value.trim())) {
-      noticeOpen('请输入正确的邮箱', 2)
-      return false
-    }
-    return true
+  const clearCaptchaTimer = () => {
+    if (!captchaTimer.value) return
+    clearInterval(captchaTimer.value)
+    captchaTimer.value = null
   }
 
-  const validatePhone = () => {
+  const startCaptchaCountdown = () => {
+    clearCaptchaTimer()
+    captchaCountdown.value = 60
+    captchaTimer.value = setInterval(() => {
+      captchaCountdown.value -= 1
+      if (captchaCountdown.value <= 0) {
+        captchaCountdown.value = 0
+        clearCaptchaTimer()
+      }
+    }, 1000)
+  }
+
+  const getPhoneLoginPayloadBase = () => ({
+    phone: accountNumber.value.replace(/\s/g, ''),
+    countrycode: countrycode.value.replace('+', '').replace(/\s/g, ''),
+  })
+
+  const validatePhoneBase = () => {
     const phone = accountNumber.value.replace(/\s/g, '')
     const code = countrycode.value.replace('+', '').trim()
 
-    if (!code || !phone || !typePassword.value.trim()) {
-      noticeOpen('请输入正确的手机号或密码', 2)
+    if (!code || !phone) {
+      noticeOpen('请输入正确的手机号', 2)
       return false
     }
 
     if (!/^\d{5,20}$/.test(phone)) {
       noticeOpen('手机号格式不正确', 2)
+      return false
+    }
+
+    return true
+  }
+
+  const validatePhone = () => {
+    if (!validatePhoneBase()) return false
+
+    if (!phoneCaptcha.value.trim()) {
+      noticeOpen('请输入验证码', 2)
       return false
     }
 
@@ -74,31 +105,45 @@
     }, 1500)
   }
 
-  async function login() {
-    const mode = Number(props.currentMode)
-    if (mode !== 0 && mode !== 1) return
+  const sendCaptcha = async () => {
+    if (captchaSending.value || captchaCountdown.value > 0) return
+    if (!validatePhoneBase()) return
 
-    if (mode === 0 && !validateEmail()) return
-    if (mode === 1 && !validatePhone()) return
+    captchaSending.value = true
+    try {
+      const result = await sendPhoneCaptcha({
+        ...getPhoneLoginPayloadBase(),
+        ctcode: countrycode.value.replace('+', '').replace(/\s/g, ''),
+      })
+      if (result?.code === 200 || result?.data === true) {
+        noticeOpen('验证码已发送', 1)
+        startCaptchaCountdown()
+        return
+      }
+      throw new Error(result?.message || result?.msg || '验证码发送失败')
+    } catch (error) {
+      noticeOpen(error?.response?.data?.message || error?.message || '验证码发送失败，请稍后重试', 2)
+    } finally {
+      captchaSending.value = false
+    }
+  }
+
+  const getLoginErrorMessage = error => {
+    const data = error?.response?.data
+    if (data?.code === 8821 || data?.hitType === 60001) return '当前登录需要行为验证，请稍后再试'
+    return data?.message || data?.msg || error?.message || '登录失败，请稍后重试'
+  }
+
+  async function login() {
+    if (!validatePhone()) return
 
     loginAnimation.value = true
 
     try {
-      const basePayload = {
-        password: 'none',
-        md5_password: md5(typePassword.value),
-      }
-
-      const result = mode === 0
-        ? await loginByEmail({
-            ...basePayload,
-            email: accountNumber.value.replace(/\s/g, ''),
-          })
-        : await loginByPhone({
-            ...basePayload,
-            phone: accountNumber.value.replace(/\s/g, ''),
-            countrycode: countrycode.value.replace('+', '').replace(/\s/g, ''),
-          })
+      const result = await loginByPhone({
+        ...getPhoneLoginPayloadBase(),
+        captcha: phoneCaptcha.value.trim(),
+      })
 
       if (result?.code === 200) {
         loginHandle(result, 'account')
@@ -108,7 +153,7 @@
 
       throw new Error(result?.message || result?.msg || '登录失败，请检查账号与密码')
     } catch (error) {
-      noticeOpen(error?.message || '登录失败，请稍后重试', 2)
+      noticeOpen(getLoginErrorMessage(error), 2)
       loginError()
     }
   }
@@ -118,18 +163,16 @@
   <div class="account-container">
     <div class="account">
       <div class="account-adress">
-        <label for="account">{{ isEmailMode ? '邮箱：' : '手机：' }}</label>
+        <label for="account">手机：</label>
         <div class="input-container" :class="{ 'login-animation': loginAnimation }">
           <input
             class="phone-country"
             type="text"
             v-model="countrycode"
-            v-show="!isEmailMode"
             spellcheck="false"
           >
           <input
-            class="account-input"
-            :class="{ 'account-input2': !isEmailMode }"
+            class="account-input account-input2"
             v-model="accountNumber"
             type="text"
             name="account"
@@ -141,18 +184,28 @@
       </div>
 
       <div class="mail-password">
-        <label for="password">密码：</label>
-        <input
-          class="password-input"
-          :class="{ 'login-animation': loginAnimation }"
-          type="password"
-          name="password"
-          v-model="typePassword"
-          spellcheck="false"
-          @keyup.enter="login"
-        >
+        <label for="password">验证码：</label>
+        <div class="password-field">
+          <input
+            class="password-input captcha-input"
+            :class="{ 'login-animation': loginAnimation }"
+            type="text"
+            name="captcha"
+            v-model="phoneCaptcha"
+            spellcheck="false"
+            @keyup.enter="login"
+          >
+          <button
+            class="captcha-button"
+            type="button"
+            :disabled="captchaSending || captchaCountdown > 0"
+            @click="sendCaptcha"
+          >
+            {{ captchaButtonText }}
+          </button>
+        </div>
         <div class="forget-password">
-          <div class="forget-title">您忘记了密码？</div>
+          <div class="forget-title">请在手机查看</div>
           <div class="password-line" :class="{ 'login-animation': loginAnimation }"></div>
         </div>
       </div>
@@ -234,6 +287,12 @@
           color: var(--login-text);
         }
 
+        .password-field {
+          display: inline-flex;
+          align-items: center;
+          width: 30.2vh;
+        }
+
         .password-input {
           transition: 0.2s ease-out;
           width: 30.2vh;
@@ -244,6 +303,37 @@
           border: none;
           background: none;
           outline: none;
+        }
+
+        .captcha-input {
+          width: 18.8vh;
+          font-family: SourceHanSansCN-Bold;
+        }
+
+        .captcha-button {
+          flex: 0 0 auto;
+          width: 10.8vh;
+          padding: 0.35vh 0;
+          font: 1.25vh SourceHanSansCN-Bold;
+          color: var(--login-text);
+          border: 1px solid var(--login-border);
+          border-radius: 0;
+          background: none;
+          outline: none;
+          appearance: none;
+          -webkit-appearance: none;
+          transition: background-color 0.2s, color 0.2s, opacity 0.2s;
+
+          &:hover:not(:disabled) {
+            cursor: pointer;
+            background-color: var(--login-button-hover-bg);
+            color: var(--login-button-hover-text);
+          }
+
+          &:disabled {
+            cursor: default;
+            opacity: 0.55;
+          }
         }
 
         .forget-password {
@@ -264,7 +354,7 @@
           .password-line {
             transition: 0.2s ease-out;
             background-color: var(--login-line);
-            width: 33vh;
+            width: 29.8vh;
             height: 0.5px;
           }
         }

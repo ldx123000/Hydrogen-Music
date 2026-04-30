@@ -262,10 +262,6 @@ request.interceptors.request.use(async function (config) {
     config.params.timestamp = new Date().getTime()
   }
 
-  // 添加国内IP伪装来解决524环境异常错误
-  config.headers['X-Real-IP'] = '211.161.244.70'; // 国内IP地址
-  config.headers['X-Forwarded-For'] = '211.161.244.70';
-
   // 在发送请求之前做些什么
   return config;
 }, function (error) {

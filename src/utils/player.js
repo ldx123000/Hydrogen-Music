@@ -371,13 +371,24 @@ export function preloadGaplessSongPlayback(song, options = {}) {
         clearGaplessPreload()
         return Promise.resolve(null)
     }
+    if (!song || typeof song !== 'object') {
+        clearGaplessPreload()
+        return Promise.resolve(null)
+    }
 
     const key = getSongAssetKey(song)
-    if (!key || key === getSongAssetKey(getCurrentSong())) return Promise.resolve(null)
+    if (!key || key === getSongAssetKey(getCurrentSong())) {
+        clearGaplessPreload()
+        return Promise.resolve(null)
+    }
 
     const preferredQuality = song?.type === 'local' || isSirenSong(song) ? '' : getPreferredQuality(options.quality ?? quality.value)
     if (gaplessPreload?.key === key && gaplessPreload?.quality === preferredQuality && gaplessPreload?.howl?.state?.() !== 'unloaded') {
         return Promise.resolve(gaplessPreload)
+    }
+
+    if (isPersonalFMContext() && gaplessPreload?.key && gaplessPreload.key !== key) {
+        clearGaplessPreload()
     }
 
     const token = ++gaplessPreloadToken

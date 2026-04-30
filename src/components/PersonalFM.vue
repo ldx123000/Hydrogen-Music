@@ -65,10 +65,11 @@
                 <div class="fm-content" v-if="currentSong && !loading">
                     <div class="fm-main">
                         <div class="fm-cover-carousel">
-                            <TransitionGroup :name="coverTransitionName" :css="!modeSwitching" tag="div" class="fm-cover-track">
+                            <TransitionGroup ref="coverTrackRef" :name="coverTransitionName" :css="!modeSwitching" tag="div" class="fm-cover-track">
                                 <div
                                     v-for="item in coverTrackItems"
                                     :key="item.key"
+                                    :data-cover-key="item.key"
                                     class="fm-cover-slot"
                                     :class="[
                                         `slot-${item.role}`,
@@ -166,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, onActivated, onDeactivated, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, onActivated, onDeactivated, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { getPersonalFM, getPersonalFMByMode, fmTrash, getLyric } from '../api/song'
 import { getRecommendSongs } from '../api/playlist'
@@ -266,6 +267,22 @@ function firstPresentValue(...values) {
 function normalizeSongId(id) {
     if (isBlankValue(id)) return null
     return String(id)
+}
+
+function getActiveFmPlaybackId() {
+    if (playerStore.listInfo?.type !== 'personalfm') return null
+    return normalizeSongId(playerStore.songId)
+}
+
+function isActiveFmPlaybackSongId(id) {
+    const normalizedId = normalizeSongId(id)
+    const activeId = getActiveFmPlaybackId()
+    return !!normalizedId && !!activeId && normalizedId === activeId
+}
+
+function isBlockedFmPoolSongId(id) {
+    const normalizedId = normalizeSongId(id)
+    return !!normalizedId && (recentPlayedSet.has(normalizedId) || isActiveFmPlaybackSongId(normalizedId))
 }
 
 function getPrimarySongId(song) {
@@ -434,6 +451,7 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
             input: 0,
             added: 0,
             filteredByRecent: 0,
+            filteredByActive: 0,
             filteredByPool: 0,
             invalid: 0,
             poolBefore: fmSongs.value.length,
@@ -444,6 +462,7 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
     const before = fmSongs.value.length
     const deduped = []
     let filteredByRecent = 0
+    let filteredByActive = 0
     let filteredByPool = 0
     let invalid = 0
     for (const s of songs) {
@@ -456,6 +475,10 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
         // 过滤：近期播放过、池中已有 → 不再加入
         if (recentPlayedSet.has(id)) {
             filteredByRecent++
+            continue
+        }
+        if (isActiveFmPlaybackSongId(id)) {
+            filteredByActive++
             continue
         }
         if (fmPoolIds.has(id)) {
@@ -471,6 +494,7 @@ function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
         input: songs.length,
         added: deduped.length,
         filteredByRecent,
+        filteredByActive,
         filteredByPool,
         invalid,
         poolBefore: before,
@@ -485,7 +509,7 @@ function takeNextFromPool() {
         const id = normalizeSongId(s && s.id)
         if (id) fmPoolIds.delete(id)
         // 若近期播放过，则跳过，继续取下一首
-        if (id && recentPlayedSet.has(id)) continue
+        if (id && isBlockedFmPoolSongId(id)) continue
         return s || null
     }
     return null
@@ -505,7 +529,9 @@ const loading = ref(false)
 const isPrefetching = ref(false)
 const isPanelIntroActive = ref(false)
 const isPanelOutlineReady = ref(false)
+const coverTrackRef = ref(null)
 const coverNavigating = ref(false)
+const coverPreparingNavigation = ref(false)
 const coverTransitionDirection = ref('neutral')
 const queuedDirection = ref(null)
 const COVER_TRANSITION_FALLBACK_MS = 2500
@@ -514,6 +540,9 @@ const COVER_RELEASE_BUFFER_MS = 16
 const PANEL_INTRO_DURATION_MS = 1500
 const PANEL_INTRO_BUFFER_MS = 40
 let fmRefreshToken = 0
+let coverNavigationToken = 0
+let nextCandidateLoadPromise = null
+let nextCandidateLoadShowsPending = false
 let coverReleaseTimer = null
 let panelIntroTimer = null
 let panelIntroFrame = null
@@ -526,6 +555,13 @@ function getCurrentFmUserId() {
 
 function isActiveFmRefresh(token, userId) {
     return token === fmRefreshToken && getCurrentFmUserId() === userId
+}
+
+function cancelCoverTransitionState() {
+    clearCoverReleaseTimer()
+    coverNavigating.value = false
+    coverPreparingNavigation.value = false
+    coverNavigationToken += 1
 }
 
 function resetFmAccountState() {
@@ -541,8 +577,9 @@ function resetFmAccountState() {
     awaitingSceneSubmodePick.value = false
     lastRefreshSource.value = FM_REFRESH_SOURCE.PERSONAL_FM
     lastLoadedUserId.value = null
-    clearCoverReleaseTimer()
-    coverNavigating.value = false
+    cancelCoverTransitionState()
+    nextCandidateLoadPromise = null
+    nextCandidateLoadShowsPending = false
     queuedDirection.value = null
 }
 
@@ -565,10 +602,16 @@ const prevCandidateSong = computed(() => {
     return null
 })
 
+const isPlayableFmPoolSong = song => !isBlockedFmPoolSongId(song?.id)
+
+const getPlayableFmPoolSongs = () => fmSongs.value.filter(isPlayableFmPoolSong)
+
+const isFmPoolLow = () => getPlayableFmPoolSongs().length < 2
+
 const nextCandidateSong = computed(() => {
     const historyCandidate = playedSongs.value[currentIndex.value + 1]
     if (historyCandidate) return historyCandidate
-    return fmSongs.value[0] || null
+    return fmSongs.value.find(isPlayableFmPoolSong) || null
 })
 
 function getPrefetchedFmLyric(...songs) {
@@ -580,12 +623,18 @@ function getPrefetchedFmLyric(...songs) {
 }
 
 function scheduleNextCandidateAssetPrefetch() {
-    const candidates = [currentSong.value, nextCandidateSong.value, fmSongs.value[0], fmSongs.value[1]].filter(Boolean)
-    if (candidates.length === 0) return
+    const poolCandidates = getPlayableFmPoolSongs().slice(0, 2)
+    const candidates = [currentSong.value, nextCandidateSong.value, ...poolCandidates].filter(Boolean)
+    if (candidates.length === 0) {
+        if (playerStore.gaplessPlayback) void preloadGaplessSongPlayback(null)
+        return
+    }
     void prefetchSongAssetList(candidates, { quality: quality.value, limit: 3, immediate: true })
-    const gaplessCandidate = nextCandidateSong.value || fmSongs.value[0] || fmSongs.value[1] || null
+    const gaplessCandidate = nextCandidateSong.value || poolCandidates[0] || null
     if (playerStore.gaplessPlayback && gaplessCandidate) {
         void preloadGaplessSongPlayback(gaplessCandidate, { quality: quality.value })
+    } else if (playerStore.gaplessPlayback) {
+        void preloadGaplessSongPlayback(null)
     }
 }
 
@@ -769,6 +818,173 @@ const queueCoverDirection = direction => {
     queuedDirection.value = direction
 }
 
+const isCoverTransitionBusy = () => coverNavigating.value || coverPreparingNavigation.value
+
+const getCoverTrackElement = () => coverTrackRef.value?.$el || coverTrackRef.value || null
+
+const getCoverSlotElements = () => {
+    const track = getCoverTrackElement()
+    if (!track || typeof track.querySelectorAll !== 'function') return []
+    return Array.from(track.querySelectorAll('.fm-cover-slot[data-cover-key]'))
+}
+
+const captureCoverLayout = () => {
+    const layout = new Map()
+    for (const element of getCoverSlotElements()) {
+        const key = element.dataset.coverKey
+        if (!key) continue
+        layout.set(key, {
+            left: element.offsetLeft,
+            top: element.offsetTop,
+        })
+    }
+    return layout
+}
+
+const animateCoverLayoutFrom = async previousLayout => {
+    if (!previousLayout || previousLayout.size === 0 || typeof window === 'undefined') return
+
+    await nextTick()
+
+    const movingElements = []
+    for (const element of getCoverSlotElements()) {
+        const key = element.dataset.coverKey
+        const previous = key ? previousLayout.get(key) : null
+        if (!previous) continue
+
+        const dx = previous.left - element.offsetLeft
+        const dy = previous.top - element.offsetTop
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue
+
+        element.style.transition = 'none'
+        element.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
+        movingElements.push(element)
+    }
+
+    if (movingElements.length === 0) return
+
+    const track = getCoverTrackElement()
+    void track?.offsetHeight
+
+    window.requestAnimationFrame(() => {
+        const durationMs = getCoverTransitionDurationMs()
+        for (const element of movingElements) {
+            let cleaned = false
+            let timeoutId = null
+            const cleanup = () => {
+                if (cleaned) return
+                cleaned = true
+                if (timeoutId) window.clearTimeout(timeoutId)
+                element.removeEventListener('transitionend', handleTransitionEnd)
+                element.style.transition = ''
+                element.style.transform = ''
+            }
+            const handleTransitionEnd = event => {
+                if (event.target !== element || event.propertyName !== 'transform') return
+                cleanup()
+            }
+
+            element.addEventListener('transitionend', handleTransitionEnd)
+            timeoutId = window.setTimeout(cleanup, durationMs + 120)
+            element.style.transition = `transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease)`
+            element.style.transform = ''
+        }
+    })
+}
+
+const waitForCoverPaint = () =>
+    new Promise(resolve => {
+        if (typeof window === 'undefined') {
+            resolve()
+            return
+        }
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(resolve)
+        })
+    })
+
+const requestFmPoolRefill = async ({ showPending = false, force = false } = {}) => {
+    if (loading.value) return false
+    if (!currentSong.value && playedSongs.value.length > 0) return false
+    if (!force && !isFmPoolLow()) return false
+
+    if (showPending) {
+        nextCandidateLoadShowsPending = true
+        isPrefetching.value = true
+    }
+
+    if (!nextCandidateLoadPromise) {
+        const pendingPromise = refreshFM({ silent: true }).finally(() => {
+            if (nextCandidateLoadPromise !== pendingPromise) return
+            nextCandidateLoadPromise = null
+            if (nextCandidateLoadShowsPending) isPrefetching.value = false
+            nextCandidateLoadShowsPending = false
+        })
+        nextCandidateLoadPromise = pendingPromise
+    }
+
+    await nextCandidateLoadPromise
+    return !!nextCandidateSong.value
+}
+
+const loadNextCandidateForCover = async () => {
+    if (nextCandidateSong.value) return true
+    const hasCandidate = await requestFmPoolRefill({ showPending: true, force: true })
+    await nextTick()
+    return hasCandidate || !!nextCandidateSong.value
+}
+
+const requestSpareNextCandidateForCover = async () => {
+    if (currentIndex.value < playedSongs.value.length - 1) return
+    if (!isFmPoolLow()) return
+    await requestFmPoolRefill({ force: true })
+}
+
+const prepareCoverShift = async (direction, token) => {
+    if (direction === 'next' && !(await loadNextCandidateForCover())) return false
+    if (token !== coverNavigationToken) return false
+    if (direction === 'next') {
+        await requestSpareNextCandidateForCover()
+    }
+    if (token !== coverNavigationToken) return false
+
+    setCoverTransitionDirection(direction)
+    await nextTick()
+    await waitForCoverPaint()
+    return token === coverNavigationToken
+}
+
+const startPassiveCoverShift = async direction => {
+    if (isCoverTransitionBusy()) return null
+
+    const token = ++coverNavigationToken
+    coverPreparingNavigation.value = true
+    clearCoverReleaseTimer()
+
+    const canShift = await prepareCoverShift(direction, token)
+    if (!canShift) {
+        if (token === coverNavigationToken) coverPreparingNavigation.value = false
+        return null
+    }
+
+    if (token !== coverNavigationToken) return null
+    coverPreparingNavigation.value = false
+    coverNavigating.value = true
+    return token
+}
+
+const runAfterCoverSettles = task => {
+    if (typeof task !== 'function') return
+    if (typeof window === 'undefined' || !isCoverTransitionBusy()) {
+        task()
+        return
+    }
+
+    window.setTimeout(() => {
+        runAfterCoverSettles(task)
+    }, getCoverReleaseDelayMs() + COVER_RELEASE_BUFFER_MS)
+}
+
 const clearCoverReleaseTimer = () => {
     if (coverReleaseTimer) {
         clearTimeout(coverReleaseTimer)
@@ -919,7 +1135,7 @@ const togglePlay = async () => {
                 }
             }
 
-            scheduleNextCandidateAssetPrefetch()
+            runAfterCoverSettles(scheduleNextCandidateAssetPrefetch)
         } else {
             console.error('No valid music URL found')
         }
@@ -928,17 +1144,40 @@ const togglePlay = async () => {
     }
 }
 
+const startCurrentSongPlaybackAfterCoverPaint = async () => {
+    const targetSongId = normalizeSongId(currentSong.value?.id)
+    if (!targetSongId) return
+
+    await nextTick()
+    await waitForCoverPaint()
+
+    if (normalizeSongId(currentSong.value?.id) !== targetSongId) return
+    void togglePlay()
+}
+
+const commitCoverSongChange = (mutation, { previousLayout = captureCoverLayout(), startPlayback = true } = {}) => {
+    mutation()
+    void animateCoverLayoutFrom(previousLayout)
+    if (startPlayback) {
+        void startCurrentSongPlaybackAfterCoverPaint()
+    }
+}
+
+const refillFmPoolIfLow = () => {
+    if (!isFmPoolLow()) return
+    void requestFmPoolRefill({ showPending: !nextCandidateSong.value })
+}
+
 const playFmSongFromPool = async nextSongFromPool => {
     if (!nextSongFromPool) return false
 
-    playedSongs.value.push(nextSongFromPool)
-    rememberRecent(nextSongFromPool.id)
-    currentIndex.value = playedSongs.value.length - 1
+    commitCoverSongChange(() => {
+        playedSongs.value.push(nextSongFromPool)
+        rememberRecent(nextSongFromPool.id)
+        currentIndex.value = playedSongs.value.length - 1
+    })
 
-    await togglePlay()
-    if (fmSongs.value.length < 2) {
-        void refreshFM({ silent: true })
-    }
+    refillFmPoolIfLow()
     return true
 }
 
@@ -962,10 +1201,9 @@ const playNextFmCandidate = async () => {
 const nextSong = async () => {
     // 如果有下一首已播放的歌曲，直接播放
     if (currentIndex.value < playedSongs.value.length - 1) {
-        currentIndex.value++
-        if (currentSong.value) {
-            await togglePlay()
-        }
+        commitCoverSongChange(() => {
+            currentIndex.value++
+        })
         return
     }
 
@@ -974,45 +1212,70 @@ const nextSong = async () => {
 
 const prevSong = async () => {
     if (currentIndex.value > 0) {
-        currentIndex.value--
-        if (currentSong.value) {
-            await togglePlay()
-        }
+        commitCoverSongChange(() => {
+            currentIndex.value--
+        })
     }
 }
 
 const goNext = async () => {
-    if (coverNavigating.value) {
+    if (isCoverTransitionBusy()) {
         queueCoverDirection('next')
         return
     }
 
-    coverNavigating.value = true
+    const token = ++coverNavigationToken
+    coverPreparingNavigation.value = true
     clearCoverReleaseTimer()
-    setCoverTransitionDirection('next')
 
     try {
+        const canShift = await prepareCoverShift('next', token)
+        if (!canShift) return
+
+        coverPreparingNavigation.value = false
+        coverNavigating.value = true
         await nextSong()
-    } finally {
         scheduleCoverRelease()
+    } finally {
+        if (token === coverNavigationToken) {
+            coverPreparingNavigation.value = false
+        }
+
+        if (!coverNavigating.value && token === coverNavigationToken && queuedDirection.value) {
+            const nextDirection = queuedDirection.value
+            queuedDirection.value = null
+            if (nextDirection === 'next') {
+                await goNext()
+            } else {
+                await goPrev()
+            }
+        }
     }
 }
 
 const goPrev = async () => {
-    if (coverNavigating.value) {
+    if (isCoverTransitionBusy()) {
         queueCoverDirection('prev')
         return
     }
     if (currentIndex.value <= 0) return
 
-    coverNavigating.value = true
+    const token = ++coverNavigationToken
+    coverPreparingNavigation.value = true
     clearCoverReleaseTimer()
-    setCoverTransitionDirection('prev')
 
     try {
+        const canShift = await prepareCoverShift('prev', token)
+        if (!canShift) return
+
+        coverPreparingNavigation.value = false
+        coverNavigating.value = true
         await prevSong()
-    } finally {
         scheduleCoverRelease()
+    } finally {
+        if (token === coverNavigationToken) {
+            coverPreparingNavigation.value = false
+        }
     }
 }
 
@@ -1020,7 +1283,7 @@ const handleCoverSlotClick = async item => {
     if (!item || !item.clickable) return
 
     if (item.role === 'center') {
-        if (coverNavigating.value) return
+        if (isCoverTransitionBusy()) return
         await togglePlay()
         return
     }
@@ -1096,13 +1359,13 @@ const refreshFM = async ({ silent = false } = {}) => {
                     bootstrapFromPoolIfNeeded(primarySource)
                     return true
                 }
-                // 仅在“去重后无新增 + 当前无可播下一首”时触发模式救援
-                if (!nextCandidateSong.value && usingDefaultMode) {
+                // 去重后无新增时，如果候选池已经偏低，也继续走救援源补足右侧下一首
+                if ((!nextCandidateSong.value || isFmPoolLow()) && usingDefaultMode) {
                     shouldTryModeRescue = true
                 } else if (nextCandidateSong.value) {
                     return
                 }
-            } else if (!nextCandidateSong.value && usingDefaultMode) {
+            } else if ((!nextCandidateSong.value || isFmPoolLow()) && usingDefaultMode) {
                 shouldTryModeRescue = true
             } else if (nextCandidateSong.value) {
                 return
@@ -1168,18 +1431,14 @@ const refreshFM = async ({ silent = false } = {}) => {
 }
 
 const prefetchNextCandidate = async () => {
-    if (isPrefetching.value || loading.value || coverNavigating.value) return
+    if (isPrefetching.value || loading.value || isCoverTransitionBusy()) return
     if (!currentSong.value) return
-    // 历史尾部且右侧无候选时，静默预取下一首
+    // 历史尾部提前补足候选池，避免切歌后右侧短暂变成 NO NEXT
     if (currentIndex.value < playedSongs.value.length - 1) return
-    if (nextCandidateSong.value) return
+    const hasNextCandidate = !!nextCandidateSong.value
+    if (hasNextCandidate && !isFmPoolLow()) return
 
-    isPrefetching.value = true
-    try {
-        await refreshFM({ silent: true })
-    } finally {
-        isPrefetching.value = false
-    }
+    await requestFmPoolRefill({ showPending: !hasNextCandidate, force: !hasNextCandidate })
 }
 
 onMounted(() => {
@@ -1213,6 +1472,8 @@ onActivated(() => {
 })
 
 onDeactivated(() => {
+    cancelCoverTransitionState()
+    nextCandidateLoadShowsPending = false
     clearPanelIntroSchedule()
     isPanelIntroActive.value = false
     modePanelOpen.value = false
@@ -1227,7 +1488,8 @@ onUnmounted(() => {
     window.removeEventListener('fmClearRecent', handleFmClearRecent)
     window.removeEventListener('mousedown', handleModePanelClickOutside)
     window.removeEventListener('touchstart', handleModePanelClickOutside)
-    clearCoverReleaseTimer()
+    cancelCoverTransitionState()
+    nextCandidateLoadShowsPending = false
     clearPanelIntroSchedule()
     isPanelIntroActive.value = false
     skipIntroOnNextActivated = true
@@ -1248,8 +1510,9 @@ watch(
 )
 
 watch(
-    [() => currentSong.value?.id, currentIndex, () => playedSongs.value.length, () => fmSongs.value.length, loading, coverNavigating, quality, () => playerStore.gaplessPlayback],
+    [() => currentSong.value?.id, currentIndex, () => playedSongs.value.length, () => fmSongs.value.length, loading, coverNavigating, coverPreparingNavigation, quality, () => playerStore.gaplessPlayback],
     () => {
+        if (isCoverTransitionBusy()) return
         prefetchNextCandidate()
         scheduleNextCandidateAssetPrefetch()
     },
@@ -1287,7 +1550,7 @@ const handleFMNextResponse = async event => {
     }
 }
 
-const handleFMGaplessStarted = event => {
+const handleFMGaplessStarted = async event => {
     const { action, songId } = event.detail || {}
     if (action !== 'next') return
 
@@ -1297,26 +1560,43 @@ const handleFMGaplessStarted = event => {
 
     const historyCandidate = playedSongs.value[currentIndex.value + 1]
     if (normalizeSongId(historyCandidate?.id) === targetId) {
-        currentIndex.value++
-        scheduleNextCandidateAssetPrefetch()
+        const transitionToken = await startPassiveCoverShift('next')
+        const previousCoverLayout = transitionToken === coverNavigationToken ? captureCoverLayout() : null
+        commitCoverSongChange(
+            () => {
+                currentIndex.value++
+            },
+            { previousLayout: previousCoverLayout, startPlayback: false }
+        )
+        runAfterCoverSettles(scheduleNextCandidateAssetPrefetch)
+        if (transitionToken === coverNavigationToken) scheduleCoverRelease()
         return
     }
 
     const poolIndex = fmSongs.value.findIndex(song => normalizeSongId(song?.id) === targetId)
     if (poolIndex === -1) return
 
+    const transitionToken = normalizeSongId(nextCandidateSong.value?.id) === targetId ? await startPassiveCoverShift('next') : null
+    const previousCoverLayout = transitionToken === coverNavigationToken ? captureCoverLayout() : null
     const [nextSongFromPool] = fmSongs.value.splice(poolIndex, 1)
-    if (!nextSongFromPool) return
-
-    fmPoolIds.delete(targetId)
-    playedSongs.value.push(nextSongFromPool)
-    rememberRecent(nextSongFromPool.id)
-    currentIndex.value = playedSongs.value.length - 1
-    scheduleNextCandidateAssetPrefetch()
-
-    if (fmSongs.value.length < 2) {
-        void refreshFM({ silent: true })
+    if (!nextSongFromPool) {
+        if (transitionToken === coverNavigationToken) scheduleCoverRelease()
+        return
     }
+
+    commitCoverSongChange(
+        () => {
+            fmPoolIds.delete(targetId)
+            playedSongs.value.push(nextSongFromPool)
+            rememberRecent(nextSongFromPool.id)
+            currentIndex.value = playedSongs.value.length - 1
+        },
+        { previousLayout: previousCoverLayout, startPlayback: false }
+    )
+    runAfterCoverSettles(scheduleNextCandidateAssetPrefetch)
+    if (transitionToken === coverNavigationToken) scheduleCoverRelease()
+
+    refillFmPoolIfLow()
 }
 
 // 处理设置页触发的清空漫游缓存事件

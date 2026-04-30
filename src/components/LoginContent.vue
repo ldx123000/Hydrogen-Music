@@ -12,26 +12,22 @@
   const jumpPage = ref(false)
   const jumpTimer = ref(null)
 
-  // 0: 二维码 1: 账号登录（邮箱/手机）
+  // 0: 二维码 1: 手机验证码登录
   const loginMode = ref(0)
-  // 0: 邮箱 1: 手机
-  const currentMode = ref(0)
 
   const isQrMode = computed(() => loginMode.value === 0)
 
   const syncModeFromRoute = () => {
     const queryMode = Number(route.query.mode)
 
-    // 仅保留参考仓库一致的两种入口：0=二维码，1=账号
+    // 仅保留两种稳定入口：0=二维码，1=手机验证码
     if (queryMode === 1) {
       loginMode.value = 1
-      currentMode.value = 0
       return
     }
 
     // mode=0 或任何非法值（含旧的 3/4）统一回退到二维码
     loginMode.value = 0
-    currentMode.value = 0
   }
 
   const enterQrMode = () => {
@@ -46,7 +42,6 @@
     }
 
     loginMode.value = 1
-    currentMode.value = mode === 1 ? 1 : 0
     loginByAC.value?.inputFocus()
     loginByQR.value?.clearTimer()
   }
@@ -120,7 +115,6 @@
       <LoginByAccount
         ref="loginByAC"
         class="account-container"
-        :currentMode="currentMode"
         v-show="!isQrMode"
         @jumpTo="jumpTo"
       />
@@ -129,16 +123,10 @@
         <span class="qrcode-tip" v-show="isQrMode">打开网易云 APP 扫码登录</span>
 
         <div class="login-method" v-show="isQrMode">
-          <span @click="changeMode(0)">邮箱登录</span>
-          <span class="separation">|</span>
-          <span @click="changeMode(1)">手机登录</span>
+          <span @click="changeMode(1)">手机验证码登录</span>
         </div>
 
         <div class="login-method" v-show="!isQrMode">
-          <span v-show="currentMode !== 0" @click="changeMode(0)">邮箱登录</span>
-          <span v-show="currentMode !== 0" class="separation">|</span>
-          <span v-show="currentMode !== 1" @click="changeMode(1)">手机登录</span>
-          <span class="separation">|</span>
           <span @click="changeMode(2)">二维码登录</span>
         </div>
 
