@@ -2,8 +2,6 @@ import { get, getById, getWithPagination, operationRequest } from "./base";
 import { buildIdWithTimestamp, buildOperationParams } from "./params";
 import { getNewestSong } from "./song";
 
-let topAlbumRequestBroken = false
-
 function normalizeAlbumCover(value) {
     if (typeof value !== 'string') return value || ''
     return value.replace('{size}', '480')
@@ -53,19 +51,6 @@ function buildNewestAlbumsFromSongs(songs = [], limit = 30) {
     return albums
 }
 
-function shouldSkipTopAlbumRequest(error) {
-    const errorCode = Number(error?.response?.data?.error_code ?? error?.error_code ?? 0)
-    const errorMessage = String(
-        error?.response?.data?.error
-        || error?.response?.data?.message
-        || error?.message
-        || error?.error
-        || ''
-    ).toLowerCase()
-
-    return errorCode === 20010 || errorMessage.includes('request fileds type error')
-}
-
 async function buildNewestAlbumFallback(limit = 30) {
     const fallbackSongs = await getNewestSong(limit)
     const fallbackList = Array.isArray(fallbackSongs?.data) ? fallbackSongs.data : Array.isArray(fallbackSongs?.result) ? fallbackSongs.result : []
@@ -86,39 +71,7 @@ async function buildNewestAlbumFallback(limit = 30) {
  */
 export function getNewAlbum({ limit, offset, area, ...params } = {}) {
     const pageSize = limit || 30
-    const page = offset ? Math.floor(offset / pageSize) + 1 : 1
-    const typeMap = {
-        all: undefined,
-        ALL: undefined,
-        ZH: 1,
-        EA: 2,
-        JP: 3,
-        KR: 4,
-    }
-    const normalizedType = area in typeMap ? typeMap[area] : area
-
-    if (topAlbumRequestBroken) {
-        return buildNewestAlbumFallback(pageSize)
-    }
-
-    return get('/top/album', {
-        page,
-        pagesize: pageSize,
-        ...(normalizedType !== undefined && normalizedType !== null && normalizedType !== '' ? { type: normalizedType } : {}),
-        ...params,
-    })
-        .then(result => {
-            const rawAlbums = result?.data?.info || result?.info || result?.data?.albums || result?.albums || []
-            const albums = Array.isArray(rawAlbums) ? rawAlbums.map(item => normalizeRecommendedAlbum(item)).filter(item => item.id && item.name) : []
-            return {
-                ...result,
-                albums,
-            }
-        })
-        .catch(async error => {
-            if (shouldSkipTopAlbumRequest(error)) topAlbumRequestBroken = true
-            return buildNewestAlbumFallback(pageSize)
-        })
+    return buildNewestAlbumFallback(pageSize)
 }
 
 /**

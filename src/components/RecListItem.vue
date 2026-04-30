@@ -100,25 +100,28 @@
   }
 
   const checkDetail = (item) => {
-    const id = item?.id
-    if (!id) return
+    const playlistId = item?.global_collection_id || item?.id
+    if (!playlistId) return
     localStore.currentSelectedSongs = null
     if(props.recType == 0) {
       libraryStore.libraryInfo = {
-        id,
+        id: playlistId,
+        // 预先保留酷狗歌单主键，避免详情页重新加载前丢失 collection id。
+        global_collection_id: item?.global_collection_id || playlistId,
+        specialid: item?.specialid ?? null,
         name: item?.name || '歌单',
         coverImgUrl: item?.coverImgUrl || item?.picUrl || '',
         trackCount: item?.trackCount || 0,
         description: item?.description || '',
         creator: item?.creator || null,
       }
-      router.push('/mymusic/playlist/' + id)
+      router.push('/mymusic/playlist/' + playlistId)
     }
-    if(props.recType == 1) router.push('/mymusic/artist/' + id)
-    if(props.recType == 2) router.push('/mymusic/album/' + id)
+    if(props.recType == 1) router.push('/mymusic/artist/' + playlistId)
+    if(props.recType == 2) router.push('/mymusic/album/' + playlistId)
     if(props.recType == 3) {
       libraryStore.libraryInfo = {
-        id,
+        id: playlistId,
         name: item?.name || '排行榜',
         coverImgUrl: item?.coverImgUrl || item?.picUrl || '',
         description: item?.description || '',
@@ -127,7 +130,7 @@
         source: 'rank',
       }
       router.push({
-        path: '/mymusic/playlist/' + id,
+        path: '/mymusic/playlist/' + playlistId,
         query: {
           source: 'rank',
           ...(item?.rank_cid ? { rankCid: item.rank_cid } : {}),
