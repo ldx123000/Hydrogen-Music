@@ -39,7 +39,7 @@
                                     <span class="mode-label">{{ mode.label }}</span>
                                 </button>
                             </div>
-                            <div v-if="selectedFmMode === 'SCENE_RCMD'" class="fm-submode-grid">
+                        <div v-if="selectedFmMode === 'ai_pool'" class="fm-submode-grid">
                                 <button
                                     v-for="scene in FM_SCENE_SUBMODE_OPTIONS"
                                     :key="scene.value"
@@ -169,7 +169,7 @@
 import { ref, onMounted, onUnmounted, onActivated, onDeactivated, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getPersonalFM, getPersonalFMByMode, fmTrash, getLyric, likeMusic } from '../api/song'
-import { getRecommendSongs } from '../api/playlist'
+import { getRecommendSongs, normalizePlaylistSong } from '../api/playlist'
 import { usePlayerStore } from '../store/playerStore'
 import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
@@ -197,7 +197,7 @@ const router = useRouter()
 const playerStore = usePlayerStore()
 const userStore = useUserStore()
 const libraryStore = useLibraryStore()
-const { songId, playing, quality, showSongTranslation } = storeToRefs(playerStore)
+const { songId, playing, quality, showSongTranslation, time } = storeToRefs(playerStore)
 const { likelist } = storeToRefs(userStore)
 
 // 创建一个计算属性来实时判断当前歌曲是否被喜欢
@@ -223,21 +223,21 @@ const FM_REFRESH_SOURCE = Object.freeze({
     FM_MODE_RESCUE: 'fm_mode_rescue',
     DAILY_RECOMMEND: 'daily_recommend',
 })
-const FM_MODE_RESCUE_OPTIONS = Object.freeze({ mode: 'EXPLORE', limit: 6 })
-const DEFAULT_FM_MODE = 'DEFAULT'
-const DEFAULT_SCENE_SUBMODE = 'FOCUS'
-const FM_MODE_REQUEST_LIMIT = 6
+// 酷狗文档中的私人漫游模式只有 normal / small / peak，
+// 另外 song_pool_id 可切换 3 组 AI 推荐池。
+const FM_MODE_RESCUE_OPTIONS = Object.freeze({ mode: 'small' })
+const DEFAULT_FM_MODE = 'normal'
+const DEFAULT_SCENE_SUBMODE = '0'
 const FM_MODE_OPTIONS = Object.freeze([
-    { value: 'DEFAULT', label: '默认推荐' },
-    { value: 'FAMILIAR', label: '熟悉偏好' },
-    { value: 'EXPLORE', label: '探索发现' },
-    { value: 'SCENE_RCMD', label: '场景推荐' },
-    { value: 'aidj', label: 'AI DJ' },
+    { value: 'normal', label: '发现推荐' },
+    { value: 'small', label: '小众模式' },
+    { value: 'peak', label: '30秒高潮' },
+    { value: 'ai_pool', label: 'AI推荐池' },
 ])
 const FM_SCENE_SUBMODE_OPTIONS = Object.freeze([
-    { value: 'EXERCISE', label: '运动' },
-    { value: 'FOCUS', label: '专注' },
-    { value: 'NIGHT_EMO', label: '夜晚情绪' },
+    { value: '0', label: 'Alpha 相似口味' },
+    { value: '1', label: 'Beta 相似风格' },
+    { value: '2', label: 'Gamma 推荐池' },
 ])
 const lastRefreshSource = ref(FM_REFRESH_SOURCE.PERSONAL_FM)
 const selectedFmMode = ref(DEFAULT_FM_MODE)
@@ -269,6 +269,11 @@ function normalizeSongId(id) {
 
 function getPrimarySongId(song) {
     if (!song || typeof song != 'object') return null
+    if (song.album_audio_id !== undefined && song.album_audio_id !== null && song.album_audio_id !== '') return song.album_audio_id
+    if (song.mixsongid !== undefined && song.mixsongid !== null && song.mixsongid !== '') return song.mixsongid
+    if (song.mixsong_id !== undefined && song.mixsong_id !== null && song.mixsong_id !== '') return song.mixsong_id
+    if (song.audio_id !== undefined && song.audio_id !== null && song.audio_id !== '') return song.audio_id
+    if (song.songid !== undefined && song.songid !== null && song.songid !== '') return song.songid
     if (song.id !== undefined && song.id !== null && song.id !== '') return song.id
     if (song.songId !== undefined && song.songId !== null && song.songId !== '') return song.songId
     if (song.trackId !== undefined && song.trackId !== null && song.trackId !== '') return song.trackId
@@ -283,6 +288,7 @@ function getPrimarySongId(song) {
 
 function getFmSongArtists(song) {
     if (!song || typeof song != 'object') return []
+    if (Array.isArray(song.singerinfo) && song.singerinfo.length > 0) return song.singerinfo
     if (Array.isArray(song.artists) && song.artists.length > 0) return song.artists
     if (Array.isArray(song.ar) && song.ar.length > 0) return song.ar
     const nestedSong = song.song
@@ -299,6 +305,7 @@ function hasSongMetaObject(value) {
 
 function getFmSongAlbum(song) {
     if (!song || typeof song != 'object') return null
+    if (hasSongMetaObject(song.albuminfo)) return song.albuminfo
     if (hasSongMetaObject(song.album)) return song.album
     if (hasSongMetaObject(song.al)) return song.al
     const nestedSong = song.song
@@ -311,6 +318,9 @@ function getFmSongAlbum(song) {
 
 function getFmSongCover(song) {
     if (!song || typeof song != 'object') return null
+    if (song.album_sizable_cover) return String(song.album_sizable_cover).replace('{size}', '480')
+    if (song.trans_param?.union_cover) return String(song.trans_param.union_cover).replace('{size}', '480')
+    if (song.cover) return String(song.cover).replace('{size}', '480')
     if (song.coverUrl) return song.coverUrl
     if (song.al?.picUrl) return song.al.picUrl
     if (song.album?.picUrl) return song.album.picUrl
@@ -376,27 +386,38 @@ function openAlbum(album) {
 
 function normalizeFmSong(song) {
     if (!song || typeof song != 'object') return null
-
-    const primaryId = getPrimarySongId(song)
+    // 复用全局酷狗歌曲标准化，保证私人漫游与其他歌单字段保持一致。
+    const normalizedSong = normalizePlaylistSong(song)
+    const primaryId = getPrimarySongId(normalizedSong)
     const normalizedId = normalizeSongId(primaryId)
     if (!normalizedId) return null
 
-    const artists = getFmSongArtists(song).map(artist => ({ ...(artist || {}) }))
-    const rawAlbum = getFmSongAlbum(song)
+    const artists = getFmSongArtists(normalizedSong).map(artist => ({ ...(artist || {}) }))
+    const rawAlbum = getFmSongAlbum(normalizedSong)
     const album = rawAlbum && typeof rawAlbum == 'object' ? { ...rawAlbum } : {}
-    const coverUrl = getFmSongCover(song)
+    const coverUrl = getFmSongCover(normalizedSong)
 
     if (coverUrl && !album.picUrl) album.picUrl = coverUrl
 
-    const parsedDuration = Number(song.dt ?? song.duration ?? song.song?.dt ?? song.song?.duration ?? 0)
+    const parsedDuration = Number(
+        normalizedSong.dt
+        ?? normalizedSong.duration
+        ?? normalizedSong.timelength
+        ?? (Number(normalizedSong.time_length || 0) > 0 ? Number(normalizedSong.time_length) * 1000 : 0)
+    )
     const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 0
-    const tns = Array.isArray(song.tns) ? [...song.tns] : Array.isArray(song.song?.tns) ? [...song.song.tns] : []
-    const transNames = Array.isArray(song.transNames) ? [...song.transNames] : Array.isArray(song.song?.transNames) ? [...song.song.transNames] : []
+    const tns = Array.isArray(normalizedSong.tns) ? [...normalizedSong.tns] : Array.isArray(normalizedSong.song?.tns) ? [...normalizedSong.song.tns] : []
+    const transNames = Array.isArray(normalizedSong.transNames) ? [...normalizedSong.transNames] : Array.isArray(normalizedSong.song?.transNames) ? [...normalizedSong.song.transNames] : []
 
     return {
+        ...normalizedSong,
         ...song,
-        id: primaryId,
-        name: song.name || song.song?.name || '',
+        id: normalizedId,
+        hash: normalizedSong.hash || song.hash || song.hash_128 || '',
+        songid: song.songid || song.songId || normalizedSong.songid || normalizedSong.songId || normalizedId,
+        mixsongid: song.mixsongid || song.mixsong_id || song.album_audio_id || normalizedSong.mixsongid || normalizedSong.album_audio_id || '',
+        album_audio_id: song.album_audio_id || song.mixsongid || song.mixsong_id || normalizedSong.album_audio_id || normalizedSong.mixsongid || '',
+        name: normalizedSong.name || song.songname || song.name || song.song?.name || '',
         artists,
         ar: artists,
         album,
@@ -406,7 +427,8 @@ function normalizeFmSong(song) {
         coverUrl: coverUrl || null,
         tns,
         transNames,
-        type: song.type || 'fm',
+        type: 'fm',
+        source: 'personalfm',
     }
 }
 
@@ -613,7 +635,7 @@ const activeFmSubmodeOption = computed(() => {
 })
 
 const selectedFmModeSummary = computed(() => {
-    if (selectedFmMode.value === 'SCENE_RCMD') {
+    if (selectedFmMode.value === 'ai_pool') {
         return `${activeFmModeOption.value.label} · ${activeFmSubmodeOption.value.label}`
     }
     return activeFmModeOption.value.label
@@ -621,16 +643,37 @@ const selectedFmModeSummary = computed(() => {
 
 const isDefaultFmModeSelected = computed(() => selectedFmMode.value === DEFAULT_FM_MODE)
 
-function buildSelectedModeRequest(limit = FM_MODE_REQUEST_LIMIT) {
-    if (isDefaultFmModeSelected.value) return null
+function buildCurrentFmRequestContext(extraParams = {}) {
+    const current = currentSong.value || {}
+    const playtimeSeconds = Number(time.value || 0)
+    const remainSongcnt = Math.max(0, fmSongs.value.length)
     const params = {
-        mode: selectedFmMode.value,
-        limit,
+        remain_songcnt: remainSongcnt,
+        ...extraParams,
     }
-    if (selectedFmMode.value === 'SCENE_RCMD') {
-        params.submode = selectedFmSubmode.value
+
+    if (selectedFmMode.value === 'ai_pool') {
+        params.mode = 'normal'
+        params.song_pool_id = selectedFmSubmode.value
+    } else {
+        params.mode = selectedFmMode.value
     }
+
+    if (current?.hash) params.hash = current.hash
+    if (current?.songid || current?.id) params.songid = current.songid || current.id
+    if (Number.isFinite(playtimeSeconds) && playtimeSeconds >= 0) {
+        // 接口文档要求的是“已播放时间”，播放器状态里保存的是秒。
+        params.playtime = Math.floor(playtimeSeconds)
+    }
+
     return params
+}
+
+function buildSelectedModeRequest() {
+    if (isDefaultFmModeSelected.value) {
+        return buildCurrentFmRequestContext({ mode: DEFAULT_FM_MODE })
+    }
+    return buildCurrentFmRequestContext()
 }
 
 function trimFmCandidatesForModeSwitch() {
@@ -660,8 +703,8 @@ const changeFmMode = async mode => {
     if (!mode || modeSwitching.value || loading.value) return
     if (selectedFmMode.value === mode) return
     selectedFmMode.value = mode
-    if (mode === 'SCENE_RCMD') {
-        // 场景模式需二次选择子场景：保持面板展开，等待用户点 EXERCISE/FOCUS/NIGHT_EMO
+    if (mode === 'ai_pool') {
+        // AI 推荐池需要二次选择 Alpha/Beta/Gamma，保持面板展开等待用户继续点选。
         awaitingSceneSubmodePick.value = true
         modePanelOpen.value = true
         return
@@ -674,7 +717,7 @@ const changeFmMode = async mode => {
 
 const changeFmSubmode = async submode => {
     if (!submode || modeSwitching.value || loading.value) return
-    if (selectedFmMode.value !== 'SCENE_RCMD') return
+    if (selectedFmMode.value !== 'ai_pool') return
     if (selectedFmSubmode.value === submode && !awaitingSceneSubmodePick.value) return
     selectedFmSubmode.value = submode
     awaitingSceneSubmodePick.value = false
@@ -1063,11 +1106,16 @@ const trashSong = async () => {
     if (!currentSong.value) return
 
     try {
-        await fmTrash(currentSong.value.id)
-        goNext()
+        // 使用文档中的 action=garbage 标记“不喜欢”，并顺手把下一批推荐预热进候选池。
+        const response = await fmTrash(currentSong.value, buildCurrentFmRequestContext({ action: 'garbage' }))
+        const songs = Array.isArray(response?.data) ? response.data : []
+        if (songs.length > 0) {
+            addToFmPoolUnique(songs, FM_REFRESH_SOURCE.PERSONAL_FM)
+        }
+        await goNext()
     } catch (error) {
         console.warn('FM trash failed, skipping to next song:', error)
-        goNext()
+        await goNext()
     }
 }
 
@@ -1161,28 +1209,25 @@ const refreshFM = async ({ silent = false } = {}) => {
         loading.value = true
     }
     try {
-        const selectedModeRequest = buildSelectedModeRequest(FM_MODE_REQUEST_LIMIT)
-        const usingDefaultMode = !selectedModeRequest
-        const selectedModeLabel = usingDefaultMode ? DEFAULT_FM_MODE : `${selectedModeRequest.mode}${selectedModeRequest.submode ? `/${selectedModeRequest.submode}` : ''}`
+        const selectedModeRequest = buildSelectedModeRequest()
+        const usingDefaultMode = isDefaultFmModeSelected.value
+        const selectedModeLabel = selectedModeRequest.song_pool_id !== undefined
+            ? `${selectedModeRequest.mode}/pool-${selectedModeRequest.song_pool_id}`
+            : selectedModeRequest.mode
         console.log('[FM] Requesting Personal FM data, mode:', selectedModeLabel)
         let shouldTryModeRescue = false
 
-        // 1) 主流程：DEFAULT 走 personal_fm，其余模式走 personal/fm/mode
+        // 1) 主流程：统一走酷狗 /personal/fm，只是参数按当前模式切换。
         try {
             let songs = []
             let primarySource = FM_REFRESH_SOURCE.PERSONAL_FM
-            if (usingDefaultMode) {
-                const response = await getPersonalFM()
-                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
-                songs = Array.isArray(response?.data) ? response.data : []
-                console.log('[FM] personal_fm response size:', songs.length)
-            } else {
-                const response = await getPersonalFMByMode(selectedModeRequest)
-                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
-                songs = Array.isArray(response?.data) ? response.data : []
-                primarySource = FM_REFRESH_SOURCE.FM_MODE_RESCUE
-                console.log('[FM] personal/fm/mode response size:', songs.length, selectedModeRequest)
-            }
+            const response = usingDefaultMode
+                ? await getPersonalFM(selectedModeRequest)
+                : await getPersonalFMByMode(selectedModeRequest)
+            if (!isActiveFmRefresh(requestToken, requestUserId)) return false
+            songs = Array.isArray(response?.data) ? response.data : []
+            if (!usingDefaultMode) primarySource = FM_REFRESH_SOURCE.FM_MODE_RESCUE
+            console.log('[FM] personal/fm response size:', songs.length, selectedModeRequest)
 
             if (songs.length > 0) {
                 if (!isActiveFmRefresh(requestToken, requestUserId)) return false
@@ -1197,7 +1242,7 @@ const refreshFM = async ({ silent = false } = {}) => {
                 // 仅在“去重后无新增 + 当前无可播下一首”时触发模式救援
                 if (!nextCandidateSong.value && usingDefaultMode) {
                     shouldTryModeRescue = true
-                    console.log('[FM] personal_fm deduped to empty and no next candidate, try mode rescue')
+                    console.log('[FM] personal/fm deduped to empty and no next candidate, try mode rescue')
                 } else if (!nextCandidateSong.value) {
                     console.log('[FM] selected mode deduped to empty, fallback to daily recommendations')
                 } else {
@@ -1206,7 +1251,7 @@ const refreshFM = async ({ silent = false } = {}) => {
                 }
             } else if (!nextCandidateSong.value && usingDefaultMode) {
                 shouldTryModeRescue = true
-                console.log('[FM] personal_fm returned empty list, try mode rescue')
+                console.log('[FM] personal/fm returned empty list, try mode rescue')
             } else if (!nextCandidateSong.value) {
                 console.log('[FM] selected mode returned empty list, fallback to daily recommendations')
             } else {
@@ -1219,10 +1264,13 @@ const refreshFM = async ({ silent = false } = {}) => {
             }
         }
 
-        // 2) 救援流程：按模式拉取（EXPLORE）
+        // 2) 救援流程：改走文档支持的小众模式，尽量从同一套私人漫游数据源补歌。
         if (shouldTryModeRescue) {
             try {
-                const modeResponse = await getPersonalFMByMode(FM_MODE_RESCUE_OPTIONS)
+                const modeResponse = await getPersonalFMByMode({
+                    ...buildCurrentFmRequestContext(),
+                    ...FM_MODE_RESCUE_OPTIONS,
+                })
                 if (!isActiveFmRefresh(requestToken, requestUserId)) return false
                 const modeSongs = Array.isArray(modeResponse?.data) ? modeResponse.data : []
                 console.log('[FM] fm_mode_rescue response size:', modeSongs.length, FM_MODE_RESCUE_OPTIONS)
