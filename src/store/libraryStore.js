@@ -1,9 +1,8 @@
 import { defineStore } from "pinia";
 import { getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail, normalizePlaylistSong, getRankInfo, getRankSongs } from '../api/playlist'
 import { getAlbumDetail, albumDynamic } from '../api/album'
-import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum } from '../api/artist'
+import { getArtistDetail, getArtistTopSong, getArtistAlbum } from '../api/artist'
 import { getArtistMV } from '../api/mv'
-import { getSongDetail } from '../api/song'
 import { mapSongsPlayableStatus } from "../utils/songStatus";
 import { buildAlbumSearchText, buildCloudSongSearchText, buildMVSearchText } from "../utils/songFilter";
 
@@ -468,17 +467,10 @@ export const useLibraryStore = defineStore('libraryStore', {
                 id: id,
                 // timestamp: new Date().getTime()
             }
-            await Promise.all([getArtistDetail(params), getArtistFansCount(id)]).then(async results => {
-                results[0].artist.follow = results[1].data
-                results[0].artist.followed = results[1].data.follow
+            await Promise.all([getArtistDetail(params), getArtistTopSong(params)]).then(results => {
                 this.libraryInfo = results[0].artist
-                
-                // 获取热门歌曲的完整详情（包括封面）
-                const songIds = results[0].hotSongs.map(song => song.id)
-                const songDetailResult = await getSongDetail(songIds)
-                
-                // 使用详情API返回的完整歌曲数据
-                this.librarySongs = mapSongsPlayableStatus(songDetailResult.songs)
+                // 酷狗歌手详情本身不带热门歌曲，热门单曲需要单独走 /artist/audios。
+                this.librarySongs = mapSongsPlayableStatus(results[1].songs)
                 this.indexLibrarySongs(this.librarySongs)
                 this.libraryChangeAnimation = false
             })
@@ -489,15 +481,9 @@ export const useLibraryStore = defineStore('libraryStore', {
                 id: id,
                 // timestamp: new Date().getTime()
             }
-            await getArtistTopSong(params).then(async result => {
-                // 获取所有歌曲ID
-                const songIds = result.songs.map(song => song.id)
-                
-                // 使用歌曲详情API获取完整信息（包括正确的封面）
-                const songDetailResult = await getSongDetail(songIds)
-                
-                // 使用详情API返回的完整歌曲数据
-                this.librarySongs = mapSongsPlayableStatus(songDetailResult.songs)
+            await getArtistTopSong(params).then(result => {
+                // 直接使用酷狗返回的歌手热门单曲列表，已在接口层完成标准化。
+                this.librarySongs = mapSongsPlayableStatus(result.songs)
                 this.indexLibrarySongs(this.librarySongs)
             })
         },
