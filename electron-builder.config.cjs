@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 const NODE_MODULE_PRUNE_DIRS = [
   'test',
   'tests',
@@ -77,6 +80,19 @@ const LINUX_ONLY_DEPENDENCY_EXCLUDES = [
 
 const KEEP_NODE_MODULE_FILE = /(^|\/)(LICENSE(?:\.[^/]+)?|LICENCE(?:\.[^/]+)?|NOTICE(?:\.[^/]+)?|THIRD-PARTY-NOTICES(?:\.[^/]+)?)$/i;
 
+function resolveApiResourcePath() {
+  const localCandidates = [
+    path.resolve(__dirname, '..', 'KuGouMusicApi'),
+    path.resolve(__dirname, 'KuGouMusicApi'),
+  ];
+
+  for (const candidate of localCandidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  return localCandidates[0];
+}
+
 module.exports = {
   productName: 'Hydrogen Music',
   appId: 'com.hydrogenmusic.app',
@@ -90,7 +106,7 @@ module.exports = {
   ],
   extraResources: [
     {
-      from: '../KuGouMusicApi',
+      from: resolveApiResourcePath(),
       to: 'KuGouMusicApi',
       filter: [
         '**/*',
