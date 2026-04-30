@@ -75,11 +75,13 @@ function normalizeRecommendedPlaylist(item = {}) {
   const rawCover = item?.imgurl || item?.flexible_cover || item?.pic || ''
   const coverImgUrl = typeof rawCover === 'string' ? rawCover.replace('{size}', '480') : rawCover
   const creatorName = item?.nickname || item?.list_create_username || item?.username || item?.singername || ''
+  const playlistId = item?.global_collection_id || item?.gid || item?.listid || item?.specialid || item?.id || null
 
   return {
     ...item,
-    id: item?.specialid ?? item?.listid ?? item?.id ?? item?.global_collection_id ?? null,
-    global_collection_id: item?.global_collection_id || null,
+    // 酷狗推荐歌单进入详情页时要使用 global_collection_id，specialid 只适合做展示兜底。
+    id: playlistId ? String(playlistId) : null,
+    global_collection_id: item?.global_collection_id || item?.gid || null,
     name: item?.specialname || item?.name || item?.listname || '歌单',
     coverImgUrl,
     picUrl: coverImgUrl,
@@ -208,7 +210,7 @@ export function getPlaylistDetail(params) {
  * @param {*} params 
  * @returns 
  */
-async function fetchPlaylistPage(id, page, pagesize, rest) {
+async function fetchPlaylistPageByListId(id, page, pagesize, rest) {
     const result = await request({
         url: '/playlist/track/all/new',
         method: 'get',
@@ -217,31 +219,67 @@ async function fetchPlaylistPage(id, page, pagesize, rest) {
     return normalizePlaylistSongs(result?.data?.info || result?.info || [])
 }
 
+async function fetchPlaylistPageByCollectionId(id, page, pagesize, rest) {
+    const result = await request({
+        url: '/playlist/track/all',
+        method: 'get',
+        params: { id, page, pagesize, ...rest },
+    })
+    return {
+        raw: result,
+        songs: normalizePlaylistSongs(result?.songs || result?.data?.songs || result?.data?.info || result?.info || []),
+        privileges: Array.isArray(result?.privileges) ? result.privileges : [],
+    }
+}
+
 export async function getPlaylistAll(params) {
     const { id, gid, limit, offset, ...rest } = params || {}
     const pagesize = 300
     const startPage = offset != null && limit ? Math.floor(offset / limit) + 1 : 1
+    const normalizedId = String(id || '')
+    // 酷狗公开/推荐歌单统一走 collection 接口，只有用户自建/收藏歌单才走新版 listid 接口。
+    const collectionId = gid || rest?.global_collection_id || (/^collection_\d+_\d+_\d+_\d+$/.test(normalizedId) ? normalizedId : '')
+
+    if (collectionId) {
+        const allSongs = []
+        let page = startPage
+        let rawResult = null
+        let privileges = []
+        while (true) {
+            const pageResult = await fetchPlaylistPageByCollectionId(collectionId, page, pagesize, rest)
+            rawResult = pageResult?.raw || rawResult
+            privileges = Array.isArray(pageResult?.privileges) ? pageResult.privileges : privileges
+            const songs = pageResult?.songs || []
+            allSongs.push(...songs)
+            if (songs.length < pagesize) break
+            page++
+        }
+        return {
+            ...(rawResult || {}),
+            songs: allSongs,
+            privileges,
+        }
+    }
+
     try {
         const allSongs = []
         let page = startPage
         while (true) {
-            const songs = await fetchPlaylistPage(id, page, pagesize, rest)
+            const songs = await fetchPlaylistPageByListId(id, page, pagesize, rest)
             allSongs.push(...songs)
             if (songs.length < pagesize) break
             page++
         }
         return { songs: allSongs.reverse(), privileges: [] }
     } catch {
-        const fallbackId = gid || id
-        const fallback = await request({
-            url: '/playlist/track/all',
-            method: 'get',
-            params: { id: fallbackId, page, pagesize, ...rest },
-        })
+        if (!id) {
+            return { songs: [], privileges: [] }
+        }
+        const fallback = await fetchPlaylistPageByCollectionId(id, startPage, pagesize, rest)
         return {
-            ...fallback,
-            songs: normalizePlaylistSongs(fallback?.songs || fallback?.data?.songs || fallback?.data?.info || fallback?.info || []),
-            privileges: Array.isArray(fallback?.privileges) ? fallback.privileges : [],
+            ...(fallback?.raw || {}),
+            songs: fallback?.songs || [],
+            privileges: fallback?.privileges || [],
         }
     }
 }

@@ -18,6 +18,7 @@ import { getSongDisplayName } from './songName'
 import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from './siren'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
+import { isLogin } from './authority'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -162,6 +163,7 @@ const LIKE_REQUEST_COOLDOWN_MS = 1200
 let likeActionToken = 0
 let likeRequestQueue = Promise.resolve()
 let nextLikeRequestAvailableAt = 0
+let unauthenticatedRestoreNoticeShown = false
 
 function isPersonalFMContext() {
     return !!(listInfo.value && listInfo.value.type === 'personalfm')
@@ -362,13 +364,33 @@ export function loadLastSong() {
             }
             syncWindowsTaskbarPlaybackState()
             if (songList.value) {
+                const restoredSong = songList.value[currentIndex.value]
+                if (!restoredSong) return
+
                 // 恢复播放状态时，需要先设置歌曲ID
-                setId(songList.value[currentIndex.value].id, currentIndex.value)
+                setId(restoredSong.id, currentIndex.value)
                 syncWindowsTaskbarPlaybackState()
 
-                if (songList.value[currentIndex.value].type == 'local') getSongUrl(songList.value[currentIndex.value].id, currentIndex.value, false, true)
-                else getSongUrl(songList.value[currentIndex.value].id, currentIndex.value, false, false)
-                if (musicVideo.value) loadMusicVideo(songList.value[currentIndex.value].id)
+                if (restoredSong.type == 'local') {
+                    getSongUrl(restoredSong.id, currentIndex.value, false, true)
+                    return
+                }
+
+                if (!isLogin()) {
+                    currentMusic.value = null
+                    lyric.value = null
+                    lyricsObjArr.value = null
+                    currentLyricIndex.value = -1
+                    playing.value = false
+                    if (!unauthenticatedRestoreNoticeShown) {
+                        unauthenticatedRestoreNoticeShown = true
+                        noticeOpen('检测到上次播放的是在线歌曲，请先登录后再恢复播放', 2)
+                    }
+                    return
+                }
+
+                getSongUrl(restoredSong.id, currentIndex.value, false, false)
+                if (musicVideo.value) loadMusicVideo(restoredSong.id)
             }
         })
     }
@@ -995,8 +1017,21 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
 }
 
 export function startMusic() {
-    if (playMode.value == 0 && currentIndex.value == songList.value.length - 1 && playModeOne && currentMusic.value.seek() == 0) { playNext(); playModeOne = false; return }
+    const currentSong = songList.value?.[currentIndex.value]
+    if (!currentSong) {
+        noticeOpen('当前没有可播放的歌曲', 2)
+        return
+    }
+    if (currentSong.type !== 'local' && !isSirenSong(currentSong) && !isLogin()) {
+        noticeOpen('当前歌曲需要登录后才能播放', 2)
+        return
+    }
+    if (playMode.value == 0 && currentIndex.value == songList.value.length - 1 && playModeOne && currentMusic.value?.seek && currentMusic.value.seek() == 0) { playNext(); playModeOne = false; return }
     if (!playing.value) {
+        if (!currentMusic.value || typeof currentMusic.value.play !== 'function') {
+            addSong(songId.value || currentSong.id, currentIndex.value, true, currentSong.type == 'local')
+            return
+        }
         currentMusic.value.play()
     }
     if (lyricShow.value) {

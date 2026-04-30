@@ -274,17 +274,26 @@ export const useLibraryStore = defineStore('libraryStore', {
         async updatePlaylistDetail(id, options = {}) {
             const { deferRemaining = false, routeQuery = {} } = options
             const playlistId = String(id || '')
-            const listItem = Array.isArray(this.libraryList) ? this.libraryList.find(p => String(p.id) === playlistId) : null
-            const seededPlaylist = !listItem && String(this.libraryInfo?.id || '') == playlistId ? this.libraryInfo : null
+            const listItem = Array.isArray(this.libraryList)
+                ? this.libraryList.find(p => String(p.id) === playlistId || String(p.global_collection_id || '') === playlistId)
+                : null
+            const seededPlaylist = !listItem && (
+                String(this.libraryInfo?.id || '') == playlistId ||
+                String(this.libraryInfo?.global_collection_id || '') == playlistId
+            ) ? this.libraryInfo : null
+            const playlist = listItem || seededPlaylist || null
             const routeQuerySource = String(routeQuery?.source || '')
             const routeRankCid = routeQuery?.rankCid ? String(routeQuery.rankCid) : ''
             const isRankPlaylist = routeQuerySource == 'rank' || seededPlaylist?.source == 'rank'
-            const resolvedCollectionId = listItem?.global_collection_id || playlistId
-            const token = `${playlistId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+            const routeCollectionId = String(routeQuery?.globalCollectionId || routeQuery?.collectionId || routeQuery?.gid || routeQuery?.collection_id || '')
+            const inferredCollectionId = /^collection_\d+_\d+_\d+_\d+$/.test(playlistId) ? playlistId : ''
+            const resolvedCollectionId = playlist?.global_collection_id || routeCollectionId || inferredCollectionId || ''
+            const resolvedPlaylistId = resolvedCollectionId || playlistId
+            const token = `${resolvedPlaylistId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             this.playlistHydrationToken = token
             this.playlistHydrationPromise = null
             this.playlistHydration = createPlaylistHydrationState({
-                id: playlistId,
+                id: resolvedPlaylistId,
                 total: 0,
                 loaded: 0,
                 status: 'loading',
@@ -332,11 +341,10 @@ export const useLibraryStore = defineStore('libraryStore', {
                     return
                 }
 
-                const playlist = listItem || seededPlaylist || null
-
+                // 酷狗公开/推荐歌单要使用 global_collection_id 拉取完整曲目；listid 只适合用户自建/收藏歌单。
                 const trackParams = {
-                    id: playlistId,
-                    gid: listItem?.global_collection_id || null,
+                    id: resolvedPlaylistId,
+                    gid: resolvedCollectionId || null,
                     limit: PLAYLIST_PAGE_SIZE,
                     offset: 0,
                 }
@@ -347,7 +355,8 @@ export const useLibraryStore = defineStore('libraryStore', {
                 
                 const fallbackPlaylist = {
                     ...playlist,
-                    id: playlist?.id || playlist?.list_create_listid || playlist?.listid || playlistId,
+                    id: resolvedPlaylistId || playlist?.id || playlist?.list_create_listid || playlist?.listid || playlistId,
+                    global_collection_id: resolvedCollectionId || playlist?.global_collection_id || null,
                     name: playlist?.name || playlist?.listname || playlist?.specialname || '歌单',
                     coverImgUrl: playlist?.coverImgUrl || playlist?.pic || playlist?.imgurl || firstBatchSongs[0]?.coverUrl || firstBatchSongs[0]?.al?.picUrl || '',
                     trackCount: playlist?.trackCount || playlist?.count || playlist?.list_count || playlist?.songcount || firstBatchSongs.length,
@@ -366,7 +375,7 @@ export const useLibraryStore = defineStore('libraryStore', {
 
                 if (totalTracks <= loadedTracks) {
                     this.playlistHydration = createPlaylistHydrationState({
-                        id: playlistId,
+                        id: resolvedPlaylistId,
                         total: totalTracks,
                         loaded: loadedTracks,
                         status: 'completed',
@@ -376,13 +385,13 @@ export const useLibraryStore = defineStore('libraryStore', {
                 }
 
                 this.playlistHydration = createPlaylistHydrationState({
-                    id: playlistId,
+                    id: resolvedPlaylistId,
                     total: totalTracks,
                     loaded: loadedTracks,
                     status: 'loading',
                 })
 
-                const hydrationTask = this.hydratePlaylistRemaining(playlistId, totalTracks, token, loadedTracks, listItem?.global_collection_id || null)
+                const hydrationTask = this.hydratePlaylistRemaining(resolvedPlaylistId, totalTracks, token, loadedTracks, resolvedCollectionId || null)
                     .then(remainingSongs => {
                         if (this.playlistHydrationToken != token) return
                         if (Array.isArray(remainingSongs) && remainingSongs.length > 0) {
@@ -394,7 +403,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                             this.indexLibrarySongs(remainingSongs, { append: true })
                         }
                         this.playlistHydration = createPlaylistHydrationState({
-                            id: playlistId,
+                            id: resolvedPlaylistId,
                             total: totalTracks,
                             loaded: totalTracks,
                             status: 'completed',
@@ -404,7 +413,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                         if (this.playlistHydrationToken != token) return
                         const loadedNow = Array.isArray(this.librarySongs) ? Math.min(this.librarySongs.length, totalTracks) : loadedTracks
                         this.playlistHydration = createPlaylistHydrationState({
-                            id: playlistId,
+                            id: resolvedPlaylistId,
                             total: totalTracks,
                             loaded: loadedNow,
                             status: 'failed',
@@ -420,7 +429,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             } catch (error) {
                 if (this.playlistHydrationToken == token) {
                     this.playlistHydration = createPlaylistHydrationState({
-                        id: playlistId,
+                        id: resolvedPlaylistId,
                         total: 0,
                         loaded: 0,
                         status: 'failed',
