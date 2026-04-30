@@ -1198,7 +1198,15 @@ function cloneLikelist(likelist = userStore.likelist) {
 }
 
 export function getLikeActionErrorMessage(result, fallback = '未知错误') {
-    return result?.body?.message || result?.body?.msg || result?.message || result?.msg || fallback
+    return result?.response?.data?.message
+        || result?.response?.data?.msg
+        || result?.response?.data?.error
+        || result?.body?.message
+        || result?.body?.msg
+        || result?.message
+        || result?.msg
+        || result?.error
+        || fallback
 }
 
 export function isSongLiked(songId, likelist = userStore.likelist) {
@@ -1231,8 +1239,12 @@ export function isActiveLikeActionToken(token) {
 
 async function fetchLikelistSnapshot() {
     if (!userStore.user?.userId) return null
-    const response = await getLikelist(userStore.user.userId)
-    return Array.isArray(response?.ids) ? response.ids.slice() : null
+    try {
+        const response = await getLikelist(userStore.user.userId)
+        return Array.isArray(response?.ids) ? response.ids.slice() : null
+    } catch (_) {
+        return null
+    }
 }
 
 export async function queueLikeRequest(actionToken, requestFactory) {
@@ -1269,7 +1281,7 @@ async function resolveLikelistAfterLikeAction(songId, like, fallbackLikelist) {
                 if (isSongLiked(songId, snapshot) === !!like) return snapshot
             }
         } catch (error) {
-            console.error('刷新喜欢列表失败:', error)
+            console.warn('刷新喜欢列表失败，使用本地乐观状态兜底:', getLikeActionErrorMessage(error))
         }
 
         if (attempt < LIKE_SYNC_RETRY_LIMIT - 1) {
@@ -1388,6 +1400,9 @@ export function isPlaylistTrackOperationSuccess(result) {
 }
 
 function resolveSongForPlaylistTrackOperation(songInput) {
+    if (songInput && typeof songInput == 'object' && songInput.value && typeof songInput.value == 'object') {
+        return songInput.value
+    }
     if (songInput && typeof songInput == 'object') return songInput
 
     const songId = String(songInput || '')
@@ -1483,6 +1498,29 @@ export async function likeSong(like) {
     }
 
     const actionToken = createLikeActionToken()
+    const attemptFavoritePlaylistFallback = async fallbackSource => {
+        const fallbackResult = await updateFavoritePlaylistTrack(songIdValue, like)
+        if (fallbackResult.success) {
+            if (!isActiveLikeActionToken(actionToken)) return
+            const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
+            userStore.updateLikelist(fallbackLikelist)
+            noticeOpen(like ? `已添加到${fallbackResult.favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}` : '已取消喜欢', 2)
+            await syncLikelistAfterLikeAction({
+                songId: songIdValue,
+                like,
+                actionToken,
+                fallbackLikelist,
+            })
+            if (!isActiveLikeActionToken(actionToken)) return
+            finalizeLikeActionSideEffects()
+            return true
+        }
+
+        console.error('歌单 tracks 降级也失败:', fallbackResult.result || fallbackResult.message)
+        const errorMsg = fallbackResult.message || getLikeActionErrorMessage(fallbackSource)
+        noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
+        return false
+    }
 
     try {
         console.log('调用官方 /like API, songId:', songIdValue, 'like:', like, 'userId:', userStore.user.userId)
@@ -1506,30 +1544,11 @@ export async function likeSong(like) {
             finalizeLikeActionSideEffects()
         } else {
             console.warn('官方 /like API 失败，尝试使用歌单 tracks:', getLikeActionErrorMessage(result))
-            const fallbackResult = await updateFavoritePlaylistTrack(songIdValue, like)
-            if (fallbackResult.success) {
-                if (!isActiveLikeActionToken(actionToken)) return
-                const fallbackLikelist = applyOptimisticLikeState(songIdValue, like)
-                userStore.updateLikelist(fallbackLikelist)
-                noticeOpen(like ? `已添加到${fallbackResult.favoritePlaylist?.name || DEFAULT_FAVORITE_PLAYLIST_NAME}` : '已取消喜欢', 2)
-                await syncLikelistAfterLikeAction({
-                    songId: songIdValue,
-                    like,
-                    actionToken,
-                    fallbackLikelist,
-                })
-                if (!isActiveLikeActionToken(actionToken)) return
-                finalizeLikeActionSideEffects()
-            } else {
-                console.error('歌单 tracks 降级也失败:', fallbackResult.result || fallbackResult.message)
-                const errorMsg = fallbackResult.message || getLikeActionErrorMessage(result)
-                noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
-            }
+            await attemptFavoritePlaylistFallback(result)
         }
     } catch (error) {
-        console.error('调用 /like API 异常:', error)
-        const errorMsg = error?.response?.data?.message || error?.message || '网络错误'
-        noticeOpen(`喜欢/取消喜欢 音乐失败：${errorMsg}`, 2)
+        console.error('调用 /like API 异常:', getLikeActionErrorMessage(error))
+        await attemptFavoritePlaylistFallback(error)
     }
 }
 

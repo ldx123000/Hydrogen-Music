@@ -353,6 +353,11 @@ function normalizePlaylistTrackHash(track = {}) {
     return String(track?.hash || track?.FileHash || track?.file_hash || track?.deprecated?.hash || track?.audio_info?.hash_128 || track?.audio_info?.hash_320 || '').trim()
 }
 
+function unwrapPlaylistTrack(track) {
+    if (track && typeof track == 'object' && track.value && typeof track.value == 'object') return track.value
+    return track
+}
+
 function normalizePlaylistTrackAlbumId(track = {}) {
     return track?.al?.id || track?.album_id || track?.albumid || track?.albumId || track?.album?.id || 0
 }
@@ -362,6 +367,7 @@ function normalizePlaylistTrackMixsongId(track = {}) {
 }
 
 function buildPlaylistTrackAddEntry(track = {}) {
+    track = unwrapPlaylistTrack(track) || {}
     const name = normalizePlaylistTrackName(track)
     const hash = normalizePlaylistTrackHash(track)
     const albumId = normalizePlaylistTrackAlbumId(track)
@@ -382,11 +388,16 @@ export function updatePlaylist(params) {
         const tracks = Array.isArray(params?.tracks) ? params.tracks : [params?.trackDetail || params?.selectedItem || params?.tracks]
         const data = tracks
           .map(track => {
-            if (track && typeof track == 'object') return buildPlaylistTrackAddEntry(track)
+            const normalizedTrack = unwrapPlaylistTrack(track)
+            if (normalizedTrack && typeof normalizedTrack == 'object') return buildPlaylistTrackAddEntry(normalizedTrack)
             return ''
           })
           .filter(Boolean)
           .join(',')
+
+        if (!data) {
+            return Promise.resolve({ status: 0, error: 'missing playlist track payload' })
+        }
 
         return request({
           url: '/playlist/tracks/add',

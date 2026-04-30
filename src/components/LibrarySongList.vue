@@ -132,6 +132,7 @@ const openMenu = (e, item) => {
 
     const { clientX, clientY } = e
     const menuList = document.getElementById('menu')
+    if (!menuList) return
     const screenWidth = document.body.clientWidth
     const screenHeight = document.body.clientHeight
     if (screenWidth - clientX < 120) {

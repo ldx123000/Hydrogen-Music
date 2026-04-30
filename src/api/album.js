@@ -2,6 +2,8 @@ import { get, getById, getWithPagination, operationRequest } from "./base";
 import { buildIdWithTimestamp, buildOperationParams } from "./params";
 import { getNewestSong } from "./song";
 
+let topAlbumRequestBroken = false
+
 function normalizeAlbumCover(value) {
     if (typeof value !== 'string') return value || ''
     return value.replace('{size}', '480')
@@ -51,6 +53,30 @@ function buildNewestAlbumsFromSongs(songs = [], limit = 30) {
     return albums
 }
 
+function shouldSkipTopAlbumRequest(error) {
+    const errorCode = Number(error?.response?.data?.error_code ?? error?.error_code ?? 0)
+    const errorMessage = String(
+        error?.response?.data?.error
+        || error?.response?.data?.message
+        || error?.message
+        || error?.error
+        || ''
+    ).toLowerCase()
+
+    return errorCode === 20010 || errorMessage.includes('request fileds type error')
+}
+
+async function buildNewestAlbumFallback(limit = 30) {
+    const fallbackSongs = await getNewestSong(limit)
+    const fallbackList = Array.isArray(fallbackSongs?.data) ? fallbackSongs.data : Array.isArray(fallbackSongs?.result) ? fallbackSongs.result : []
+
+    return {
+        status: 1,
+        error_code: 0,
+        albums: buildNewestAlbumsFromSongs(fallbackList, limit),
+    }
+}
+
 /**
  * 登录后调用此接口 ,可获取全部新碟
  * @param {object} options - 选项
@@ -71,6 +97,10 @@ export function getNewAlbum({ limit, offset, area, ...params } = {}) {
     }
     const normalizedType = area in typeMap ? typeMap[area] : area
 
+    if (topAlbumRequestBroken) {
+        return buildNewestAlbumFallback(pageSize)
+    }
+
     return get('/top/album', {
         page,
         pagesize: pageSize,
@@ -85,15 +115,9 @@ export function getNewAlbum({ limit, offset, area, ...params } = {}) {
                 albums,
             }
         })
-        .catch(async () => {
-            const fallbackSongs = await getNewestSong(pageSize)
-            const fallbackList = Array.isArray(fallbackSongs?.data) ? fallbackSongs.data : Array.isArray(fallbackSongs?.result) ? fallbackSongs.result : []
-
-            return {
-                status: 1,
-                error_code: 0,
-                albums: buildNewestAlbumsFromSongs(fallbackList, pageSize),
-            }
+        .catch(async error => {
+            if (shouldSkipTopAlbumRequest(error)) topAlbumRequestBroken = true
+            return buildNewestAlbumFallback(pageSize)
         })
 }
 

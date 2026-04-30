@@ -279,17 +279,20 @@
   }
   const addToMyPlaylist = playlistTarget => {
       const playlist = normalizePlaylistTarget(playlistTarget)
+      const selectedSong = otherStore.selectedItem?.value && typeof otherStore.selectedItem.value == 'object'
+        ? otherStore.selectedItem.value
+        : otherStore.selectedItem
       let params = {
         op: 'add',
         pid: playlist.id,
-        tracks: otherStore.selectedItem
+        tracks: selectedSong
       }
       updatePlaylist(params).then(result => {
         if(isPlaylistUpdateSuccess(result)) {
           updatePlaylistCache()
           noticeOpen(`已添加到${playlist.name}`, 2)
         }else {
-          noticeOpen('添加至歌单错误', 2)
+          noticeOpen(result?.error == 'missing playlist track payload' ? '当前歌曲信息不完整，暂时无法添加到歌单' : '添加至歌单错误', 2)
         }
       })
   }
