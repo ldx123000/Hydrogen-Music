@@ -19,10 +19,27 @@ if (packageJson.version !== nextVersion) {
 }
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+console.log(`[release-build] Running: ${npmCommand} run dist:local (version=${nextVersion})`);
+
 const result = spawnSync(npmCommand, ['run', 'dist:local'], {
   cwd: projectDir,
   stdio: 'inherit',
   env: process.env,
 });
 
-process.exit(result.status ?? 1);
+if (result.error) {
+  console.error('[release-build] Failed to spawn dist:local:', result.error.message);
+  process.exit(1);
+}
+
+if (typeof result.status !== 'number') {
+  console.error('[release-build] dist:local exited with no status code (likely killed/signaled)');
+  process.exit(1);
+}
+
+if (result.status !== 0) {
+  console.error(`[release-build] dist:local failed with exit code ${result.status}`);
+  process.exit(result.status);
+}
+
+console.log('[release-build] dist:local completed successfully');

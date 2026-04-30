@@ -34,8 +34,11 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Setup MSVC build tools
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Create GitHub Release
         run: npm run release
