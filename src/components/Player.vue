@@ -116,35 +116,6 @@ const hasRomaLyric = computed(() => {
     return lyricsObjArr.value.some(item => item.rlyric && item.rlyric.trim() !== '');
 });
 
-const toAlbum = () => {
-    const currentSong = songList.value?.[currentIndex.value];
-    if (!currentSong) return;
-    // 电台节目：打开“收藏-电台”的大右侧详情界面
-    if (isDjMode.value) {
-        const rid = (listInfo.value && listInfo.value.id) || null;
-        if (!rid) return;
-        router.push('/mymusic/dj/' + rid);
-        widgetState.value = true;
-        lyricShow.value = false;
-        playlistWidgetShow.value = false;
-        playerStore.forbidLastRouter = true;
-        if (videoIsPlaying.value) videoIsPlaying.value = false;
-        return;
-    }
-    // 普通歌曲：仍然跳转专辑
-    if (currentSong.type != 'local') {
-        const targetPath = currentSong.source === 'siren'
-            ? '/siren/album/' + currentSong.al.id
-            : '/mymusic/album/' + currentSong.al.id
-        router.push(targetPath);
-        widgetState.value = true;
-        lyricShow.value = false;
-        playlistWidgetShow.value = false;
-        playerStore.forbidLastRouter = true;
-        if (videoIsPlaying.value) videoIsPlaying.value = false;
-    }
-};
-
 const download = () => {
     const currentSong = songList.value?.[currentIndex.value];
     if (currentSong?.type != 'local') {
@@ -540,35 +511,6 @@ const addToPlaylist = () => {
                 >
                     <path
                         d="M512 85.333333c235.648 0 426.666667 191.018667 426.666667 426.666667s-191.018667 426.666667-426.666667 426.666667S85.333333 747.648 85.333333 512 276.352 85.333333 512 85.333333z m0 85.333334a341.333333 341.333333 0 1 0 0 682.666666 341.333333 341.333333 0 0 0 0-682.666666z m0 128a42.666667 42.666667 0 0 1 42.666667 42.666666v128H682.666667a42.666667 42.666667 0 0 1 0 85.333334H554.666667v128a42.666667 42.666667 0 0 1-85.333334 0V554.666667H341.333333a42.666667 42.666667 0 0 1 0-85.333334h128V341.333333a42.666667 42.666667 0 0 1 42.666667-42.666666z"
-                        fill="#000000"
-                    ></path>
-                </svg>
-                <!-- 显示专辑：本地歌曲不显示图标 -->
-                <svg
-                    v-if="songList?.[currentIndex]?.type !== 'local'"
-                    t="1668785761323"
-                    @click="toAlbum()"
-                    class="icon"
-                    viewBox="0 0 1024 1024"
-                    version="1.1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    p-id="1173"
-                    width="200"
-                    height="200"
-                >
-                    <path
-                        d="M459.838061 502.318545c0-30.657939 24.948364-55.606303 55.606303-55.606303s55.544242 24.948364 55.544242 55.606303-24.886303 55.606303-55.544242 55.606303a55.668364 55.668364 0 0 1-55.606303-55.606303m173.242181 0c0-64.884364-52.751515-117.666909-117.635878-117.666909a117.79103 117.79103 0 0 0-117.666909 117.666909 117.79103 117.79103 0 0 0 117.666909 117.66691 117.76 117.76 0 0 0 117.604848-117.66691"
-                        p-id="1174"
-                        fill="#000000"
-                    ></path>
-                    <path
-                        d="M515.413333 935.439515c-238.809212 0-433.089939-194.311758-433.089939-433.089939 0-238.840242 194.249697-433.18303 433.12097-433.183031 238.809212 0 433.12097 194.342788 433.120969 433.183031 0 238.778182-194.311758 433.089939-433.120969 433.089939m0-928.302545C242.346667 7.13697 20.262788 229.251879 20.262788 502.349576c0 273.035636 222.145939 495.181576 495.181576 495.181576s495.181576-222.17697 495.181575-495.181576c0-273.066667-222.17697-495.243636-495.181575-495.243637"
-                        p-id="1175"
-                        fill="#000000"
-                    ></path>
-                    <path
-                        d="M806.353455 471.288242a31.030303 31.030303 0 0 0-31.030303 31.030303v0.031031c0 143.297939-116.580848 259.847758-259.878788 259.847757a31.030303 31.030303 0 0 0 0 62.060606c177.493333 0 321.939394-144.41503 321.939394-321.939394a31.030303 31.030303 0 0 0-31.030303-31.030303M515.413333 242.439758a31.030303 31.030303 0 0 0 0-62.060606c-177.493333 0-321.877333 144.41503-321.908363 321.908363v0.03103a31.030303 31.030303 0 0 0 62.060606 0c0-143.297939 116.580848-259.878788 259.878788-259.878787z"
-                        p-id="1176"
                         fill="#000000"
                     ></path>
                 </svg>
