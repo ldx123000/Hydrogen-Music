@@ -95,10 +95,21 @@
       menuList.style.top = clientY + 'Px'
     }
   }
+
+  const openCreatePlaylistDialog = () => {
+    // 左侧“我创建的”顶部直接打开全局新建歌单弹窗，避免再绕右键菜单。
+    otherStore.contextMenuShow = false
+    otherStore.justNewPlaylist = true
+    otherStore.addPlaylistShow = true
+  }
 </script>
 
 <template>
   <div id="libraryListScroll" class="library-list">
+    <div v-if="listType1 == 0 && listType2 == 0" class="create-playlist-entry" @click="openCreatePlaylistDialog()">
+      <div class="create-icon">+</div>
+      <span class="create-name">创建歌单</span>
+    </div>
     <div class="list-item" :class="{'list-item-selected': (item.id == router.currentRoute.value.fullPath.split('/')[3] && listType2 != 2) || (otherStore.currentVideoId == item.vid && listType2 == 2)}" v-for="(item, index) in libraryList" @click="showDetail(index, item)" @contextmenu="openMenu($event,item)">
         <div class="item-img">
             <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl)" alt="">
@@ -127,6 +138,35 @@
   .library-list{
     display: flex;
     flex-direction: column;
+    .create-playlist-entry{
+      margin-bottom: 8Px;
+      padding: 10Px 8Px;
+      border: 1Px dashed rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      transition: 0.2s;
+      &:hover{
+        cursor: pointer;
+        background-color: rgba(0, 0, 0, 0.04);
+        border-color: rgba(0, 0, 0, 0.45);
+      }
+      .create-icon{
+        margin-right: 10Px;
+        width: 28Px;
+        height: 28Px;
+        border: 1Px solid rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 18Px Gilroy-ExtraBold;
+        color: black;
+      }
+      .create-name{
+        font: 14Px SourceHanSansCN-Bold;
+        color: black;
+      }
+    }
     .list-item{
         padding: 8Px;
         display: flex;

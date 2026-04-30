@@ -3,7 +3,7 @@
   import { useRouter } from 'vue-router'
   import { createPlaylist, updatePlaylist, deletePlaylist } from '../api/playlist'
   import { addToNext, addToNextLocal } from '../utils/player'
-  import { noticeOpen } from '../utils/dialog';
+  import { dialogOpen, noticeOpen } from '../utils/dialog';
   import { useLibraryStore } from '../store/libraryStore';
   import { useLocalStore } from '../store/localStore';
   import { useOtherStore } from '../store/otherStore';
@@ -86,7 +86,16 @@
   watch(
     () => otherStore.addPlaylistShow,
     async (show) => {
-      if (show) await ensureUserPlaylistsLoaded()
+      if (show) {
+        justNewPlaylist.value = !!otherStore.justNewPlaylist
+        await ensureUserPlaylistsLoaded()
+        return
+      }
+      justNewPlaylist.value = false
+      otherStore.justNewPlaylist = false
+      createActive.value = false
+      newPlaylistTitle.value = null
+      isPrivacy.value = false
     },
     { immediate: true }
   )
@@ -96,10 +105,21 @@
   }
 
   const deleteFromPlaylist = async () => {
+    const playlistListId = otherStore.selectedPlaylist?.list_create_listid || otherStore.selectedPlaylist?.listid || otherStore.selectedPlaylist?.id
+    const targetTrack = otherStore.selectedItem
+    const targetFileId = targetTrack?.fileid || targetTrack?.file_id || targetTrack?.audio_id || targetTrack?.id
+    const targetTrackId = String(targetTrack?.id || '')
+
+    if (!playlistListId || !targetFileId) {
+      noticeOpen('当前歌曲或歌单信息不完整，暂时无法删除', 2)
+      return
+    }
+
     let params = {
       op: 'del',
-      pid: otherStore.selectedPlaylist.id,
-      tracks: otherStore.selectedItem.id
+      listid: playlistListId,
+      tracks: [targetTrack],
+      fileids: String(targetFileId)
     }
     
     try {
@@ -109,10 +129,22 @@
       const isSuccess = isPlaylistUpdateSuccess(result)
       
       if(isSuccess) {
-        // 从当前歌曲列表中移除该歌曲
-        const songIndex = (librarySongs.value || []).findIndex((song) => song.id == otherStore.selectedItem.id)
-        if(songIndex !== -1) {
+        // 先本地移除，保证删除成功后界面立刻更新。
+        const songIndex = (librarySongs.value || []).findIndex((song) => {
+          const songId = String(song?.id || '')
+          const songFileId = String(song?.fileid || song?.file_id || song?.audio_id || '')
+          return (targetTrackId && songId === targetTrackId) || (songFileId && songFileId === String(targetFileId))
+        })
+        if (songIndex !== -1) {
           librarySongs.value.splice(songIndex, 1)
+        }
+
+        if (libraryStore.libraryInfo) {
+          const currentTrackCount = Number(libraryStore.libraryInfo.trackCount ?? libraryStore.libraryInfo.size ?? 0)
+          if (Number.isFinite(currentTrackCount) && currentTrackCount > 0) {
+            if (libraryStore.libraryInfo.trackCount !== undefined) libraryStore.libraryInfo.trackCount = currentTrackCount - 1
+            if (libraryStore.libraryInfo.size !== undefined) libraryStore.libraryInfo.size = currentTrackCount - 1
+          }
         }
         
         // 检查是否从"我喜欢的音乐"歌单删除，如果是则同步更新喜欢列表
@@ -135,6 +167,7 @@
 
   const updatePlaylistCache = () => {
     otherStore.addPlaylistShow = false
+    otherStore.justNewPlaylist = false
     createActive.value = false
     schedulePlaylistCacheInvalidation()
     try {
@@ -200,23 +233,44 @@
   const newPlaylist = () => {
     otherStore.addPlaylistShow = true
     justNewPlaylist.value = true
+    otherStore.justNewPlaylist = true
   }
 
-  const deleteMyPlaylist = () => {
+  const doDeleteMyPlaylist = () => {
+    const targetPlaylistId = otherStore.selectedItem?.list_create_listid || otherStore.selectedItem?.listid || otherStore.selectedItem?.id
+    if (!targetPlaylistId) {
+      noticeOpen('当前歌单信息不完整，暂时无法删除', 2)
+      return
+    }
+
     let params = {
-      id: otherStore.selectedItem.id
+      id: targetPlaylistId
     }
     deletePlaylist(params).then(result => {
       if(result.code == 200) {
+        const createdList = Array.isArray(libraryStore.playlistUserCreated) ? libraryStore.playlistUserCreated : []
+        const createdIndex = createdList.findIndex(item => String(item?.id || '') === String(targetPlaylistId))
+        if (createdIndex !== -1) createdList.splice(createdIndex, 1)
+        if (Array.isArray(libraryStore.libraryList)) {
+          const libraryIndex = libraryStore.libraryList.findIndex(item => String(item?.id || '') === String(targetPlaylistId))
+          if (libraryIndex !== -1) libraryStore.libraryList.splice(libraryIndex, 1)
+        }
+        schedulePlaylistCacheInvalidation()
+        otherStore.contextMenuShow = false
         if(listType1.value == 0 && listType2.value == 0) {
           document.getElementById('myPlaylist').click()
-          noticeOpen('删除成功', 2)
         }
+        noticeOpen('删除成功', 2)
       } else {
         noticeOpen("删除歌单失败", 2)
       }
       
     })
+  }
+
+  const deleteMyPlaylist = () => {
+    const playlistName = getPlaylistDisplayName(otherStore.selectedItem)
+    dialogOpen('确认删除', `您确定要删除歌单“${playlistName}”吗？`, doDeleteMyPlaylist)
   }
 
   const menuOpt = (id) => {
@@ -259,6 +313,7 @@
             document.getElementById('myPlaylist').click()
             otherStore.addPlaylistShow = false
             justNewPlaylist.value = false
+            otherStore.justNewPlaylist = false
             noticeOpen('添加成功', 2)
             return
           }
@@ -273,6 +328,7 @@
     if(justNewPlaylist.value) {
       otherStore.addPlaylistShow = false
       justNewPlaylist.value = false
+      otherStore.justNewPlaylist = false
       return
     }
     createActive.value = false
@@ -311,7 +367,7 @@
       <div class="menu-style5">MENU</div>
     </div>
     <Transition name="add-fade">
-      <div class="add-to-playlist" v-if="otherStore.addPlaylistShow" @click="otherStore.addPlaylistShow = false;createActive = false;newPlaylistTitle = '';">
+      <div class="add-to-playlist" v-if="otherStore.addPlaylistShow" @click="otherStore.addPlaylistShow = false; otherStore.justNewPlaylist = false; createActive = false; newPlaylistTitle = '';">
         <div class="playlist-container" :class="{'playlist-container-newPlaylist': justNewPlaylist}" @click.stop>
           <span class="add-title">{{justNewPlaylist ? '添加歌单' : '添加到我的歌单'}}</span>
           <div class="my-playlist">

@@ -34,6 +34,8 @@ const isSongList = ref(false);
 const introduceDetailShow = ref(false);
 const introduceDetailShowDelay = ref(false);
 const songSearchKeyword = ref('');
+const deletePlaylistPromptVisible = ref(false);
+const deletePlaylistPromptText = ref('');
 
 const canGoBack = ref(false);
 const canGoForward = ref(false);
@@ -609,6 +611,59 @@ const downloadAll = async () => {
     localStore.updateDownloadList(librarySongs.value || []);
 };
 
+const doDeleteCreatedPlaylist = async () => {
+    const targetPlaylistId = libraryInfo.value?.list_create_listid || libraryInfo.value?.listid || libraryInfo.value?.id;
+    if (!targetPlaylistId) {
+        noticeOpen('当前歌单信息不完整，暂时无法删除', 2);
+        return;
+    }
+
+    try {
+        const result = await deletePlaylist({ id: targetPlaylistId });
+        if (!isPlaylistUpdateSuccess(result)) {
+            noticeOpen('删除歌单失败', 2);
+            return;
+        }
+
+        if (Array.isArray(playlistUserCreated.value)) {
+            const removeIndex = playlistUserCreated.value.findIndex(item => String(item?.id || '') === String(targetPlaylistId));
+            if (removeIndex !== -1) playlistUserCreated.value.splice(removeIndex, 1);
+        }
+        if (Array.isArray(libraryList.value)) {
+            const removeIndex = libraryList.value.findIndex(item => String(item?.id || '') === String(targetPlaylistId));
+            if (removeIndex !== -1) libraryList.value.splice(removeIndex, 1);
+        }
+
+        deletePlaylistPromptVisible.value = false;
+        deletePlaylistPromptText.value = '';
+        schedulePlaylistCacheInvalidation();
+        router.push('/mymusic');
+        noticeOpen('删除成功', 2);
+    } catch (error) {
+        console.error('删除歌单失败:', error);
+        noticeOpen('删除歌单失败', 2);
+    }
+};
+
+const openDeleteCreatedPlaylistPrompt = () => {
+    // 按用户要求，删除自建歌单前必须手动输入“确认删除”。
+    deletePlaylistPromptText.value = '';
+    deletePlaylistPromptVisible.value = true;
+};
+
+const closeDeleteCreatedPlaylistPrompt = () => {
+    deletePlaylistPromptVisible.value = false;
+    deletePlaylistPromptText.value = '';
+};
+
+const confirmDeleteCreatedPlaylist = () => {
+    if (deletePlaylistPromptText.value.trim() !== '确认删除') {
+        noticeOpen('请输入“确认删除”后再继续', 2);
+        return;
+    }
+    void doDeleteCreatedPlaylist();
+};
+
 watch(
     () => songSearchKeyword.value,
     () => {
@@ -769,6 +824,21 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                     </svg>
                                     <span @click="downloadAll()">下载</span>
                                 </div>
+                                <div class="operation-download operation-item" v-if="isCreatedPlaylist && !isSinger" @click="openDeleteCreatedPlaylistPrompt()">
+                                    <svg
+                                        t="1669033713486"
+                                        class="download-icon"
+                                        viewBox="0 0 1024 1024"
+                                        version="1.1"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        p-id="11464"
+                                        width="200"
+                                        height="200"
+                                    >
+                                        <path d="M851.416 217.84l-45.256-45.248L512 466.744l-294.152-294.16-45.256 45.256L466.744 512l-294.152 294.16 45.248 45.256L512 557.256l294.16 294.16 45.256-45.256L557.256 512z" p-id="11465"></path>
+                                    </svg>
+                                    <span>删除歌单</span>
+                                </div>
                             </template>
                             <div class="operation-search" v-if="showSongSearch">
                                 <SongFilterInput v-model="songSearchKeyword" compact show-icon placeholder="SEARCH"></SongFilterInput>
@@ -802,6 +872,23 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     <span class="dialog-style dialog-style4"></span>
                 </div>
             </transition>
+        </div>
+
+        <div class="delete-playlist-mask" v-if="deletePlaylistPromptVisible" @click="closeDeleteCreatedPlaylistPrompt()"></div>
+        <div class="delete-playlist-dialog" v-if="deletePlaylistPromptVisible">
+            <div class="delete-playlist-title">删除歌单</div>
+            <div class="delete-playlist-text">请输入“确认删除”后再删除当前歌单</div>
+            <input
+                v-model="deletePlaylistPromptText"
+                class="delete-playlist-input"
+                type="text"
+                placeholder="请输入：确认删除"
+                @keydown.enter="confirmDeleteCreatedPlaylist()"
+            />
+            <div class="delete-playlist-actions">
+                <div class="delete-playlist-cancel" @click="closeDeleteCreatedPlaylistPrompt()">取消</div>
+                <div class="delete-playlist-confirm" @click="confirmDeleteCreatedPlaylist()">确认删除</div>
+            </div>
         </div>
 
         <div class="library-option">
@@ -1289,6 +1376,73 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             font: 11px SourceHanSansCN-Bold;
             color: var(--ld-muted);
             letter-spacing: 0.2px;
+        }
+    }
+}
+.delete-playlist-mask{
+    width: 100%;
+    height: 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    background-color: rgba(0, 0, 0, 0.18);
+    z-index: 998;
+}
+.delete-playlist-dialog{
+    width: 360Px;
+    padding: 18Px 20Px;
+    background-color: rgb(16, 16, 16);
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    .delete-playlist-title{
+        margin-bottom: 12Px;
+        font: 17Px SourceHanSansCN-Bold;
+        color: rgba(255, 255, 255, 0.96);
+        text-align: left;
+    }
+    .delete-playlist-text{
+        margin-bottom: 14Px;
+        font: 13Px SourceHanSansCN-Bold;
+        color: rgba(255, 255, 255, 0.82);
+        text-align: left;
+    }
+    .delete-playlist-input{
+        margin-bottom: 16Px;
+        padding: 0 10Px;
+        height: 34Px;
+        border: 1Px solid rgba(255, 255, 255, 0.32);
+        background-color: rgba(255, 255, 255, 0.06);
+        font: 14Px SourceHanSansCN-Bold;
+        color: white;
+        outline: none;
+    }
+    .delete-playlist-actions{
+        display: flex;
+        flex-direction: row;
+        justify-content: flex-end;
+        .delete-playlist-cancel, .delete-playlist-confirm{
+            width: 92Px;
+            height: 30Px;
+            border: 1Px solid rgba(255, 255, 255, 0.86);
+            font: 13Px SourceHanSansCN-Bold;
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 28Px;
+            text-align: center;
+            transition: 0.2s;
+            &:hover{
+                cursor: pointer;
+                background-color: rgba(255, 255, 255, 0.9);
+                color: black;
+            }
+        }
+        .delete-playlist-cancel{
+            margin-right: 12Px;
         }
     }
 }

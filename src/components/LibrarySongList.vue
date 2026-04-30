@@ -20,6 +20,15 @@ const { libraryInfo } = storeToRefs(libraryStore)
 const playerStore = usePlayerStore()
 const { songId, playMode, playing, showSongTranslation } = storeToRefs(playerStore)
 const otherStore = useOtherStore()
+const isCreatedPlaylistView = computed(() => {
+    const playlist = libraryInfo.value
+    if (!playlist) return false
+    if (Number(playlist?.is_mine) === 1) return true
+    const playlistId = String(playlist?.list_create_listid || playlist?.listid || playlist?.id || '')
+    return Array.isArray(libraryStore.playlistUserCreated)
+        ? libraryStore.playlistUserCreated.some(item => String(item?.id || '') === playlistId)
+        : false
+})
 const props = defineProps({
     songlist: {
         type: Array,
@@ -117,6 +126,8 @@ const togglePlay = (song, index) => {
 }
 
 const openMenu = (e, item) => {
+    e.preventDefault()
+    e.stopPropagation()
     otherStore.contextMenuShow = true
     otherStore.selectedItem = item
     otherStore.selectedPlaylist = libraryInfo.value
@@ -124,7 +135,7 @@ const openMenu = (e, item) => {
     if (props.contextMenuMode === 'siren' || item?.source === 'siren') {
         otherStore.selectedPlaylist = null
         otherStore.menuTree = otherStore.tree5
-    } else if (otherStore.selectedPlaylist && otherStore.selectedPlaylist.creator && otherStore.selectedPlaylist.creator.userId == userStore.user.userId) {
+    } else if (isCreatedPlaylistView.value || (otherStore.selectedPlaylist && otherStore.selectedPlaylist.creator && otherStore.selectedPlaylist.creator.userId == userStore.user.userId)) {
         otherStore.menuTree = otherStore.tree1
     } else {
         otherStore.menuTree = otherStore.tree2
@@ -161,7 +172,7 @@ const openMenu = (e, item) => {
                 @mouseenter="hoverRowKey = item.rowKey"
                 @mouseleave="hoverRowKey = null"
                 @dblclick="play(item.song, item.sourceIndex)"
-                @contextmenu="openMenu($event, item.song)"
+                @contextmenu.prevent="openMenu($event, item.song)"
             >
                 <div class="item-title">
                     <div class="item-state">
