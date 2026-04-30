@@ -1,0 +1,33 @@
+{
+  "branches": ["KuGou"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits"
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits"
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "node scripts/release-build.cjs ${nextRelease.version}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          "release/${nextRelease.version}/*.{exe,zip,blockmap}",
+          "release/${nextRelease.version}/latest.yml"
+        ]
+      }
+    ]
+  ]
+}

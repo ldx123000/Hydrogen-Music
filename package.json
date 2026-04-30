@@ -15,7 +15,10 @@
     "start": "chcp 65001 > nul && electron .",
     "start:watch": "nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",
     "_dist": "vite build && node scripts/build.js -p always",
-    "dist": "vite build && node scripts/build.js -p never"
+    "dist": "vite build && node scripts/build.js -p never",
+    "dist:local": "vite build && node scripts/build.js -p never",
+    "release": "semantic-release",
+    "release:dry": "semantic-release --dry-run"
   },
   "dependencies": {
     "axios": "^1.12.2",
@@ -38,10 +41,16 @@
     "electron": "^38.3.0",
     "electron-builder": "^26.1.0",
     "electron-rebuild": "^3.2.9",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.0.3",
+    "@semantic-release/github": "^11.0.2",
+    "@semantic-release/release-notes-generator": "^14.1.0",
     "howler": "^2.2.4",
     "js-cookie": "^3.0.5",
     "js-md5": "^0.8.3",
     "nodemon": "^3.1.10",
+    "conventional-changelog-conventionalcommits": "^8.0.0",
+    "semantic-release": "^24.2.7",
     "pinia": "^3.0.3",
     "pinia-plugin-persistedstate": "^4.5.0",
     "plyr": "^3.8.3",
