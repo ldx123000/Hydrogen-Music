@@ -1,5 +1,5 @@
 <script setup>
-  import {  ref, onActivated } from 'vue'
+  import { ref, computed, onActivated } from 'vue'
   import { onBeforeRouteLeave } from 'vue-router';
   import { getBanner } from '../api/other';
   import SkeletonBox from './base/SkeletonBox.vue';
@@ -16,6 +16,15 @@
   const bannerTimer1 = ref(false)
   const bannerTimer2 = ref(false)
   const bannerList = ref([{}])
+
+  // 根据 banner 数量动态计算选择器宽度，防止超出范围
+  const selectorStyle = computed(() => {
+    const count = bannerList.value.length
+    if (count <= 6) return { dot: '2.2vw', active: '4.5vw' }
+    if (count <= 10) return { dot: '1.6vw', active: '3.2vw' }
+    if (count <= 15) return { dot: '1.4vw', active: '2.8vw' }
+    return { dot: '0.8vw', active: '1.4vw' }
+  })
   //获取轮播图，0为pc端轮播图,此处选择的是ipad端
   async function loadData(type) {
       if (bannerSessionCache.has(type)) {
@@ -143,8 +152,14 @@
             </div>
         </div>
         <div class="selector-box">
-            <div @click="imgSlect(index)" class="selector" v-for="(item, index) in bannerList.length">
-                <div :class="{'selector-style': true,'selector-style-active': currentIndex == index}"></div>
+            <div @click="imgSlect(index)" class="selector" v-for="(item, index) in bannerList.length" :key="index">
+                <div
+                    :class="{'selector-style': true,'selector-style-active': currentIndex == index}"
+                    :style="{
+                        width: currentIndex == index ? selectorStyle.active : selectorStyle.dot,
+                        height: currentIndex == index ? '0.3vw' : '1px'
+                    }"
+                ></div>
             </div>
         </div>
         <div class="banner-next" @click="nextBanner()"></div>
@@ -185,8 +200,10 @@
             align-items: center;
             position: absolute;
             bottom: -1vw;
+            overflow: hidden;
             .selector{
                 padding: 1.2vw 0.6vw 1.2vw 0;
+                flex-shrink: 0;
                 &:hover{
                     cursor: pointer;
                     .selector-style{
@@ -196,15 +213,11 @@
                     }
                 }
                 .selector-style{
-                    width: 2.2vw;
-                    height: 1px;
                     background-color: rgb(106, 106, 106);
                     opacity: 0.5;
                     transition: 0.3s;
                 }
                 .selector-style-active{
-                    width: 4.5vw;
-                    height: 0.3vw;
                     background-color: black;
                     opacity: 1;
                     transition-delay: 0.05s;

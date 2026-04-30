@@ -232,15 +232,51 @@ function buildSearchResult(type, rawList) {
 }
 
 /**
- * 调用此接口获取轮播图
- * @param {number} id 
- * @returns 
+ * 调用此接口获取轮播图（酷狗 /pc/diantai），
+ * 并将响应归一化为 Banner 组件期望的 NetEase 格式。
  */
 export function getBanner() {
     return request({
         url: '/pc/diantai',
         method: 'get',
         params: {}
+    }).then(data => {
+        // 酷狗 adservice 返回的数据可能在多处嵌套
+        const rawList = toArray(
+            data?.data?.list ||
+            data?.data?.data ||
+            data?.data?.ads ||
+            data?.data?.banner ||
+            data?.data ||
+            data?.list ||
+            data?.ads ||
+            []
+        )
+
+        const banners = rawList.map(item => {
+            // 提取图片：酷狗广告服务常用 img_url / code / pic 等字段
+            const pic = item.img_url || item.code || item.pic || item.imageUrl || item.img || item.image || ''
+            // 提取跳转链接
+            const url = item.url || item.extra?.url || item.jump_url || item.link || ''
+            // 跳转类型
+            const jumpType = item.jump_type || item.targetType || item.type || ''
+            // 标题
+            const typeTitle = item.title || item.name || item.typeTitle || item.ad_name || ''
+
+            return {
+                ...item,
+                pic,
+                imageUrl: pic,
+                url,
+                targetType: jumpType,
+                targetId: item.id || item.targetId || item.target_id || '',
+                typeTitle,
+                bannerId: item.id || item.bannerId || item.ad_id || '',
+                titleColor: item.titleColor || item.title_color || item.color || '',
+            }
+        })
+
+        return { banners }
     })
 }
 
