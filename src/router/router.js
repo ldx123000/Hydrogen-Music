@@ -73,39 +73,48 @@ const routes = [
                 path: '/mymusic/playlist/:id',
                 name: 'playlist',
                 component: LibraryDetail,
-                beforeEnter: async (to, from, next) => {
+                beforeEnter: (to, from, next) => {
                     const needReload = !libraryInfo.value || from.name != 'playlist' || hasDifferentLibraryId(to, from)
-                    try {
-                        if (needReload) await updateLibraryDetail(to.params.id, to.name, { deferRemaining: true, routeQuery: to.query })
-                    } finally {
-                        next()
+                    if (needReload) {
+                        // 先切路由，再异步补数据，避免首页点击后被接口等待阻塞。
+                        void updateLibraryDetail(to.params.id, to.name, { deferRemaining: true, routeQuery: to.query })
+                            .catch(error => {
+                                console.error('加载歌单详情失败:', error)
+                            })
                     }
+                    next()
                 }
             },
             {
                 path: '/mymusic/album/:id',
                 name: 'album',
                 component: LibraryDetail,
-                beforeEnter: async (to, from, next) => {
+                beforeEnter: (to, from, next) => {
                     const needReload = !libraryInfo.value || from.name != 'album' || hasDifferentLibraryId(to, from)
-                    try {
-                        if (needReload) await updateLibraryDetail(to.params.id, to.name)
-                    } finally {
-                        next()
+                    if (needReload) {
+                        // 专辑详情同样改为异步补数据，减少点击到页面出现的等待感。
+                        void updateLibraryDetail(to.params.id, to.name)
+                            .catch(error => {
+                                console.error('加载专辑详情失败:', error)
+                            })
                     }
+                    next()
                 }
             },
             {
                 path: '/mymusic/artist/:id',
                 name: 'artist',
                 component: LibraryDetail,
-                beforeEnter: async (to, from, next) => {
+                beforeEnter: (to, from, next) => {
                     const needReload = !libraryInfo.value || from.name != 'artist' || hasDifferentLibraryId(to, from)
-                    try {
-                        if (needReload) await updateLibraryDetail(to.params.id, to.name)
-                    } finally {
-                        next()
+                    if (needReload) {
+                        // 歌手页也不要阻塞切页，热门单曲和歌手信息到达后再渲染。
+                        void updateLibraryDetail(to.params.id, to.name)
+                            .catch(error => {
+                                console.error('加载歌手详情失败:', error)
+                            })
                     }
+                    next()
                 }
             },
             {

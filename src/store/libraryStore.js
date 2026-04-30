@@ -51,6 +51,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             restoreLibraryScrollOnActivate: false,
             detailScrollMemory: {},
             detailScrollMemoryLimit: 100,
+            libraryDetailToken: null,
             playlistHydration: createPlaylistHydrationState(),
             playlistHydrationToken: null,
             playlistHydrationPromise: null,
@@ -102,6 +103,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.lastLibraryScrollTop = 0
             this.restoreLibraryScrollOnActivate = false
             this.detailScrollMemory = {}
+            this.libraryDetailToken = null
             this.librarySongs = null
             this.libraryAlbum = null
             this.libraryMV = null
@@ -260,18 +262,24 @@ export const useLibraryStore = defineStore('libraryStore', {
             return mergedSongs
         },
         async updateLibraryDetail(id, routerName, options = {}) {
+            const requestId = `${routerName}-${String(id || '')}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+            this.libraryDetailToken = requestId
             this.changeAnimation()
             this.resetSearchIndex()
-            if (routerName != 'playlist') this.resetPlaylistHydration()
-            if (routerName == 'playlist') await this.updatePlaylistDetail(id, options)
-            if (routerName == 'album') await this.updateAlbumDetail(id)
-            if (routerName == 'artist') await this.updateArtistDetail(id)
-            this.artistPageType = 0
+            // 先清空旧详情，避免路由已切换但旧内容还残留在页面上。
+            this.libraryInfo = null
+            this.librarySongs = null
             this.libraryAlbum = null
             this.libraryMV = null
+            if (routerName != 'playlist') this.resetPlaylistHydration()
+            if (routerName == 'playlist') await this.updatePlaylistDetail(id, { ...options, loadToken: requestId })
+            if (routerName == 'album') await this.updateAlbumDetail(id, requestId)
+            if (routerName == 'artist') await this.updateArtistDetail(id, requestId)
+            this.artistPageType = 0
         },
         async updatePlaylistDetail(id, options = {}) {
             const { deferRemaining = false, routeQuery = {} } = options
+            const loadToken = options?.loadToken || this.libraryDetailToken
             const playlistId = String(id || '')
             const listItem = Array.isArray(this.libraryList)
                 ? this.libraryList.find(p => String(p.id) === playlistId || String(p.global_collection_id || '') === playlistId)
@@ -299,8 +307,10 @@ export const useLibraryStore = defineStore('libraryStore', {
             })
 
             try {
+                if (this.libraryDetailToken != loadToken) return
                 if (isRankPlaylist) {
                     const rankInfoResult = await getRankInfo(playlistId, routeRankCid ? { rank_cid: routeRankCid } : {})
+                    if (this.libraryDetailToken != loadToken) return
                     if (this.playlistHydrationToken != token) return
 
                     const rankInfo = rankInfoResult?.data || rankInfoResult || {}
@@ -310,6 +320,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                         page: 1,
                         pagesize: 500,
                     })
+                    if (this.libraryDetailToken != loadToken) return
                     if (this.playlistHydrationToken != token) return
 
                     const rankSongs = mapSongsPlayableStatus(rankSongsResult?.songs || [], rankSongsResult?.privileges || []) || []
@@ -424,8 +435,9 @@ export const useLibraryStore = defineStore('libraryStore', {
 
                 this.playlistHydrationPromise = hydrationTask
                 this.libraryChangeAnimation = false
-                if (!deferRemaining) await hydrationTask
+                    if (!deferRemaining) await hydrationTask
             } catch (error) {
+                if (this.libraryDetailToken != loadToken) return
                 if (this.playlistHydrationToken == token) {
                     this.playlistHydration = createPlaylistHydrationState({
                         id: resolvedPlaylistId,
@@ -439,41 +451,41 @@ export const useLibraryStore = defineStore('libraryStore', {
                 throw error
             }
         },
-        async updateAlbumDetail(id) {
+        async updateAlbumDetail(id, loadToken = null) {
             let params = {
                 id: id,
                 // timestamp: new Date().getTime()
             }
-            await Promise.all([getAlbumDetail(params), albumDynamic(id)]).then(results => {
-                const albumDetail = results[0]
-                this.libraryInfo = albumDetail.album
+            const result = await Promise.all([getAlbumDetail(params), albumDynamic(id)])
+            if (loadToken && this.libraryDetailToken != loadToken) return
+            const albumDetail = result[0]
+            this.libraryInfo = albumDetail.album
 
-                const playableSongs = mapSongsPlayableStatus(albumDetail.songs) || []
-                const albumCover = this.libraryInfo?.picUrl || this.libraryInfo?.blurPicUrl || null
+            const playableSongs = mapSongsPlayableStatus(albumDetail.songs) || []
+            const albumCover = this.libraryInfo?.picUrl || this.libraryInfo?.blurPicUrl || null
 
-                this.librarySongs = playableSongs.map((song = {}) => {
-                    // 确保播放器在专辑场景下总能拿到封面
-                    if (!song.al) song.al = {}
-                    if (!song.al.picUrl && albumCover) song.al.picUrl = albumCover
-                    return song
-                })
-                this.indexLibrarySongs(this.librarySongs)
-                this.libraryInfo.followed = results[1].isSub
-                this.libraryChangeAnimation = false
+            this.librarySongs = playableSongs.map((song = {}) => {
+                // 确保播放器在专辑场景下总能拿到封面
+                if (!song.al) song.al = {}
+                if (!song.al.picUrl && albumCover) song.al.picUrl = albumCover
+                return song
             })
+            this.indexLibrarySongs(this.librarySongs)
+            this.libraryInfo.followed = result[1].isSub
+            this.libraryChangeAnimation = false
         },
-        async updateArtistDetail(id) {
+        async updateArtistDetail(id, loadToken = null) {
             let params = {
                 id: id,
                 // timestamp: new Date().getTime()
             }
-            await Promise.all([getArtistDetail(params), getArtistTopSong(params)]).then(results => {
-                this.libraryInfo = results[0].artist
-                // 酷狗歌手详情本身不带热门歌曲，热门单曲需要单独走 /artist/audios。
-                this.librarySongs = mapSongsPlayableStatus(results[1].songs)
-                this.indexLibrarySongs(this.librarySongs)
-                this.libraryChangeAnimation = false
-            })
+            const results = await Promise.all([getArtistDetail(params), getArtistTopSong(params)])
+            if (loadToken && this.libraryDetailToken != loadToken) return
+            this.libraryInfo = results[0].artist
+            // 酷狗歌手详情本身不带热门歌曲，热门单曲需要单独走 /artist/audios。
+            this.librarySongs = mapSongsPlayableStatus(results[1].songs)
+            this.indexLibrarySongs(this.librarySongs)
+            this.libraryChangeAnimation = false
         },
         //获取歌手热门歌曲前50首，并更新Store数据
         async updateArtistTopSong(id) {
@@ -481,7 +493,9 @@ export const useLibraryStore = defineStore('libraryStore', {
                 id: id,
                 // timestamp: new Date().getTime()
             }
+            const loadToken = this.libraryDetailToken
             await getArtistTopSong(params).then(result => {
+                if (loadToken && this.libraryDetailToken != loadToken) return
                 // 直接使用酷狗返回的歌手热门单曲列表，已在接口层完成标准化。
                 this.librarySongs = mapSongsPlayableStatus(result.songs)
                 this.indexLibrarySongs(this.librarySongs)
@@ -495,7 +509,9 @@ export const useLibraryStore = defineStore('libraryStore', {
                 offset: 0
                 // timestamp: new Date().getTime()
             }
+            const loadToken = this.libraryDetailToken
             await getArtistAlbum(params).then(result => {
+                if (loadToken && this.libraryDetailToken != loadToken) return
                 this.libraryAlbum = result.hotAlbums
                 this.indexLibraryAlbums(this.libraryAlbum)
             })
@@ -508,7 +524,9 @@ export const useLibraryStore = defineStore('libraryStore', {
                 offset: 0
                 // timestamp: new Date().getTime()
             }
+            const loadToken = this.libraryDetailToken
             await getArtistMV(params).then(result => {
+                if (loadToken && this.libraryDetailToken != loadToken) return
                 this.libraryMV = result.mvs
                 this.indexLibraryMVs(this.libraryMV)
             })
