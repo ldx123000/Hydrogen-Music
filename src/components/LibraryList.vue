@@ -71,6 +71,8 @@
     next()
   })
   const openMenu = (e, item) => {
+    e.preventDefault()
+    e.stopPropagation()
     if(listType1.value != 0 || listType2.value != 0) return
     otherStore.contextMenuShow = true
     otherStore.selectedItem = item
@@ -110,7 +112,7 @@
       <div class="create-icon">+</div>
       <span class="create-name">创建歌单</span>
     </div>
-    <div class="list-item" :class="{'list-item-selected': (item.id == router.currentRoute.value.fullPath.split('/')[3] && listType2 != 2) || (otherStore.currentVideoId == item.vid && listType2 == 2)}" v-for="(item, index) in libraryList" @click="showDetail(index, item)" @contextmenu="openMenu($event,item)">
+    <div class="list-item" :class="{'list-item-selected': (item.id == router.currentRoute.value.fullPath.split('/')[3] && listType2 != 2) || (otherStore.currentVideoId == item.vid && listType2 == 2)}" v-for="(item, index) in libraryList" @click="showDetail(index, item)" @contextmenu.prevent="openMenu($event,item)">
         <div class="item-img">
             <img :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl || item.coverUrl)" alt="">
         </div>
