@@ -3,7 +3,7 @@ const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
 const { parseFile } = require('music-metadata')
-const { spawn, execFile } = require('child_process')
+const { spawn } = require('child_process')
 const { loadLocalLyricPayload } = require('./localLyrics')
 const { registerSettingsIpc } = require('./ipc/settingsIpc')
 const { listSystemFonts } = require('./systemFonts')
@@ -101,74 +101,10 @@ function attachWindowStateListeners(win) {
     }
 }
 
-function getOpenDirectoryProperties(platform = process.platform) {
-    const properties = ['openDirectory']
-    if (platform === 'darwin') properties.push('createDirectory')
-    return properties
-}
-
-function trimTrailingDirectorySeparator(targetPath) {
-    const value = String(targetPath || '').trim()
-    if (!value) return ''
-    const parsedPath = path.parse(value)
-    if (value === parsedPath.root) return value
-    return value.replace(/[\\/]+$/, '')
-}
-
-function normalizeSelectedDirectoryPath(targetPath) {
-    const normalizedPath = trimTrailingDirectorySeparator(targetPath)
-    if (!normalizedPath) return null
-
-    try {
-        const stats = fs.statSync(normalizedPath)
-        if (stats.isDirectory()) return normalizedPath
-        if (stats.isFile()) return path.dirname(normalizedPath)
-    } catch (_) {}
-
-    return normalizedPath
-}
-
-function chooseMacDirectoryWithAppleScript() {
-    return new Promise(resolve => {
-        execFile(
-            '/usr/bin/osascript',
-            ['-e', 'POSIX path of (choose folder with prompt "选择文件夹")'],
-            { windowsHide: true },
-            (error, stdout = '', stderr = '') => {
-                if (!error) {
-                    resolve({
-                        canceled: false,
-                        path: normalizeSelectedDirectoryPath(stdout),
-                        fallback: false,
-                    })
-                    return
-                }
-
-                const message = `${error.message || ''}\n${stderr || ''}`.toLowerCase()
-                if (message.includes('user canceled') || message.includes('-128')) {
-                    resolve({ canceled: true, path: null, fallback: false })
-                    return
-                }
-
-                resolve({ canceled: false, path: null, fallback: true })
-            }
-        )
-    })
-}
-
-async function showOpenDirectoryDialog(win) {
-    if (process.platform === 'darwin') {
-        const macResult = await chooseMacDirectoryWithAppleScript()
-        if (macResult.canceled || macResult.path || !macResult.fallback) return macResult.path
-    }
-
-    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-        title: '选择文件夹',
-        buttonLabel: '选择',
-        properties: getOpenDirectoryProperties(),
-    })
+async function showOpenDirectoryDialog() {
+    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] })
     if (canceled) return null
-    return Array.isArray(filePaths) && filePaths[0] ? normalizeSelectedDirectoryPath(filePaths[0]) : null
+    return filePaths[0]
 }
 
 module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
@@ -846,7 +782,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.handle('system-fonts:list', () => listSystemFonts())
     const handleOpenDirectoryDialog = async () => {
         try {
-            return await showOpenDirectoryDialog(win)
+            return await showOpenDirectoryDialog()
         } catch (error) {
             console.error('打开目录选择器失败:', error)
             return null

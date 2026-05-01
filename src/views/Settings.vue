@@ -275,31 +275,19 @@ const routerChange = () => {
     router.back()
 }
 
-const openDirectoryPicker = async () => {
-    try {
-        const openDirectory = windowApi?.openDirectory || windowApi?.openFile
-        if (typeof openDirectory !== 'function') {
-            noticeOpen('目录选择器不可用', 2)
-            return null
-        }
-        return await openDirectory()
-    } catch (error) {
-        console.error('打开目录选择器失败:', error)
-        noticeOpen('打开目录选择器失败', 2)
-        return null
-    }
-}
-
-const selectFolder = async type => {
-    const path = await openDirectoryPicker()
-    if (!path) return
-
+const selectFolder = type => {
     if (type == 'download') {
-        downloadFolder.value = path
+        windowApi.openFile().then(path => {
+            downloadFolder.value = path
+        })
     } else if (type == 'local') {
-        if (localFolder.value.indexOf(path) == -1) localFolder.value.push(path)
+        windowApi.openFile().then(path => {
+            if (path && localFolder.value.indexOf(path) == -1) localFolder.value.push(path)
+        })
     } else if (type == 'video') {
-        videoFolder.value = path
+        windowApi.openFile().then(path => {
+            videoFolder.value = path
+        })
     }
 }
 const deleteLocalFolder = index => {
