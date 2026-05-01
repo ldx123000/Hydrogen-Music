@@ -8,6 +8,8 @@ const SOURCE_BY_LIST_TYPE = Object.freeze({
     playlist: 'list',
     album: 'album',
     artist: 'artist',
+    dj: 'dj',
+    toplist: 'toplist',
     personalfm: 'dailySongRecommend',
     rec: 'dailySongRecommend',
     search: 'search',
@@ -19,6 +21,10 @@ function normalizeSongId(value) {
     const text = String(value ?? '').trim()
     if (!/^[1-9]\d*$/.test(text)) return ''
     return text
+}
+
+function normalizeSourceId(value) {
+    return normalizeSongId(value)
 }
 
 function isReportableNcmSong(song) {
@@ -37,12 +43,12 @@ function buildAuthCookieString() {
 
 function resolveSourceContext(listInfo = {}) {
     const type = String(listInfo?.type || '').trim()
-    const id = listInfo?.id == null ? '' : String(listInfo.id).trim()
-    if (!type || !id || id === 'none') return {}
+    const listSourceId = normalizeSourceId(listInfo?.id)
+    if (!type || !listSourceId) return {}
 
     return {
         source: SOURCE_BY_LIST_TYPE[type] || 'list',
-        sourceId: id,
+        sourceId: listSourceId,
     }
 }
 
@@ -56,8 +62,23 @@ function buildSourceFields(listInfo) {
     }
 }
 
-function buildOfficialContent(songId) {
-    return `id=${songId}&play=true`
+function buildOfficialContent(listInfo) {
+    const { sourceId } = resolveSourceContext(listInfo)
+    if (sourceId) return `id=${sourceId}`
+    return ''
+}
+
+function resolveDurationSeconds(song) {
+    const duration = Number(song?.dt ?? song?.duration ?? song?.durationMs ?? song?.durationMS)
+    if (!Number.isFinite(duration) || duration <= 0) return 0
+    return Math.round(duration > 1000 ? duration / 1000 : duration)
+}
+
+function resolveReportSeconds(song, elapsedSeconds, end) {
+    const elapsed = Math.round(Number(elapsedSeconds) || 0)
+    const duration = resolveDurationSeconds(song)
+    if (end === 'playend' && duration > 0) return Math.max(elapsed, duration)
+    return elapsed
 }
 
 function withOfficialFields(action, json) {
@@ -87,11 +108,15 @@ async function submitLogs(logs) {
         })
 
         if (response?.status && (response.status < 200 || response.status >= 300)) {
-            console.warn('[NCM recent play] submit failed:', response.status, response.data)
+            console.warn('[NCM playback log] submit failed:', response.status, response.data)
+        }
+        const code = Number(response?.data?.code)
+        if (code && code !== 200) {
+            console.warn('[NCM playback log] submit returned:', response.data)
         }
         return response
     } catch (error) {
-        console.warn('[NCM recent play] submit failed:', error)
+        console.warn('[NCM playback log] submit failed:', error)
         return null
     }
 }
@@ -109,7 +134,7 @@ export function reportNcmPlaybackStart(song, { listInfo } = {}) {
         listInfo: listInfo ? { ...listInfo } : {},
     }
 
-    const content = buildOfficialContent(songId)
+    const content = buildOfficialContent(listInfo)
     const sourceFields = buildSourceFields(listInfo)
     const logs = [
         withOfficialFields('startplay', {
@@ -138,22 +163,28 @@ export function reportNcmPlaybackEnd(song, { elapsedSeconds = 0, end = 'interrup
     const session = activeSession
     if (!session || session.songId !== songId) return
 
-    const elapsed = Math.round(Math.max(Number(elapsedSeconds) || 0, (Date.now() - session.startedAt) / 1000))
+    const elapsed = resolveReportSeconds(
+        song,
+        Math.max(Number(elapsedSeconds) || 0, (Date.now() - session.startedAt) / 1000),
+        end
+    )
     activeSession = null
 
     if (elapsed < MIN_REPORT_SECONDS) return
 
-    const sourceFields = buildSourceFields(listInfo || session.listInfo)
-    const log = withOfficialFields('play', {
+    const sourceInfo = listInfo || session.listInfo
+    const sourceFields = buildSourceFields(sourceInfo)
+    const logJson = {
         id: songId,
         type: 'song',
         time: elapsed,
         end: end || 'interrupt',
         wifi: 0,
         download: 0,
-        content: buildOfficialContent(songId),
+        content: buildOfficialContent(sourceInfo),
         ...sourceFields,
-    })
+    }
+    const log = withOfficialFields('play', logJson)
 
     void submitLogs([log])
 }

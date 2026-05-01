@@ -487,7 +487,7 @@ const waitCurrentPlaylistHydration = async () => {
 
 const playAllSafe = async () => {
     await waitCurrentPlaylistHydration();
-    playAll('other', librarySongs.value || []);
+    playAll(router.currentRoute.value.name || 'other', librarySongs.value || []);
 };
 
 //下载本歌单/专辑全部歌曲
