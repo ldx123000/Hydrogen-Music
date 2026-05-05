@@ -37,6 +37,16 @@ export function buildFolderIndex(metadataRoot) {
     const foldersByName = {}
     const songSearchById = {}
 
+    const addFolderLookup = (node, songs) => {
+        const entry = {
+            name: node.name,
+            dirPath: node.dirPath,
+            songs,
+        }
+        if (node.dirPath) foldersByName[node.dirPath] = entry
+        if (node.name && !foldersByName[node.name]) foldersByName[node.name] = entry
+    }
+
     const walk = (node) => {
         if (!node || !Array.isArray(node.children)) return []
 
@@ -53,13 +63,7 @@ export function buildFolderIndex(metadataRoot) {
             }
         }
 
-        if (node.name && !foldersByName[node.name]) {
-            foldersByName[node.name] = {
-                name: node.name,
-                dirPath: node.dirPath,
-                songs: aggregatedSongs.slice(),
-            }
-        }
+        addFolderLookup(node, aggregatedSongs.slice())
 
         return aggregatedSongs
     }
@@ -75,6 +79,32 @@ export function buildFolderIndex(metadataRoot) {
         songSearchById,
         flatSongs,
     }
+}
+
+function findFolderPathLookupProbe(node) {
+    if (!node) return ''
+    if (Array.isArray(node)) {
+        for (const item of node) {
+            const probe = findFolderPathLookupProbe(item)
+            if (probe) return probe
+        }
+        return ''
+    }
+
+    if (Array.isArray(node.children)) {
+        if (node.dirPath && node.name && node.dirPath !== node.name) return node.dirPath
+        for (const child of node.children) {
+            const probe = findFolderPathLookupProbe(child)
+            if (probe) return probe
+        }
+    }
+    return ''
+}
+
+function derivedSupportsFolderPathLookup(derived, metadataRoot) {
+    const probe = findFolderPathLookupProbe(metadataRoot)
+    if (!probe) return true
+    return !!derived?.lookupIndex?.foldersByName?.[probe]
 }
 
 export function buildLocalClassify(flatSongs = []) {
@@ -155,8 +185,10 @@ export function buildDerivedPayload(type, metadataRoot) {
 function ensureDerivedPayload(type, localData) {
     const cachedDerived = localData?.derived
     if (cachedDerived?.lookupIndex) {
-        if (type === 'downloaded') return cachedDerived
-        if (cachedDerived?.classify?.artists && cachedDerived?.classify?.albums) return cachedDerived
+        const metadataRoot = getPayloadMetadata(localData)
+        const hasPathLookup = derivedSupportsFolderPathLookup(cachedDerived, metadataRoot)
+        if (type === 'downloaded' && hasPathLookup) return cachedDerived
+        if (hasPathLookup && cachedDerived?.classify?.artists && cachedDerived?.classify?.albums) return cachedDerived
     }
 
     const nextDerived = buildDerivedPayload(type, getPayloadMetadata(localData))

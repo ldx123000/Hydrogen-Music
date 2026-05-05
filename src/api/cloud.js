@@ -36,9 +36,25 @@ import request from "../utils/request";
  * @param {*} params 
  * @returns 
  */
- export function deleteCloudSong(params) {
+export function deleteCloudSong(params) {
     return request({
         url: '/user/cloud/del',
+        method: 'get',
+        params,
+    })
+}
+
+/**
+ * 说明 : 登录后调用此接口, 获取云盘歌曲歌词，歌词来自文件元数据的 LYRICS 标签
+ * 可选参数 :
+ * uid : 用户 id
+ * sid : 云盘歌曲 id
+ * @param {*} params
+ * @returns
+ */
+export function getCloudLyric(params) {
+    return request({
+        url: '/cloud/lyric/get',
         method: 'get',
         params,
     })

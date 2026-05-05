@@ -1,4 +1,5 @@
 const http = require('http')
+const path = require('path')
 
 // 启动内置的增强版网易云 API 服务。
 let enhancedApi = null;
@@ -79,12 +80,37 @@ async function waitForApiReachable(url, timeoutMs = API_READY_TIMEOUT_MS, interv
     throw lastError || new Error('ncm-api-unreachable')
 }
 
+async function getNcmApiModuleDefs() {
+    if (!enhancedApi || typeof enhancedApi.getModulesDefinitions !== 'function') return undefined
+
+    const moduleRoot = path.join(path.dirname(require.resolve('@neteasecloudmusicapienhanced/api')), 'module')
+    const moduleDefs = await enhancedApi.getModulesDefinitions(moduleRoot, {
+        'daily_signin.js': '/daily_signin',
+        'fm_trash.js': '/fm_trash',
+        'personal_fm.js': '/personal_fm',
+    })
+    const cloudModule = require('./ncmCloudUpload')
+
+    return moduleDefs.map(moduleDef => {
+        if (moduleDef && moduleDef.identifier === 'cloud') {
+            return {
+                ...moduleDef,
+                route: '/cloud',
+                module: cloudModule,
+            }
+        }
+        return moduleDef
+    })
+}
+
 module.exports = async function startNeteaseMusicApi() {
     if (enhancedApi && enhancedApi.serveNcmApi) {
         try {
+            const moduleDefs = await getNcmApiModuleDefs()
             const appExt = await enhancedApi.serveNcmApi({
                 checkVersion: false,
                 port: API_PORT,
+                moduleDefs,
             });
             await waitForServerListening(appExt && appExt.server)
             await waitForApiReachable(`http://127.0.0.1:${API_PORT}/`)

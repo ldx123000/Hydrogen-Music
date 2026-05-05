@@ -47,6 +47,7 @@ export const startMusicVideo = lazyPlayerExport('startMusicVideo');
 export const unloadMusicVideo = lazyPlayerExport('unloadMusicVideo');
 export const loadMusicVideo = lazyPlayerExport('loadMusicVideo');
 export const addSong = lazyPlayerExport('addSong');
+export const syncCloudDiskSongsFromItems = lazyPlayerExport('syncCloudDiskSongsFromItems');
 export const setSongLevel = lazyPlayerExport('setSongLevel');
 export const getLocalLyric = lazyPlayerExport('getLocalLyric');
 export const getSongUrl = lazyPlayerExport('getSongUrl');

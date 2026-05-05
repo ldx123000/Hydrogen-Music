@@ -4,6 +4,8 @@
   import { dialogOpen, noticeOpen } from '../utils/dialog'
   import { deleteCloudSong } from '../api/cloud'
   import { addSong, setShuffledList } from '../utils/player/lazy'
+  import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop'
+  import { markCloudDiskSong } from '../utils/player/lyricFallback'
   import { usePlayerStore } from '../store/playerStore'
   import { useLocalStore } from '../store/localStore'
 
@@ -60,8 +62,7 @@
   }
 
   function getItemCover(item) {
-    const picUrl = item?.simpleSong?.al?.picUrl || item?.simpleSong?.album?.picUrl || ''
-    return picUrl ? `${picUrl}?param=90y90` : ''
+    return withCoverParam(getSongCoverUrl(item?.simpleSong), 90)
   }
 
   function getItemTitle(item) {
@@ -100,8 +101,12 @@
   function getSelectedSongs() {
     return visibleItems.value
       .filter(item => selectedSongIds.value.includes(getSongId(item)))
-      .map(item => item.simpleSong)
+      .map(getPlayableCloudSong)
       .filter(Boolean)
+  }
+
+  function getPlayableCloudSong(item) {
+    return markCloudDiskSong(item?.simpleSong, item)
   }
 
   function downloadFile() {
@@ -147,8 +152,8 @@
     const playIndex = playableItems.findIndex(entry => getSongId(entry) == songId)
     if (playIndex == -1) return
 
-    playerStore.songList = playableItems.map(entry => entry.simpleSong).filter(Boolean)
-    await addSong(item.simpleSong.id, playIndex, true)
+    playerStore.songList = playableItems.map(getPlayableCloudSong).filter(Boolean)
+    await addSong(songId, playIndex, true)
     if (playerStore.playMode == 3) await setShuffledList()
   }
 </script>

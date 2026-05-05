@@ -197,11 +197,27 @@ function getCandidatePriority(candidate) {
         ? (candidate.timed ? 0 : 2)
         : (candidate.timed ? 1 : 3)
 
+    const tagPriority = candidate.sourceKind === 'embedded'
+        ? getEmbeddedTagPriority(candidate.tagId)
+        : 0
+
     const extPriority = candidate.sourceKind === 'sidecar'
         ? (sidecarExtPriority[candidate.extension] ?? 9)
         : 0
 
-    return [sourcePriority, extPriority, candidate.order]
+    return [sourcePriority, tagPriority, extPriority, candidate.order]
+}
+
+function getEmbeddedTagPriority(tagId) {
+    const normalized = String(tagId || '').toLowerCase()
+    if (!normalized) return 9
+    if (normalized.includes('lyrics_lrc') || normalized === 'lrc' || normalized.includes('syncedlyrics') || normalized.includes('sylt')) {
+        return 0
+    }
+    if (normalized === 'lyrics' || normalized.includes(':lyrics') || normalized.includes('unsyncedlyrics') || normalized.includes('unsynchronisedlyrics') || normalized.includes('uslt')) {
+        return 1
+    }
+    return 2
 }
 
 function compareCandidatePriority(left, right) {
@@ -312,7 +328,7 @@ async function collectEmbeddedLyricCandidates(filePath, options = {}) {
 
     if (!metadata || typeof metadata !== 'object') return candidates
 
-    const pushCandidate = rawValue => {
+    const pushCandidate = (rawValue, tagId = '') => {
         const normalizedTexts = normalizeLyricCandidates(rawValue)
         normalizedTexts.forEach(text => {
             candidates.push({
@@ -320,12 +336,11 @@ async function collectEmbeddedLyricCandidates(filePath, options = {}) {
                 timed: hasTimedLyricText(text),
                 sourceKind: 'embedded',
                 extension: '',
+                tagId,
                 order: candidates.length,
             })
         })
     }
-
-    pushCandidate(metadata.common && metadata.common.lyrics)
 
     const nativeTags = metadata.native || {}
     for (const type of Object.keys(nativeTags)) {
@@ -333,9 +348,11 @@ async function collectEmbeddedLyricCandidates(filePath, options = {}) {
         for (const tag of entries) {
             const tagId = String(tag && tag.id || '').toLowerCase()
             if (!shouldReadLyricTag(tagId)) continue
-            pushCandidate(tag && tag.value)
+            pushCandidate(tag && tag.value, tagId)
         }
     }
+
+    pushCandidate(metadata.common && metadata.common.lyrics, 'common:lyrics')
 
     return candidates
 }

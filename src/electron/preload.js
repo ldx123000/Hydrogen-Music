@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 const { pathToFileURL } = require('url')
 const TRUSTED_RESOURCE_ERROR_MARKER = '__hydrogenMusicTrustedResourceError'
 
@@ -262,6 +262,13 @@ contextBridge.exposeInMainWorld('windowApi', {
     localMusicFiles,
     localMusicCount,
     getLocalMusicImage: (filePath) => ipcRenderer.invoke('get-image-base64', filePath),
+    getPathForFile: (file) => {
+        try {
+            if (webUtils && typeof webUtils.getPathForFile === 'function') return webUtils.getPathForFile(file)
+        } catch (_) {}
+        return file && typeof file.path === 'string' ? file.path : ''
+    },
+    getAudioCoverFromBuffer: (buffer, mimeType) => ipcRenderer.invoke('get-audio-cover-base64-buffer', buffer, mimeType),
     toFileUrl,
     playOrPauseMusic,
     playOrPauseMusicCheck,

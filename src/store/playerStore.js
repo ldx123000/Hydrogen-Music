@@ -75,6 +75,7 @@ export const usePlayerStore = defineStore('playerStore', {
             lyric: null,
             lyricsObjArr: null,
             currentLyricIndex: -1, // 当前歌词索引，用于桌面歌词同步
+            lyricLineOffsets: {}, // 按歌曲保存的逐行歌词时间偏移
             lyricSize: null,
             tlyricSize: null,
             rlyricSize: null,
@@ -104,6 +105,6 @@ export const usePlayerStore = defineStore('playerStore', {
     },
     persist: {
         storage: playerPersistStorage,
-        pick: ['volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur','showSongTranslation','gaplessPlayback','audioVisualizer','coverBlur']
+        pick: ['volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','lyricLineOffsets','musicVideo','lyricBlur','showSongTranslation','gaplessPlayback','audioVisualizer','coverBlur']
     },
 })

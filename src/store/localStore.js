@@ -127,9 +127,10 @@ export const useLocalStore = defineStore('localStore', {
             this.currentSelectedFilePicUrl = null
             if(type == 'localFiles') {
                 const folderScope = query?.type == 'downloaded' ? 'downloaded' : 'local'
+                const folderLookupKey = query?.path || query?.dirPath || query?.name
                 const folderEntry = folderScope == 'downloaded'
-                    ? this.lookupIndex.downloadedFoldersByName?.[query?.name]
-                    : this.lookupIndex.localFoldersByName?.[query?.name]
+                    ? this.lookupIndex.downloadedFoldersByName?.[folderLookupKey] || this.lookupIndex.downloadedFoldersByName?.[query?.name]
+                    : this.lookupIndex.localFoldersByName?.[folderLookupKey] || this.lookupIndex.localFoldersByName?.[query?.name]
 
                 this.currentSelectedInfo = {
                     name: folderEntry?.name || query?.name || null,

@@ -4,6 +4,7 @@
   import VueSlider from 'vue-slider-component'
   import { noticeOpen } from '../utils/dialog'
   import { uploadCloudSong } from '../api/cloud'
+  import { syncCloudDiskSongsFromItems } from '../utils/player/lazy'
   import CloudFileList from '../components/CloudFileList.vue'
   import { useUserStore } from '../store/userStore'
   import { useCloudStore } from '../store/cloudStore';
@@ -33,6 +34,7 @@
   const videoExts = new Set(['mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'mpeg', 'mpg'])
   const archiveExts = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'iso'])
   const documentExts = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'rtf', 'csv', 'epub'])
+  const postUploadRefreshDelays = [1000, 2500, 5000]
 
   const isUploading = ref(false)
   const isDragOver = ref(false)
@@ -42,6 +44,10 @@
   const uploadCloudDiskFile = ref()
   const typeSelect = ref(CLOUD_CATEGORY_ALL)
   let changeHandler = null
+  const uploadedCoverBySongId = new Map()
+  const uploadedCoverByName = new Map()
+  const uploadedMetadataBySongId = new Map()
+  const uploadedMetadataByName = new Map()
 
   const cloudSongItems = computed(() => Array.isArray(cloudSongs.value) ? cloudSongs.value : [])
   const selectedCategoryName = computed(() => CLOUD_CATEGORY_LABELS[typeSelect.value] || CLOUD_CATEGORY_LABELS[CLOUD_CATEGORY_ALL])
@@ -64,11 +70,10 @@
       if (!input) return
       const files = Array.from(input.files || [])
       if (!files.length) return
-      await uploadFilesSequentially(files)
+      const uploadedFiles = await uploadFilesSequentially(files)
       // 清理 input 的值，释放文件引用并允许选择相同文件再次上传
       try { input.value = '' } catch (_) {}
-      // 上传完成后刷新云盘信息
-      await refreshCloudData()
+      await refreshCloudDataAfterUpload(uploadedFiles)
     }
     if (uploadCloudDiskFile.value) {
       uploadCloudDiskFile.value.addEventListener('change', changeHandler)
@@ -139,10 +144,354 @@
     }
 
     const loaded = await cloudStore.refreshCloudData(currentUserId, { force })
+    if (loaded) applyUploadedSongDataToItems(cloudSongItems.value)
     if (!loaded && getCurrentUserId() === currentUserId && !silent) {
       noticeOpen('获取云盘数据失败', 2)
     }
     return loaded
+  }
+
+  async function syncPlayerCloudSongsAfterRefresh() {
+    try {
+      await syncCloudDiskSongsFromItems(cloudSongItems.value, { refreshCurrentLyric: true })
+    } catch (error) {
+      console.warn('同步播放器云盘歌曲信息失败:', error)
+    }
+  }
+
+  async function applyUploadRefreshSnapshot(currentUserId, snapshot) {
+    if (!snapshot || getCurrentUserId() !== currentUserId) return false
+
+    const applied = cloudStore.applyCloudDataSnapshot(currentUserId, snapshot)
+    if (applied) await syncPlayerCloudSongsAfterRefresh()
+    return applied
+  }
+
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+  const stripAudioExt = name => String(name || '').replace(/\.(mp3|aac|wma|wav|ogg|m4a|ape|flac|cue|aiff|aif|alac|dsf)$/i, '')
+  const normalizeUploadName = name => stripAudioExt(name)
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[\s_\-.,，。:：;；'"`“”‘’()[\]（）【】<>《》!！?？/\\|]+/g, '')
+    .trim()
+
+  function hasCloudItemCover(item) {
+    return !!(
+      item?.simpleSong?.al?.picUrl ||
+      item?.simpleSong?.album?.picUrl ||
+      item?.simpleSong?.coverUrl ||
+      item?.simpleSong?.blurPicUrl ||
+      item?.simpleSong?.img1v1Url
+    )
+  }
+
+  function getUploadRecordFile(record) {
+    return record?.file || record
+  }
+
+  function getUploadRecordSongId(record) {
+    const id = record?.songId || record?.cloudSongId || record?.uploadResult?.cloudSongId || record?.uploadResult?.songId
+    return id === undefined || id === null || id === '' ? '' : String(id)
+  }
+
+  function getUploadRecordName(record) {
+    return normalizeUploadName(getUploadRecordFile(record)?.name || record?.cloudFileName || record?.uploadResult?.cloudFileName)
+  }
+
+  function splitUploadedArtistNames(value) {
+    return Array.from(
+      new Set(
+        String(value || '')
+          .split(/\s*(?:\/|、|,|，|;|；|&|\band\b|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b)\s*/i)
+          .map(name => String(name || '').trim())
+          .filter(Boolean)
+      )
+    )
+  }
+
+  function normalizeUploadedArtistText(value) {
+    return splitUploadedArtistNames(value).join(' / ')
+  }
+
+  function getUploadRecordMetadata(record) {
+    const metadata = record?.uploadResult?.cloudUploadMetadata
+    if (!metadata || typeof metadata !== 'object') return null
+
+    const name = String(metadata.name || '').trim()
+    const artist = normalizeUploadedArtistText(metadata.artist)
+    const album = String(metadata.album || '').trim()
+    const ar = splitUploadedArtistNames(artist).map(name => ({ name }))
+
+    if (!name && !artist && !album && ar.length === 0) return null
+    return { name, artist, album, ar }
+  }
+
+  function rememberUploadedValue(record, value, bySongId, byName) {
+    if (!value) return
+    const songId = getUploadRecordSongId(record)
+    if (songId) bySongId.set(songId, value)
+
+    const name = getUploadRecordName(record)
+    if (name) byName.set(name, value)
+  }
+
+  function rememberUploadedSongData(record) {
+    const coverDataUrl = typeof record?.coverDataUrl === 'string' && record.coverDataUrl.startsWith('data:image/')
+      ? record.coverDataUrl
+      : ''
+    rememberUploadedValue(record, coverDataUrl, uploadedCoverBySongId, uploadedCoverByName)
+    rememberUploadedValue(record, getUploadRecordMetadata(record), uploadedMetadataBySongId, uploadedMetadataByName)
+  }
+
+  function getCloudItemIds(item) {
+    return [
+      item?.simpleSong?.id,
+      item?.songId,
+      item?.id,
+    ].map(id => id === undefined || id === null || id === '' ? '' : String(id)).filter(Boolean)
+  }
+
+  function getCloudItemNormalizedNames(item) {
+    return [
+      item?.fileName,
+      item?.songName,
+      item?.simpleSong?.name,
+    ].map(normalizeUploadName).filter(Boolean)
+  }
+
+  function buildOptimisticCloudItem(record) {
+    const file = getUploadRecordFile(record)
+    const songId = getUploadRecordSongId(record)
+    if (!songId) return null
+
+    const metadata = getUploadRecordMetadata(record)
+    const fallbackName = stripAudioExt(file?.name || record?.cloudFileName || record?.uploadResult?.cloudFileName || '').trim()
+    const displayName = metadata?.name || fallbackName || '未知文件'
+    const artistNames = Array.isArray(metadata?.ar) ? metadata.ar : []
+    const artistText = metadata?.artist || artistNames.map(artist => artist?.name || '').filter(Boolean).join(' / ')
+    const albumName = metadata?.album || ''
+
+    return {
+      id: songId,
+      songId,
+      fileName: file?.name || record?.cloudFileName || `${displayName}.mp3`,
+      fileSize: Number(file?.size || 0),
+      addTime: Date.now(),
+      songName: displayName,
+      simpleSong: {
+        id: songId,
+        name: displayName,
+        dt: 0,
+        duration: 0,
+        ar: artistNames.length ? artistNames.map(artist => ({ ...artist })) : [],
+        artist: artistText,
+        artistsName: artistText,
+        al: albumName ? { name: albumName } : {},
+        album: albumName ? { name: albumName } : {},
+      },
+      hmOptimisticCloudItem: true,
+    }
+  }
+
+  function applyOptimisticUploadedItems(records = []) {
+    if (!Array.isArray(records) || records.length === 0) return false
+
+    const currentItems = Array.isArray(cloudStore.cloudSongs) ? cloudStore.cloudSongs.slice() : []
+    const existingIds = new Set(
+      currentItems
+        .map(item => item?.simpleSong?.id ?? item?.songId ?? item?.id)
+        .map(id => id === undefined || id === null || id === '' ? '' : String(id))
+        .filter(Boolean)
+    )
+
+    const optimisticItems = []
+    records.forEach(record => {
+      const item = buildOptimisticCloudItem(record)
+      const itemId = item?.simpleSong?.id ? String(item.simpleSong.id) : ''
+      if (!itemId || existingIds.has(itemId)) return
+      existingIds.add(itemId)
+      optimisticItems.push(item)
+    })
+
+    if (optimisticItems.length === 0) return false
+
+    const nextItems = [...optimisticItems, ...currentItems]
+    applyUploadedSongDataToItems(nextItems, records)
+    cloudStore.cloudSongs = nextItems
+
+    const currentCount = Number(cloudStore.count)
+    if (Number.isFinite(currentCount) && currentCount >= 0) {
+      cloudStore.count = currentCount + optimisticItems.length
+    }
+    return true
+  }
+
+  function getStoredUploadedValueForItem(item, bySongId, byName) {
+    for (const id of getCloudItemIds(item)) {
+      const value = bySongId.get(id)
+      if (value) return value
+    }
+
+    for (const name of getCloudItemNormalizedNames(item)) {
+      const value = byName.get(name)
+      if (value) return value
+    }
+
+    return ''
+  }
+
+  function hasMeaningfulSongTitle(item) {
+    const normalizedFileName = normalizeUploadName(item?.fileName || '')
+    const titles = [item?.songName, item?.simpleSong?.name]
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+
+    if (titles.length === 0) return false
+    return titles.some(title => normalizeUploadName(title) !== normalizedFileName)
+  }
+
+  function hasMeaningfulArtist(item) {
+    const artists = Array.isArray(item?.simpleSong?.ar) ? item.simpleSong.ar : []
+    return artists.some(artist => {
+      const name = String(artist?.name || artist || '').trim()
+      if (!name) return false
+      const normalized = name.toLowerCase()
+      return normalized !== 'unknown' && normalized !== '<unknown>' && name !== '未知艺术家' && name !== '未知'
+    })
+  }
+
+  function hasSemicolonJoinedArtist(item) {
+    const artists = Array.isArray(item?.simpleSong?.ar) ? item.simpleSong.ar : []
+    return artists.some(artist => /[;；]/.test(String(artist?.name || artist || '')))
+  }
+
+  function mergeUploadedMetadataIntoItem(item, metadata) {
+    const song = item?.simpleSong
+    if (!song || typeof song !== 'object' || !metadata) return false
+
+    let changed = false
+    const normalizedFileName = normalizeUploadName(item?.fileName || '')
+    const normalizedSongName = normalizeUploadName(item?.songName || '')
+    const normalizedSimpleSongName = normalizeUploadName(song?.name || '')
+
+    if (metadata.name) {
+      if (!item.songName || normalizedSongName === normalizedFileName) {
+        item.songName = metadata.name
+        changed = true
+      }
+      if (!song.name || normalizedSimpleSongName === normalizedFileName) {
+        song.name = metadata.name
+        changed = true
+      }
+    }
+
+    if ((!hasMeaningfulArtist(item) || hasSemicolonJoinedArtist(item)) && metadata.ar.length > 0) {
+      song.ar = metadata.ar.map(artist => ({ ...artist }))
+      if (metadata.artist) {
+        song.artist = metadata.artist
+        song.artistsName = metadata.artist
+      }
+      changed = true
+    }
+
+    if (metadata.album) {
+      if (!song.al || typeof song.al !== 'object') song.al = {}
+      if (!song.album || typeof song.album !== 'object') song.album = {}
+
+      if (!song.al.name) {
+        song.al.name = metadata.album
+        changed = true
+      }
+      if (!song.album.name) {
+        song.album.name = metadata.album
+        changed = true
+      }
+    }
+
+    return changed
+  }
+
+  function applyUploadedSongDataToItems(items, records = []) {
+    const targetItems = Array.isArray(items) ? items : []
+    if (Array.isArray(records)) records.forEach(rememberUploadedSongData)
+
+    let changed = false
+    targetItems.forEach(item => {
+      const song = item?.simpleSong
+      if (!song || typeof song !== 'object') return
+      const metadata = getStoredUploadedValueForItem(item, uploadedMetadataBySongId, uploadedMetadataByName)
+      if (metadata && mergeUploadedMetadataIntoItem(item, metadata)) {
+        changed = true
+      }
+
+      if (hasCloudItemCover(item)) return
+      const coverDataUrl = getStoredUploadedValueForItem(item, uploadedCoverBySongId, uploadedCoverByName)
+      if (!coverDataUrl) return
+
+      song.coverUrl = coverDataUrl
+      if (!song.al || typeof song.al !== 'object') song.al = {}
+      if (!song.al.picUrl) song.al.picUrl = coverDataUrl
+      if (!song.album || typeof song.album !== 'object') song.album = {}
+      if (!song.album.picUrl) song.album.picUrl = coverDataUrl
+      changed = true
+    })
+
+    if (changed && targetItems === cloudStore.cloudSongs && Array.isArray(cloudStore.cloudSongs)) {
+      cloudStore.cloudSongs = cloudStore.cloudSongs.slice()
+    }
+    return changed
+  }
+
+  function findCloudItemForUploadFileInItems(items, record) {
+    const targetItems = Array.isArray(items) ? items : []
+    const targetSongId = getUploadRecordSongId(record)
+    if (targetSongId) {
+      const matchedItem = targetItems.find(item => {
+        return getCloudItemIds(item).includes(targetSongId)
+      })
+      if (matchedItem) return matchedItem
+    }
+
+    const targetName = getUploadRecordName(record)
+    if (!targetName) return null
+
+    return targetItems.find(item => {
+      return getCloudItemNormalizedNames(item).some(name => name === targetName || name.includes(targetName) || targetName.includes(name))
+    }) || null
+  }
+
+  function uploadedCloudFilesReadyInItems(items, files) {
+    const targetItems = Array.isArray(items) ? items : []
+    if (!Array.isArray(files) || files.length === 0) return true
+    return files.every(file => {
+      const item = findCloudItemForUploadFileInItems(targetItems, file)
+      return !!(item?.simpleSong?.id && hasCloudItemCover(item) && hasMeaningfulSongTitle(item) && hasMeaningfulArtist(item))
+    })
+  }
+
+  async function refreshCloudDataAfterUpload(files) {
+    if (!Array.isArray(files) || files.length === 0) return false
+    const currentUserId = getCurrentUserId()
+    if (!currentUserId) return false
+
+    let snapshot = await cloudStore.fetchCloudDataSnapshot(currentUserId)
+    if (snapshot) {
+      applyUploadedSongDataToItems(snapshot.cloudSongs, files)
+      if (uploadedCloudFilesReadyInItems(snapshot.cloudSongs, files)) {
+        return applyUploadRefreshSnapshot(currentUserId, snapshot)
+      }
+    }
+
+    for (const delay of postUploadRefreshDelays) {
+      await wait(delay)
+      const nextSnapshot = await cloudStore.fetchCloudDataSnapshot(currentUserId)
+      if (!nextSnapshot) continue
+      applyUploadedSongDataToItems(nextSnapshot.cloudSongs, files)
+      snapshot = nextSnapshot
+      if (uploadedCloudFilesReadyInItems(snapshot.cloudSongs, files)) break
+    }
+
+    return applyUploadRefreshSnapshot(currentUserId, snapshot)
   }
 
   const uploadFile = () => {
@@ -230,9 +579,8 @@
       noticeOpen('未检测到支持的音频文件', 2)
       return
     }
-    await uploadFilesSequentially(files)
-    // 上传完成后刷新云盘信息
-    await refreshCloudData()
+    const uploadedFiles = await uploadFilesSequentially(files)
+    await refreshCloudDataAfterUpload(uploadedFiles)
   }
   const isDropUnsupported = computed(() => dragDetermined.value && !dragHasSupported.value)
   const dropOverlayTitle = computed(() => isDropUnsupported.value ? 'UNSUPPORTED' : 'DROP TO UPLOAD')
@@ -246,8 +594,39 @@
     throw new Error(res?.msg || res?.message || '上传失败')
   }
 
+  async function getUploadedFileCover(file) {
+    if (!file) return ''
+
+    try {
+      const filePath = typeof windowApi !== 'undefined' && typeof windowApi.getPathForFile === 'function'
+        ? windowApi.getPathForFile(file)
+        : file.path
+
+      if (filePath && typeof windowApi !== 'undefined' && typeof windowApi.getLocalMusicImage === 'function') {
+        const coverDataUrl = await windowApi.getLocalMusicImage(filePath)
+        if (coverDataUrl) return coverDataUrl
+      }
+    } catch (_) {}
+
+    try {
+      if (
+        typeof windowApi === 'undefined' ||
+        typeof windowApi.getAudioCoverFromBuffer !== 'function' ||
+        typeof file.arrayBuffer !== 'function'
+      ) {
+        return ''
+      }
+
+      const buffer = await file.arrayBuffer()
+      return await windowApi.getAudioCoverFromBuffer(buffer, file.type || '') || ''
+    } catch (_) {
+      return ''
+    }
+  }
+
   async function uploadFilesSequentially(files) {
     isUploading.value = true
+    const uploadedFiles = []
     try {
       const maxRetries = 3
       for (let i = 0; i < files.length; i++) {
@@ -255,7 +634,15 @@
         let attempt = 0
         while (attempt < maxRetries) {
           try {
-            await uploadSingle(file)
+            const uploadResult = await uploadSingle(file)
+            const uploadRecord = {
+              file,
+              uploadResult,
+              songId: getUploadRecordSongId({ uploadResult }),
+              coverDataUrl: await getUploadedFileCover(file),
+            }
+            rememberUploadedSongData(uploadRecord)
+            uploadedFiles.push(uploadRecord)
             noticeOpen(`${file.name} 上传成功`, 2)
             break
           } catch (err) {
@@ -270,10 +657,12 @@
           }
         }
       }
+      applyOptimisticUploadedItems(uploadedFiles)
       noticeOpen('上传完毕', 2)
     } finally {
       isUploading.value = false
     }
+    return uploadedFiles
   }
   const addTime = time => formatTime(time, "YYYY-MM-DD HH:mm:ss")
 </script>

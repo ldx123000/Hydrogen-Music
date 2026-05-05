@@ -299,43 +299,33 @@ async function finalizeDownloadMetadata(item, context, settings) {
   const saveLyricFile = !!(settings && settings.local && settings.local.downloadSaveLyricFile)
 
   if (context.lyrics && (context.lyrics.lrc || context.lyrics.tlyric || context.lyrics.romalrc)) {
-    const lrcText = buildCombinedLrcText(context.lyrics, {
+    const lyricMeta = {
       name: context.fileName,
       artists: Array.isArray(context.artists) ? context.artists : [],
       album: context.album || null,
-    })
+    }
+    const lrcText = buildCombinedLrcText(context.lyrics, lyricMeta)
     const lrcPath = path.join(parsed.dir, parsed.name + '.lrc')
     if (saveLyricFile) {
       await writeLyricFileIfNeeded(lrcPath, lrcText)
     }
 
     try {
-      const timedLrcText = lrcText
+      const timedLrcText = buildCombinedLrcText(context.lyrics, lyricMeta, {
+        includeByTag: false,
+      })
       const fallbackPlainText = buildUnsyncedLyricText(context.lyrics)
-      const hasTimedTags = typeof timedLrcText === 'string' && /\[\d{1,3}[:：.\uFF0E\u3002,，;；/\-_\s]\s*\d{1,2}/.test(timedLrcText)
+      const hasTimedTags = hasTimedLyricText(timedLrcText)
       const lyricTextForEmbed = (hasTimedTags ? timedLrcText : fallbackPlainText) || ''
-      const sylt = hasTimedTags ? buildSynchronisedLyricsFrames(context.lyrics) : null
       const extLower = (parsed.ext || '').toLowerCase()
       if (lyricTextForEmbed && lyricTextForEmbed.trim().length > 0) {
         if (NodeID3 && extLower === '.mp3') {
-          const tags = { unsynchronisedLyrics: { language: 'chi', text: lyricTextForEmbed } }
-          if (sylt && Array.isArray(sylt) && sylt.length) tags.synchronisedLyrics = sylt
-          NodeID3.update(tags, audioPath)
+          NodeID3.update({
+            userDefinedText: [{ description: 'LYRICS', value: lyricTextForEmbed }],
+          }, audioPath)
         } else if (Metaflac && extLower === '.flac') {
           const flac = new Metaflac(audioPath)
-          const plain = (fallbackPlainText || '').trim()
-          const timed = (timedLrcText || '').trim()
-          if (plain) {
-            try { flac.setTag(`LYRICS=${plain}`) } catch (_) {}
-            try { flac.setTag(`UNSYNCEDLYRICS=${plain}`) } catch (_) {}
-          } else if (timed) {
-            try { flac.setTag(`LYRICS=${timed}`) } catch (_) {}
-          }
-          if (hasTimedTags && timed) {
-            try { flac.setTag(`LRC=${timed}`) } catch (_) {}
-            try { flac.setTag(`LYRICS_LRC=${timed}`) } catch (_) {}
-            try { flac.setTag(`SYNCEDLYRICS=${timed}`) } catch (_) {}
-          }
+          try { flac.setTag(`LYRICS=${lyricTextForEmbed}`) } catch (_) {}
           try { flac.save() } catch (_) {}
         }
       }
@@ -401,7 +391,6 @@ async function finalizeDownloadMetadata(item, context, settings) {
       if (titleVal) flac.setTag(`TITLE=${titleVal}`)
       if (albumVal) flac.setTag(`ALBUM=${albumVal}`)
       if (artistsArr.length) {
-        try { flac.setTag(`ARTIST=${artistsArr.join(' / ')}`) } catch (_) {}
         artistsArr.forEach(artist => { try { if (artist) flac.setTag(`ARTIST=${artist}`) } catch (_) {} })
       }
       try { flac.save() } catch (fe) {
@@ -572,8 +561,15 @@ module.exports = MusicDownload = (win) => {
 }
 
 // 构建合并后的 LRC 文本：核心修复——兼容 [mm:ss:cc] 与 [mm:ss.xxx] 时间格式
-function buildCombinedLrcText(lyricPayload, meta) {
+function hasTimedLyricText(text) {
+  return typeof text === 'string' && /\[\d{1,3}[:：.\uFF0E\u3002,，;；/\-_\s]\s*\d{1,2}/.test(text)
+}
+
+function buildCombinedLrcText(lyricPayload, meta, options = {}) {
   try {
+    const includeTranslation = options.includeTranslation !== false
+    const includeRomaji = options.includeRomaji !== false
+    const includeByTag = options.includeByTag !== false
     // 更宽松的时间标签解析：允许分隔符为 : ： . ． 。 , ， ; ； / - _ 或任意空白
     // 支持 [mm sep ss] 与 [mm sep ss sep cc] 形式（cc 可为 1-3 位，表示 10ms/1ms 精度）
     const timeTag = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,3}))?\]/g
@@ -638,7 +634,7 @@ function buildCombinedLrcText(lyricPayload, meta) {
     }
 
     let out = ''
-    out += '[by:Hydrogen Music]\n'
+    if (includeByTag) out += '[by:Hydrogen Music]\n'
     if (meta && (meta.name || (meta.artists && meta.artists.length) || meta.album)) {
       if (meta.name) out += `[ti:${meta.name}]\n`
       if (Array.isArray(meta.artists) && meta.artists.length) out += `[ar:${meta.artists.join(' / ')}]\n`
@@ -653,8 +649,12 @@ function buildCombinedLrcText(lyricPayload, meta) {
       const trList = tMap.get(key) || []
       const rList = rMap.get(key) || []
       for (const o of oList) out += `${formatTag(t)}${o}\n`
-      for (const tr of trList) out += `${formatTag(t)}${tr}\n`
-      for (const r of rList) out += `${formatTag(t)}${r}\n`
+      if (includeTranslation) {
+        for (const tr of trList) out += `${formatTag(t)}${tr}\n`
+      }
+      if (includeRomaji) {
+        for (const r of rList) out += `${formatTag(t)}${r}\n`
+      }
     }
     return out
   } catch (e) {
@@ -677,74 +677,5 @@ function buildUnsyncedLyricText(lyricPayload) {
     return text
   } catch (_) {
     return ''
-  }
-}
-
-// 生成带时间戳的同步歌词帧（ID3v2 SYLT），用于 MP3 内嵌同步歌词
-function buildSynchronisedLyricsFrames(lyricPayload) {
-  try {
-    if (!NodeID3 || !NodeID3.TagConstants) return null
-    const TagConstants = NodeID3.TagConstants
-    const timeTag = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；/\-_\s]\s*(\d{1,3}))?\]/g
-
-    const extractEntries = (text) => {
-      const entries = []
-      if (!text || typeof text !== 'string') return entries
-      const lines = text.split(/\r?\n/)
-      for (const raw of lines) {
-        if (!raw) continue
-        const tags = Array.from(raw.matchAll(timeTag))
-        if (!tags || tags.length === 0) continue
-        const lyricText = raw.split(']').pop().trim()
-        if (!lyricText) continue
-        for (const m of tags) {
-          const mm = parseInt(m[1] || '0', 10)
-          const ss = parseInt(m[2] || '0', 10)
-          const ms = m[3] ? parseInt((String(m[3]) + '00').slice(0, 3), 10) : 0
-          const timeMs = Math.max(0, Math.round((mm * 60 + ss) * 1000 + ms))
-          entries.push({ timeMs, text: lyricText })
-        }
-      }
-      return entries
-    }
-
-    const grouped = new Map() // timeMs -> { o: [], t: [], r: [] }
-    const addToGroup = (entries, key) => {
-      for (const e of entries) {
-        if (!e || typeof e.timeMs !== 'number' || e.timeMs < 0) continue
-        const bucket = grouped.get(e.timeMs) || { o: [], t: [], r: [] }
-        if (e.text && String(e.text).trim()) bucket[key].push(String(e.text).trim())
-        grouped.set(e.timeMs, bucket)
-      }
-    }
-
-    addToGroup(extractEntries(lyricPayload && lyricPayload.lrc), 'o')
-    addToGroup(extractEntries(lyricPayload && lyricPayload.tlyric), 't')
-    addToGroup(extractEntries(lyricPayload && lyricPayload.romalrc), 'r')
-
-    const times = Array.from(grouped.keys()).sort((a, b) => a - b)
-    const synchronisedText = []
-    for (const timeMs of times) {
-      const bucket = grouped.get(timeMs)
-      if (!bucket) continue
-      const parts = []
-      if (bucket.o && bucket.o.length) parts.push(bucket.o.join('\n'))
-      if (bucket.t && bucket.t.length) parts.push(bucket.t.join('\n'))
-      if (bucket.r && bucket.r.length) parts.push(bucket.r.join('\n'))
-      const text = parts.join('\n').trim()
-      if (!text) continue
-      synchronisedText.push({ text, timeStamp: timeMs })
-    }
-    if (!synchronisedText.length) return null
-
-    return [{
-      language: 'chi',
-      timeStampFormat: TagConstants.TimeStampFormat.MILLISECONDS,
-      contentType: TagConstants.SynchronisedLyrics.ContentType.LYRICS,
-      shortText: 'Lyrics',
-      synchronisedText
-    }]
-  } catch (_) {
-    return null
   }
 }

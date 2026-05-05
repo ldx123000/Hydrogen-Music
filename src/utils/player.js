@@ -2,7 +2,7 @@ import pinia from '../store/pinia'
 import { Howl, Howler } from 'howler'
 import { songTime as formatSongTime, songTime2 as formatSongProgressTime } from './time';
 import { noticeOpen } from './dialog'
-import { checkMusic, likeMusic, getLyric } from '../api/song'
+import { checkMusic, likeMusic } from '../api/song'
 import { getSirenLyricText, getSirenSong } from '../api/siren'
 import { updatePlaylist } from '../api/playlist'
 import { getLikelist, getUserPlaylist } from '../api/user'
@@ -23,9 +23,10 @@ import { initPlayerExternalBridge as initExternalBridge } from './player/externa
 import { loadStoredPlaylist, persistPlaylistBeforeExit, saveStoredPlaylist } from './player/playlistPersistence'
 import { createShuffledList } from './player/queue'
 import { getPrefetchedSongAssets, getSongAssetKey, prefetchSongAssets } from './player/assetPrefetch'
+import { getLyricWithCloudFallback, isCloudDiskSong, markCloudDiskSong } from './player/lyricFallback'
 import { createDecodedAudioPlayer } from './player/webAudioGapless'
 import { runIdleTask } from './player/idleTask'
-import { createEmptyLyric } from './player/lyricPayload'
+import { createEmptyLyric, hasUsableLyricPayload } from './player/lyricPayload'
 import { verifyStoredMusicVideo } from './musicVideoLookup'
 import { isSeekInMusicVideoTiming, isValidMusicVideoTiming } from './musicVideoTiming'
 import { getIndexedSong, getIndexedSongOrFirst } from './songList'
@@ -64,6 +65,9 @@ let disposeGaplessTransitionTicker = null
 let gaplessTransitionInProgress = false
 let playbackSnapshotPersistTimer = null
 let lastPlaybackSnapshotPersistAt = 0
+let lyricLoadToken = 0
+let activeRemoteLyricFetch = null
+let pendingCurrentCloudLyricRetrySongId = ''
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -106,6 +110,40 @@ function getCurrentSong() {
 
 function getCurrentSongOrFirst() {
     return getIndexedSongOrFirst(songList.value, currentIndex.value)
+}
+
+function normalizePlayerSongId(value) {
+    return value === undefined || value === null || value === '' ? '' : String(value)
+}
+
+function createLyricLoadRequest(targetSongId) {
+    return {
+        token: ++lyricLoadToken,
+        targetSongId: normalizePlayerSongId(targetSongId),
+    }
+}
+
+function isActiveLyricLoadRequest(request) {
+    if (!request) return false
+    return request.token === lyricLoadToken
+        && normalizePlayerSongId(songId.value) === request.targetSongId
+}
+
+function getActiveRemoteLyricFetchSongId() {
+    return normalizePlayerSongId(activeRemoteLyricFetch?.songId)
+}
+
+function shouldRetryCurrentCloudLyricAfterPending(targetSongId) {
+    const normalizedTargetSongId = normalizePlayerSongId(targetSongId)
+    return !!normalizedTargetSongId
+        && pendingCurrentCloudLyricRetrySongId === normalizedTargetSongId
+        && normalizePlayerSongId(songId.value) === normalizedTargetSongId
+}
+
+function consumePendingCurrentCloudLyricRetry(targetSongId) {
+    if (!shouldRetryCurrentCloudLyricAfterPending(targetSongId)) return false
+    pendingCurrentCloudLyricRetrySongId = ''
+    return true
 }
 
 function hasCurrentSongSelected() {
@@ -426,14 +464,16 @@ export function preloadGaplessSongPlayback(song, options = {}) {
     })
 }
 
-function hasPrefetchedLyric(assets) {
-    return !!(assets?.hasLyric && assets.lyric && typeof assets.lyric === 'object')
+function hasPrefetchedLyric(assets, song = null) {
+    if (!(assets?.hasLyric && assets.lyric && typeof assets.lyric === 'object')) return false
+    if (isCloudDiskSong(song)) return hasUsableLyricPayload(assets.lyric)
+    return true
 }
 
 function applyPrefetchedLyricForSong(song, targetSongId) {
     if (songId.value !== targetSongId) return false
     const assets = getPrefetchedSongAssets(song)
-    if (!hasPrefetchedLyric(assets)) return false
+    if (!hasPrefetchedLyric(assets, song)) return false
     lyric.value = assets.lyric
     restorePlayerLyricAfterSongChange()
     return true
@@ -449,6 +489,7 @@ function applyPrefetchedLocalCoverForSong(song, targetSongId) {
 }
 
 function resetCurrentLyricState() {
+    lyricLoadToken += 1
     lyric.value = null
     lyricsObjArr.value = null
     currentLyricIndex.value = -1
@@ -469,8 +510,9 @@ function loadLocalCoverForSong(song, targetSongId) {
 async function loadLocalLyricForSong(song, targetSongId) {
     if (applyPrefetchedLyricForSong(song, targetSongId)) return true
 
+    const lyricRequest = createLyricLoadRequest(targetSongId)
     const localLyric = await getLocalLyric(song.url)
-    if (songId.value !== targetSongId) return false
+    if (!isActiveLyricLoadRequest(lyricRequest)) return false
     lyric.value = localLyric || createEmptyLyric()
     restorePlayerLyricAfterSongChange()
     return true
@@ -479,34 +521,61 @@ async function loadLocalLyricForSong(song, targetSongId) {
 async function loadSirenLyricForSong(song, targetSongId, lyricUrl = song?.lyricUrl) {
     if (applyPrefetchedLyricForSong(song, targetSongId)) return true
 
+    const lyricRequest = createLyricLoadRequest(targetSongId)
     try {
         const sirenLyric = await getSirenLyricPayload(lyricUrl)
-        if (songId.value !== targetSongId) return false
+        if (!isActiveLyricLoadRequest(lyricRequest)) return false
         lyric.value = sirenLyric
         restorePlayerLyricAfterSongChange()
         return true
     } catch (error) {
         console.error('加载塞壬歌词失败:', error)
-        if (songId.value !== targetSongId) return false
+        if (!isActiveLyricLoadRequest(lyricRequest)) return false
         lyric.value = createEmptyLyric()
         restorePlayerLyricAfterSongChange()
         return false
     }
 }
 
-async function loadRemoteLyricForSong(targetSongId, emptyFallback = false) {
+async function loadRemoteLyricForSong(song, targetSongId, emptyFallback = false) {
+    const lyricRequest = createLyricLoadRequest(targetSongId)
+    const normalizedTargetSongId = lyricRequest.targetSongId
+    const lyricFetchPromise = getLyricWithCloudFallback(song || targetSongId)
+    activeRemoteLyricFetch = {
+        songId: normalizedTargetSongId,
+        promise: lyricFetchPromise,
+    }
     try {
-        const songLiric = await getLyric(targetSongId)
-        if (songId.value !== targetSongId) return false
+        const songLiric = await lyricFetchPromise
+        if (!isActiveLyricLoadRequest(lyricRequest)) return false
         lyric.value = emptyFallback ? (songLiric || createEmptyLyric()) : songLiric
         restorePlayerLyricAfterSongChange()
         return true
     } catch (error) {
         console.warn('获取歌词失败:', error)
-        if (songId.value !== targetSongId) return false
+        if (!isActiveLyricLoadRequest(lyricRequest)) return false
         lyric.value = createEmptyLyric()
         restorePlayerLyricAfterSongChange()
         return false
+    } finally {
+        if (activeRemoteLyricFetch?.promise === lyricFetchPromise) {
+            activeRemoteLyricFetch = null
+        }
+
+        if (
+            consumePendingCurrentCloudLyricRetry(normalizedTargetSongId)
+            && normalizePlayerSongId(songId.value) === normalizedTargetSongId
+            && !hasUsableLyricPayload(lyric.value)
+        ) {
+            const currentSong = getCurrentSong()
+            if (currentSong && isCloudDiskSong(currentSong)) {
+                setTimeout(() => {
+                    if (normalizePlayerSongId(songId.value) !== normalizedTargetSongId) return
+                    if (hasUsableLyricPayload(lyric.value)) return
+                    void loadRemoteLyricForSong(currentSong, songId.value, true)
+                }, 0)
+            }
+        }
     }
 }
 
@@ -525,7 +594,7 @@ function hydrateSongAssets(song, targetSongId, options = {}) {
 
     if (applyPrefetchedLyricForSong(song, targetSongId)) return Promise.resolve(true)
 
-    return loadRemoteLyricForSong(targetSongId, options.emptyFallback === true)
+    return loadRemoteLyricForSong(song, targetSongId, options.emptyFallback === true)
 }
 
 function resetSongSwitchState() {
@@ -1629,6 +1698,69 @@ function restorePlayerLyricAfterSongChange() {
 
     lyricShow.value = true
     playerChangeSong.value = false
+}
+
+function buildCloudPlayableSongsById(cloudItems) {
+    const songsById = new Map()
+    if (!Array.isArray(cloudItems)) return songsById
+
+    cloudItems.forEach(item => {
+        const song = markCloudDiskSong(item?.simpleSong, item)
+        const id = normalizePlayerSongId(song?.id)
+        if (id) songsById.set(id, song)
+    })
+
+    return songsById
+}
+
+function syncCloudSongsInPlaybackList(list, cloudSongsById, syncedIds) {
+    if (!Array.isArray(list) || cloudSongsById.size === 0) return false
+
+    let changed = false
+    list.forEach(song => {
+        if (!isCloudDiskSong(song)) return
+        const id = normalizePlayerSongId(song?.id)
+        const freshSong = cloudSongsById.get(id)
+        if (!freshSong) return
+
+        Object.assign(song, freshSong)
+        syncedIds.add(id)
+        changed = true
+    })
+
+    return changed
+}
+
+async function refreshCurrentCloudLyricAfterSync(syncedIds) {
+    const currentSong = getCurrentSong()
+    const currentSongId = normalizePlayerSongId(songId.value || currentSong?.id)
+    if (!currentSongId || !syncedIds.has(currentSongId) || !isCloudDiskSong(currentSong)) return false
+    if (hasUsableLyricPayload(lyric.value)) return false
+    if (getActiveRemoteLyricFetchSongId() === currentSongId) {
+        pendingCurrentCloudLyricRetrySongId = currentSongId
+        return false
+    }
+
+    return loadRemoteLyricForSong(currentSong, songId.value, true)
+}
+
+export async function syncCloudDiskSongsFromItems(cloudItems, options = {}) {
+    const cloudSongsById = buildCloudPlayableSongsById(cloudItems)
+    if (cloudSongsById.size === 0) return false
+
+    const syncedIds = new Set()
+    const songListChanged = syncCloudSongsInPlaybackList(songList.value, cloudSongsById, syncedIds)
+    const shuffledListChanged = syncCloudSongsInPlaybackList(shuffledList.value, cloudSongsById, syncedIds)
+
+    if (songListChanged) songList.value = songList.value.slice()
+    if (shuffledListChanged) shuffledList.value = shuffledList.value.slice()
+    if (syncedIds.size > 0) scheduleNextSongAssetPrefetch()
+
+    if (options.refreshCurrentLyric === true) {
+        await refreshCurrentCloudLyricAfterSync(syncedIds)
+    }
+
+    return syncedIds.size > 0
 }
 
 export async function getSongUrl(id, index, autoplay, isLocal) {

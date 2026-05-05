@@ -5,6 +5,14 @@ import { getPlaybackSnapshot, PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackT
 import { usePlayerStore } from '../store/playerStore';
 import { storeToRefs } from 'pinia';
 import { LYRIC_INDEX_SYNC_BIAS_SEC, syncLyricIndexForSeek } from '../composables/usePlayerRuntime';
+import {
+    LYRIC_LINE_OFFSET_STEP_SEC,
+    buildNextLyricLineOffsetStore,
+    formatLyricLineOffset,
+    getDisplayedLyricLineOffset,
+    getLyricOffsetSongKey,
+    normalizeLyricLineOffset,
+} from '../utils/lyricLineOffset';
 import { getIndexedSong } from '../utils/songList';
 
 const playerStore = usePlayerStore();
@@ -18,6 +26,7 @@ const {
     lyricShow,
     lyricEle,
     isLyricDelay,
+    lyricLineOffsets,
     lyricSize,
     tlyricSize,
     rlyricSize,
@@ -25,6 +34,7 @@ const {
     playerChangeSong,
     lyricInterludeTime,
     lyricBlur,
+    time: totalTime,
     videoIsPlaying,
 } = storeToRefs(playerStore);
 
@@ -92,6 +102,113 @@ const syncingLayout = ref(false);
 const currentSong = computed(() => {
     return getIndexedSong(songList.value, currentIndex.value);
 });
+const lyricOffsetSongKey = computed(() => getLyricOffsetSongKey(currentSong.value));
+const lineOffsetMenu = ref({
+    visible: false,
+    x: 0,
+    y: 0,
+    index: -1,
+    item: null,
+});
+const lineOffsetMenuLabel = computed(() => formatLyricLineOffset(getDisplayedLyricLineOffset(lineOffsetMenu.value.item)));
+const lineOffsetMenuStepText = LYRIC_LINE_OFFSET_STEP_SEC.toFixed(1);
+
+function getCurrentDurationSec() {
+    const songDuration = Math.trunc(Number(currentSong.value?.dt || 0) / 1000);
+    if (songDuration > 0) return songDuration;
+
+    return Math.max(0, Math.floor(Number(totalTime.value) || 0));
+}
+
+function canAdjustLyricLine(item) {
+    if (!showMainLyricPanel.value || isUntimedLyrics.value || item?.untimed) return false;
+    if (!lyricOffsetSongKey.value || !item?.lyricLineKey) return false;
+
+    const originalTime = Number(item.lyricLineOriginalTime);
+    const currentTime = Number(item.time);
+    return Number.isFinite(originalTime) && Number.isFinite(currentTime);
+}
+
+function clampLyricLineTime(index, desiredTime) {
+    const rows = Array.isArray(lyricsObjArr.value) ? lyricsObjArr.value : [];
+    const previousTime = index > 0 ? Number(rows[index - 1]?.time) : 0;
+    const nextTime = index >= 0 && index < rows.length - 1 ? Number(rows[index + 1]?.time) : NaN;
+    const duration = getCurrentDurationSec();
+
+    let minTime = Number.isFinite(previousTime) ? previousTime : 0;
+    let maxTime = Number.isFinite(nextTime) ? nextTime : (duration > 0 ? duration : Infinity);
+    if (maxTime < minTime) maxTime = minTime;
+
+    return Math.min(Math.max(Math.max(0, desiredTime), minTime), maxTime);
+}
+
+function hideLineOffsetMenu() {
+    if (!lineOffsetMenu.value.visible) return;
+    lineOffsetMenu.value = {
+        visible: false,
+        x: 0,
+        y: 0,
+        index: -1,
+        item: null,
+    };
+}
+
+function showLineOffsetMenu(event, item, index) {
+    event.preventDefault();
+    if (!canAdjustLyricLine(item)) {
+        hideLineOffsetMenu();
+        return;
+    }
+
+    const menuWidth = 190;
+    const menuHeight = 150;
+    const x = Math.min(event.clientX, Math.max(8, window.innerWidth - menuWidth - 8));
+    const y = Math.min(event.clientY, Math.max(8, window.innerHeight - menuHeight - 8));
+
+    lineOffsetMenu.value = {
+        visible: true,
+        x: Math.max(8, x),
+        y: Math.max(8, y),
+        index,
+        item,
+    };
+}
+
+function updateLineOffset(deltaSec) {
+    const { index, item } = lineOffsetMenu.value;
+    if (!canAdjustLyricLine(item) || !Number.isInteger(index)) {
+        hideLineOffsetMenu();
+        return;
+    }
+
+    const originalTime = Number(item.lyricLineOriginalTime);
+    const currentOffset = getDisplayedLyricLineOffset(item);
+    const nextOffset = normalizeLyricLineOffset(currentOffset + deltaSec);
+    const nextTime = clampLyricLineTime(index, originalTime - nextOffset);
+    const clampedOffset = normalizeLyricLineOffset(originalTime - nextTime);
+
+    playerStore.lyricLineOffsets = buildNextLyricLineOffsetStore(
+        lyricLineOffsets.value,
+        lyricOffsetSongKey.value,
+        item.lyricLineKey,
+        clampedOffset
+    );
+    hideLineOffsetMenu();
+}
+
+function resetLineOffset() {
+    updateLineOffset(-getDisplayedLyricLineOffset(lineOffsetMenu.value.item));
+}
+
+function handleDocumentMouseDown(event) {
+    if (!lineOffsetMenu.value.visible) return;
+    if (event.target?.closest?.('.lyric-line-offset-menu')) return;
+    hideLineOffsetMenu();
+}
+
+function handleDocumentKeyDown(event) {
+    if (event.key === 'Escape') hideLineOffsetMenu();
+}
 
 // —— 每首歌自适应的演唱时长估计模型 ——
 // 以该首歌中“非间奏”的行间间隔，反推每个“文本单位”的平均时长（秒/单位），用于估计单行演唱结束点
@@ -576,6 +693,7 @@ function isSameLyricLayoutSignature(prev, next) {
 watch(
     () => lyricsObjArr.value,
     newLyrics => {
+        hideLineOffsetMenu();
         if (newLyrics && newLyrics.length > 0) {
             // 重新根据本首歌的行间隔校准演唱速率
             recomputeSongTimingModel();
@@ -999,6 +1117,7 @@ watch(
             return;
         }
 
+        hideLineOffsetMenu();
         invalidateLyricReveal();
     },
     { flush: 'post' }
@@ -1062,6 +1181,7 @@ watch(
 
 onMounted(() => {
     lyricWheelHandler = () => {
+        hideLineOffsetMenu();
         enterManualScrollMode();
     };
     if (lyricScroll.value) {
@@ -1079,6 +1199,8 @@ onMounted(() => {
     } else {
         window.addEventListener('resize', scheduleLayout);
     }
+    document.addEventListener('mousedown', handleDocumentMouseDown);
+    document.addEventListener('keydown', handleDocumentKeyDown);
 });
 
 onUnmounted(() => {
@@ -1098,6 +1220,8 @@ onUnmounted(() => {
     } else {
         window.removeEventListener('resize', scheduleLayout);
     }
+    document.removeEventListener('mousedown', handleDocumentMouseDown);
+    document.removeEventListener('keydown', handleDocumentKeyDown);
 });
 
 // 启动/停止 200ms 的间奏同步，复用全局播放节拍
@@ -1126,7 +1250,12 @@ watch([playing, lyricShow], ([p, show]) => {
                 <div class="lyric-content" ref="lyricContent">
                 <div class="lyric-spacer" :style="{ height: lyricTopSpacerHeight + 'px' }"></div>
                 <div class="lyric-line" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
-                    <div class="line" @click="changeProgressLyc(item.time, index, item)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active, 'line-static': isUntimedLyrics || item.untimed }">
+                    <div
+                        class="line"
+                        @click="changeProgressLyc(item.time, index, item)"
+                        @contextmenu.stop="showLineOffsetMenu($event, item, index)"
+                        :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active, 'line-static': isUntimedLyrics || item.untimed }"
+                    >
                         <span class="roma" :style="{ 'font-size': rlyricSize + 'px' }" v-if="item.rlyric && lyricType.indexOf('roma') != -1">{{ item.rlyric }}</span>
                         <span class="original" :style="{ 'font-size': lyricSize + 'px' }" v-if="showOriginalLyric">{{ item.lyric }}</span>
                         <span class="trans" :style="{ 'font-size': tlyricSize + 'px' }" v-if="item.tlyric && lyricType.indexOf('trans') != -1">{{ item.tlyric }}</span>
@@ -1279,6 +1408,39 @@ watch([playing, lyricShow], ([p, show]) => {
             </div>
         </Transition>
 
+        <div
+            v-if="lineOffsetMenu.visible"
+            class="lyric-line-offset-menu"
+            :style="{ left: lineOffsetMenu.x + 'px', top: lineOffsetMenu.y + 'px' }"
+            @mousedown.stop
+            @click.stop
+            @contextmenu.prevent.stop
+        >
+            <div class="offset-menu-header">
+                <span class="offset-menu-name">歌词偏移</span>
+                <span class="offset-menu-code">OFFSET</span>
+            </div>
+            <div class="offset-menu-current">{{ lineOffsetMenuLabel }}</div>
+            <div class="offset-menu-actions">
+                <button type="button" @click="updateLineOffset(LYRIC_LINE_OFFSET_STEP_SEC)">
+                    <span class="offset-action-main">提前 {{ lineOffsetMenuStepText }} 秒</span>
+                    <span class="offset-action-meta">EARLIER</span>
+                </button>
+                <button type="button" @click="updateLineOffset(-LYRIC_LINE_OFFSET_STEP_SEC)">
+                    <span class="offset-action-main">延后 {{ lineOffsetMenuStepText }} 秒</span>
+                    <span class="offset-action-meta">LATER</span>
+                </button>
+                <button type="button" @click="resetLineOffset">
+                    <span class="offset-action-main">重置本行偏移</span>
+                    <span class="offset-action-meta">RESET</span>
+                </button>
+            </div>
+            <span class="offset-corner offset-corner-tl">+</span>
+            <span class="offset-corner offset-corner-tr">+</span>
+            <span class="offset-corner offset-corner-br">+</span>
+            <span class="offset-corner offset-corner-bl">+</span>
+        </div>
+
         <span class="song-quality" v-if="currentSong && currentSong.type == 'local'">
             {{ currentSong.sampleRate }}KHz/{{ currentSong.bitsPerSample }}Bits/{{ currentSong.bitrate }}Kpbs
         </span>
@@ -1299,6 +1461,156 @@ watch([playing, lyricShow], ([p, show]) => {
     justify-content: center;
     align-items: center;
     z-index: 1;
+    .lyric-line-offset-menu {
+        position: fixed;
+        z-index: 50;
+        width: 190px;
+        padding: 14px 10px 10px;
+        box-sizing: border-box;
+        overflow: hidden;
+        background: rgba(32, 32, 32, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 0;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+        backdrop-filter: blur(14px);
+        color: #fff !important;
+        font: 12px SourceHanSansCN-Bold;
+        transform-origin: 12px 12px;
+        animation: offset-menu-in 0.16s cubic-bezier(0.3, 0.79, 0.55, 0.99) forwards;
+
+        @keyframes offset-menu-in {
+            0% {
+                opacity: 0;
+                transform: translateY(-4px) scale(0.98);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        &::before {
+            content: 'OFFSET';
+            position: absolute;
+            right: 8px;
+            bottom: -6px;
+            font: 34px Gilroy-ExtraBold;
+            color: rgba(255, 255, 255, 0.035);
+            letter-spacing: 0;
+            pointer-events: none;
+        }
+
+        .offset-menu-header {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 0 4px 7px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+        }
+
+        .offset-menu-name {
+            color: #fff !important;
+            font: 13px SourceHanSansCN-Bold;
+            line-height: 1;
+        }
+
+        .offset-menu-code {
+            color: rgba(255, 255, 255, 0.38) !important;
+            font: 10px Bender-Bold;
+            line-height: 1;
+        }
+
+        .offset-menu-current {
+            position: relative;
+            z-index: 1;
+            margin: 7px 4px 6px;
+            color: rgba(255, 255, 255, 0.62) !important;
+            font: 11px SourceHanSansCN-Bold;
+            line-height: 1.2;
+        }
+
+        .offset-menu-actions {
+            position: relative;
+            z-index: 1;
+        }
+
+        button {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+            height: 31px;
+            border: 0;
+            border-radius: 0;
+            background: transparent !important;
+            color: #fff !important;
+            text-align: left;
+            font: inherit;
+            cursor: pointer;
+            padding: 0 7px;
+            box-sizing: border-box;
+            appearance: none;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.16s, transform 0.16s;
+            &:hover {
+                border-radius: 0;
+                background: rgba(255, 255, 255, 0.09) !important;
+            }
+            &:focus,
+            &:focus-visible {
+                outline: none;
+                box-shadow: none;
+            }
+            &:active {
+                background: rgba(255, 255, 255, 0.09) !important;
+                transform: scale(0.97);
+            }
+        }
+
+        .offset-action-main {
+            color: inherit !important;
+            white-space: nowrap;
+        }
+
+        .offset-action-meta {
+            color: rgba(255, 255, 255, 0.35) !important;
+            font: 9px Bender-Bold;
+            white-space: nowrap;
+        }
+
+        .offset-corner {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.28) !important;
+            font: 12px Bender-Bold;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        .offset-corner-tl {
+            top: 2px;
+            left: 4px;
+        }
+
+        .offset-corner-tr {
+            top: 2px;
+            right: 4px;
+        }
+
+        .offset-corner-br {
+            right: 4px;
+            bottom: 2px;
+        }
+
+        .offset-corner-bl {
+            bottom: 2px;
+            left: 4px;
+        }
+    }
     .lyric-area {
         width: calc(100% - 3vh);
         height: calc(100% - 3vh);
@@ -1651,6 +1963,7 @@ watch([playing, lyricShow], ([p, show]) => {
         left: $boderPosition;
     }
 }
+
 .fade-enter-active {
     transition: opacity 0.25s cubic-bezier(0.3, 0.79, 0.55, 0.99) !important;
 }

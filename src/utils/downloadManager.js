@@ -2,13 +2,14 @@
 import { useLocalStore } from '../store/localStore'
 import { usePlayerStore } from '../store/playerStore'
 import { storeToRefs } from 'pinia'
-import { checkMusic, getLyric } from '../api/song'
+import { checkMusic } from '../api/song'
 import { getSirenLyricText, getSirenSong } from '../api/siren'
 import { noticeOpen } from './dialog'
 import { scanMusic } from './locaMusic'
 import { getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSirenAudioExtension, getSirenSourceId, SIREN_SOURCE } from './siren'
+import { getLyricWithCloudFallback } from './player/lyricFallback'
 
 let isInitialized = false
 
@@ -67,6 +68,7 @@ export const initDownloadManager = () => {
                 name: item?.name,
                 type: getSirenAudioExtension(streamUrl),
                 id: item?.id || `siren:${sourceId}`,
+                source: SIREN_SOURCE,
                 lyrics: lyricPayload,
                 coverUrl,
                 artists,
@@ -103,7 +105,7 @@ export const initDownloadManager = () => {
                     // 获取歌词（不阻塞音频下载；即使失败也继续）
                     let lyricPayload = null
                     try {
-                        const lyr = await getLyric(id)
+                        const lyr = await getLyricWithCloudFallback(currentItem)
                         lyricPayload = {
                             id,
                             lrc: lyr && lyr.lrc && lyr.lrc.lyric ? lyr.lrc.lyric : null,
@@ -124,6 +126,7 @@ export const initDownloadManager = () => {
                         name: downloadList.value[currentIndex].name,
                         type: trackInfo.type,
                         id,
+                        source: 'netease',
                         lyrics: lyricPayload,
                         coverUrl,
                         artists,

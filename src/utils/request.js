@@ -174,6 +174,10 @@ export function invalidateNcmApiCookieCache() {
 }
 
 async function ncmIpcAdapter(config) {
+  if (isFormDataPayload(config.data) && defaultAdapter) {
+    return defaultAdapter(config)
+  }
+
   if (typeof windowApi === 'undefined' || typeof windowApi.requestNcmApi !== 'function') {
     if (!defaultAdapter) {
       throw new Error('NCM request adapter unavailable')

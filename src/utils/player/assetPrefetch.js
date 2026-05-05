@@ -1,4 +1,4 @@
-import { getLyric, getSongDetail } from '../../api/song'
+import { getSongDetail } from '../../api/song'
 import { getSirenLyricText, getSirenSong } from '../../api/siren'
 import { getPreferredQuality } from '../quality'
 import { resolveTrackByQualityPreference } from '../musicUrlResolver'
@@ -6,6 +6,7 @@ import { getSirenSourceId, isSirenSong } from '../siren'
 import { getSongCoverUrl, normalizeCoverUrl, withCoverParam } from '../coverBackdrop'
 import { runIdleTask } from './idleTask'
 import { createEmptyLyric, normalizeLyricPayload } from './lyricPayload'
+import { getLyricWithCloudFallback } from './lyricFallback'
 
 const PREFETCH_CACHE_LIMIT = 80
 const IDLE_TIMEOUT_MS = 1800
@@ -295,7 +296,7 @@ async function prefetchSongAssetsNow(song, options = {}) {
             )
         } else if (song?.id) {
             tasks.push(
-                getLyric(song.id).then(lyric => assignLyricAsset(assets, lyric))
+                getLyricWithCloudFallback(song).then(lyric => assignLyricAsset(assets, lyric))
             )
             tasks.push(prefetchPlaybackUrl(song, options.quality))
         }
