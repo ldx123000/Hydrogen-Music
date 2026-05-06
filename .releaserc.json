@@ -27,8 +27,10 @@
         "failComment": false,
         "releasedLabels": false,
         "assets": [
-          "release/${nextRelease.version}/*.{exe,zip,blockmap}",
-          "release/${nextRelease.version}/latest.yml"
+          "release/*.exe",
+          "release/*.zip",
+          "release/*.blockmap",
+          "release/latest.yml"
         ]
       }
     ]

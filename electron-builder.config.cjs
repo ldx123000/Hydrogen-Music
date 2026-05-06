@@ -117,7 +117,7 @@ module.exports = {
     },
   ],
   directories: {
-    output: 'release/${version}',
+    output: 'release',
   },
   files: shouldExcludeLinuxOnlyDependencies()
     ? [...BASE_FILE_PATTERNS, ...LINUX_ONLY_DEPENDENCY_EXCLUDES]
