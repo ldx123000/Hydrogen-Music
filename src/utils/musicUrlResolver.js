@@ -17,6 +17,66 @@ function extractTrackInfo(songInfo) {
     return songInfo && songInfo.data && songInfo.data[0] ? songInfo.data[0] : null
 }
 
+function clonePlainSong(song) {
+    if (!song || typeof song !== 'object') return {}
+    try {
+        return JSON.parse(JSON.stringify(song))
+    } catch (_) {
+        return {
+            id: song.id,
+            name: song.name,
+            ar: song.ar,
+            artists: song.artists,
+            al: song.al,
+            album: song.album,
+            duration: song.duration,
+            dt: song.dt,
+        }
+    }
+}
+
+function inferTrackType(url, fallback = '') {
+    const normalizedFallback = String(fallback || '').trim().replace(/^\./, '').toLowerCase()
+    if (normalizedFallback) return normalizedFallback
+
+    try {
+        const pathname = new URL(url).pathname || ''
+        const matched = pathname.match(/\.([a-z0-9]+)$/i)
+        return matched?.[1]?.toLowerCase() || ''
+    } catch (_) {
+        const matched = String(url || '').match(/\.([a-z0-9]+)(?:\?|#|$)/i)
+        return matched?.[1]?.toLowerCase() || ''
+    }
+}
+
+function normalizeCustomTrackInfo(trackInfo, preferredLevel) {
+    if (!trackInfo?.url) return null
+    const type = inferTrackType(trackInfo.url, trackInfo.type)
+    const level = typeof trackInfo.level === 'string' && trackInfo.level ? trackInfo.level : preferredLevel
+    return {
+        id: trackInfo.id || null,
+        url: trackInfo.url,
+        br: Number(trackInfo.br) || 0,
+        size: Number(trackInfo.size) || 0,
+        md5: '',
+        code: 200,
+        expi: 0,
+        type,
+        gain: 0,
+        fee: 0,
+        uf: null,
+        payed: 0,
+        flag: 0,
+        canExtend: false,
+        freeTrialInfo: null,
+        level,
+        encodeType: type,
+        sr: Number(trackInfo.sr) || 0,
+        source: 'custom-source',
+        sourceName: trackInfo.sourceName || '',
+    }
+}
+
 function isPlayableTrack(trackInfo) {
     return !!(trackInfo && trackInfo.url)
 }
@@ -116,4 +176,30 @@ export async function resolveTrackByQualityPreference(id, preferredLevel, option
 
     if (cacheKey) pendingTrackInfoRequests.set(cacheKey, requestPromise)
     return requestPromise
+}
+
+export async function resolveCustomTrackByQualityPreference(song, preferredLevel, options = {}) {
+    if (typeof windowApi === 'undefined' || typeof windowApi.resolveCustomMusicUrl !== 'function') return null
+
+    const normalizedPreferredLevel = getPreferredQuality(preferredLevel)
+    const trackInfo = await windowApi.resolveCustomMusicUrl({
+        song: clonePlainSong(song),
+        quality: normalizedPreferredLevel,
+        allowDisabled: options.allowDisabled === true,
+    })
+
+    return normalizeCustomTrackInfo(trackInfo, normalizedPreferredLevel)
+}
+
+export async function resolveTrackWithCustomFallback(song, preferredLevel, options = {}) {
+    const playbackId = options.id ?? song?.id
+    const trackInfo = playbackId
+        ? await resolveTrackByQualityPreference(playbackId, preferredLevel, {
+            force: options.force === true,
+        })
+        : null
+    if (trackInfo?.url) return trackInfo
+    return resolveCustomTrackByQualityPreference(song, preferredLevel, {
+        allowDisabled: options.allowDisabled === true,
+    })
 }

@@ -12,6 +12,7 @@ import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
 import { noticeOpen } from '../utils/dialog'
 import { getSongDisplayName } from '../utils/songName'
+import { canPlayRestrictedSong, getCustomSourceAvailability, getRestrictedPlaybackFailureMessage, hasRestrictedPlaybackAlternative } from '../utils/customSourceAvailability'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -56,6 +57,7 @@ const props = defineProps({
 })
 const hoverRowKey = ref(null)
 const recycleScroller = ref(null)
+const customSourceHasSource = ref(false)
 const rowKeyBySong = new WeakMap()
 let rowKeySeed = 0
 
@@ -101,12 +103,23 @@ const refreshRecycleScroller = async () => {
 const scheduleRecycleScrollerRefresh = () => {
     void refreshRecycleScroller()
 }
+const refreshCustomSourceAvailability = async () => {
+    const state = await getCustomSourceAvailability()
+    customSourceHasSource.value = state.hasSource === true
+}
+const refreshListRuntimeState = () => {
+    scheduleRecycleScrollerRefresh()
+    void refreshCustomSourceAvailability()
+}
+const isSongDisabled = song => {
+    return song?.playable !== undefined && !song.playable && !hasRestrictedPlaybackAlternative(song, customSourceHasSource.value)
+}
 
 watch(scrollerItems, scheduleRecycleScrollerRefresh, { flush: 'post' })
 
-onMounted(scheduleRecycleScrollerRefresh)
+onMounted(refreshListRuntimeState)
 
-onActivated(scheduleRecycleScrollerRefresh)
+onActivated(refreshListRuntimeState)
 
 const checkArtist = artistId => {
     if (!props.artistRouteEnabled || !artistId) return
@@ -115,8 +128,12 @@ const checkArtist = artistId => {
 }
 const play = async (song, index) => {
     if (!song.playable) {
-        noticeOpen(`当前歌曲无法播放${!!song.reason ? ', ' + song.reason : ''}`, 2)
-        return
+        const canPlayRestricted = await canPlayRestrictedSong(song)
+        if (!canPlayRestricted) {
+            noticeOpen(getRestrictedPlaybackFailureMessage(song), 2)
+            return
+        }
+        // 交给播放器主链路：网易不可用时会走自定义解析源 fallback。
     }
     if (props.type == 'search') {
         // 搜索结果播放时：沿用“新增到现有播放列表并立即播放”的统一逻辑
@@ -180,7 +197,7 @@ const openMenu = (e, item) => {
         <RecycleScroller ref="recycleScroller" v-if="props.songlist" id="libraryScroll" class="library-song-list" :items="scrollerItems" :item-size="42" key-field="rowKey" v-slot="{ item }">
             <div
                 class="list-item"
-                :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': item.song.playable !== undefined && !item.song.playable, 'list-item-vip': item.song.vipOnly }"
+                :class="{ 'list-item-playing': songId == item.song.id, 'list-item-disabled': isSongDisabled(item.song), 'list-item-vip': item.song.vipOnly }"
                 @mouseenter="hoverRowKey = item.rowKey"
                 @mouseleave="hoverRowKey = null"
                 @dblclick="play(item.song, item.sourceIndex)"

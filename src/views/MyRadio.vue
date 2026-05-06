@@ -5,7 +5,7 @@ import { getDjSubList, getDjPrograms } from '../api/dj'
 import { getLyric } from '../api/song'
 import { usePlayerStore } from '../store/playerStore'
 import { getPreferredQuality } from '../utils/quality'
-import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
+import { resolveTrackWithCustomFallback } from '../utils/musicUrlResolver'
 
 const router = useRouter()
 const playerStore = usePlayerStore()
@@ -44,7 +44,7 @@ const playLatestProgram = async (radio) => {
     if (!mainSong?.id) return
 
     const preferredQuality = getPreferredQuality(playerStore.quality)
-    const trackInfo = await resolveTrackByQualityPreference(mainSong.id, preferredQuality)
+    const trackInfo = await resolveTrackWithCustomFallback(mainSong, preferredQuality)
     const url = trackInfo?.url
     if (!url) return
 

@@ -62,6 +62,14 @@ const customFont = ref('')
 const customFontLabel = ref('')
 const systemFonts = ref([])
 const systemFontsLoading = ref(false)
+const customSourceState = ref({
+    enabled: false,
+    hasSource: false,
+    source: null,
+})
+const customSourceBusy = ref(false)
+const customSourceTesting = ref(false)
+const customSourceImportUrl = ref('')
 let systemFontsLoadPromise = null
 
 const fontOptions = computed(() => buildFontOptions({
@@ -77,6 +85,7 @@ let updateListenersInitialized = false
 let removeUpdateListeners = null
 const PERFORMANCE_CONFIRM_MESSAGE = '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？'
 const GAPLESS_CONFIRM_MESSAGE = '开启后会提前预缓冲下一首音频，可能增加网络流量和内存占用，确定开启吗？'
+const CUSTOM_SOURCE_CONFIRM_MESSAGE = '开启后会在网易云无法解析歌曲时调用导入的脚本获取播放地址，确定开启吗？'
 
 const loadVipInfo = async () => {
     const requestUserId = userStore.user?.userId
@@ -93,6 +102,24 @@ const loadVipInfo = async () => {
         if (userStore.user?.userId != requestUserId) return
         console.error('加载 VIP 信息失败:', error)
         vipInfo.value = null
+    }
+}
+
+const applyCustomSourceState = state => {
+    if (state && typeof state === 'object') customSourceState.value = state
+}
+
+const applyCustomSourceResult = result => {
+    if (result?.state) applyCustomSourceState(result.state)
+    return result
+}
+
+const loadCustomSourceState = async () => {
+    if (!windowApi?.getCustomSourceState) return
+    try {
+        applyCustomSourceState(await windowApi.getCustomSourceState())
+    } catch (error) {
+        console.error('加载自定义解析源状态失败:', error)
     }
 }
 
@@ -123,6 +150,7 @@ const applySettingsToForm = settings => {
 onActivated(() => {
     void getSettingsSnapshot().then(applySettingsToForm)
     void loadSystemFonts()
+    void loadCustomSourceState()
 
     // Initialize theme selection
     try {
@@ -408,6 +436,99 @@ const setLyricBlur = () => setConfirmedPlayerFlag('lyricBlur', PERFORMANCE_CONFI
 const setCoverBlur = () => setConfirmedPlayerFlag('coverBlur', PERFORMANCE_CONFIRM_MESSAGE)
 const setGaplessPlayback = () => setConfirmedPlayerFlag('gaplessPlayback', GAPLESS_CONFIRM_MESSAGE)
 const setAudioVisualizer = () => setConfirmedPlayerFlag('audioVisualizer', PERFORMANCE_CONFIRM_MESSAGE)
+const setCustomSourceEnabled = () => {
+    if (!customSourceState.value?.hasSource) {
+        noticeOpen('请先导入自定义解析源', 2)
+        return
+    }
+
+    const nextEnabled = !customSourceState.value.enabled
+    if (!nextEnabled) {
+        void updateCustomSourceEnabled(false)
+        return
+    }
+
+    dialogOpen('确定开启', CUSTOM_SOURCE_CONFIRM_MESSAGE, flag => {
+        if (flag) void updateCustomSourceEnabled(true)
+    })
+}
+const updateCustomSourceEnabled = async enabled => {
+    if (customSourceBusy.value || !windowApi?.setCustomSourceEnabled) return
+    customSourceBusy.value = true
+    try {
+        applyCustomSourceState(await windowApi.setCustomSourceEnabled(enabled))
+    } catch (error) {
+        console.error('设置自定义解析源失败:', error)
+        noticeOpen('设置失败', 2)
+    } finally {
+        customSourceBusy.value = false
+    }
+}
+const importCustomSource = async () => {
+    if (customSourceBusy.value || !windowApi?.importCustomSource) return
+    customSourceBusy.value = true
+    try {
+        const result = applyCustomSourceResult(await windowApi.importCustomSource())
+        if (result?.canceled) return
+        noticeOpen(result?.ok ? '已导入自定义解析源' : (result?.message || '导入失败'), result?.ok ? 2 : 3)
+    } catch (error) {
+        console.error('导入自定义解析源失败:', error)
+        noticeOpen('导入失败', 3)
+    } finally {
+        customSourceBusy.value = false
+    }
+}
+const importCustomSourceFromUrl = async () => {
+    const url = customSourceImportUrl.value.trim()
+    if (!url) {
+        noticeOpen('请输入自定义解析源链接', 2)
+        return
+    }
+    if (customSourceBusy.value || !windowApi?.importCustomSourceFromUrl) return
+
+    customSourceBusy.value = true
+    try {
+        const result = applyCustomSourceResult(await windowApi.importCustomSourceFromUrl(url))
+        if (result?.ok) customSourceImportUrl.value = ''
+        noticeOpen(result?.ok ? '已从链接导入自定义解析源' : (result?.message || '导入失败'), result?.ok ? 2 : 3)
+    } catch (error) {
+        console.error('从链接导入自定义解析源失败:', error)
+        noticeOpen('导入失败', 3)
+    } finally {
+        customSourceBusy.value = false
+    }
+}
+const testCustomSource = async () => {
+    if (customSourceBusy.value || customSourceTesting.value || !windowApi?.testCustomSource) return
+    customSourceTesting.value = true
+    try {
+        const result = applyCustomSourceResult(await windowApi.testCustomSource({
+            quality: musicLevel.value,
+        }))
+        noticeOpen(result?.ok ? (result?.message || '解析源可用') : (result?.message || '测试失败'), result?.ok ? 2 : 3)
+    } catch (error) {
+        console.error('测试自定义解析源失败:', error)
+        noticeOpen('测试失败', 3)
+    } finally {
+        customSourceTesting.value = false
+    }
+}
+const removeCustomSource = () => {
+    if (!customSourceState.value?.hasSource || customSourceBusy.value || !windowApi?.removeCustomSource) return
+    dialogOpen('确认移除', '确定移除当前自定义解析源吗？', async flag => {
+        if (!flag) return
+        customSourceBusy.value = true
+        try {
+            applyCustomSourceState(await windowApi.removeCustomSource())
+            noticeOpen('已移除自定义解析源', 2)
+        } catch (error) {
+            console.error('移除自定义解析源失败:', error)
+            noticeOpen('移除失败', 3)
+        } finally {
+            customSourceBusy.value = false
+        }
+    })
+}
 const userLogout = async () => {
     if (!isLogin()) {
         noticeOpen('您已退出账号', 2)
@@ -567,6 +688,39 @@ const clearFmRecent = () => {
                                     <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.audioVisualizer }">{{ playerStore.audioVisualizer ? '已开启' : '已关闭' }}</div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="playerStore.audioVisualizer"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">自定义解析源</div>
+                            <div class="select-download-folder custom-source-setting">
+                                <div class="selected-folder" :title="customSourceState.source?.name || ''">
+                                    {{ customSourceState.source?.name || '未导入' }}
+                                </div>
+                                <div class="select-option" @click="importCustomSource">{{ customSourceBusy ? '处理中' : '导入文件' }}</div>
+                                <div class="select-option" :class="{ 'source-option-disabled': !customSourceState.hasSource || customSourceBusy || customSourceTesting }" @click="testCustomSource">
+                                    {{ customSourceTesting ? '测试中' : '测试' }}
+                                </div>
+                                <div class="select-option" :class="{ 'source-option-disabled': !customSourceState.hasSource || customSourceBusy }" @click="removeCustomSource">移除</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">解析源链接</div>
+                            <div class="select-download-folder custom-source-link">
+                                <input v-model="customSourceImportUrl" placeholder="https://.../source.js" @click.stop />
+                                <div class="select-option" :class="{ 'source-option-disabled': customSourceBusy || !customSourceImportUrl.trim() }" @click="importCustomSourceFromUrl">
+                                    {{ customSourceBusy ? '处理中' : '导入链接' }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="customSourceState.hasSource">
+                            <div class="option-name">启用自定义解析源</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="setCustomSourceEnabled()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': customSourceState.enabled }">{{ customSourceState.enabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="customSourceState.enabled"></div>
                                     </Transition>
                                 </div>
                             </div>
@@ -1061,6 +1215,32 @@ const clearFmRecent = () => {
                                     cursor: pointer;
                                     opacity: 0.8;
                                     box-shadow: 0 0 0 1px black;
+                                }
+                            }
+                            &.custom-source-setting {
+                                .selected-folder {
+                                    width: 34vw;
+                                    text-align: left;
+                                    padding: 0 10px;
+                                }
+                                .source-option-disabled {
+                                    opacity: 0.45;
+                                    pointer-events: none;
+                                }
+                            }
+                            &.custom-source-link {
+                                input {
+                                    width: 34vw;
+                                    text-align: left;
+                                    padding: 0 10px;
+                                    background-color: rgba(255, 255, 255, 0.35);
+                                    &:hover {
+                                        cursor: text;
+                                    }
+                                }
+                                .source-option-disabled {
+                                    opacity: 0.45;
+                                    pointer-events: none;
                                 }
                             }
                         }

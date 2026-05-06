@@ -1,5 +1,5 @@
 <script setup>
-  import { onMounted, onUnmounted } from 'vue'
+  import { onMounted, onUnmounted, watch } from 'vue'
   import Plyr from 'plyr'
   import '../assets/css/plyr.css'
   import { musicVideoCheck } from '../utils/player/lazy';
@@ -7,6 +7,43 @@
   const playerStore = usePlayerStore()
   let plyrInstance = null
   let nativeVideoElement = null
+
+  const muteNativeVideoElement = videoElement => {
+    if (!videoElement) return
+    videoElement.muted = true
+    videoElement.defaultMuted = true
+    videoElement.volume = 0
+    videoElement.setAttribute('muted', '')
+  }
+
+  const mutePlyrInstance = player => {
+    if (!player) return
+    try {
+      player.muted = true
+      player.volume = 0
+      muteNativeVideoElement(player.media)
+    } catch (error) {
+      console.warn('静音音乐视频失败:', error)
+    }
+  }
+
+  const pausePlyrInstance = player => {
+    if (!player) return
+    try {
+      player.pause()
+    } catch (error) {
+      console.warn('暂停音乐视频失败:', error)
+    }
+  }
+
+  watch(
+    () => playerStore.videoIsPlaying,
+    isPlaying => {
+      if (!plyrInstance) return
+      mutePlyrInstance(plyrInstance)
+      if (!isPlaying) pausePlyrInstance(plyrInstance)
+    }
+  )
   
   onMounted(() => {
     const config = {
@@ -34,12 +71,14 @@
       type: 'video',
       sources: sources,
     }
+    mutePlyrInstance(player)
     
     player.on('error', (event) => {
       console.error('视频播放错误:', event)
     })
     
     player.on('play', () => {
+      mutePlyrInstance(player)
       let seek = 0
       try {
         const value = playerStore.currentMusic?.seek?.()
@@ -52,6 +91,7 @@
     const videoElement = player.media
     nativeVideoElement = videoElement
     if (videoElement) {
+      muteNativeVideoElement(videoElement)
       // 监听原生视频元素的错误事件
       videoElement.onerror = function(e) {
         console.error('原生视频元素错误:', e)
@@ -84,7 +124,7 @@
 
 <template>
     <div class="back-video">
-        <video id="video-player" class="video-player" playsinline></video>
+        <video id="video-player" class="video-player" playsinline muted></video>
     </div>
 </template>
 

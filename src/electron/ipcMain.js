@@ -6,6 +6,7 @@ const { parseFile, parseBuffer } = require('music-metadata')
 const { spawn } = require('child_process')
 const { loadLocalLyricPayload } = require('./localLyrics')
 const { registerSettingsIpc } = require('./ipc/settingsIpc')
+const { registerCustomSourceIpc } = require('./customSource')
 const { listSystemFonts } = require('./systemFonts')
 const {
     getBufferLength,
@@ -800,6 +801,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     })
     registerSettingsIpc({ ipcMain, settingsStore, win, registerShortcuts })
+    registerCustomSourceIpc({ ipcMain })
     ipcMain.handle('system-fonts:list', () => listSystemFonts())
     const handleOpenDirectoryDialog = async () => {
         try {

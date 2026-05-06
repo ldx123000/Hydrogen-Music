@@ -182,7 +182,7 @@ import {
 } from '../utils/player/lazy'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from '../utils/quality'
-import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
+import { resolveTrackWithCustomFallback } from '../utils/musicUrlResolver'
 import { getSongDisplayName } from '../utils/songName'
 import { getPrefetchedSongAssets, hydrateRemoteSongMetadata, prefetchSongAssetList } from '../utils/player/assetPrefetch'
 import { createEmptyLyric } from '../utils/player/lyricPayload'
@@ -1078,7 +1078,7 @@ const togglePlay = async () => {
         const metadataTask = hydrateRemoteSongMetadata(normalizedCurrentSong)
 
         const preferredQuality = getPreferredQuality(quality.value)
-        const trackInfo = await resolveTrackByQualityPreference(targetSongId, preferredQuality)
+        const trackInfo = await resolveTrackWithCustomFallback(normalizedCurrentSong, preferredQuality, { id: targetSongId })
         if (currentSong.value?.id !== targetSongId) return
 
         if (trackInfo && trackInfo.url) {

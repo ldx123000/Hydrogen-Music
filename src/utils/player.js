@@ -13,10 +13,11 @@ import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
 import { markRaw, toRaw, watch } from "vue";
 import { getPreferredQuality } from './quality'
-import { resolveTrackByQualityPreference } from './musicUrlResolver'
+import { resolveCustomTrackByQualityPreference, resolveTrackByQualityPreference, resolveTrackWithCustomFallback } from './musicUrlResolver'
 import { getSongDisplayName } from './songName'
 import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from './siren'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
+import { canTryCustomSourceForRestrictedSong, getNoCopyrightRecommendedSongId, getRestrictedPlaybackFailureMessage } from './customSourceAvailability'
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
 import { PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from './player/playbackTicker'
 import { initPlayerExternalBridge as initExternalBridge } from './player/externalBridge'
@@ -353,6 +354,34 @@ function isGaplessPreloadUsable(entry, song, url = '') {
     return !!(entry.howl && typeof entry.howl.play === 'function' && entry.howl.state?.() !== 'unloaded')
 }
 
+function buildRemotePlaybackInfo(trackInfo, isCustomSource = false) {
+    return trackInfo?.url
+        ? {
+            url: trackInfo.url,
+            trackInfo,
+            isSiren: false,
+            isCustomSource,
+        }
+        : null
+}
+
+async function resolveCustomSongPlaybackInfo(song, preferredQuality, options = {}) {
+    const trackInfo = await resolveCustomTrackByQualityPreference(song, preferredQuality, {
+        allowDisabled: options.allowDisabled === true,
+    })
+    return buildRemotePlaybackInfo(trackInfo, true)
+}
+
+async function resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options = {}) {
+    const recommendedId = getNoCopyrightRecommendedSongId(song)
+    if (!recommendedId) return null
+
+    const trackInfo = await resolveTrackByQualityPreference(recommendedId, preferredQuality, {
+        force: options.force === true,
+    })
+    return buildRemotePlaybackInfo(trackInfo)
+}
+
 async function resolveSongPlaybackInfo(song, options = {}) {
     if (!song || typeof song !== 'object') return null
     if (song.type === 'local') {
@@ -380,28 +409,34 @@ async function resolveSongPlaybackInfo(song, options = {}) {
 
     const playbackId = options.id ?? song.id
     if (!playbackId) return null
+    const preferredQuality = getPreferredQuality(options.quality ?? quality.value)
+    const allowDisabledCustomSource = canTryCustomSourceForRestrictedSong(song)
 
     if (options.checkAvailability) {
         const availability = await checkMusic(playbackId)
         if (availability?.success != true) {
-            return {
+            const recommendedPlaybackInfo = await resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options)
+            if (recommendedPlaybackInfo) return recommendedPlaybackInfo
+
+            const customPlaybackInfo = await resolveCustomSongPlaybackInfo(song, preferredQuality, {
+                allowDisabled: allowDisabledCustomSource,
+            })
+            return customPlaybackInfo || {
                 unavailable: true,
                 availability,
             }
         }
     }
 
-    const preferredQuality = getPreferredQuality(options.quality ?? quality.value)
-    const trackInfo = await resolveTrackByQualityPreference(playbackId, preferredQuality, {
+    const recommendedPlaybackInfo = await resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options)
+    if (recommendedPlaybackInfo) return recommendedPlaybackInfo
+
+    const trackInfo = await resolveTrackWithCustomFallback(song, preferredQuality, {
+        id: playbackId,
         force: options.force === true,
+        allowDisabled: allowDisabledCustomSource,
     })
-    return trackInfo?.url
-        ? {
-            url: trackInfo.url,
-            trackInfo,
-            isSiren: false,
-        }
-        : null
+    return buildRemotePlaybackInfo(trackInfo, trackInfo?.source === 'custom-source')
 }
 
 export function preloadGaplessSongPlayback(song, options = {}) {
@@ -436,6 +471,7 @@ export function preloadGaplessSongPlayback(song, options = {}) {
 
             const playbackInfo = await resolveSongPlaybackInfo(song, { quality: preferredQuality })
             if (token !== gaplessPreloadToken || !gaplessPlayback.value || !playbackInfo?.url) return null
+            if (playbackInfo.isCustomSource) return null
 
             const nextHowl = markRaw(await createDecodedAudioPlayer(playbackInfo.url, {
                 localPath: playbackInfo.localPath,
@@ -937,10 +973,10 @@ function isTransientPlaybackRequestError(error) {
     return /timeout|timed\s*out|etimedout|econnaborted|econnreset|eai_again|enotfound|getaddrinfo|network/i.test(message)
 }
 
-function handlePlaybackLoadFailure(error, { advance = false } = {}) {
+function handlePlaybackLoadFailure(error, { advance = false, song = null, availability = null } = {}) {
     if (error) console.error('获取歌曲播放信息失败:', error)
     const isNetworkError = isTransientPlaybackRequestError(error)
-    noticeOpen(isNetworkError ? '网络请求失败，请稍后重试' : '当前歌曲无法播放', 2)
+    noticeOpen(isNetworkError ? '网络请求失败，请稍后重试' : getRestrictedPlaybackFailureMessage(song, availability || error), 2)
     resetFailedPlaybackState()
     if (advance && !isNetworkError) playNext()
 }
@@ -1519,6 +1555,39 @@ export function startLocalMusicVideo() {
 export function startMusicVideo() {
     startMusicVideoSampling()
 }
+
+function prepareMusicVideoDOMForPlayback() {
+    if (!musicVideoDOM.value) return
+    try {
+        musicVideoDOM.value.muted = true
+        musicVideoDOM.value.volume = 0
+        if (musicVideoDOM.value.media) {
+            musicVideoDOM.value.media.muted = true
+            musicVideoDOM.value.media.defaultMuted = true
+            musicVideoDOM.value.media.volume = 0
+            musicVideoDOM.value.media.setAttribute?.('muted', '')
+        }
+    } catch (error) {
+        console.warn('准备音乐视频播放时出错:', error)
+    }
+}
+
+function pauseMusicVideoDOM() {
+    if (!musicVideoDOM.value) return
+    try {
+        musicVideoDOM.value.pause()
+    } catch (error) {
+        console.warn('暂停音乐视频时出错:', error)
+    }
+}
+
+function stopVisibleMusicVideo() {
+    videoIsPlaying.value = false
+    playerShow.value = true
+    currentTiming = null
+    pauseMusicVideoDOM()
+}
+
 export function unloadMusicVideo() {
     // 清理状态变量
     currentMusicVideo.value = null
@@ -1532,7 +1601,7 @@ export function unloadMusicVideo() {
     // 如果存在视频播放器，暂停并清理
     if (musicVideoDOM.value) {
         try {
-            musicVideoDOM.value.pause()
+            pauseMusicVideoDOM()
             // 尝试清理视频源
             if (musicVideoDOM.value.source) {
                 musicVideoDOM.value.source = null
@@ -1667,22 +1736,50 @@ export function setSongLevel(level, streamInfo = null) {
 
     const normalizedLevel = typeof level === 'string' && level ? level : 'unknown'
     const levelField = levelFieldMap[normalizedLevel]
-    const mappedLevelInfo = levelField ? currentSong[levelField] : null
+    const mappedLevelInfo = streamInfo?.source === 'custom-source' ? null : (levelField ? currentSong[levelField] : null)
     const streamLevelInfo = buildLevelInfoFromStream(streamInfo || {})
 
     currentSong.level = mappedLevelInfo || streamLevelInfo || null
     currentSong.actualLevel = normalizedLevel
     // 保持旧字段兼容：quality 表示当前曲目实际返回档位，而非用户偏好。
     currentSong.quality = normalizedLevel
+    if (streamInfo?.source === 'custom-source') {
+        currentSong.hmPlaybackSource = 'custom-source'
+        currentSong.hmCustomSourceName = streamInfo.sourceName || ''
+    } else {
+        clearPlaybackSourceMeta(currentSong)
+    }
+}
+
+function clearPlaybackSourceMeta(song) {
+    if (!song) return
+    delete song.hmPlaybackSource
+    delete song.hmCustomSourceName
+}
+
+function applyCustomSourceTrackInfo(song, trackInfo = {}) {
+    if (!song) return
+    const normalizedLevel = typeof trackInfo.level === 'string' && trackInfo.level ? trackInfo.level : 'custom'
+    song.level = buildLevelInfoFromStream(trackInfo)
+    song.actualLevel = normalizedLevel
+    song.quality = normalizedLevel
+    song.hmPlaybackSource = 'custom-source'
+    song.hmCustomSourceName = trackInfo.sourceName || ''
 }
 
 function applyPlaybackInfoToCurrentSong(targetSong, playbackInfo) {
     if (!targetSong || !playbackInfo) return
     if (playbackInfo.isSiren) {
+        clearPlaybackSourceMeta(targetSong)
         applySirenTrackInfo(targetSong, playbackInfo.url)
         return
     }
+    if (playbackInfo.isCustomSource) {
+        applyCustomSourceTrackInfo(targetSong, playbackInfo.trackInfo)
+        return
+    }
     if (playbackInfo.trackInfo) {
+        clearPlaybackSourceMeta(targetSong)
         setSongLevel(playbackInfo.trackInfo.level, playbackInfo.trackInfo)
     }
 }
@@ -1831,12 +1928,19 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         if (songId.value !== targetSongId) return
 
         if (playbackInfo?.unavailable) {
-            handlePlaybackLoadFailure(null, { advance: true })
+            handlePlaybackLoadFailure(null, {
+                advance: true,
+                song: targetSong,
+                availability: playbackInfo.availability,
+            })
             return
         }
 
         if (!playbackInfo || !playbackInfo.url) {
-            handlePlaybackLoadFailure(null, { advance: true })
+            handlePlaybackLoadFailure(null, {
+                advance: true,
+                song: targetSong,
+            })
             return
         }
 
@@ -1845,7 +1949,10 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         void hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
     } catch (error) {
         if (songId.value !== targetSongId) return
-        handlePlaybackLoadFailure(error, { advance: !isTransientPlaybackRequestError(error) })
+        handlePlaybackLoadFailure(error, {
+            advance: !isTransientPlaybackRequestError(error),
+            song: targetSong,
+        })
     }
 }
 
@@ -1874,7 +1981,8 @@ export function startMusic() {
 
     // 检查是否有视频需要同步播放
     if (currentMusicVideo.value && currentMusicVideo.value.id === songId.value) {
-        if (musicVideoDOM.value) {
+        if (musicVideoDOM.value && videoIsPlaying.value) {
+            prepareMusicVideoDOMForPlayback()
             musicVideoDOM.value.play()
         }
         // 根据歌曲类型启动对应的视频时间检查
@@ -1901,11 +2009,11 @@ export function pauseMusic() {
     } else if (!currentHowl) {
         playing.value = false
     }
-    if (videoIsPlaying.value && musicVideoDOM.value) {
-        musicVideoDOM.value.pause()
-        // 为所有类型的音乐清理视频检查
-        stopMusicVideoSampling()
+    if (musicVideoDOM.value) {
+        pauseMusicVideoDOM()
     }
+    // 为所有类型的音乐清理视频检查
+    stopMusicVideoSampling()
 }
 
 export function playLast() {
@@ -2452,6 +2560,7 @@ export function songTime2(time) {
 
 function syncMusicVideoTiming(timing, seek, update) {
     if (playing.value && musicVideoDOM.value) {
+        prepareMusicVideoDOMForPlayback()
         musicVideoDOM.value.play()
     }
 
@@ -2517,9 +2626,7 @@ export function musicVideoCheck(seek, update) {
 
     if (videoIsPlaying.value && currentTiming && !update) {
         if (normalizedSeek > currentTiming.end) {
-            videoIsPlaying.value = false
-            playerShow.value = true
-            currentTiming = null
+            stopVisibleMusicVideo()
         }
         return
     }
@@ -2544,12 +2651,7 @@ export function musicVideoCheck(seek, update) {
         }
 
         if (!foundTiming) {
-            videoIsPlaying.value = false
-            playerShow.value = true
-            currentTiming = null
-            if (musicVideoDOM.value) {
-                musicVideoDOM.value.pause()
-            }
+            stopVisibleMusicVideo()
         }
     }
 }
