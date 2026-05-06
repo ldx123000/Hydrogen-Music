@@ -137,8 +137,9 @@ function handleTrackPlaybackEnded({ fromChorus = false } = {}) {
         return
     }
 
-    if (playMode.value == 0 && currentIndex.value < songList.value.length - 1) { playNext(); return } //顺序播放
-    if (playMode.value == 0 && currentIndex.value == songList.value.length - 1) { playing.value = false; playModeOne = true; windowApi.playOrPauseMusicCheck(playing.value); syncWindowsTaskbarPlaybackState(); return } //顺序播放结束暂停状态
+    const list = Array.isArray(songList.value) ? songList.value : []
+    if (playMode.value == 0 && currentIndex.value < list.length - 1) { playNext(); return } //顺序播放
+    if (playMode.value == 0 && currentIndex.value == list.length - 1) { playing.value = false; playModeOne = true; windowApi.playOrPauseMusicCheck(playing.value); syncWindowsTaskbarPlaybackState(); return } //顺序播放结束暂停状态
     if (playMode.value == 1) { playNext(); return } //列表循环
     if (playMode.value == 3) { playNext(); return } //随机播放(为列表循环)
     if (playMode.value == 2) {
@@ -154,10 +155,88 @@ function handleTrackPlaybackEnded({ fromChorus = false } = {}) {
     }
 }
 
+/**
+ * 计算副歌结束后下一首将要播放的歌曲信息（与 playNext 逻辑一致）
+ */
+function getNextSongInfo() {
+    if (listInfo.value && listInfo.value.type === 'personalfm') return null
+    if (!Array.isArray(songList.value) || songList.value.length === 0) return null
+
+    let id = null
+    let index = null
+    if (playMode.value !== 3) {
+        if (currentIndex.value >= songList.value.length - 1) {
+            index = 0
+        } else {
+            index = currentIndex.value + 1
+        }
+        id = songList.value[index]?.id
+    } else {
+        if (!Array.isArray(shuffledList.value) || shuffledList.value.length === 0) return null
+        if (shuffleIndex.value >= shuffledList.value.length - 1) {
+            index = 0
+        } else {
+            index = shuffleIndex.value + 1
+        }
+        id = shuffledList.value[index]?.id
+    }
+    if (id == null) return null
+    return { id, index }
+}
+
+/**
+ * 副歌播放时提前预缓冲下一首歌曲的播放地址，减少切歌卡顿
+ */
+function clearChorusPrefetchData() {
+    if (!Array.isArray(songList.value)) return
+    for (const song of songList.value) {
+        if (song && song._chorusPrefetch) {
+            delete song._chorusPrefetch
+        }
+    }
+}
+
+async function prefetchNextSongUrl() {
+    if (!chorusMode.value) return
+    const next = getNextSongInfo()
+    if (!next) return
+
+    const targetSong = getSongByIdOrIndex(next.id, next.index)
+    if (!targetSong || targetSong.type === 'local' || isSirenSong(targetSong)) return
+
+    try {
+        const checkResult = await checkMusic(next.id)
+        if (!checkResult?.success) return
+        // 预缓冲过程中可能副歌模式已关闭或歌曲已切换
+        if (!chorusMode.value) return
+        const currentSong = songList.value?.[currentIndex.value]
+        if (!currentSong || String(currentSong.id) !== String(songId.value)) return
+
+        const preferredQuality = getPreferredQuality(quality.value)
+        const trackInfo = await resolveTrackByQualityPreference(targetSong, preferredQuality)
+        if (!trackInfo?.url) return
+        if (!chorusMode.value) return
+
+        // 将预缓冲结果缓存到歌曲对象上，供 getSongUrl 直接使用
+        targetSong._chorusPrefetch = {
+            url: trackInfo.url,
+            level: trackInfo.level,
+            trackInfo,
+        }
+    } catch (_) {
+        // 预缓冲失败不影响正常播放链路
+    }
+}
+
 function startChorusMonitor(endTime) {
     clearChorusPlaybackState()
     const sessionToken = chorusPlaybackToken
     const safeEndTime = Number.isFinite(endTime) ? Math.max(endTime, 0) : 0
+
+    // 副歌播放时提前缓冲下一首歌曲的播放地址，减少切歌卡顿
+    setTimeout(() => {
+        void prefetchNextSongUrl()
+    }, 500)
 
     chorusStopTimer = setInterval(() => {
         if (sessionToken !== chorusPlaybackToken) return
@@ -257,6 +336,7 @@ export async function toggleChorusMode(forceValue = null) {
 
     if (!nextValue) {
         clearChorusPlaybackState()
+        clearChorusPrefetchData()
         noticeOpen('已关闭只听副歌', 2)
         return false
     }
@@ -1172,6 +1252,31 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         }
         return
     }
+
+    // 检查是否有副歌预缓冲的播放地址（减少切歌卡顿）
+    const prefetched = targetSong._chorusPrefetch
+    if (prefetched?.url) {
+        const { url, level, trackInfo } = prefetched
+        delete targetSong._chorusPrefetch
+        play(url, autoplay)
+        setSongLevel(level, trackInfo)
+        if (autoplay && chorusMode.value) {
+            currentMusic.value?.once?.('load', () => {
+                if (songId.value !== targetSongId || !chorusMode.value) return
+                void playCurrentSongChorus({
+                    showNotice: false,
+                    suppressUnsupportedNotice: true,
+                })
+            })
+        }
+        getLyric(targetSong.hash).then(songLiric => {
+            if (songId.value !== targetSongId) return
+            lyric.value = songLiric
+            restorePlayerLyricAfterSongChange()
+        })
+        return
+    }
+
     await checkMusic(id).then(result => {
         if (result.success == true) {
             const preferredQuality = getPreferredQuality(quality.value)
@@ -1216,6 +1321,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
 
 export function startMusic() {
     const currentSong = songList.value?.[currentIndex.value]
+    const list = Array.isArray(songList.value) ? songList.value : []
     if (!currentSong) {
         noticeOpen('当前没有可播放的歌曲', 2)
         return
@@ -1224,7 +1330,7 @@ export function startMusic() {
         noticeOpen('当前歌曲需要登录后才能播放', 2)
         return
     }
-    if (playMode.value == 0 && currentIndex.value == songList.value.length - 1 && playModeOne && currentMusic.value?.seek && currentMusic.value.seek() == 0) { playNext(); playModeOne = false; return }
+    if (playMode.value == 0 && currentIndex.value == list.length - 1 && playModeOne && currentMusic.value?.seek && currentMusic.value.seek() == 0) { playNext(); playModeOne = false; return }
     if (!playing.value) {
         if (!currentMusic.value || typeof currentMusic.value.play !== 'function') {
             addSong(songId.value || currentSong.id, currentIndex.value, true, currentSong.type == 'local')
@@ -1284,24 +1390,29 @@ export function playLast() {
     }
 
     // 非FM模式下的原有逻辑
+    const list = Array.isArray(songList.value) ? songList.value : []
+    const shuffleList = Array.isArray(shuffledList.value) ? shuffledList.value : []
+    if (playMode.value != 3 && list.length === 0) return
+    if (playMode.value == 3 && shuffleList.length === 0) return
+
     let id = null
     let index = null
     if (playMode.value != 3) {
         if (currentIndex.value - 1 < 0) {
-            index = songList.value.length - 1
-            id = songList.value[index].id
+            index = list.length - 1
+            id = list[index].id
         } else {
-            id = songList.value[currentIndex.value - 1].id
+            id = list[currentIndex.value - 1].id
             index = currentIndex.value - 1
         }
     }
     if (playMode.value == 3) {
         if (shuffleIndex.value - 1 < 0) {
-            index = shuffledList.value.length - 1
-            id = shuffledList.value[index].id
+            index = shuffleList.length - 1
+            id = shuffleList[index].id
         } else {
             index = shuffleIndex.value - 1
-            id = shuffledList.value[index].id
+            id = shuffleList[index].id
         }
     }
     addSong(id, index, true)
@@ -1318,24 +1429,29 @@ export function playNext() {
     }
 
     // 非FM模式下的原有逻辑
+    const list = Array.isArray(songList.value) ? songList.value : []
+    const shuffleList = Array.isArray(shuffledList.value) ? shuffledList.value : []
+    if (playMode.value != 3 && list.length === 0) return
+    if (playMode.value == 3 && shuffleList.length === 0) return
+
     let id = null
     let index = null
     if (playMode.value != 3) {
-        if (songList.value.length - 1 == currentIndex.value) {
+        if (list.length - 1 == currentIndex.value) {
             index = 0
-            id = songList.value[index].id
+            id = list[index].id
         } else {
             index = currentIndex.value + 1
-            id = songList.value[index].id
+            id = list[index].id
         }
     }
     if (playMode.value == 3) {
-        if (shuffleIndex.value == shuffledList.value.length - 1) {
+        if (shuffleIndex.value == shuffleList.length - 1) {
             index = 0
-            id = shuffledList.value[index].id
+            id = shuffleList[index].id
         } else {
             index = shuffleIndex.value + 1
-            id = shuffledList.value[index].id
+            id = shuffleList[index].id
         }
     }
     addSong(id, index, true)
@@ -1354,6 +1470,7 @@ const clearLycAnimation = () => {
 }
 export function changeProgress(toTime) {
     clearChorusPlaybackState()
+    clearChorusPrefetchData()
     if (!widgetState.value && lyricShow.value && lyricEle.value) clearLycAnimation()
     if (videoIsPlaying.value) {
         musicVideoCheck(toTime, true)

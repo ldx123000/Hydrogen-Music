@@ -190,7 +190,7 @@ export function likeMusic(id, like = true) {
  * @param {string|number} id - 音乐ID
  */
 export async function getLyric(hash) {
-    const searchRes = await get('/search/lyric', { hash });
+    const searchRes = await get('/search/lyric', { hash, man: 'yes' });
     const info = searchRes?.candidates?.[0];
     if (!info) return { lrc: { lyric: '' } };
     const lyric = await get('/lyric', { id: info.id, accesskey: info.accesskey, fmt: 'lrc', decode: true });
