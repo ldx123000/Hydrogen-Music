@@ -160,26 +160,6 @@ async function hydrateAccountSession(token) {
     return profile
 }
 
-async function ensureLoginCredentialsReady() {
-    const token = getCookie('token')
-    const userid = getCookie('userid')
-
-    if (!token && !userid) return
-
-    // 二维码登录在打包环境下有时只会先拿到 token，
-    // 这里主动补一次 /login/token，把 userid / t1 / vip_token 等会话字段补齐，
-    // 避免后续 /user/detail 因认证字段不完整返回 20018。
-    try {
-        const refreshResult = await refreshLoginToken({ token, userid })
-        if (refreshResult && typeof refreshResult === 'object') {
-            setCookies(refreshResult)
-            invalidateNcmApiCookieCache()
-        }
-    } catch (error) {
-        console.warn('刷新登录凭证失败，继续尝试使用现有凭证:', error)
-    }
-}
-
 async function clearCurrentAccountSessionState(token) {
     invalidateNcmApiCookieCache()
     await clearAccountScopedState({ clearSessionCookies: true })
@@ -199,7 +179,8 @@ export async function initializeCurrentAccountSession() {
     invalidateNcmApiCookieCache()
 
     try {
-        await ensureLoginCredentialsReady()
+        await refreshLoginToken({ token: getCookie('token'), userid: getCookie('userid') }).catch(() => {})
+        invalidateNcmApiCookieCache()
         return await hydrateAccountSession(token)
     } catch (error) {
         await clearCurrentAccountSessionState(token)
@@ -218,8 +199,6 @@ export async function applyLoginSession(data) {
     invalidateNcmApiCookieCache()
 
     try {
-        await ensureLoginCredentialsReady()
-        if (!isAccountSessionTokenActive(token)) return null
         return await hydrateAccountSession(token)
     } catch (error) {
         await clearCurrentAccountSessionState(token)

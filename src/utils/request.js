@@ -15,21 +15,7 @@ const request = axios.create({
     timeout: 20000,
 });
 
-// 打包后的 Electron 场景下，localhost Cookie 不一定会被浏览器自动带上，
-// 所以这里主动把登录态和酷狗设备标识一起转发给后端。
-const FORWARDED_COOKIE_KEYS = [
-  'token',
-  'userid',
-  'vip_type',
-  'vip_token',
-  't1',
-  'dfid',
-  'KUGOU_API_PLATFORM',
-  'KUGOU_API_MID',
-  'KUGOU_API_GUID',
-  'KUGOU_API_DEV',
-  'KUGOU_API_MAC',
-]
+const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
 
 let cachedAuthCookieString = null
 
@@ -38,10 +24,10 @@ function buildAuthCookieString() {
     return cachedAuthCookieString
   }
 
-  cachedAuthCookieString = FORWARDED_COOKIE_KEYS
+  cachedAuthCookieString = AUTH_COOKIE_KEYS
     .map((key) => {
       const value = getCookie(key)
-      return value !== undefined && value !== null ? `${key}=${value}` : ''
+      return value ? `${key}=${value}` : ''
     })
     .filter(Boolean)
     .join('; ')

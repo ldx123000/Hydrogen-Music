@@ -1,28 +1,15 @@
 import Cookies from "js-cookie";
 
-// 登录态字段：退出登录时需要清理
 const AUTH_COOKIE_KEYS = ['token', 'userid', 'vip_type', 'vip_token', 't1', 'dfid']
-
-// 设备字段：打包后的 Electron 往往不会自动携带 localhost Cookie，
-// 这里将后端下发的酷狗设备标识持久化下来，再由请求层主动转发。
-const DEVICE_COOKIE_KEYS = [
-  'KUGOU_API_PLATFORM',
-  'KUGOU_API_MID',
-  'KUGOU_API_GUID',
-  'KUGOU_API_DEV',
-  'KUGOU_API_MAC',
-]
-
-const PERSISTED_COOKIE_KEYS = [...AUTH_COOKIE_KEYS, ...DEVICE_COOKIE_KEYS]
 
 function extractAuthCookieValues(rawCookie) {
   const cookieText = String(rawCookie || '')
   const cookieMap = {}
 
-  PERSISTED_COOKIE_KEYS.forEach((key) => {
-    const matcher = new RegExp(`(?:^|[;\\s,])${key}=([^;\\s,]*)`)
+  AUTH_COOKIE_KEYS.forEach((key) => {
+    const matcher = new RegExp(`(?:^|[;\\s,])${key}=([^;\\s,]+)`)
     const match = cookieText.match(matcher)
-    if (match) {
+    if (match && match[1]) {
       cookieMap[key] = match[1]
     }
   })
@@ -32,7 +19,7 @@ function extractAuthCookieValues(rawCookie) {
 
 function persistAuthCookies(cookieMap) {
   Object.entries(cookieMap).forEach(([key, value]) => {
-    if (value === undefined || value === null) return
+    if (!value) return
     try { document.cookie = `${key}=${value}; path=/`; } catch (_) {}
     try { localStorage.setItem('cookie:' + key, value) } catch (_) {}
   })
@@ -56,14 +43,6 @@ export function setCookies(data) {
   if (vipType !== '') cookieMap.vip_type = String(vipType)
   if (vipToken) cookieMap.vip_token = String(vipToken)
   if (t1) cookieMap.t1 = String(t1)
-
-  // 如果后端直接返回了设备字段，也一并接住。
-  DEVICE_COOKIE_KEYS.forEach((key) => {
-    const value = data?.[key] ?? data?.data?.[key]
-    if (value !== undefined && value !== null) {
-      cookieMap[key] = String(value)
-    }
-  })
 
   clearLoginCookies()
   persistAuthCookies(cookieMap)
@@ -90,7 +69,8 @@ export function isLogin() {
 // 清理登录相关Cookie与本地存储（不影响其他设置）
 export function clearLoginCookies() {
   try {
-    AUTH_COOKIE_KEYS.forEach((k) => {
+    const keys = AUTH_COOKIE_KEYS
+    keys.forEach((k) => {
       // 移除 localStorage 中持久化的 cookie 值
       try { localStorage.removeItem('cookie:' + k) } catch (_) {}
       // 通过设置过期来移除浏览器 cookie

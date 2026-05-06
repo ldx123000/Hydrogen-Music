@@ -23,6 +23,9 @@
     [
       "@semantic-release/github",
       {
+        "successComment": false,
+        "failComment": false,
+        "releasedLabels": false,
         "assets": [
           "release/${nextRelease.version}/*.{exe,zip,blockmap}",
           "release/${nextRelease.version}/latest.yml"
