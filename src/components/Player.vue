@@ -1,14 +1,13 @@
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import OverflowMarquee from './base/OverflowMarquee.vue';
-import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode } from '../utils/player';
+import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
-import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
 import { getSongDisplayName } from '../utils/songName';
@@ -62,7 +61,6 @@ const commentCountFontSize = computed(() => {
 const router = useRouter();
 const localStore = useLocalStore();
 const playerStore = usePlayerStore();
-const otherStore = useOtherStore();
 const {
     playing,
     progress,
@@ -88,6 +86,7 @@ const {
     isDesktopLyricOpen,
     coverBlur,
     showSongTranslation,
+    chorusMode,
 } = storeToRefs(playerStore);
 
 // 检查是否在FM模式
@@ -152,12 +151,9 @@ const backToVideo = () => {
     if (videoIsPlaying.value) playerShow.value = false;
 };
 
-const addToPlaylist = () => {
-    const currentSong = songList.value?.[currentIndex.value];
-    if (currentSong && currentSong.type !== 'local' && currentSong.source !== 'siren') {
-        otherStore.selectedItem = currentSong;
-        otherStore.addPlaylistShow = true;
-    }
+const toggleChorus = () => {
+    // 这里只切换全局副歌模式，具体的区间播放和后续切歌接管都交给 player 工具层。
+    void toggleChorusMode();
 };
 
 </script>
@@ -498,11 +494,11 @@ const addToPlaylist = () => {
                 >
                     <path d="M545.472 32v837.504L947.2 467.712l44.544 46.144-478.08 478.144L32.128 510.4l44.48-44.544 405.248 403.712V32h63.616z" p-id="5312"></path>
                 </svg>
-                <!-- 添加到歌单：本地与电台均不显示 -->
+                <!-- 只听副歌：沿用旧版唱片位按钮位置 -->
                 <svg
                     v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local' && !isCurrentSirenSong"
-                    @click="addToPlaylist()"
-                    class="icon"
+                    @click="toggleChorus()"
+                    :class="['icon', 'chorus-toggle', { active: chorusMode }]"
                     viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -510,7 +506,15 @@ const addToPlaylist = () => {
                     height="200"
                 >
                     <path
-                        d="M512 85.333333c235.648 0 426.666667 191.018667 426.666667 426.666667s-191.018667 426.666667-426.666667 426.666667S85.333333 747.648 85.333333 512 276.352 85.333333 512 85.333333z m0 85.333334a341.333333 341.333333 0 1 0 0 682.666666 341.333333 341.333333 0 0 0 0-682.666666z m0 128a42.666667 42.666667 0 0 1 42.666667 42.666666v128H682.666667a42.666667 42.666667 0 0 1 0 85.333334H554.666667v128a42.666667 42.666667 0 0 1-85.333334 0V554.666667H341.333333a42.666667 42.666667 0 0 1 0-85.333334h128V341.333333a42.666667 42.666667 0 0 1 42.666667-42.666666z"
+                        d="M459.838061 502.318545c0-30.657939 24.948364-55.606303 55.606303-55.606303s55.544242 24.948364 55.544242 55.606303-24.886303 55.606303-55.544242 55.606303a55.668364 55.668364 0 0 1-55.606303-55.606303m173.242181 0c0-64.884364-52.751515-117.666909-117.635878-117.666909a117.79103 117.79103 0 0 0-117.666909 117.666909 117.79103 117.79103 0 0 0 117.666909 117.66691 117.76 117.76 0 0 0 117.604848-117.66691"
+                        fill="#000000"
+                    ></path>
+                    <path
+                        d="M515.413333 935.439515c-238.809212 0-433.089939-194.311758-433.089939-433.089939 0-238.840242 194.249697-433.18303 433.12097-433.183031 238.809212 0 433.12097 194.342788 433.120969 433.183031 0 238.778182-194.311758 433.089939-433.120969 433.089939m0-928.302545C242.346667 7.13697 20.262788 229.251879 20.262788 502.349576c0 273.035636 222.145939 495.181576 495.181576 495.181576s495.181576-222.17697 495.181575-495.181576c0-273.066667-222.17697-495.243636-495.181575-495.243637"
+                        fill="#000000"
+                    ></path>
+                    <path
+                        d="M806.353455 471.288242a31.030303 31.030303 0 0 0-31.030303 31.030303v0.031031c0 143.297939-116.580848 259.847758-259.878788 259.847757a31.030303 31.030303 0 0 0 0 62.060606c177.493333 0 321.939394-144.41503 321.939394-321.939394a31.030303 31.030303 0 0 0-31.030303-31.030303M515.413333 242.439758a31.030303 31.030303 0 0 0 0-62.060606c-177.493333 0-321.877333 144.41503-321.908363 321.908363v0.03103a31.030303 31.030303 0 0 0 62.060606 0c0-143.297939 116.580848-259.878788 259.878788-259.878787z"
                         fill="#000000"
                     ></path>
                 </svg>
@@ -1099,6 +1103,32 @@ const addToPlaylist = () => {
     }
 
     .desktop-lyric-btn {
+        opacity: 0.5;
+        transition: all 0.2s ease;
+
+        path {
+            fill: #8a8a8a;
+        }
+
+        &.active {
+            opacity: 1;
+
+            path {
+                fill: #000000;
+            }
+        }
+
+        &:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+
+        &:active {
+            transform: scale(0.95);
+        }
+    }
+
+    .chorus-toggle {
         opacity: 0.5;
         transition: all 0.2s ease;
 

@@ -45,12 +45,13 @@ export const usePlayerStore = defineStore('playerStore', {
             isDesktopLyricOpen: false, // 桌面歌词是否打开
             coverBlur: false, // 播放页使用封面模糊背景
             coverSize: 400,
+            chorusMode: false, // 是否开启只听副歌模式
         }
     },
     actions: {
     },
     persist: {
         storage: localStorage,
-        pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur','showSongTranslation','coverBlur']
+        pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur','showSongTranslation','coverBlur','chorusMode']
     },
 })

@@ -146,6 +146,35 @@ export async function getMusicUrl(input, quality = 'flac', requestParams = {}) {
     return { data: [{ url: url || null, level: quality, type }] }
 }
 
+function resolveSongHash(input) {
+    if (input && typeof input === 'object') {
+        return String(
+            input?.hash
+            || input?.FileHash
+            || input?.file_hash
+            || input?.deprecated?.hash
+            || input?.audio_info?.hash_128
+            || input?.audio_info?.hash_320
+            || input?.hash_128
+            || input?.hash_high
+            || input?.hash_flac
+            || ''
+        ).trim()
+    }
+
+    return String(input || '').trim()
+}
+
+/**
+ * 获取歌曲副歌时间段
+ * @param {object|string} input - 歌曲对象或歌曲 hash
+ * @returns {Promise<object>} 酷狗高潮接口原始响应
+ */
+export function getSongClimax(input) {
+    const hash = resolveSongHash(input)
+    return get('/song/climax', { hash })
+}
+
 /**
  * 喜欢/取消喜欢音乐
  * @param {string|number} id - 歌曲ID
