@@ -4,7 +4,7 @@
   const otherStore = useOtherStore()
   const show = ref(true)
   const toUpdate = () => {
-    windowApi.toRegister("https://github.com/ldx123000/Hydrogen-Music/releases")
+    windowApi.toRegister("https://github.com/Arihara-Satoru/Hydrogen-Music/releases")
   }
   const close = () => {
     show.value = !show.value

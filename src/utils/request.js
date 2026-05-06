@@ -30,7 +30,7 @@ function buildAuthCookieString() {
       return value ? `${key}=${value}` : ''
     })
     .filter(Boolean)
-    .join('; ')
+    .join(';')
 
   return cachedAuthCookieString
 }

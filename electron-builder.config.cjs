@@ -165,7 +165,7 @@ module.exports = {
   publish: [
     {
       provider: 'github',
-      owner: 'ldx123000',
+      owner: 'Arihara-Satoru',
       repo: 'Hydrogen-Music',
       releaseType: 'draft',
     },

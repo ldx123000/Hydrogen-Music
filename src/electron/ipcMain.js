@@ -754,7 +754,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
         if (process.platform === 'darwin') {
             try {
                 const current = app.getVersion();
-                const api = 'https://api.github.com/repos/ldx123000/Hydrogen-Music/releases/latest';
+                const api = 'https://api.github.com/repos/Arihara-Satoru/Hydrogen-Music/releases/latest';
                 const { data } = await axios.get(api, { headers: { 'User-Agent': 'HydrogenMusic-Updater' } });
                 let latest = data.tag_name || data.name || '';
                 if (typeof latest === 'string' && latest.startsWith('v')) latest = latest.slice(1);
@@ -771,7 +771,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
                 };
 
                 if (latest && isNewer(latest, current)) {
-                    const pageUrl = data.html_url || `https://github.com/ldx123000/Hydrogen-Music/releases/tag/v${latest}`;
+                    const pageUrl = data.html_url || `https://github.com/Arihara-Satoru/Hydrogen-Music/releases/tag/v${latest}`;
                     console.log('手动检查更新完成（macOS），发现新版本:', latest, pageUrl);
                     win.webContents.send('manual-update-available', latest, pageUrl);
                 } else {

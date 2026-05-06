@@ -400,7 +400,7 @@ const save = () => {
     noticeOpen('设置已保存', 2)
 }
 const toGithub = () => {
-    windowApi.toRegister('https://github.com/ldx123000/Hydrogen-Music')
+    windowApi.toRegister('https://github.com/Arihara-Satoru/Hydrogen-Music')
 }
 
 // 检查更新功能
