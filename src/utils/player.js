@@ -127,6 +127,33 @@ function setCurrentSongChorusCache(song, segment) {
     song.chorusSegment = segment
 }
 
+function handleTrackPlaybackEnded({ fromChorus = false } = {}) {
+    // FM 模式保持原有事件分发逻辑，避免影响漫游链路。
+    if (listInfo.value && listInfo.value.type === 'personalfm') {
+        const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
+            detail: { action: playMode.value == 2 ? 'loop' : 'next' }
+        })
+        window.dispatchEvent(fmPlayModeEvent)
+        return
+    }
+
+    if (playMode.value == 0 && currentIndex.value < songList.value.length - 1) { playNext(); return } //顺序播放
+    if (playMode.value == 0 && currentIndex.value == songList.value.length - 1) { playing.value = false; playModeOne = true; windowApi.playOrPauseMusicCheck(playing.value); syncWindowsTaskbarPlaybackState(); return } //顺序播放结束暂停状态
+    if (playMode.value == 1) { playNext(); return } //列表循环
+    if (playMode.value == 3) { playNext(); return } //随机播放(为列表循环)
+    if (playMode.value == 2) {
+        // 单曲循环下如果仍处于只听副歌模式，则优先重播副歌片段。
+        if (fromChorus && chorusMode.value) {
+            void playCurrentSongChorus({
+                showNotice: false,
+                suppressUnsupportedNotice: true,
+            })
+            return
+        }
+        clearLycAnimation()
+    }
+}
+
 function startChorusMonitor(endTime) {
     clearChorusPlaybackState()
     const sessionToken = chorusPlaybackToken
@@ -152,6 +179,7 @@ function startChorusMonitor(endTime) {
         try {
             currentMusic.value.pause()
         } catch (_) {}
+        clearChorusPlaybackState()
         playing.value = false
         handleTrackPlaybackEnded({ fromChorus: true })
     }, 200)
@@ -233,12 +261,12 @@ export async function toggleChorusMode(forceValue = null) {
         return false
     }
 
-    await playCurrentSongChorus({
+    const started = await playCurrentSongChorus({
         showNotice: false,
         suppressUnsupportedNotice: true,
     })
-    noticeOpen('已开启只听副歌', 2)
-    return true
+    noticeOpen(started ? '已开启只听副歌' : '已开启只听副歌，后续歌曲将自动进入副歌片段', 2)
+    return started
 }
 
 async function resolveSirenSongPlayback(targetSong, options = {}) {
@@ -680,34 +708,7 @@ export function play(url, autoplay, resumeSeek = null) {
         onend: function () {
             clearInterval(musicProgress)
             clearChorusPlaybackState()
-
-            // 处理FM模式的播放结束逻辑
-            if (listInfo.value && listInfo.value.type === 'personalfm') {
-                // FM模式：根据当前播放模式决定行为
-                if (playMode.value == 2) {
-                    // 单曲循环模式：重新播放当前歌曲
-                    // FM mode: replaying current song (single loop)
-                    const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
-                        detail: { action: 'loop' }
-                    })
-                    window.dispatchEvent(fmPlayModeEvent)
-                } else {
-                    // 其他模式（顺序播放、列表循环、随机播放）：播放下一首漫游歌曲
-                    // FM mode: playing next song for all other modes
-                    const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
-                        detail: { action: 'next' }
-                    })
-                    window.dispatchEvent(fmPlayModeEvent)
-                }
-                return
-            }
-
-            // 原有的播放结束逻辑（非FM模式）
-            if (playMode.value == 0 && currentIndex.value < songList.value.length - 1) { playNext(); return } //顺序播放
-            if (playMode.value == 0 && currentIndex.value == songList.value.length - 1) { playing.value = false; playModeOne = true; windowApi.playOrPauseMusicCheck(playing.value); syncWindowsTaskbarPlaybackState(); return } //顺序播放结束暂停状态
-            if (playMode.value == 1) { playNext(); return } //列表循环
-            if (playMode.value == 3) { playNext() } //随机播放(为列表循环)
-            if (playMode.value == 2) { clearLycAnimation() } // 单曲循环播放结束时清除歌词动画
+            handleTrackPlaybackEnded()
         }
     })
     currentMusic.value.once('load', () => {
@@ -1186,6 +1187,16 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
                 }
                 play(trackInfo.url, autoplay)
                 setSongLevel(trackInfo.level, trackInfo)
+                if (autoplay && chorusMode.value) {
+                    // 只在自动播放链路里自动套用副歌模式，避免恢复暂停歌曲时被强制拉起播放。
+                    currentMusic.value?.once?.('load', () => {
+                        if (songId.value !== targetSongId || !chorusMode.value) return
+                        void playCurrentSongChorus({
+                            showNotice: false,
+                            suppressUnsupportedNotice: true,
+                        })
+                    })
+                }
             })
             getLyric(targetSong.hash).then(songLiric => {
                 if (songId.value !== targetSongId) return
@@ -1246,7 +1257,6 @@ export function startMusic() {
     }
 }
 export function pauseMusic() {
-    clearChorusPlaybackState()
     clearInterval(musicProgress)
     if (playing.value) {
         currentMusic.value.fade(volume.value, 0, 200)
