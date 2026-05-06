@@ -18,11 +18,12 @@ if (packageJson.version !== nextVersion) {
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
-// Newer npm versions no longer export npm-cli.js, so call the platform npm binary directly.
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-console.log(`[release-build] Running: ${npmCommand} run dist:local (version=${nextVersion})`);
+const npmExecPath = process.env.npm_execpath;
+const spawnCmd = npmExecPath ? process.execPath : 'npm';
+const spawnArgs = npmExecPath ? [npmExecPath, 'run', 'dist:local'] : ['run', 'dist:local'];
+console.log(`[release-build] Running npm run dist:local (version=${nextVersion})`);
 
-const result = spawnSync(npmCommand, ['run', 'dist:local'], {
+const result = spawnSync(spawnCmd, spawnArgs, {
   cwd: projectDir,
   stdio: 'inherit',
   env: process.env,
