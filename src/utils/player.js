@@ -2,7 +2,7 @@ import pinia from '../store/pinia'
 import { Howl, Howler } from 'howler'
 import { formatDuration } from './time';
 import { noticeOpen } from './dialog'
-import { checkMusic, likeMusic, getLyric } from '../api/song'
+import { checkMusic, likeMusic, getLyric, getSongClimax } from '../api/song'
 import { getSirenLyricText, getSirenSong } from '../api/siren'
 import { updatePlaylist } from '../api/playlist'
 import { getLikelist, getUserPlaylist } from '../api/user'
@@ -25,7 +25,7 @@ const userStore = useUserStore()
 const libraryStore = useLibraryStore(pinia)
 const playerStore = usePlayerStore(pinia)
 const { libraryInfo } = storeToRefs(libraryStore)
-const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation } = storeToRefs(playerStore)
+const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation, chorusMode } = storeToRefs(playerStore)
 
 let isProgress = false
 let musicProgress = null
@@ -71,6 +71,174 @@ function updateCurrentSongDurationFromHowl() {
 
     currentSong.duration = durationMs
     currentSong.dt = durationMs
+}
+
+function clearChorusPlaybackState({ preservePending = false } = {}) {
+    chorusPlaybackToken += 1
+    if (chorusStopTimer) {
+        clearInterval(chorusStopTimer)
+        chorusStopTimer = null
+    }
+    if (!preservePending) pendingChorusPlayback = null
+}
+
+function normalizeClimaxTimeToSeconds(value) {
+    const num = Number(value)
+    if (!Number.isFinite(num) || num < 0) return null
+    // 酷狗高潮接口当前返回毫秒值，这里顺手兼容秒级数据。
+    return num >= 1000 ? num / 1000 : num
+}
+
+function normalizeSongChorusSegment(response, fallbackDurationMs = 0) {
+    const item = Array.isArray(response?.data) ? response.data[0] : response?.data
+    if (!item || typeof item !== 'object') return null
+
+    const startTime = normalizeClimaxTimeToSeconds(item?.start_time ?? item?.start ?? item?.begin_time)
+    const endTime = normalizeClimaxTimeToSeconds(item?.end_time ?? item?.end ?? item?.stop_time)
+    const durationTime = normalizeClimaxTimeToSeconds(item?.timelength ?? item?.duration ?? fallbackDurationMs)
+    if (!Number.isFinite(startTime)) return null
+
+    const normalizedEndTime = Number.isFinite(endTime)
+        ? endTime
+        : (Number.isFinite(durationTime) ? startTime + durationTime : null)
+    if (!Number.isFinite(normalizedEndTime) || normalizedEndTime <= startTime) return null
+
+    const normalizedDuration = normalizedEndTime - startTime
+    if (!Number.isFinite(normalizedDuration) || normalizedDuration < CHORUS_MIN_SEGMENT_SECONDS) return null
+
+    return {
+        startTime,
+        endTime: normalizedEndTime,
+        duration: normalizedDuration,
+    }
+}
+
+function getCurrentSongChorusCache(song) {
+    if (!song || typeof song !== 'object') return null
+    const segment = song.chorusSegment
+    if (!segment || typeof segment !== 'object') return null
+    if (!Number.isFinite(segment.startTime) || !Number.isFinite(segment.endTime)) return null
+    return segment
+}
+
+function setCurrentSongChorusCache(song, segment) {
+    if (!song || typeof song !== 'object' || !segment) return
+    // 将已命中的副歌时间缓存到歌曲对象上，减少重复请求。
+    song.chorusSegment = segment
+}
+
+function startChorusMonitor(endTime) {
+    clearChorusPlaybackState()
+    const sessionToken = chorusPlaybackToken
+    const safeEndTime = Number.isFinite(endTime) ? Math.max(endTime, 0) : 0
+
+    chorusStopTimer = setInterval(() => {
+        if (sessionToken !== chorusPlaybackToken) return
+        if (!currentMusic.value || typeof currentMusic.value.seek !== 'function') {
+            clearChorusPlaybackState()
+            return
+        }
+
+        const currentSeek = Number(currentMusic.value.seek())
+        if (!Number.isFinite(currentSeek)) return
+        if (currentSeek < safeEndTime - 0.15) return
+
+        try {
+            currentMusic.value.seek(safeEndTime)
+        } catch (_) {}
+        progress.value = safeEndTime
+        syncLyricIndexForSeek(safeEndTime)
+        clearInterval(musicProgress)
+        try {
+            currentMusic.value.pause()
+        } catch (_) {}
+        playing.value = false
+        handleTrackPlaybackEnded({ fromChorus: true })
+    }, 200)
+}
+
+function activateChorusPlayback(segment, currentSong) {
+    if (!segment || !currentSong) return
+
+    const targetSongId = songId.value || currentSong.id
+    const currentMusicState = typeof currentMusic.value?.state === 'function' ? currentMusic.value.state() : ''
+    const needReloadCurrentSong = !currentMusic.value
+        || typeof currentMusic.value.seek !== 'function'
+        || currentMusicState === 'loading'
+        || currentMusicState === 'unloaded'
+
+    if (needReloadCurrentSong) {
+        // 音频尚未就绪时先记住区间，待 load 后自动跳转到副歌起点。
+        pendingChorusPlayback = {
+            songId: targetSongId,
+            startTime: segment.startTime,
+            endTime: segment.endTime,
+        }
+        addSong(targetSongId, currentIndex.value, true, currentSong.type === 'local')
+        return
+    }
+
+    changeProgress(segment.startTime)
+    startChorusMonitor(segment.endTime)
+    if (!playing.value) startMusic()
+}
+
+export async function playCurrentSongChorus(options = {}) {
+    const { showNotice = true, suppressUnsupportedNotice = false } = options
+    const currentSong = songList.value?.[currentIndex.value]
+    if (!currentSong) {
+        if (showNotice) noticeOpen('当前没有可播放的歌曲', 2)
+        return false
+    }
+
+    if (currentSong.type === 'local' || isSirenSong(currentSong) || listInfo.value?.type === 'dj') {
+        if (!suppressUnsupportedNotice && showNotice) noticeOpen('当前歌曲暂不支持只听副歌', 2)
+        return false
+    }
+
+    if (!isLogin()) {
+        if (showNotice) noticeOpen('当前歌曲需要登录后才能播放', 2)
+        return false
+    }
+
+    let segment = getCurrentSongChorusCache(currentSong)
+    if (!segment) {
+        try {
+            const result = await getSongClimax(currentSong)
+            segment = normalizeSongChorusSegment(result, currentSong?.dt || currentSong?.duration || 0)
+            if (segment) setCurrentSongChorusCache(currentSong, segment)
+        } catch (error) {
+            console.error('获取歌曲副歌片段失败:', error)
+            return false
+        }
+    }
+
+    if (!segment) {
+        if (showNotice) noticeOpen('当前歌曲暂无可用副歌片段', 2)
+        return false
+    }
+
+    activateChorusPlayback(segment, currentSong)
+    if (showNotice) noticeOpen('正在播放副歌', 2)
+    return true
+}
+
+export async function toggleChorusMode(forceValue = null) {
+    const nextValue = typeof forceValue === 'boolean' ? forceValue : !chorusMode.value
+    chorusMode.value = nextValue
+
+    if (!nextValue) {
+        clearChorusPlaybackState()
+        noticeOpen('已关闭只听副歌', 2)
+        return false
+    }
+
+    await playCurrentSongChorus({
+        showNotice: false,
+        suppressUnsupportedNotice: true,
+    })
+    noticeOpen('已开启只听副歌', 2)
+    return true
 }
 
 async function resolveSirenSongPlayback(targetSong, options = {}) {
@@ -164,6 +332,10 @@ let likeActionToken = 0
 let likeRequestQueue = Promise.resolve()
 let nextLikeRequestAvailableAt = 0
 let unauthenticatedRestoreNoticeShown = false
+const CHORUS_MIN_SEGMENT_SECONDS = 3
+let chorusStopTimer = null
+let chorusPlaybackToken = 0
+let pendingChorusPlayback = null
 
 function isPersonalFMContext() {
     return !!(listInfo.value && listInfo.value.type === 'personalfm')
@@ -507,6 +679,7 @@ export function play(url, autoplay, resumeSeek = null) {
         },
         onend: function () {
             clearInterval(musicProgress)
+            clearChorusPlaybackState()
 
             // 处理FM模式的播放结束逻辑
             if (listInfo.value && listInfo.value.type === 'personalfm') {
@@ -541,8 +714,15 @@ export function play(url, autoplay, resumeSeek = null) {
         time.value = Math.floor(currentMusic.value.duration())
         updateCurrentSongDurationFromHowl()
         let targetSeek = null
+        const pendingChorusForCurrentSong = pendingChorusPlayback
+            && String(pendingChorusPlayback.songId || '') === String(songId.value || '')
+            ? pendingChorusPlayback
+            : null
 
-        if (normalizedSeek !== null) {
+        if (pendingChorusForCurrentSong) {
+            targetSeek = Math.min(pendingChorusForCurrentSong.startTime, currentMusic.value.duration() || pendingChorusForCurrentSong.startTime)
+            loadLast = false
+        } else if (normalizedSeek !== null) {
             targetSeek = Math.min(normalizedSeek, currentMusic.value.duration() || normalizedSeek)
             loadLast = false
         } else if (loadLast && !autoplay) {
@@ -554,6 +734,10 @@ export function play(url, autoplay, resumeSeek = null) {
             currentMusic.value.volume(0)
             currentMusic.value.seek(targetSeek)
             progress.value = targetSeek
+        }
+        if (pendingChorusForCurrentSong) {
+            pendingChorusPlayback = null
+            startChorusMonitor(Math.min(pendingChorusForCurrentSong.endTime, currentMusic.value.duration() || pendingChorusForCurrentSong.endTime))
         }
         playerChangeSong.value = false
         // 通知 Media Session：新曲目加载完成，刷新一次系统时长/进度（静态策略）
@@ -799,6 +983,9 @@ export function loadMusicVideo(id) {
 export function addSong(id, index, autoplay, isLocal) {
     // 主动切歌：从头开始播放，不恢复上次进度
     loadLast = false
+    clearChorusPlaybackState({
+        preservePending: !!pendingChorusPlayback && String(pendingChorusPlayback.songId || '') === String(id || ''),
+    })
     // 先停止旧的进度计时，避免残留计时在下一秒把UI回写为上一首的进度
     clearInterval(musicProgress)
     // 立即重置前端进度与时长，避免看到上一首的进度与时长
@@ -1059,6 +1246,7 @@ export function startMusic() {
     }
 }
 export function pauseMusic() {
+    clearChorusPlaybackState()
     clearInterval(musicProgress)
     if (playing.value) {
         currentMusic.value.fade(volume.value, 0, 200)
@@ -1155,6 +1343,7 @@ const clearLycAnimation = () => {
     }, 600);
 }
 export function changeProgress(toTime) {
+    clearChorusPlaybackState()
     if (!widgetState.value && lyricShow.value && lyricEle.value) clearLycAnimation()
     if (videoIsPlaying.value) {
         musicVideoCheck(toTime, true)
