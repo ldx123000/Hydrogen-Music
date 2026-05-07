@@ -39,8 +39,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build KuGouMusicApi JS bundle
-        working-directory: KuGouMusicApi
-        run: npm run pkgjs
+        run: node scripts/build-kugou-api.cjs
 
       - name: Setup MSVC build tools
         uses: ilammy/msvc-dev-cmd@v1
