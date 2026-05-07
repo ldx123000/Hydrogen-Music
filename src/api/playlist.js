@@ -27,16 +27,18 @@ function normalizePlaylistArtists(song) {
 }
 
 export function normalizePlaylistSong(song = {}) {
+  const base = song?.base || {}
+  const audioInfo = song?.audio_info || {}
   const rawAlbum = song?.albuminfo || song?.album_info || song?.album || {}
-  const albumId = rawAlbum?.id ?? rawAlbum?.albumId ?? song?.album_id ?? null
-  const albumName = rawAlbum?.name ?? rawAlbum?.album_name ?? song?.album_name ?? song?.albumName ?? ''
-  const coverTemplate = song?.cover || song?.sizable_cover || rawAlbum?.sizable_cover || rawAlbum?.picUrl || rawAlbum?.coverUrl || song?.album_sizable_cover || song?.trans_param?.union_cover || null
+  const albumId = rawAlbum?.id ?? rawAlbum?.albumId ?? rawAlbum?.album_id ?? song?.album_id ?? base?.album_id ?? null
+  const albumName = rawAlbum?.name ?? rawAlbum?.album_name ?? song?.album_name ?? song?.albumName ?? base?.album_name ?? ''
+  const coverTemplate = song?.cover || song?.sizable_cover || rawAlbum?.sizable_cover || rawAlbum?.picUrl || rawAlbum?.cover || rawAlbum?.coverUrl || song?.album_sizable_cover || song?.trans_param?.union_cover || null
   const coverUrl = typeof coverTemplate == 'string' ? coverTemplate.replace('{size}', '480') : coverTemplate
   const artists = normalizePlaylistArtists(song)
-  const primaryId = song?.album_audio_id ?? song?.mixsongid ?? song?.audio_id ?? song?.id ?? song?.songId ?? song?.hash ?? song?.fileid ?? null
-  const normalizedHash = song?.hash || song?.FileHash || song?.file_hash || song?.deprecated?.hash || song?.audio_info?.hash_128 || song?.audio_info?.hash_320 || song?.trans_param?.hash_offset?.offset_hash || ''
+  const primaryId = song?.album_audio_id ?? song?.mixsongid ?? song?.audio_id ?? song?.id ?? song?.songId ?? song?.hash ?? song?.fileid ?? base?.album_audio_id ?? base?.audio_id ?? audioInfo?.hash ?? null
+  const normalizedHash = song?.hash || song?.FileHash || song?.file_hash || song?.deprecated?.hash || audioInfo?.hash || audioInfo?.hash_128 || audioInfo?.hash_320 || song?.trans_param?.hash_offset?.offset_hash || ''
   const durationSeconds = Number(song?.time_length ?? song?.timelength_320 ?? song?.timeLength ?? 0)
-  const rawDuration = Number(song?.timelen ?? song?.duration ?? song?.dt ?? song?.timelength ?? song?.audio_info?.duration_128 ?? 0)
+  const rawDuration = Number(song?.timelen ?? song?.duration ?? song?.dt ?? song?.timelength ?? audioInfo?.duration ?? audioInfo?.duration_128 ?? 0)
   const duration = rawDuration > 1000 ? rawDuration : durationSeconds > 0 ? durationSeconds * 1000 : rawDuration
 
   return {
@@ -46,7 +48,7 @@ export function normalizePlaylistSong(song = {}) {
     mixsongid: song?.mixsongid ?? song?.mixsong_id ?? song?.album_audio_id ?? '',
     mixsong_id: song?.mixsong_id ?? song?.mixsongid ?? song?.album_audio_id ?? '',
     album_audio_id: song?.album_audio_id ?? song?.mixsongid ?? song?.mixsong_id ?? '',
-    name: (song?.name || song?.songName || song?.songname || song?.filename || '').replace(/^.*?\s*-\s*/, '').replace(/\.(mp3|flac|ogg|aac|wav|m4a|wma|ape|opus)$/i, ''),
+    name: (song?.name || song?.songName || song?.songname || song?.audio_name || base?.audio_name || song?.filename || song?.FileName || '').replace(/^.*?\s*-\s*/, '').replace(/\.(mp3|flac|ogg|aac|wav|m4a|wma|ape|opus)$/i, ''),
     ar: artists,
     artists,
     al: {

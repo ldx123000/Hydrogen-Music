@@ -1,6 +1,11 @@
-import { get, getById, getWithPagination, operationRequest } from "./base";
+import { get, getWithPagination, operationRequest } from "./base";
 import { buildIdWithTimestamp, buildOperationParams } from "./params";
 import { getNewestSong } from "./song";
+import { normalizePlaylistSong } from "./playlist";
+import request from "../utils/request";
+
+// /album/songs 对 pagesize 比较敏感，部分专辑传 100 会直接返回 invalid param，这里回退到文档默认值 30。
+const ALBUM_SONG_PAGE_SIZE = 30
 
 function normalizeAlbumCover(value) {
     if (typeof value !== 'string') return value || ''
@@ -33,6 +38,94 @@ function normalizeRecommendedAlbum(item = {}) {
         size: Number(item?.songcount ?? item?.size ?? 0) || 0,
         publishTime,
         artist: artistId || artistName ? { id: artistId, name: artistName } : null,
+    }
+}
+
+function toFirstArrayItem(payload) {
+    if (Array.isArray(payload)) return payload[0] || {}
+    if (Array.isArray(payload?.data)) return payload.data[0] || {}
+    return payload?.data || payload || {}
+}
+
+function normalizeAlbumDetail(raw = {}, fallbackId = '') {
+    const normalized = normalizeRecommendedAlbum(raw)
+
+    return {
+        ...normalized,
+        id: String(normalized.id || fallbackId || ''),
+        name: normalized.name || '未知专辑',
+        picUrl: normalized.picUrl || normalized.blurPicUrl || '',
+        blurPicUrl: normalized.blurPicUrl || normalized.picUrl || '',
+        size: Number.isFinite(Number(normalized.size)) && Number(normalized.size) > 0 ? Number(normalized.size) : null,
+        description: raw?.intro || raw?.description || '',
+        company: raw?.publish_company || '',
+        type: raw?.type || '',
+        artists: Array.isArray(raw?.authors)
+            ? raw.authors
+            : raw?.author_name
+                ? [{ name: raw.author_name }]
+                : [],
+    }
+}
+
+async function fetchAllAlbumSongs(requestParams = {}, mergedAlbumRaw = {}) {
+    const albumId = requestParams?.id
+    const albumCover = mergedAlbumRaw?.sizable_cover || mergedAlbumRaw?.cover || ''
+    const albumName = mergedAlbumRaw?.album_name || ''
+    const allSongs = []
+    let page = 1
+    let total = 0
+
+    while (true) {
+        const songsResult = await request({
+            url: '/album/songs',
+            method: 'get',
+            params: {
+                ...requestParams,
+                page,
+                pagesize: ALBUM_SONG_PAGE_SIZE,
+            },
+        })
+        const rawSongs = Array.isArray(songsResult?.data?.songs) ? songsResult.data.songs : []
+        const pageTotal = Number(songsResult?.data?.total ?? songsResult?.total ?? total)
+        if (Number.isFinite(pageTotal) && pageTotal > 0) total = pageTotal
+
+        const normalizedSongs = rawSongs.map(item =>
+            normalizePlaylistSong({
+                ...item,
+                // 酷狗专辑歌曲结果里大量关键字段藏在 base/audio_info，需要在这里补齐给通用适配层。
+                id: item?.id || item?.base?.album_audio_id || item?.base?.audio_id || item?.audio_info?.hash || item?.hash,
+                name: item?.name || item?.audio_name || item?.base?.audio_name || item?.filename || '',
+                album_id: item?.album_id || item?.base?.album_id || albumId,
+                album_name: item?.album_name || item?.base?.album_name || item?.album_info?.album_name || albumName,
+                hash: item?.hash || item?.audio_info?.hash || item?.audio_info?.hash_128 || '',
+                audio_id: item?.audio_id || item?.base?.audio_id || '',
+                album_audio_id: item?.album_audio_id || item?.base?.album_audio_id || '',
+                timelength: item?.timelength || item?.audio_info?.duration || item?.audio_info?.duration_128 || 0,
+                cover: item?.cover || item?.album_info?.cover || albumCover,
+                sizable_cover: item?.sizable_cover || item?.album_info?.cover || albumCover,
+                authors: Array.isArray(item?.authors) && item.authors.length ? item.authors : mergedAlbumRaw?.authors || [],
+                albuminfo: item?.albuminfo || {
+                    id: item?.base?.album_id || albumId,
+                    name: item?.album_info?.album_name || albumName,
+                    picUrl: normalizeAlbumCover(item?.album_info?.cover || albumCover),
+                    cover: normalizeAlbumCover(item?.album_info?.cover || albumCover),
+                    sizable_cover: normalizeAlbumCover(item?.album_info?.cover || albumCover),
+                },
+            })
+        )
+
+        allSongs.push(...normalizedSongs)
+
+        if (rawSongs.length == 0) break
+        if (total > 0 && allSongs.length >= total) break
+        if (rawSongs.length < ALBUM_SONG_PAGE_SIZE) break
+        page += 1
+    }
+
+    return {
+        songs: allSongs,
+        total,
     }
 }
 
@@ -97,11 +190,37 @@ export function getUserSubAlbum({ limit = 25, offset = 0, ...params } = {}) {
  * @param {object} extraParams - 额外参数
  */
 export function getAlbumDetail(id, extraParams = {}) {
-    // 支持旧的调用方式（传入params对象）
-    if (typeof id === 'object') {
-        return get('/album', id);
-    }
-    return getById('/album', id, extraParams, false);
+    const requestParams = typeof id === 'object' ? { ...(id || {}) } : { id, ...extraParams }
+
+    return Promise.all([
+        request({
+            url: '/album',
+            method: 'get',
+            params: {
+                album_id: requestParams.id,
+                fields: 'trans_param,special_tag,authors,album_name,publish_date,cover,intro,publish_company,type,album_id,language_id,is_publish,heat,grade,quality,exclusive,grade_count,author_name,sizable_cover,language,category',
+            },
+        }),
+        request({
+            url: '/album/detail',
+            method: 'get',
+            params: requestParams,
+        }),
+    ]).then(async ([albumInfoResult, detailResult]) => {
+        const albumInfoRaw = toFirstArrayItem(albumInfoResult)
+        const detailRaw = toFirstArrayItem(detailResult)
+        const mergedAlbumRaw = {
+            ...detailRaw,
+            ...albumInfoRaw,
+            album_id: albumInfoRaw?.album_id || detailRaw?.album_id || requestParams.id,
+        }
+        const album = normalizeAlbumDetail(mergedAlbumRaw, requestParams.id)
+        const { songs, total } = await fetchAllAlbumSongs(requestParams, mergedAlbumRaw)
+
+        if (!album.size) album.size = total > 0 ? total : (songs.length > 0 ? songs.length : null)
+
+        return { album, songs }
+    });
 }
 
 /**

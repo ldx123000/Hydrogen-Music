@@ -1143,6 +1143,29 @@ export async function getLocalLyric(filePath) {
     return false
 }
 
+export function applyLyricType(songLiric) {
+    if (!songLiric || typeof songLiric !== 'object') return
+
+    const types = []
+    if (songLiric.tlyric?.lyric) types.push('trans')
+    if (songLiric.romalrc?.lyric) types.push('roma')
+    if (!types.length) {
+        console.log('[lyric-debug] applyLyricType: 无需添加额外类型')
+        return
+    }
+
+    const current = playerStore.lyricType
+    if (!Array.isArray(current)) return
+
+    for (const t of types) {
+        if (current.indexOf(t) === -1) {
+            current.push(t)
+            console.log('[lyric-debug] applyLyricType: 添加 "' + t + '" 到 lyricType')
+        }
+    }
+    console.log('[lyric-debug] applyLyricType: 当前 lyricType =', JSON.stringify(current))
+}
+
 function restorePlayerLyricAfterSongChange() {
     if (widgetState.value || lyricShow.value) return
 
@@ -1272,6 +1295,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         getLyric(targetSong.hash).then(songLiric => {
             if (songId.value !== targetSongId) return
             lyric.value = songLiric
+            applyLyricType(songLiric)
             restorePlayerLyricAfterSongChange()
         })
         return
@@ -1306,6 +1330,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
             getLyric(targetSong.hash).then(songLiric => {
                 if (songId.value !== targetSongId) return
                 lyric.value = songLiric
+                applyLyricType(songLiric)
                 restorePlayerLyricAfterSongChange()
             })
         } else {

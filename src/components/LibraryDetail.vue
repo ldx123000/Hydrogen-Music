@@ -24,8 +24,8 @@ import { storeToRefs } from 'pinia';
 const playerStore = usePlayerStore();
 const localStore = useLocalStore();
 const libraryStore = useLibraryStore();
-const { updateLibraryDetail, updateArtistTopSong, updateArtistAlbum, updateArtistsMV, waitForPlaylistHydration, saveDetailScroll, getDetailScroll } = libraryStore;
-const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, playlistUserSub, artistPageType, listType1, listType2, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration } = storeToRefs(libraryStore);
+const { updateLibraryDetail, updateArtistTopSong, updateArtistAlbum, loadMoreArtistTopSong, loadMoreArtistAlbum, updateArtistsMV, waitForPlaylistHydration, saveDetailScroll, getDetailScroll } = libraryStore;
+const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, playlistUserSub, artistPageType, listType1, listType2, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration, artistPagination } = storeToRefs(libraryStore);
 
 const router = useRouter();
 const isAlbum = ref(false);
@@ -42,6 +42,8 @@ const canGoForward = ref(false);
 const historyNavPending = ref(false);
 const pendingScrollPolicy = ref('none');
 const pendingTargetFullPath = ref('');
+const artistScrollCheckRafId = ref(null);
+const ARTIST_LIST_PREFETCH_PX = 220;
 const normalizeRouteName = routeName => {
     const normalized = String(routeName || '');
     if (!normalized) return '';
@@ -240,6 +242,53 @@ const songSearchEmptyDescription = computed(() => {
     if (isSongSearchFailed.value) return '剩余歌曲加载失败，结果可能不完整';
     return '';
 });
+const currentArtistSongPagination = computed(() => artistPagination.value?.songs || {});
+const currentArtistAlbumPagination = computed(() => artistPagination.value?.albums || {});
+const currentArtistListLoading = computed(() => {
+    if (artistPageType.value == 0) return !!currentArtistSongPagination.value?.loading;
+    if (artistPageType.value == 1) return !!currentArtistAlbumPagination.value?.loading;
+    return false;
+});
+const currentArtistListHasMore = computed(() => {
+    if (artistPageType.value == 0) return !!currentArtistSongPagination.value?.hasMore;
+    if (artistPageType.value == 1) return !!currentArtistAlbumPagination.value?.hasMore;
+    return false;
+});
+
+const getLibraryDistanceToBottom = () => {
+    const scroller = getLibraryScroller();
+    if (!scroller) return null;
+    return scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);
+};
+const shouldAutoLoadArtistMore = () => {
+    if (!isSinger.value || !libraryInfo.value?.id) return false;
+    if (artistPageType.value != 0 && artistPageType.value != 1) return false;
+    if (currentArtistListLoading.value || !currentArtistListHasMore.value) return false;
+    const distance = getLibraryDistanceToBottom();
+    return distance !== null && distance <= ARTIST_LIST_PREFETCH_PX;
+};
+const tryAutoLoadArtistMore = () => {
+    if (!shouldAutoLoadArtistMore()) return;
+    if (artistPageType.value == 0) {
+        void loadMoreArtistTopSong(libraryInfo.value.id);
+        return;
+    }
+    if (artistPageType.value == 1) {
+        void loadMoreArtistAlbum(libraryInfo.value.id);
+    }
+};
+const handleArtistListScroll = () => {
+    if (artistScrollCheckRafId.value !== null) return;
+    artistScrollCheckRafId.value = requestAnimationFrame(() => {
+        artistScrollCheckRafId.value = null;
+        tryAutoLoadArtistMore();
+    });
+};
+const clearArtistScrollCheckRaf = () => {
+    if (artistScrollCheckRafId.value === null) return;
+    cancelAnimationFrame(artistScrollCheckRafId.value);
+    artistScrollCheckRafId.value = null;
+};
 
 const applyPendingScrollPolicy = async () => {
     const currentRoute = router.currentRoute.value;
@@ -368,19 +417,24 @@ const createTime = computed(() => {
 
 //如果是歌手页面，可以更换下面的类型
 const changeType = type => {
+    const artistId = libraryInfo.value?.id;
+    artistPageType.value = type;
     if (type == 0) {
         isSongList.value = true;
-        updateArtistTopSong(libraryInfo.value.id);
+        const sameArtistSongsLoaded = String(currentArtistSongPagination.value?.id || '') == String(artistId || '') && Array.isArray(librarySongs.value) && librarySongs.value.length > 0;
+        if (!sameArtistSongsLoaded) void updateArtistTopSong(artistId);
+        else void nextTick().then(() => tryAutoLoadArtistMore());
     }
     if (type == 1) {
         isSongList.value = false;
-        updateArtistAlbum(libraryInfo.value.id);
+        const sameArtistAlbumsLoaded = String(currentArtistAlbumPagination.value?.id || '') == String(artistId || '') && Array.isArray(libraryAlbum.value) && libraryAlbum.value.length > 0;
+        if (!sameArtistAlbumsLoaded) void updateArtistAlbum(artistId);
+        else void nextTick().then(() => tryAutoLoadArtistMore());
     }
     if (type == 2) {
         isSongList.value = false;
-        updateArtistsMV(libraryInfo.value.id);
+        updateArtistsMV(artistId);
     }
-    artistPageType.value = type;
 };
 
 const isPlaylistUpdateSuccess = result => !!(result && (
@@ -673,6 +727,15 @@ watch(
 );
 
 watch(
+    [() => artistPageType.value, () => visibleLibrarySongs.value.length, () => visibleArtistAlbums.value.length],
+    async () => {
+        if (!isSinger.value) return;
+        await nextTick();
+        tryAutoLoadArtistMore();
+    }
+);
+
+watch(
     () => router.currentRoute.value.fullPath,
     async () => {
         await nextTick();
@@ -698,6 +761,7 @@ onDeactivated(() => {
 });
 onBeforeUnmount(() => {
     window.removeEventListener('popstate', markHistoryNavigationPending);
+    clearArtistScrollCheckRaf();
 });
 
 const onAfterEnter = () => (introduceDetailShowDelay.value = true);
@@ -925,6 +989,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                         :songlist="visibleLibrarySongs"
                         :queue-songlist="hasSongSearchKeyword ? librarySongs : null"
                         :source-indexes="visibleLibrarySourceIndexes"
+                        @list-scroll="handleArtistListScroll"
                         class="library-content"
                     ></LibrarySongList>
                 </template>
@@ -932,7 +997,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     <div class="library-search-empty" v-if="showSongSearchEmpty">
                         <span class="empty-title">{{ songSearchEmptyTitle }}</span>
                     </div>
-                    <LibraryAlbumList v-else :albumlist="visibleArtistAlbums" class="library-content3"></LibraryAlbumList>
+                    <LibraryAlbumList v-else :albumlist="visibleArtistAlbums" @list-scroll="handleArtistListScroll" class="library-content3"></LibraryAlbumList>
                 </template>
                 <template v-else-if="artistPageType == 2">
                     <div class="library-search-empty" v-if="showSongSearchEmpty">

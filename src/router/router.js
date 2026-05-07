@@ -95,7 +95,8 @@ const routes = [
                         // 专辑详情同样改为异步补数据，减少点击到页面出现的等待感。
                         void updateLibraryDetail(to.params.id, to.name)
                             .catch(error => {
-                                console.error('加载专辑详情失败:', error)
+                                const detail = error?.response?.data?.errmsg || error?.response?.data?.msg || error?.message || error
+                                console.error('加载专辑详情失败:', detail)
                             })
                     }
                     next()
