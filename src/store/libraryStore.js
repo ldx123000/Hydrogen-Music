@@ -33,6 +33,20 @@ const normalizeRecommendSongList = result => {
     return Array.isArray(firstList?.song_list) ? firstList.song_list : []
 }
 
+const sortCreatedPlaylistsBySort = playlist => {
+    return [...playlist].sort((left, right) => {
+        const leftSort = Number(left?.sort)
+        const rightSort = Number(right?.sort)
+        const leftHasSort = Number.isFinite(leftSort)
+        const rightHasSort = Number.isFinite(rightSort)
+
+        if (leftHasSort && rightHasSort) return leftSort - rightSort
+        if (leftHasSort) return -1
+        if (rightHasSort) return 1
+        return 0
+    })
+}
+
 export const useLibraryStore = defineStore('libraryStore', {
     state: () => {
         return {
@@ -79,10 +93,12 @@ export const useLibraryStore = defineStore('libraryStore', {
         },
         updateUserPlaylist(playlist) {
             if (playlist.length > 0 && playlist[0].is_mine !== undefined) {
-                this.playlistUserCreated = playlist.filter(p => p.is_mine === 1)
+                this.playlistUserCreated = sortCreatedPlaylistsBySort(playlist.filter(p => p.is_mine === 1))
                 this.playlistUserSub = playlist.filter(p => p.is_mine === 0)
             } else {
-                this.playlistUserCreated = playlist.splice(0, this.playlistCount?.createdPlaylistCount ?? playlist.length)
+                this.playlistUserCreated = sortCreatedPlaylistsBySort(
+                    playlist.splice(0, this.playlistCount?.createdPlaylistCount ?? playlist.length)
+                )
                 this.playlistUserSub = playlist.splice(0, this.playlistCount?.subPlaylistCount ?? playlist.length)
             }
         },
