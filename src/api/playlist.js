@@ -70,7 +70,8 @@ export function normalizePlaylistSong(song = {}) {
 }
 
 export function normalizePlaylistSongs(songs) {
-  return Array.isArray(songs) ? songs.map(normalizePlaylistSong) : []
+  // 过滤掉版权受限/已屏蔽的歌曲（shield=1 表示无版权不可用）
+  return Array.isArray(songs) ? songs.filter(s => s.shield !== 1).map(normalizePlaylistSong) : []
 }
 
 function normalizeRecommendedPlaylist(item = {}) {

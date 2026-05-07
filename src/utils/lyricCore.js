@@ -189,7 +189,7 @@ function parseTimedLyricList(lines) {
     return parsed.sort((left, right) => left.time - right.time);
 }
 
-function findNearestLine(lines, targetTime, maxDelta = 0.12) {
+function findNearestLineMatch(lines, targetTime, maxDelta = 0.35, usedIndexes = null) {
     if (!Array.isArray(lines) || !lines.length) return null;
 
     let left = 0;
@@ -206,17 +206,88 @@ function findNearestLine(lines, targetTime, maxDelta = 0.12) {
         }
     }
 
-    let best = null;
+    let bestIndex = -1;
     let bestDelta = Infinity;
-    for (let index = Math.max(0, baseIndex - 2); index <= Math.min(lines.length - 1, baseIndex + 2); index++) {
+    // 多轨歌词经常会整体偏移几百毫秒，因此放宽搜索范围而不是只看相邻 1-2 行。
+    for (let index = Math.max(0, baseIndex - 4); index <= Math.min(lines.length - 1, baseIndex + 4); index++) {
+        if (usedIndexes?.has(index)) continue;
         const delta = Math.abs(lines[index].time - targetTime);
         if (delta < bestDelta) {
-            best = lines[index];
+            bestIndex = index;
             bestDelta = delta;
         }
     }
 
-    return bestDelta <= maxDelta ? best : null;
+    if (bestIndex === -1 || bestDelta > maxDelta) return null;
+    return {
+        index: bestIndex,
+        line: lines[bestIndex],
+    };
+}
+
+function getAdaptiveMatchWindow(lines, targetIndex, defaultWindow = 0.35) {
+    if (!Array.isArray(lines) || !lines.length) return defaultWindow;
+
+    const currentTime = Number(lines[targetIndex]?.time);
+    if (!Number.isFinite(currentTime)) return defaultWindow;
+
+    const gaps = [];
+    const prevTime = Number(lines[targetIndex - 1]?.time);
+    const nextTime = Number(lines[targetIndex + 1]?.time);
+
+    if (Number.isFinite(prevTime) && currentTime > prevTime) gaps.push(currentTime - prevTime);
+    if (Number.isFinite(nextTime) && nextTime > currentTime) gaps.push(nextTime - currentTime);
+    if (!gaps.length) return defaultWindow;
+
+    const nearestGap = Math.min(...gaps);
+    return Math.max(defaultWindow, Math.min(0.75, nearestGap * 0.45));
+}
+
+function findOrderedFallbackMatch(lines, orderIndex, referenceLength, usedIndexes = null) {
+    if (!Array.isArray(lines) || !lines.length) return null;
+
+    const normalizedReferenceLength = Math.max(1, Number(referenceLength) || 0);
+    const similarity = Math.min(lines.length, normalizedReferenceLength) / Math.max(lines.length, normalizedReferenceLength);
+    // 只有当两条轨道的行数差距不大时，才按行序兜底，避免把完全不同结构的歌词硬拼在一起。
+    if (similarity < 0.45) return null;
+
+    const projectedIndex = normalizedReferenceLength <= 1
+        ? 0
+        : Math.round((Math.max(0, orderIndex) / (normalizedReferenceLength - 1)) * Math.max(0, lines.length - 1));
+
+    let bestIndex = -1;
+    let bestDistance = Infinity;
+    for (let index = Math.max(0, projectedIndex - 2); index <= Math.min(lines.length - 1, projectedIndex + 2); index++) {
+        if (usedIndexes?.has(index)) continue;
+
+        const distance = Math.abs(index - projectedIndex);
+        if (distance < bestDistance) {
+            bestIndex = index;
+            bestDistance = distance;
+        }
+    }
+
+    if (bestIndex === -1) return null;
+    return {
+        index: bestIndex,
+        line: lines[bestIndex],
+    };
+}
+
+function resolveSupplementalLine(lines, targetTime, orderIndex, referenceLength, usedIndexes, matchWindow) {
+    const timedMatch = findNearestLineMatch(lines, targetTime, matchWindow, usedIndexes);
+    if (timedMatch) {
+        if (usedIndexes) usedIndexes.add(timedMatch.index);
+        return timedMatch.line;
+    }
+
+    const orderedMatch = findOrderedFallbackMatch(lines, orderIndex, referenceLength, usedIndexes);
+    if (orderedMatch) {
+        if (usedIndexes) usedIndexes.add(orderedMatch.index);
+        return orderedMatch.line;
+    }
+
+    return null;
 }
 
 function buildOnlineTimeline(originalLyricText, translatedLyricText, romanizedLyricText, songDurationSec) {
@@ -224,20 +295,45 @@ function buildOnlineTimeline(originalLyricText, translatedLyricText, romanizedLy
     const originalLines = parseTimedLyricList(originalLyricText ? originalLyricText.split(regNewLine) : null);
     const translatedLines = parseTimedLyricList(translatedLyricText ? translatedLyricText.split(regNewLine) : null);
     const romanizedLines = parseTimedLyricList(romanizedLyricText ? romanizedLyricText.split(regNewLine) : null);
+    const translatedContentLines = translatedLines.filter(item => !isCreditLyricLine(item.text));
+    const romanizedContentLines = romanizedLines.filter(item => !isCreditLyricLine(item.text));
 
     if (originalLines.some(item => item.text.includes('纯音乐')) || translatedLines.some(item => item.text.includes('纯音乐'))) {
         return buildPureMusicRows(songDurationSec, false);
     }
 
     const results = [];
-    for (const item of originalLines) {
+    const translatedUsedIndexes = new Set();
+    const romanizedUsedIndexes = new Set();
+    const matchableOriginalCount = originalLines.filter(item => !isCreditLyricLine(item.text)).length;
+    let matchableOriginalIndex = 0;
+
+    for (let index = 0; index < originalLines.length; index++) {
+        const item = originalLines[index];
         const row = { lyric: item.text, tlyric: '', rlyric: '', time: item.time };
         if (!isCreditLyricLine(item.text)) {
-            const translated = findNearestLine(translatedLines, item.time);
+            const matchWindow = getAdaptiveMatchWindow(originalLines, index);
+            const translated = resolveSupplementalLine(
+                translatedContentLines,
+                item.time,
+                matchableOriginalIndex,
+                matchableOriginalCount,
+                translatedUsedIndexes,
+                matchWindow
+            );
             if (translated && translated.text) row.tlyric = translated.text;
 
-            const romanized = findNearestLine(romanizedLines, item.time);
+            const romanized = resolveSupplementalLine(
+                romanizedContentLines,
+                item.time,
+                matchableOriginalIndex,
+                matchableOriginalCount,
+                romanizedUsedIndexes,
+                matchWindow
+            );
             if (romanized && romanized.text) row.rlyric = romanized.text;
+
+            matchableOriginalIndex += 1;
         }
 
         if (row.lyric) results.push(row);

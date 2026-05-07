@@ -83,6 +83,48 @@
     }
   }
 
+  const refreshUserPlaylists = async () => {
+    if (!userStore.user || !userStore.user.userId) return
+
+    const params = {
+      page: 1,
+      pagesize: 500,
+      timestamp: new Date().getTime(),
+    }
+    const list = await getUserPlaylist(params)
+    // 返回结构可能随平台不同略有差异，统一交给现有提取器和 store 更新。
+    libraryStore.updateUserPlaylistCount(null)
+    libraryStore.updateUserPlaylist(extractPlaylistItems(list))
+    if (listType1.value == 0 && listType2.value == 0) {
+      libraryStore.changeLibraryList(0)
+    }
+  }
+
+  const focusMyPlaylistTabSafely = () => {
+    const myPlaylistElement = document.getElementById('myPlaylist')
+    if (myPlaylistElement) {
+      myPlaylistElement.click()
+      return true
+    }
+
+    // 某些页面上下文没有渲染顶部切换按钮，此时只同步 store，避免点击空节点报错。
+    if(listType1.value == 0 && listType2.value == 0) {
+      libraryStore.changeLibraryList(0)
+      return true
+    }
+
+    return false
+  }
+
+  const closeCreatePlaylistDialog = () => {
+    otherStore.addPlaylistShow = false
+    justNewPlaylist.value = false
+    otherStore.justNewPlaylist = false
+    createActive.value = false
+    newPlaylistTitle.value = null
+    isPrivacy.value = false
+  }
+
   watch(
     () => otherStore.addPlaylistShow,
     async (show) => {
@@ -236,36 +278,38 @@
     otherStore.justNewPlaylist = true
   }
 
-  const doDeleteMyPlaylist = () => {
+  const doDeleteMyPlaylist = async () => {
     const targetPlaylistId = otherStore.selectedItem?.list_create_listid || otherStore.selectedItem?.listid || otherStore.selectedItem?.id
     if (!targetPlaylistId) {
       noticeOpen('当前歌单信息不完整，暂时无法删除', 2)
       return
     }
 
-    let params = {
-      id: targetPlaylistId
-    }
-    deletePlaylist(params).then(result => {
-      if(result.code == 200) {
-        const createdList = Array.isArray(libraryStore.playlistUserCreated) ? libraryStore.playlistUserCreated : []
-        const createdIndex = createdList.findIndex(item => String(item?.id || '') === String(targetPlaylistId))
-        if (createdIndex !== -1) createdList.splice(createdIndex, 1)
-        if (Array.isArray(libraryStore.libraryList)) {
-          const libraryIndex = libraryStore.libraryList.findIndex(item => String(item?.id || '') === String(targetPlaylistId))
-          if (libraryIndex !== -1) libraryStore.libraryList.splice(libraryIndex, 1)
-        }
-        schedulePlaylistCacheInvalidation()
-        otherStore.contextMenuShow = false
-        if(listType1.value == 0 && listType2.value == 0) {
-          document.getElementById('myPlaylist').click()
-        }
-        noticeOpen('删除成功', 2)
-      } else {
+    try {
+      const result = await deletePlaylist({ id: targetPlaylistId })
+      if(!isPlaylistUpdateSuccess(result)) {
         noticeOpen("删除歌单失败", 2)
+        return
       }
-      
-    })
+
+      const createdList = Array.isArray(libraryStore.playlistUserCreated) ? libraryStore.playlistUserCreated : []
+      const createdIndex = createdList.findIndex(item => String(item?.id || '') === String(targetPlaylistId))
+      if (createdIndex !== -1) createdList.splice(createdIndex, 1)
+      if (Array.isArray(libraryStore.libraryList)) {
+        const libraryIndex = libraryStore.libraryList.findIndex(item => String(item?.id || '') === String(targetPlaylistId))
+        if (libraryIndex !== -1) libraryStore.libraryList.splice(libraryIndex, 1)
+      }
+
+      // 删除后主动刷新一次用户歌单，避免仅靠本地 splice 导致视图与服务端状态不一致。
+      await refreshUserPlaylists()
+      schedulePlaylistCacheInvalidation()
+      otherStore.contextMenuShow = false
+      focusMyPlaylistTabSafely()
+      noticeOpen('删除成功', 2)
+    } catch (error) {
+      console.error('删除歌单失败:', error)
+      noticeOpen("删除歌单失败", 2)
+    }
   }
 
   const deleteMyPlaylist = () => {
@@ -298,30 +342,37 @@
     if(id == 9) { addToNextLocal(otherStore.selectedItem, false); return; }
     if(id == 10) { windowApi.openLocalFolder(otherStore.selectedItem.dirPath);return; }
   }
-  const createAndAdd = () => {
+  const createAndAdd = async () => {
     const playlistName = String(newPlaylistTitle.value || '').trim()
-    if(playlistName) {
-      let params = {
-        name: playlistName,
-        is_pri: (isPrivacy.value ? 1 : 0),
+    if(!playlistName) return
+
+    const params = {
+      name: playlistName,
+      is_pri: (isPrivacy.value ? 1 : 0),
+    }
+
+    try {
+      const result = await createPlaylist(params)
+      if(!isPlaylistUpdateSuccess(result)) {
+        noticeOpen('创建歌单错误', 2)
+        return
       }
-      createPlaylist(params).then(result => {
-        if(isPlaylistUpdateSuccess(result)) {
-          newPlaylistTitle.value = null
-          isPrivacy.value = false
-          if(justNewPlaylist.value) {
-            document.getElementById('myPlaylist').click()
-            otherStore.addPlaylistShow = false
-            justNewPlaylist.value = false
-            otherStore.justNewPlaylist = false
-            noticeOpen('添加成功', 2)
-            return
-          }
-          addToMyPlaylist({ id: result?.listid || result?.data?.listid || result?.id, name: playlistName })
-        } else {
-          noticeOpen('创建歌单错误', 2)
-        }
-      })
+
+      await refreshUserPlaylists()
+
+      if(justNewPlaylist.value) {
+        focusMyPlaylistTabSafely()
+        closeCreatePlaylistDialog()
+        noticeOpen('添加成功', 2)
+        return
+      }
+
+      newPlaylistTitle.value = null
+      isPrivacy.value = false
+      addToMyPlaylist({ id: result?.listid || result?.data?.listid || result?.id, name: playlistName })
+    } catch (error) {
+      console.error('创建歌单失败:', error)
+      noticeOpen('创建歌单错误', 2)
     }
   }
   const createCancel = () => {
