@@ -113,6 +113,7 @@ module.exports = {
         '!**/.git{,/**/*}',
         '!**/docs{,/**/*}',
         '!**/README*',
+        '!**/node_modules{,/**/*}',
       ],
     },
   ],

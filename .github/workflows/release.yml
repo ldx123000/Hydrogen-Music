@@ -34,6 +34,14 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Install KuGouMusicApi dependencies
+        working-directory: KuGouMusicApi
+        run: npm install --no-audit --no-fund
+
+      - name: Build KuGouMusicApi JS bundle
+        working-directory: KuGouMusicApi
+        run: npm run pkgjs
+
       - name: Setup MSVC build tools
         uses: ilammy/msvc-dev-cmd@v1
 

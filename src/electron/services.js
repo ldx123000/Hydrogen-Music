@@ -25,6 +25,19 @@ function getBackendCandidates() {
 function resolveBackendLaunch() {
     const candidates = getBackendCandidates()
     for (const backendRoot of candidates) {
+        const apiJs = path.join(backendRoot, 'bin', 'api_js', 'app.js')
+        if (fs.existsSync(apiJs)) {
+            return {
+                command: process.execPath,
+                args: [apiJs],
+                cwd: backendRoot,
+                env: {
+                    ELECTRON_RUN_AS_NODE: '1',
+                },
+                label: apiJs,
+            }
+        }
+
         if (process.platform === 'win32') {
             const winBinary = path.join(backendRoot, 'bin', 'app_win.exe')
             if (fs.existsSync(winBinary)) {
