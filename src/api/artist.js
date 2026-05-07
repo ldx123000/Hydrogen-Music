@@ -74,20 +74,25 @@ function normalizeArtistSong(raw = {}) {
 }
 
 function normalizeArtistAlbum(raw = {}) {
-    const cover = resolveCoverUrl(raw.cover || raw.sizable_cover || raw.imgurl || raw.album_img || raw.pic || raw.img || '')
+    // 酷狗专辑列表里的 cover 往往只是文件名，优先取 sizable_cover 这类完整 URL，避免歌手页专辑封面裂图。
+    const cover = resolveCoverUrl(raw.sizable_cover || raw.imgurl || raw.album_img || raw.pic || raw.img || raw.cover || '')
+    const publishTime = raw.publish_date || raw.publishDate || raw.publish_time || raw.public_time || 0
+    const albumSize = Number(raw.total ?? raw.size ?? raw.songcount ?? raw.song_count ?? raw.count)
+
     return {
         ...raw,
         id: String(raw.album_id || raw.albumid || raw.AlbumID || raw.id || ''),
         name: raw.album_name || raw.albumname || raw.name || '未知专辑',
         picUrl: cover,
         blurPicUrl: cover,
-        publishTime: raw.publish_date || raw.publishDate || raw.publish_time || raw.public_time || 0,
+        publishTime,
         artists: Array.isArray(raw.authors)
             ? raw.authors
             : raw.author_name
                 ? [{ name: raw.author_name }]
                 : [],
-        size: Number(raw.total || raw.size || raw.songcount || raw.song_count || 0) || 0,
+        // 歌手专辑接口通常不返回曲目数，缺省时保留为空，避免界面误显示成“0首”。
+        size: Number.isFinite(albumSize) && albumSize > 0 ? albumSize : null,
     }
 }
 
@@ -101,6 +106,12 @@ function extractArtistArray(result = {}) {
                 : Array.isArray(result?.list)
                     ? result.list
                     : []
+}
+
+function resolveArtistTotal(result = {}) {
+    const rawTotal = result?.total ?? result?.data?.total ?? result?.extra?.page_total ?? result?.extra?.total
+    const normalizedTotal = Number(rawTotal)
+    return Number.isFinite(normalizedTotal) && normalizedTotal > 0 ? normalizedTotal : 0
 }
 
 /**
@@ -165,6 +176,7 @@ export function getArtistTopSong(id, extraParams = {}) {
         const rawSongs = extractArtistArray(result)
         return {
             ...result,
+            total: resolveArtistTotal(result),
             songs: rawSongs.map(item => normalizeArtistSong(item)),
         }
     })
@@ -190,6 +202,7 @@ export function getArtistAlbum(id, { limit = 30, offset = 0, ...extraParams } = 
         const rawAlbums = extractArtistArray(result)
         return {
             ...result,
+            total: resolveArtistTotal(result),
             hotAlbums: rawAlbums.map(item => normalizeArtistAlbum(item)),
         }
     })

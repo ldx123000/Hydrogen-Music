@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDjSubList, getDjPrograms } from '../api/dj'
 import { getLyric } from '../api/song'
+import { applyLyricType } from '../utils/player'
 import { usePlayerStore } from '../store/playerStore'
 import { resolveImageUrl } from '../utils/initApp'
 import { getPreferredQuality } from '../utils/quality'
@@ -77,7 +78,10 @@ const playLatestProgram = async (radio) => {
     // 加载歌词（可能无歌词，忽略错误）
     try {
       const lyr = await getLyric(songItem.id)
-      if (lyr && lyr.lrc) playerStore.lyric = lyr
+      if (lyr && lyr.lrc) {
+        playerStore.lyric = lyr
+        applyLyricType(lyr)
+      }
     } catch (_) {}
   } catch (_) {}
 }
