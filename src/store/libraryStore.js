@@ -8,6 +8,8 @@ import { buildAlbumSearchText, buildCloudSongSearchText, buildMVSearchText } fro
 
 const PLAYLIST_PAGE_SIZE = 999
 const PLAYLIST_HYDRATION_CONCURRENCY = 4
+const ARTIST_SONG_PAGE_SIZE = 60
+const ARTIST_ALBUM_PAGE_SIZE = 30
 
 const createPlaylistHydrationState = ({ id = null, total = 0, loaded = 0, status = 'idle' } = {}) => ({
     id,
@@ -20,8 +22,35 @@ const createSearchIndexState = () => ({
     albums: {},
     mvs: {},
 })
+const createArtistListPageState = ({ id = null, page = 0, pagesize = 0, total = 0, loaded = 0, loading = false } = {}) => ({
+    id,
+    page,
+    pagesize,
+    total,
+    loaded,
+    loading,
+    hasMore: total > 0 ? loaded < total : false,
+})
+const createArtistPaginationState = () => ({
+    songs: createArtistListPageState(),
+    albums: createArtistListPageState(),
+})
 
 const getSearchEntryKey = (entry, fallbackKey = '0') => String(entry?.id ?? fallbackKey)
+const getListMergeKey = (item, fallbackKey) => String(item?.id ?? item?.hash ?? item?.album_audio_id ?? fallbackKey)
+const mergeUniqueEntries = (currentList = [], incomingList = [], fallbackPrefix = 'item') => {
+    const merged = Array.isArray(currentList) ? [...currentList] : []
+    const seen = new Set(merged.map((item, index) => getListMergeKey(item, `${fallbackPrefix}-current-${index}`)))
+
+    incomingList.forEach((item, index) => {
+        const mergeKey = getListMergeKey(item, `${fallbackPrefix}-incoming-${index}`)
+        if (seen.has(mergeKey)) return
+        seen.add(mergeKey)
+        merged.push(item)
+    })
+
+    return merged
+}
 const normalizeRecommendSongList = result => {
     const directSongs = result?.data?.song_list || result?.song_list || []
     if (Array.isArray(directSongs) && directSongs.length > 0) return directSongs
@@ -69,6 +98,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             playlistHydration: createPlaylistHydrationState(),
             playlistHydrationToken: null,
             playlistHydrationPromise: null,
+            artistPagination: createArtistPaginationState(),
             librarySongs: null,
             libraryAlbum: null,
             libraryMV: null,
@@ -107,6 +137,16 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.playlistHydrationToken = null
             this.playlistHydrationPromise = null
         },
+        resetArtistPagination(section = null) {
+            if (!section) {
+                this.artistPagination = createArtistPaginationState()
+                return
+            }
+            this.artistPagination = {
+                ...this.artistPagination,
+                [section]: createArtistListPageState(),
+            }
+        },
         resetAccountState() {
             this.libraryList = null
             this.libraryListAlbum = null
@@ -120,6 +160,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.restoreLibraryScrollOnActivate = false
             this.detailScrollMemory = {}
             this.libraryDetailToken = null
+            this.artistPagination = createArtistPaginationState()
             this.librarySongs = null
             this.libraryAlbum = null
             this.libraryMV = null
@@ -287,6 +328,7 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.librarySongs = null
             this.libraryAlbum = null
             this.libraryMV = null
+            this.resetArtistPagination()
             if (routerName != 'playlist') this.resetPlaylistHydration()
             if (routerName == 'playlist') await this.updatePlaylistDetail(id, { ...options, loadToken: requestId })
             if (routerName == 'album') await this.updateAlbumDetail(id, requestId)
@@ -503,42 +545,147 @@ export const useLibraryStore = defineStore('libraryStore', {
                 id: id,
                 // timestamp: new Date().getTime()
             }
-            const results = await Promise.all([getArtistDetail(params), getArtistTopSong(params)])
+            const results = await Promise.all([
+                getArtistDetail(params),
+                getArtistTopSong({ ...params, page: 1, pagesize: ARTIST_SONG_PAGE_SIZE }),
+            ])
             if (loadToken && this.libraryDetailToken != loadToken) return
             this.libraryInfo = results[0].artist
             // 酷狗歌手详情本身不带热门歌曲，热门单曲需要单独走 /artist/audios。
             this.librarySongs = mapSongsPlayableStatus(results[1].songs)
             this.indexLibrarySongs(this.librarySongs)
+            this.artistPagination = {
+                ...this.artistPagination,
+                songs: createArtistListPageState({
+                    id: String(id || ''),
+                    page: 1,
+                    pagesize: ARTIST_SONG_PAGE_SIZE,
+                    total: Number(results[1]?.total || this.librarySongs.length || 0),
+                    loaded: this.librarySongs.length,
+                    loading: false,
+                }),
+                albums: createArtistListPageState(),
+            }
             this.libraryChangeAnimation = false
         },
-        //获取歌手热门歌曲前50首，并更新Store数据
-        async updateArtistTopSong(id) {
-            let params = {
-                id: id,
-                // timestamp: new Date().getTime()
-            }
+        // 获取歌手热门歌曲，并按需支持下拉续页。
+        async updateArtistTopSong(id, { reset = true } = {}) {
             const loadToken = this.libraryDetailToken
-            await getArtistTopSong(params).then(result => {
+            const artistId = String(id || '')
+            const currentState = this.artistPagination?.songs || createArtistListPageState()
+            if (!artistId) return
+            if (!reset && (currentState.loading || !currentState.hasMore || currentState.id != artistId)) return
+
+            const nextPage = reset || currentState.id != artistId ? 1 : currentState.page + 1
+            const pagesize = Number(currentState.pagesize || ARTIST_SONG_PAGE_SIZE) || ARTIST_SONG_PAGE_SIZE
+
+            this.artistPagination = {
+                ...this.artistPagination,
+                songs: {
+                    ...currentState,
+                    id: artistId,
+                    loading: true,
+                    pagesize,
+                },
+            }
+
+            try {
+                const result = await getArtistTopSong({
+                    id: artistId,
+                    page: nextPage,
+                    pagesize,
+                })
                 if (loadToken && this.libraryDetailToken != loadToken) return
-                // 直接使用酷狗返回的歌手热门单曲列表，已在接口层完成标准化。
-                this.librarySongs = mapSongsPlayableStatus(result.songs)
+
+                const normalizedSongs = mapSongsPlayableStatus(result.songs) || []
+                const mergedSongs = reset ? normalizedSongs : mergeUniqueEntries(this.librarySongs, normalizedSongs, 'artist-song')
+                this.librarySongs = mergedSongs
                 this.indexLibrarySongs(this.librarySongs)
-            })
-        },
-        //获取歌手专辑，并更新Store数据
-        async updateArtistAlbum(id) {
-            let params = {
-                id: id,
-                limit: 500,
-                offset: 0
-                // timestamp: new Date().getTime()
+
+                const total = Number(result?.total || mergedSongs.length || 0)
+                this.artistPagination = {
+                    ...this.artistPagination,
+                    songs: createArtistListPageState({
+                        id: artistId,
+                        page: nextPage,
+                        pagesize,
+                        total,
+                        loaded: mergedSongs.length,
+                        loading: false,
+                    }),
+                }
+            } catch (error) {
+                this.artistPagination = {
+                    ...this.artistPagination,
+                    songs: {
+                        ...this.artistPagination.songs,
+                        loading: false,
+                    },
+                }
+                throw error
             }
+        },
+        async loadMoreArtistTopSong(id) {
+            await this.updateArtistTopSong(id, { reset: false })
+        },
+        // 获取歌手专辑，并按需支持下拉续页。
+        async updateArtistAlbum(id, { reset = true } = {}) {
             const loadToken = this.libraryDetailToken
-            await getArtistAlbum(params).then(result => {
+            const artistId = String(id || '')
+            const currentState = this.artistPagination?.albums || createArtistListPageState()
+            if (!artistId) return
+            if (!reset && (currentState.loading || !currentState.hasMore || currentState.id != artistId)) return
+
+            const nextPage = reset || currentState.id != artistId ? 1 : currentState.page + 1
+            const pagesize = Number(currentState.pagesize || ARTIST_ALBUM_PAGE_SIZE) || ARTIST_ALBUM_PAGE_SIZE
+
+            this.artistPagination = {
+                ...this.artistPagination,
+                albums: {
+                    ...currentState,
+                    id: artistId,
+                    loading: true,
+                    pagesize,
+                },
+            }
+
+            try {
+                const result = await getArtistAlbum({
+                    id: artistId,
+                    limit: pagesize,
+                    offset: (nextPage - 1) * pagesize,
+                })
                 if (loadToken && this.libraryDetailToken != loadToken) return
-                this.libraryAlbum = result.hotAlbums
+
+                const mergedAlbums = reset ? (result.hotAlbums || []) : mergeUniqueEntries(this.libraryAlbum, result.hotAlbums || [], 'artist-album')
+                this.libraryAlbum = mergedAlbums
                 this.indexLibraryAlbums(this.libraryAlbum)
-            })
+
+                const total = Number(result?.total || mergedAlbums.length || 0)
+                this.artistPagination = {
+                    ...this.artistPagination,
+                    albums: createArtistListPageState({
+                        id: artistId,
+                        page: nextPage,
+                        pagesize,
+                        total,
+                        loaded: mergedAlbums.length,
+                        loading: false,
+                    }),
+                }
+            } catch (error) {
+                this.artistPagination = {
+                    ...this.artistPagination,
+                    albums: {
+                        ...this.artistPagination.albums,
+                        loading: false,
+                    },
+                }
+                throw error
+            }
+        },
+        async loadMoreArtistAlbum(id) {
+            await this.updateArtistAlbum(id, { reset: false })
         },
         //获取歌手MV，并更新Store数据
         async updateArtistsMV(id) {

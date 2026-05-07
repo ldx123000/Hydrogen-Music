@@ -7,6 +7,7 @@
 
   const router = useRouter()
   const props = defineProps(['albumlist', 'type'])
+  const emit = defineEmits(['list-scroll'])
   const playerStore = usePlayerStore()
 
   //专辑日期
@@ -18,12 +19,15 @@
     playerStore.forbidLastRouter = true
     router.push('/mymusic/album/' + albumId)
   }
+
+  // 酷狗部分列表不会返回曲目数，缺失时不展示，避免页面出现误导性的“0首”。
+  const hasAlbumSize = (size) => Number.isFinite(Number(size)) && Number(size) > 0
 </script>
 
 <template>
   <div class="library-content">
-    <div class="library-album-list">
-        <div class="list-item" @click="checkAlbum(item.id)" v-for="(item, index) in props.albumlist">
+    <div id="libraryScroll" class="library-album-list" @scroll.passive="emit('list-scroll')">
+        <div class="list-item" @click="checkAlbum(item.id)" v-for="(item, index) in props.albumlist" :key="item.id || index">
             <div class="item-title" :class="{'item-title-full': props.type == 'search'}">
                 <div class="item-img">
                     <div class="album-back"></div>
@@ -31,11 +35,11 @@
                 </div>
                 <div class="item-info">
                     <span class="item-name">{{item.name}}</span>
-                    <span class="item-num" v-if="props.type == 'search'">{{item.size}}首</span>
+                    <span class="item-num" v-if="props.type == 'search' && hasAlbumSize(item.size)">{{item.size}}首</span>
                 </div>
             </div>
             <div class="item-other" v-if="props.type != 'search'">
-                <span class="item-num">{{item.size}}首</span>
+                <span class="item-num" v-if="hasAlbumSize(item.size)">{{item.size}}首</span>
                 <span class="item-time">{{publishTime(item.publishTime)}}</span>
             </div>
         </div>
@@ -46,9 +50,25 @@
 <style scoped lang="scss">
   .library-content{
     width: 100%;
+    height: 100%;
     .library-album-list{
         width: 100%;
         height: 100%;
+        overflow: auto;
+        &::-webkit-scrollbar{
+            width: 5px;
+            height: 10px;
+            background-color: rgba(0, 0, 0, 0);
+        }
+        &::-webkit-scrollbar-thumb{
+            background-color: rgba(0, 0, 0, 0);
+        }
+        &::-webkit-scrollbar-track{
+            display: none;
+        }
+        &:hover::-webkit-scrollbar-thumb{
+            background-color: rgba(0, 0, 0, 0.04);
+        }
         .list-item{
             width: 100%;
             padding: 12Px 8Px;
