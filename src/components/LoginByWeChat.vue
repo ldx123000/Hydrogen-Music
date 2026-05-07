@@ -175,7 +175,8 @@
       const result = await checkWeChatStatus(wxUuid.value)
       if (sessionId !== pollingSessionId) return
 
-      const status = Number(result?.wx_errcode ?? result?.code)
+      // 微信长轮询 API 返回 wx_errcode 作为二维码状态码
+      const status = Number(result?.wx_errcode)
       wxStatus.value = status
       applyStatus(status)
 
