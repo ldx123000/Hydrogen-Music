@@ -111,6 +111,8 @@ function extractPlayableUrl(value) {
     if (direct) return extractPlayableUrl(direct)
     if (Array.isArray(value.backupdownurl) && value.backupdownurl[0]) return value.backupdownurl[0]
     if (Array.isArray(value.tracker_url) && value.tracker_url[0]) return value.tracker_url[0]
+    // 部分响应结构将有效地址嵌套在 data 字段内，递归兜底
+    if (value.data) return extractPlayableUrl(value.data)
     return ''
 }
 
@@ -140,6 +142,21 @@ function buildSongUrlParams(input, quality, requestParams = {}) {
 
 export async function getMusicUrl(input, quality = 'flac', requestParams = {}) {
     const raw = await get('/song/url', buildSongUrlParams(input, quality, requestParams))
+    const body = raw?.body || raw?.data || raw || {}
+    const url = extractPlayableUrl(body)
+    const type = body?.extName || body?.ext || 'mp3'
+    return { data: [{ url: url || null, level: quality, type }] }
+}
+
+/**
+ * 获取音乐播放URL（新接口，支持 VIP 凭证）
+ * 当 /song/url 无法返回有效地址时降级使用此接口。
+ * @param {object|string} input - 歌曲对象或 ID
+ * @param {string} quality - 音质
+ * @param {object} requestParams - 额外参数
+ */
+export async function getMusicUrlNew(input, quality = 'flac', requestParams = {}) {
+    const raw = await get('/song/url/new', buildSongUrlParams(input, quality, requestParams))
     const body = raw?.body || raw?.data || raw || {}
     const url = extractPlayableUrl(body)
     const type = body?.extName || body?.ext || 'mp3'
@@ -186,120 +203,16 @@ export function likeMusic(id, like = true) {
 }
 
 /**
- * 判断歌词语言是否需要翻译/罗马音
- * 国語/粤語/空 → 不需要；其他外语 → 需要
- * @param {string} language - KuGou 返回的 language 字段（如 "日语"、"英语"）
- * @returns {boolean}
- */
-function needsLyricTranslation(language) {
-    if (!language || typeof language !== 'string') return false;
-    const lang = language.trim();
-    return lang !== '' && lang !== '国语' && lang !== '粤语';
-}
-
-/**
- * 下载单个歌词版本
- * @param {object} info - 歌词候选 { id, accesskey }
- * @returns {Promise<string>} 歌词文本
- */
-async function downloadSingleLyric(info) {
-    if (!info) return '';
-    try {
-        const res = await get('/lyric', {
-            id: info.id,
-            accesskey: info.accesskey,
-            fmt: 'lrc',
-            decode: true,
-        });
-        return res?.decodeContent || res?.lrc?.lyric || '';
-    } catch {
-        return '';
-    }
-}
-
-/**
- * 获取音乐歌词（支持多版本：原文 + 翻译 + 罗马音）
- * 利用 KuGou man=yes 返回多个歌词候选项：
- *   - 分数第二高 → 原版歌词
- *   - 倒数第二 → 翻译歌词
- *   - 最后一项 → 罗马音
- * @param {string} hash - 歌曲 hash
- * @returns {Promise<{lrc: {lyric: string}, tlyric?: {lyric: string}, romalrc?: {lyric: string}}>}
+ * 获取音乐歌词
+ * @param {string|number} id - 音乐ID
  */
 export async function getLyric(hash) {
-    const searchRes = await get('/search/lyric', { hash, man: 'yes' });
-
-    // 调试：打印 search_lyric 返回结构
-    console.log('[lyric-debug] searchRes:', JSON.stringify(searchRes, null, 2).slice(0, 2000));
-
-    const candidates = searchRes?.candidates;
-    if (!candidates || !candidates.length) {
-        console.warn('[lyric-debug] 无候选歌词, hash:', hash);
-        return { lrc: { lyric: '' } };
-    }
-
-    // 按 score 降序排列
-    const sorted = [...candidates].sort((a, b) => (b.score || 0) - (a.score || 0));
-    const n = sorted.length;
-    console.log('[lyric-debug] 候选数量:', n, '语言字段:', sorted.map(c => c.language).join(', '), 'score:', sorted.map(c => c.score).join(', '));
-
-    // 取分数第二高作为原版歌词（第一高通常是卡拉OK伴奏版）
-    const originalInfo = n >= 2 ? sorted[1] : sorted[0];
-    if (!originalInfo) return { lrc: { lyric: '' } };
-
-    // 判断歌曲语言是否需要翻译/罗马音
-    // language 字段可能在部分候选上缺失，从所有候选中找一个非空的
-    const language = originalInfo.language || sorted.find(c => c && c.language)?.language || '';
-    const shouldTranslate = needsLyricTranslation(language);
-    console.log('[lyric-debug] 原版候选 language:', originalInfo.language, '最终语言:', language, 'shouldTranslate:', shouldTranslate);
-
-    // 下载原版歌词
-    const originalText = await downloadSingleLyric(originalInfo);
-    if (!originalText) return { lrc: { lyric: '' } };
-
-    const result = { lrc: { lyric: originalText } };
-
-    // 外语歌且候选数量足够时，尝试下载翻译和罗马音
-    if (shouldTranslate && n >= 4) {
-        console.log('[lyric-debug] 尝试下载翻译(索引' + (n - 2) + ')和罗马音(索引' + (n - 1) + ')');
-
-        // 倒数第二 → 翻译，最后一项 → 罗马音
-        const transInfo = sorted[n - 2];
-        const romaInfo = sorted[n - 1];
-
-        const [transResult, romaResult] = await Promise.allSettled([
-            downloadSingleLyric(transInfo),
-            downloadSingleLyric(romaInfo),
-        ]);
-
-        if (transResult.status === 'fulfilled' && transResult.value) {
-            console.log('[lyric-debug] 翻译歌词获取成功, 长度:', transResult.value.length);
-            result.tlyric = { lyric: transResult.value };
-        } else {
-            console.warn('[lyric-debug] 翻译歌词获取失败');
-        }
-        if (romaResult.status === 'fulfilled' && romaResult.value) {
-            console.log('[lyric-debug] 罗马音歌词获取成功, 长度:', romaResult.value.length);
-            result.romalrc = { lyric: romaResult.value };
-        } else {
-            console.warn('[lyric-debug] 罗马音歌词获取失败');
-        }
-    } else if (shouldTranslate && n === 3) {
-        console.log('[lyric-debug] 3个候选，尝试下载索引2作为翻译');
-
-        // 只有 3 个候选：index 2 作为翻译（无罗马音）
-        const extraInfo = sorted[2];
-        const extraText = await downloadSingleLyric(extraInfo);
-        if (extraText) {
-            console.log('[lyric-debug] 翻译歌词获取成功, 长度:', extraText.length);
-            result.tlyric = { lyric: extraText };
-        }
-    } else {
-        console.log('[lyric-debug] 无需翻译: shouldTranslate=' + shouldTranslate + ', n=' + n);
-    }
-
-    console.log('[lyric-debug] 最终返回:', Object.keys(result).join(', '));
-    return result;
+    const searchRes = await get('/search/lyric', { hash });
+    const info = searchRes?.candidates?.[0];
+    if (!info) return { lrc: { lyric: '' } };
+    const lyric = await get('/lyric', { id: info.id, accesskey: info.accesskey, fmt: 'lrc', decode: true });
+    const lyricText = lyric?.decodeContent || lyric?.lrc?.lyric || '';
+    return { lrc: { lyric: lyricText } };
 }
 
 /**

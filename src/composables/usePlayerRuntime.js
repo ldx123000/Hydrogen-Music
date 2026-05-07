@@ -73,13 +73,20 @@ function rebuildLyricsTimeline() {
         return;
     }
 
-    const timeline = buildLyricsTimeline(lyric.value, {
-        songDurationSec: getCurrentSongDurationSec(),
-        isLocal: getCurrentSong()?.type === 'local',
-    });
+    try {
+        const timeline = buildLyricsTimeline(lyric.value, {
+            songDurationSec: getCurrentSongDurationSec(),
+            isLocal: getCurrentSong()?.type === 'local',
+        });
 
-    playerStore.lyricsObjArr = timeline;
-    syncLyricIndexForSeek(getSafeCurrentSeek());
+        playerStore.lyricsObjArr = timeline;
+        syncLyricIndexForSeek(getSafeCurrentSeek());
+    } catch (error) {
+        // 歌词构建异常时只降级歌词功能，避免影响主播放链路。
+        console.error('构建歌词时间轴失败:', error);
+        playerStore.lyricsObjArr = [];
+        applyCurrentLyricIndex(-1);
+    }
 }
 
 export function syncLyricIndexForSeek(seekSeconds) {

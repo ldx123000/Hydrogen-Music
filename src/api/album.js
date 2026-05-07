@@ -1,5 +1,4 @@
-import { get, getWithPagination, operationRequest } from "./base";
-import { buildIdWithTimestamp, buildOperationParams } from "./params";
+import { get } from "./base";
 import { getNewestSong } from "./song";
 import { normalizePlaylistSong } from "./playlist";
 import request from "../utils/request";
@@ -181,7 +180,16 @@ export function getNewestAlbum(params = {}) {
  * @param {number} options.offset - 偏移数量，默认0
  */
 export function getUserSubAlbum({ limit = 25, offset = 0, ...params } = {}) {
-    return getWithPagination('/album/sublist', { limit, offset, ...params });
+    // KuGouMusicApi 当前没有“用户收藏专辑列表”的公开接口，先返回空列表，
+    // 避免收藏页继续打旧的网易云接口导致整块内容报错。
+    void limit
+    void offset
+    void params
+    return Promise.resolve({
+        code: 200,
+        count: 0,
+        data: [],
+    });
 }
 
 /**
@@ -230,12 +238,13 @@ export function getAlbumDetail(id, extraParams = {}) {
  * @param {object} extraParams - 额外参数
  */
 export function subAlbum(id, isSubscribe = true, extraParams = {}) {
-    // 支持旧的调用方式（传入params对象）
-    if (typeof id === 'object') {
-        return get('/album/sub', id);
-    }
-    const params = buildOperationParams(id, isSubscribe, extraParams);
-    return get('/album/sub', params);
+    void id
+    void isSubscribe
+    void extraParams
+    return Promise.resolve({
+        code: 501,
+        message: 'KuGou API 暂不支持专辑收藏',
+    });
 }
 
 /**
@@ -244,6 +253,12 @@ export function subAlbum(id, isSubscribe = true, extraParams = {}) {
  * @param {object} extraParams - 额外参数
  */
 export function albumDynamic(id, extraParams = {}) {
-    const params = buildIdWithTimestamp(id, extraParams);
-    return get('/album/detail/dynamic', params);
+    void id
+    void extraParams
+    return Promise.resolve({
+        isSub: false,
+        subCount: 0,
+        commentCount: 0,
+        shareCount: 0,
+    });
 }

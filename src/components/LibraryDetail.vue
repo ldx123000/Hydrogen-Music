@@ -623,7 +623,7 @@ const librarySub = id => {
                 if (params.t == 1) noticeOpen('收藏成功', 2);
                 else noticeOpen('已取消收藏', 2);
             } else {
-                noticeOpen('收藏/取消收藏失败', 2);
+                noticeOpen(result?.message || '收藏/取消收藏失败', 2);
             }
         });
     }
@@ -634,7 +634,7 @@ const librarySub = id => {
                 if (params.t == 1) noticeOpen('收藏成功', 2);
                 else noticeOpen('已取消收藏', 2);
             } else {
-                noticeOpen('收藏/取消收藏失败', 2);
+                noticeOpen(result?.message || '收藏/取消收藏失败', 2);
             }
         });
     }

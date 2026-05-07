@@ -40,6 +40,7 @@ function convertPrograms(arr) {
     if (!mainSong.al) mainSong.al = {}
     if (!mainSong.al.picUrl && cover) mainSong.al.picUrl = cover
     return {
+      ...mainSong,
       id: mainSong.id,
       name: mainSong.name,
       ar: mainSong.artists || mainSong.ar || [],
@@ -63,7 +64,7 @@ async function loadAllPrograms(radioId) {
   let offset = 0
   // 以 programCount 为上限，逐页取齐
   while (true) {
-    const res = await getDjPrograms(Number(radioId), { limit: pageLimit, offset })
+    const res = await getDjPrograms(radioId, { limit: pageLimit, offset })
     const arr = res?.programs || res?.data || []
     if (!arr.length) break
     programSongs.value = programSongs.value.concat(convertPrograms(arr))
@@ -81,7 +82,7 @@ async function loadDetailFor(radioId) {
   programSongs.value = []
   try {
     const requestRid = String(radioId)
-    const detail = await getDjDetail(Number(requestRid))
+    const detail = await getDjDetail(requestRid)
     radioInfo.value = detail?.data || detail?.djRadio || detail || null
     await loadAllPrograms(requestRid)
   } catch (e) {
@@ -102,28 +103,9 @@ onBeforeRouteUpdate(async (to, from, next) => {
 // 播放全部节目（从第一期开始）
 const onPlayAll = () => {
   if (!programSongs.value?.length) return
-  // 如果尚未加载完，先把剩余节目全部取齐，再一次性加入播放列表
-  const ensureAll = async () => {
-    if (finished.value) return programSongs.value
-    let list = []
-    // 从当前 offset 继续拉取到结束
-    let offset = currentOffset
-    while (!finished.value) {
-      const res = await getDjPrograms(rid.value, { limit: pageSize, offset })
-      const arr = res?.programs || res?.data || []
-      if (!arr.length) { finished.value = true; break }
-      list = list.concat(convertPrograms(arr))
-      offset += arr.length
-      if (arr.length < pageSize) { finished.value = true; break }
-      if (radioInfo.value?.programCount && (programSongs.value.length + list.length) >= radioInfo.value.programCount) { finished.value = true; break }
-    }
-    // 返回汇总后的完整数组（已包含首屏）
-    return programSongs.value.concat(list)
-  }
-  ensureAll().then(fullList => {
-    playAll('dj', fullList)
-    playerStore.listInfo = { id: rid.value, type: 'dj', name: radioName.value }
-  })
+  // 当前详情页已经在进入时拉满全部节目，这里直接整单播放即可。
+  playAll('dj', programSongs.value)
+  playerStore.listInfo = { id: rid.value, type: 'dj', name: radioName.value }
 }
 
 // 介绍弹层动画钩子（与歌单详情保持一致）

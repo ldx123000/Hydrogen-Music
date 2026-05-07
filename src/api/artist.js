@@ -1,5 +1,5 @@
-import { get, getById, getWithPagination, operationRequest } from "./base";
-import { buildTypeParams, buildIdWithTimestamp, buildOperationParams, buildPaginationParams } from "./params";
+import { get } from "./base";
+import { buildOperationParams } from "./params";
 import { normalizePlaylistSong } from "./playlist";
 
 function resolveCoverUrl(url) {
@@ -108,6 +108,23 @@ function extractArtistArray(result = {}) {
                     : []
 }
 
+function extractFollowedArtistArray(result = {}) {
+    const rawList = Array.isArray(result?.data?.list)
+        ? result.data.list
+        : Array.isArray(result?.data?.data)
+            ? result.data.data
+            : Array.isArray(result?.data)
+                ? result.data
+                : Array.isArray(result?.list)
+                    ? result.list
+                    : []
+
+    return rawList.flatMap(item => {
+        if (Array.isArray(item?.singer) && item.singer.length > 0) return item.singer
+        return item ? [item] : []
+    })
+}
+
 function resolveArtistTotal(result = {}) {
     const rawTotal = result?.total ?? result?.data?.total ?? result?.extra?.page_total ?? result?.extra?.total
     const normalizedTotal = Number(rawTotal)
@@ -146,7 +163,16 @@ export function getRecommendedArtists(type) {
  * 获取收藏的歌手列表
  */
 export function getUserSubArtists() {
-    return get('/artist/sublist', {});
+    return get('/user/follow', {}).then(result => {
+        const artists = extractFollowedArtistArray(result)
+            .filter(item => item?.singerid || item?.author_id || item?.AuthorId || item?.songcount || item?.albumcount || item?.imgurl)
+            .map(item => normalizeArtistProfile(item))
+        return {
+            ...result,
+            artists,
+            data: artists,
+        }
+    });
 }
 
 /**
@@ -190,14 +216,15 @@ export function getArtistTopSong(id, extraParams = {}) {
  * @param {number} options.offset - 偏移数量，默认0
  */
 export function getArtistAlbum(id, { limit = 30, offset = 0, ...extraParams } = {}) {
-    const params = typeof id === 'object'
-        ? id
-        : {
-            id,
-            page: offset ? Math.floor(offset / limit) + 1 : 1,
-            pagesize: limit,
-            ...extraParams,
-        }
+    const sourceParams = typeof id === 'object' ? { ...(id || {}) } : { id, limit, offset, ...extraParams }
+    const pageSize = Number(sourceParams?.pagesize || sourceParams?.limit || limit || 30) || 30
+    const pageOffset = Number(sourceParams?.offset || 0) || 0
+    const params = {
+        ...sourceParams,
+        id: sourceParams?.id ?? id,
+        page: Number(sourceParams?.page || (pageOffset ? Math.floor(pageOffset / pageSize) + 1 : 1)) || 1,
+        pagesize: pageSize,
+    }
     return get('/artist/albums', params).then(result => {
         const rawAlbums = extractArtistArray(result)
         return {
@@ -214,8 +241,16 @@ export function getArtistAlbum(id, { limit = 30, offset = 0, ...extraParams } = 
  * @param {object} extraParams - 额外参数
  */
 export function getArtistFansCount(id, extraParams = {}) {
-    const params = buildIdWithTimestamp(id, extraParams);
-    return get('/artist/follow/count', params);
+    const params = typeof id === 'object' ? id : { id, ...extraParams }
+    return get('/artist/detail', params).then(result => ({
+        ...result,
+        data: {
+            follow: {
+                fansCnt: Number(result?.data?.fansnums ?? result?.data?.fanscount ?? result?.data?.follow ?? 0) || 0,
+            },
+            followed: false,
+        },
+    }));
 }
 
 /**
@@ -225,10 +260,17 @@ export function getArtistFansCount(id, extraParams = {}) {
  * @param {object} extraParams - 额外参数
  */
 export function subArtist(id, isSubscribe = true, extraParams = {}) {
-    // 支持旧的调用方式（传入params对象）
-    if (typeof id === 'object') {
-        return get('/artist/sub', id);
-    }
-    const params = buildOperationParams(id, isSubscribe, extraParams);
-    return get('/artist/sub', params);
+    const params = typeof id === 'object'
+        ? { ...(id || {}) }
+        : buildOperationParams(id, isSubscribe, extraParams)
+    const shouldFollow = Number(params?.t) === 1
+
+    return get(shouldFollow ? '/artist/follow' : '/artist/unfollow', {
+        id: params?.id,
+        userid: params?.userid,
+        token: params?.token,
+    }).then(result => ({
+        ...result,
+        code: result?.status === 1 || result?.error_code === 0 || result?.code === 200 ? 200 : (result?.code || 500),
+    }));
 }

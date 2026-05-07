@@ -12,8 +12,9 @@ const CACHE_INVALIDATION_KEYS = Object.freeze({
 
 const CACHE_INVALIDATION_URLS = Object.freeze({
     playlist: ['/playlist/detail', '/playlist/track/all'],
-    albumSublist: ['/album/sublist'],
-    artistSublist: ['/artist/sublist'],
+    // 酷狗当前没有公开的收藏专辑列表接口，保留空数组避免继续命中旧网易云路径。
+    albumSublist: [],
+    artistSublist: ['/user/follow'],
 })
 
 function normalizeCacheInvalidationUrls(urls) {

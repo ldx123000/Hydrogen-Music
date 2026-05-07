@@ -10,7 +10,7 @@
     return formatTime(time, "YYYY-MM-DD")
   })
   const playMV = (item) => {
-    otherStore.getMvData(item.id)
+    otherStore.getMvData(item)
   }
 </script>
 

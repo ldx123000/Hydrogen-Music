@@ -8,11 +8,11 @@
   const playerStore = usePlayerStore()
   const otherStore = useOtherStore()
   const props = defineProps(['listdata', 'type'])
-  const checkDetail = (id) => {
+  const checkDetail = (item) => {
     playerStore.forbidLastRouter = true
-    if(props.type == 'playlist') router.push('/mymusic/playlist/' + id)
-    if(props.type == 'artist') router.push('/mymusic/artist/' + id)
-    if(props.type == 'mv') otherStore.getMvData(id)
+    if(props.type == 'playlist') router.push('/mymusic/playlist/' + item.id)
+    if(props.type == 'artist') router.push('/mymusic/artist/' + item.id)
+    if(props.type == 'mv') otherStore.getMvData(item)
   }
 </script>
 
@@ -20,7 +20,7 @@
   <div class="result-list">
     <div class="item-list">
         <div class="item" v-for="(item,index) in listdata">
-            <div class="item-img" :class="type == 'artist' ? 'item-img-circle' : 'item-img-sqaure'" @click="checkDetail(item.id)">
+            <div class="item-img" :class="type == 'artist' ? 'item-img-circle' : 'item-img-sqaure'" @click="checkDetail(item)">
                 <img v-lazy :src="resolveImageUrl(item.coverImgUrl || item.img1v1Url || item.picUrl || item.cover)" alt="">
             </div>
             <div class="item-name" :class="{'item-name-center': type == 'artist'}">{{item.name}}</div>

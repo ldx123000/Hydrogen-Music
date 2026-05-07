@@ -3,7 +3,6 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDjSubList, getDjPrograms } from '../api/dj'
 import { getLyric } from '../api/song'
-import { applyLyricType } from '../utils/player'
 import { usePlayerStore } from '../store/playerStore'
 import { resolveImageUrl } from '../utils/initApp'
 import { getPreferredQuality } from '../utils/quality'
@@ -46,7 +45,8 @@ const playLatestProgram = async (radio) => {
     if (!mainSong?.id) return
 
     const preferredQuality = getPreferredQuality(playerStore.quality)
-    const trackInfo = await resolveTrackByQualityPreference(mainSong.id, preferredQuality)
+    // 频道歌曲往往同时需要 hash 和 album_audio_id，直接把完整歌曲对象传给解析器更稳。
+    const trackInfo = await resolveTrackByQualityPreference(mainSong, preferredQuality)
     const url = trackInfo?.url
     if (!url) return
 
@@ -78,10 +78,7 @@ const playLatestProgram = async (radio) => {
     // 加载歌词（可能无歌词，忽略错误）
     try {
       const lyr = await getLyric(songItem.id)
-      if (lyr && lyr.lrc) {
-        playerStore.lyric = lyr
-        applyLyricType(lyr)
-      }
+      if (lyr && lyr.lrc) playerStore.lyric = lyr
     } catch (_) {}
   } catch (_) {}
 }

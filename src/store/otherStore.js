@@ -137,9 +137,10 @@ export const useOtherStore = defineStore('otherStore', {
             }
             return null;
         },
-        async getMvData(id) {
-            const mvId = Number(id);
-            if (!Number.isFinite(mvId) || mvId <= 0) {
+        async getMvData(input) {
+            const mvSource = input && typeof input === 'object' ? input : { id: input }
+            const mvId = String(mvSource?.id || mvSource?.vid || mvSource?.videoId || '')
+            if (!mvId) {
                 noticeOpen('MV 加载失败，请稍后重试', 2);
                 return false;
             }
@@ -150,42 +151,20 @@ export const useOtherStore = defineStore('otherStore', {
             try {
                 const detail = await getMVDetail(mvId);
                 const mv = detail?.data || null;
-                const brs = Array.isArray(mv?.brs) ? mv.brs : [];
+                const mvHash = String(mv?.hash || mvSource?.hash || '')
 
-                if (!mv || brs.length === 0) {
+                if (!mv || !mvHash) {
                     noticeOpen('MV 资源不可用', 2);
                     return false;
                 }
 
-                const sortedBrs = brs
-                    .map(item => Number(item?.br))
-                    .filter(br => Number.isFinite(br) && br > 0)
-                    .sort((a, b) => b - a);
-
-                if (sortedBrs.length === 0) {
-                    noticeOpen('MV 资源不可用', 2);
-                    return false;
-                }
-
-                const urlResults = await Promise.all(
-                    sortedBrs.map(br => getMVUrl(mvId, br).catch(() => null))
-                );
-
-                const sourceMap = new Map();
-                for (const res of urlResults) {
-                    const src = res?.data?.url || '';
-                    const size = Number(res?.data?.r);
-                    if (!src || !Number.isFinite(size) || size <= 0) continue;
-                    if (!sourceMap.has(size)) {
-                        sourceMap.set(size, {
-                            src,
-                            type: 'video/mp4',
-                            size,
-                        });
-                    }
-                }
-
-                const sources = Array.from(sourceMap.values()).sort((a, b) => b.size - a.size);
+                const urlResult = await getMVUrl({ id: mvId, hash: mvHash }).catch(() => null)
+                const src = urlResult?.data?.url || ''
+                const sources = src ? [{
+                    src,
+                    type: 'video/mp4',
+                    size: 0,
+                }] : []
                 if (sources.length === 0) {
                     noticeOpen('MV 资源不可用', 2);
                     return false;
