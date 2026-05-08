@@ -6,6 +6,7 @@ import { resolveFavoritePlaylistMeta } from './player'
 import { isLogin, setCookies, getCookie } from './authority'
 import { clearAccountScopedState } from './accountState'
 import { invalidateNcmApiCookieCache } from './request'
+import { runDailyVipAutoClaim } from './dailyVipClaim'
 
 const userStore = useUserStore(pinia)
 
@@ -181,7 +182,10 @@ export async function initializeCurrentAccountSession() {
     try {
         await refreshLoginToken({ token: getCookie('token'), userid: getCookie('userid') }).catch(() => {})
         invalidateNcmApiCookieCache()
-        return await hydrateAccountSession(token)
+        const profile = await hydrateAccountSession(token)
+        // 启动时如果已经登录，顺手尝试领取当天 VIP，失败也不阻塞主流程。
+        void runDailyVipAutoClaim('startup')
+        return profile
     } catch (error) {
         await clearCurrentAccountSessionState(token)
         throw error
@@ -199,7 +203,10 @@ export async function applyLoginSession(data) {
     invalidateNcmApiCookieCache()
 
     try {
-        return await hydrateAccountSession(token)
+        const profile = await hydrateAccountSession(token)
+        // 登录成功后补一次自动领取，覆盖“启动时未登录”的场景。
+        void runDailyVipAutoClaim('login')
+        return profile
     } catch (error) {
         await clearCurrentAccountSessionState(token)
         throw error

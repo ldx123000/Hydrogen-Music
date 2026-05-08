@@ -56,7 +56,7 @@ import request from '../utils/request'
  * @param {*} id 
  * @returns 
  */
-  export function getVipInfo() {
+export function getVipInfo() {
     return request({
       url: '/user/vip/detail',
       method: 'get',
@@ -65,3 +65,61 @@ import request from '../utils/request'
       }
     });
   }
+
+function withTimestamp(params = {}) {
+    return {
+        ...params,
+        timestamp: Date.now(),
+    }
+}
+
+/**
+ * 获取服务器时间，避免使用本地时区直接计算领取日期。
+ * @returns
+ */
+export function getServerNow() {
+    return request({
+        url: '/server/now',
+        method: 'post',
+        params: withTimestamp(),
+    })
+}
+
+/**
+ * 获取已领取 VIP 状态。
+ * @returns
+ */
+export function getYouthVipUnionStatus() {
+    return request({
+        url: '/youth/union/vip',
+        method: 'get',
+        params: withTimestamp(),
+    })
+}
+
+/**
+ * 获取当月已领取 VIP 天数记录。
+ * @returns
+ */
+export function getYouthVipMonthRecord() {
+    return request({
+        url: '/youth/month/vip/record',
+        method: 'get',
+        params: withTimestamp(),
+    })
+}
+
+/**
+ * 领取一天 VIP。
+ * @param {string} receiveDay - 领取日期，格式为 YYYY-MM-DD
+ * @returns
+ */
+export function claimYouthDailyVip(receiveDay) {
+    return request({
+        url: '/youth/day/vip',
+        method: 'post',
+        params: withTimestamp({
+            receive_day: receiveDay,
+        }),
+    })
+}

@@ -114,7 +114,15 @@ request.interceptors.response.use(function (response) {
       }
     }
 
-    const suppressGlobalNotice = url === '/like' || url === '/playlist/tracks' || url === '/playlist/tracks/add' || url === '/playlist/tracks/del'
+    const suppressGlobalNotice = url === '/like'
+      || url === '/playlist/tracks'
+      || url === '/playlist/tracks/add'
+      || url === '/playlist/tracks/del'
+      || url === '/server/now'
+      || url === '/youth/union/vip'
+      || url === '/youth/month/vip/record'
+      || url === '/youth/day/vip'
+      || url === '/youth/day/vip/upgrade'
     if (!suppressGlobalNotice) {
       if (msg) noticeOpen(`请求错误：${msg}`, 2)
       else if (status) noticeOpen(`请求错误 (${status})`, 2)

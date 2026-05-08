@@ -11,6 +11,7 @@ import Selector from '../components/Selector.vue'
 import UpdateDialog from '../components/UpdateDialog.vue'
 import { setTheme, getSavedTheme } from '@/utils/theme'
 import { logoutCurrentAccountSession } from '@/utils/accountSession'
+import { getDailyVipClaimText } from '@/utils/dailyVipClaim'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -34,6 +35,7 @@ const profileDetailList = computed(() => [
     { label: '生日', value: currentUser.value.birthdayText || currentUser.value.birthday || '未填写' },
     { label: '职业', value: currentUser.value.occupation || '未填写' },
     { label: '会员状态', value: profileVipText.value },
+    { label: '今日 VIP', value: getDailyVipClaimText(currentUser.value.userId || currentUser.value.userid || '') },
     { label: '粉丝', value: currentUser.value.fans ?? currentUser.value.followeds ?? '未填写' },
     { label: '关注', value: currentUser.value.follows ?? '未填写' },
     { label: '访客', value: currentUser.value.visitors ?? '未填写' },
