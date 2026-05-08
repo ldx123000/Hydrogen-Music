@@ -119,15 +119,27 @@ function normalizeChannelProgram(raw = {}, radioInfo = null) {
 // 获取我订阅的电台列表。酷狗收藏电台对应“频道”能力，因此这里改走 youth/channel/all。
 export function getDjSubList({ limit = 30, offset = 0 } = {}) {
   const page = Math.floor(offset / limit) + 1
-  return get('/youth/channel/all', { page, pagesize: limit }).then(result => {
-    const djRadios = extractDjRadioList(result).map(item => normalizeDjRadio(item))
-    return {
-      ...result,
-      djRadios,
-      radios: djRadios,
-      data: djRadios,
-    }
-  })
+  return get('/youth/channel/all', { page, pagesize: limit })
+    .then(result => {
+      const djRadios = extractDjRadioList(result).map(item => normalizeDjRadio(item))
+      return {
+        ...result,
+        djRadios,
+        radios: djRadios,
+        data: djRadios,
+      }
+    })
+    .catch(error => {
+      // 频道收藏接口偶发会返回 502/22001，这里先降级为空列表，避免收藏页整块报错。
+      console.warn('加载收藏电台失败，已降级为空列表:', error)
+      return {
+        code: 200,
+        count: 0,
+        djRadios: [],
+        radios: [],
+        data: [],
+      }
+    })
 }
 
 // 订阅/取消订阅电台。

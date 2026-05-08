@@ -88,8 +88,16 @@ if (!gotTheLock) {
 
     // 监听渲染进程触发的手动检查更新事件
     // 与 src/electron/ipcMain.js 中的处理并存，仅用于设置标记
-    ipcMain.on('check-for-update', () => {
-        manualUpdateCheckInProgress = true
+    ipcMain.on('check-for-update', async () => {
+        try {
+            const Store = await getElectronStore()
+            const settingsStore = new Store({ name: 'settings' })
+            const settings = await settingsStore.get('settings')
+            // 更新开关关闭时，不标记手动检查状态，避免后续自动更新事件被错误吞掉。
+            manualUpdateCheckInProgress = settings?.other?.enableUpdate !== false
+        } catch (_) {
+            manualUpdateCheckInProgress = true
+        }
     })
     app.on('window-all-closed', () => {
         if (process.platform !== 'darwin') app.quit()
@@ -302,8 +310,23 @@ const createWindow = () => {
                 }
             })
 
-            // 自动检查更新（非 macOS）
-            autoUpdater.checkForUpdatesAndNotify()
+            // 自动检查更新（非 macOS）；当用户显式关闭更新时不再启动检查。
+            getElectronStore()
+                .then(Store => {
+                    const settingsStore = new Store({ name: 'settings' })
+                    return settingsStore.get('settings')
+                })
+                .then(settings => {
+                    if (settings?.other?.enableUpdate === false) {
+                        console.log('已关闭应用更新，跳过启动时自动检查')
+                        return
+                    }
+                    autoUpdater.checkForUpdatesAndNotify()
+                })
+                .catch(error => {
+                    console.error('读取更新设置失败，继续尝试自动检查更新:', error)
+                    autoUpdater.checkForUpdatesAndNotify()
+                })
         }
     }
 

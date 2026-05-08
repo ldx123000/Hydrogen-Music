@@ -181,13 +181,14 @@ export function getNewestAlbum(params = {}) {
  */
 export function getUserSubAlbum({ limit = 25, offset = 0, ...params } = {}) {
     // KuGouMusicApi 当前没有“用户收藏专辑列表”的公开接口，先返回空列表，
-    // 避免收藏页继续打旧的网易云接口导致整块内容报错。
+    // 同时显式标记 unsupported，避免页面误以为是“没有触发请求”的普通空数据。
     void limit
     void offset
     void params
     return Promise.resolve({
         code: 200,
         count: 0,
+        unsupported: true,
         data: [],
     });
 }

@@ -1,5 +1,5 @@
 <script setup>
-  import { onActivated, ref } from 'vue'
+  import { computed, onActivated, ref } from 'vue'
   import { onBeforeRouteLeave, useRouter } from 'vue-router'
   import { useLibraryStore } from '../store/libraryStore'
   import { usePlayerStore } from '../store/playerStore';
@@ -23,6 +23,16 @@
   const scrollTop = ref()
   const currentSelected = ref(null)
   const router = useRouter()
+  const hasEmptyLibraryList = computed(() => Array.isArray(libraryList.value) && libraryList.value.length == 0)
+  const emptyLibraryText = computed(() => {
+    if (listType1.value == 1 && listType2.value == 0) return '当前版本暂不支持读取收藏专辑'
+    if (listType1.value == 1 && listType2.value == 1) return '暂无收藏歌手'
+    if (listType1.value == 1 && listType2.value == 2) return '暂无收藏 MV'
+    if (listType1.value == 1 && listType2.value == 3) return '暂无收藏电台'
+    if (listType1.value == 0 && listType2.value == 0) return '暂无创建歌单'
+    if (listType1.value == 0 && listType2.value == 1) return '暂无收藏歌单'
+    return '暂无内容'
+  })
   const showDetail = async (selectedId, item) => {
     if(listType1.value == 0) router.push('/mymusic/playlist/' + item.id)
     if(listType1.value == 1 && listType2.value == 0) router.push('/mymusic/album/' + item.id)
@@ -133,6 +143,7 @@
             </div>
         </div>
     </div>
+    <div v-if="hasEmptyLibraryList" class="library-empty">{{ emptyLibraryText }}</div>
   </div>
 </template>
 
@@ -250,6 +261,12 @@
       &::after{
         transform: translateX(0);
       }
+    }
+    .library-empty{
+      padding: 16Px 8Px;
+      font: 13Px SourceHanSansCN-Bold;
+      color: rgb(105, 105, 105);
+      text-align: left;
     }
   }
 </style>

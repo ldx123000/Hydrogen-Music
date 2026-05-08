@@ -18,6 +18,28 @@ if (packageJson.version !== nextVersion) {
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
+const backendBuildResult = spawnSync(process.execPath, [path.join(projectDir, 'scripts', 'build-kugou-api.cjs')], {
+  cwd: projectDir,
+  stdio: 'inherit',
+  env: process.env,
+  windowsHide: true,
+});
+
+if (backendBuildResult.error) {
+  console.error('[release-build] Failed to build KuGouMusicApi bundle:', backendBuildResult.error);
+  process.exit(1);
+}
+
+if (typeof backendBuildResult.status !== 'number') {
+  console.error('[release-build] KuGouMusicApi bundle build exited with no status code (likely killed/signaled)');
+  process.exit(1);
+}
+
+if (backendBuildResult.status !== 0) {
+  console.error(`[release-build] KuGouMusicApi bundle build failed with exit code ${backendBuildResult.status}`);
+  process.exit(backendBuildResult.status);
+}
+
 const npmExecPath = process.env.npm_execpath;
 const spawnCmd = npmExecPath ? process.execPath : 'npm';
 const spawnArgs = npmExecPath ? [npmExecPath, 'run', 'dist:local'] : ['run', 'dist:local'];

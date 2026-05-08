@@ -232,6 +232,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
                 ],
                 other: {
                     globalShortcuts: true,
+                    enableUpdate: true,
                     quitApp: 'minimize'
                 }
             }
@@ -750,6 +751,13 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
 
     // 处理应用更新相关的 IPC 事件
     ipcMain.on('check-for-update', async () => {
+        const settings = await settingsStore.get('settings')
+        // 设置页关闭更新后，统一拦截所有手动检查入口，避免出现“开关关闭但仍然请求更新”的状态。
+        if (settings?.other?.enableUpdate === false) {
+            win.webContents.send('update-error', '应用更新已关闭，请先在设置中开启')
+            return
+        }
+
         // 在 macOS 上，改为使用 GitHub API 手动检查
         if (process.platform === 'darwin') {
             try {

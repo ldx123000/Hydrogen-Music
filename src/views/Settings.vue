@@ -70,6 +70,7 @@ const rlyricSize = ref(12)
 const lyricInterlude = ref(13)
 const searchAssistLimit = ref(8)
 const globalShortcuts = ref(false)
+const appUpdateEnabled = ref(true)
 const quitApp = ref('minimize')
 const quitAppOptions = ref([
     {
@@ -144,6 +145,8 @@ onActivated(() => {
         localFolder.value = settings.local.localFolder
         shortcutsList.value = settings.shortcuts
         globalShortcuts.value = settings.other.globalShortcuts
+        // 兼容旧配置：未写入过该字段时默认保持开启更新。
+        appUpdateEnabled.value = settings?.other?.enableUpdate !== false
         quitApp.value = settings.other.quitApp
     })
 
@@ -224,6 +227,8 @@ const setAppSettings = () => {
         shortcuts: shortcutsList.value,
         other: {
             globalShortcuts: globalShortcuts.value,
+            // 关闭后会同时禁用启动自动检查和手动检查更新入口。
+            enableUpdate: appUpdateEnabled.value,
             quitApp: quitApp.value,
         },
     }
@@ -405,6 +410,10 @@ const toGithub = () => {
 
 // 检查更新功能
 const checkForUpdates = () => {
+    if (!appUpdateEnabled.value) {
+        noticeOpen('应用更新已关闭，请先在设置中开启', 2)
+        return
+    }
     showUpdateDialog.value = true
     windowApi.checkForUpdate()
 }
@@ -739,6 +748,17 @@ const clearFmRecent = () => {
                             <div class="option-name">清空漫游缓存</div>
                             <div class="option-operation">
                                 <div class="button" @click="clearFmRecent">清空</div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">开启应用更新</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="appUpdateEnabled = !appUpdateEnabled">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': appUpdateEnabled }">{{ appUpdateEnabled ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="appUpdateEnabled"></div>
+                                    </Transition>
+                                </div>
                             </div>
                         </div>
                         <div class="option">

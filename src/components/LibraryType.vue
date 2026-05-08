@@ -95,6 +95,16 @@
         })
         if (!isLibraryRequestActive(requestToken, requestUserId)) return false
 
+        // 目前酷狗 API 层没有公开的收藏专辑列表接口，这里统一按“支持但为空”处理，
+        // 由列表组件展示明确空态文案，避免误导成请求异常。
+        if (result?.unsupported) {
+          libraryList.value = []
+          listType2.value = 0
+          libraryListAlbum.value = []
+          lastLoadedUserId.value = requestUserId
+          return true
+        }
+
         const currentPageAlbums = Array.isArray(result?.data) ? result.data : []
         const totalCount = Number(result?.count)
 
@@ -245,7 +255,13 @@
 
   onActivated(() => {
     const currentUserId = getCurrentUserId()
-    if ((option.value == 0 || option.value == 1) && currentUserId && lastLoadedUserId.value !== currentUserId) {
+    if (option.value == 1) {
+      // 收藏页会被 keep-alive 缓存，重新进入时不会重新创建组件；
+      // 因此这里每次激活都主动刷新当前收藏分类，确保专辑/歌手/MV/电台拿到最新数据。
+      void refreshCurrentSection()
+      return
+    }
+    if (option.value == 0 && currentUserId && lastLoadedUserId.value !== currentUserId) {
       void refreshCurrentSection()
     }
   })
