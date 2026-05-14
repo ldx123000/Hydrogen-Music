@@ -279,9 +279,12 @@
             height: 45Px;
             position: relative;
             border: 0.5Px solid rgba(0, 0, 0, 0.1);
+            overflow: hidden;
             img{
                 width: 100%;
                 height: 100%;
+                object-fit: contain;
+                display: block;
             }
             .open-player{
                 width: 100%;

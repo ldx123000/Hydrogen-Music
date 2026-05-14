@@ -132,16 +132,32 @@ function writeCachedTrackInfo(cacheKey, trackInfo) {
 
 async function resolveTrackByQualityPreferenceUncached(id, normalizedPreferredLevel) {
     const playbackRequestParams = getPlaybackRequestParams(normalizedPreferredLevel)
-    const preferredTrack = await requestTrack(id, normalizedPreferredLevel, playbackRequestParams)
 
-    if (!ADVANCED_QUALITY_LEVELS.has(normalizedPreferredLevel)) return preferredTrack
+    if (!ADVANCED_QUALITY_LEVELS.has(normalizedPreferredLevel)) {
+        return requestTrack(id, normalizedPreferredLevel, playbackRequestParams)
+    }
+
+    let firstRequestError = null
+    let preferredTrack = null
+    try {
+        preferredTrack = await requestTrack(id, normalizedPreferredLevel, playbackRequestParams)
+    } catch (error) {
+        firstRequestError = error
+    }
+
     if (isPlayableTrack(preferredTrack) && getTrackLevel(preferredTrack) === normalizedPreferredLevel) {
         return preferredTrack
     }
 
     let firstPlayableFallbackTrack = null
     for (const fallbackLevel of LINEAR_FALLBACK_ORDER) {
-        const fallbackTrack = await requestTrack(id, fallbackLevel, playbackRequestParams)
+        let fallbackTrack = null
+        try {
+            fallbackTrack = await requestTrack(id, fallbackLevel, playbackRequestParams)
+        } catch (error) {
+            if (!firstRequestError) firstRequestError = error
+            continue
+        }
         if (!isPlayableTrack(fallbackTrack)) continue
 
         if (!firstPlayableFallbackTrack) firstPlayableFallbackTrack = fallbackTrack
@@ -149,6 +165,7 @@ async function resolveTrackByQualityPreferenceUncached(id, normalizedPreferredLe
     }
 
     if (firstPlayableFallbackTrack) return firstPlayableFallbackTrack
+    if (!preferredTrack && firstRequestError) throw firstRequestError
     return preferredTrack
 }
 

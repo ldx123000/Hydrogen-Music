@@ -83,7 +83,7 @@
                                     @click="handleCoverSlotClick(item)"
                                 >
                                     <template v-if="item.song && !item.isPlaceholder">
-                                        <img :src="getFmSongCover(item.song, 512) || '/src/assets/default-cover.png'" :alt="item.song.name || 'FM Cover'" />
+                                        <img :src="getFmSongCover(item.song) || '/src/assets/default-cover.png'" :alt="item.song.name || 'FM Cover'" />
                                         <div v-if="item.role === 'center'" class="fm-play-overlay">
                                             <svg v-if="!isPlaying" width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M8 5v14l11-7z" />
@@ -2118,7 +2118,8 @@ const handleFmClearRecent = () => {
         width: 100%;
         height: 100%;
         border-radius: 2px;
-        object-fit: cover;
+        object-fit: contain;
+        background: var(--fm-slot-bg);
         border: 1px solid var(--fm-panel-border);
         display: block;
         transform: translateZ(0);
