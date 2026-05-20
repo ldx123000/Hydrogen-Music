@@ -96,6 +96,14 @@ function extractResponsePayload(result) {
     return result?.data ?? result?.result ?? result ?? {}
 }
 
+function normalizeTimestamp(ts) {
+    // KuGou API 返回的时间戳可能是秒级（< 1e12），需要转成毫秒
+    if (Number.isFinite(ts) && ts > 0 && ts < 1_000_000_000_000) {
+        return ts * 1000
+    }
+    return ts
+}
+
 function extractServerTimestamp(result) {
     const payload = extractResponsePayload(result)
     const candidates = [
@@ -112,7 +120,8 @@ function extractServerTimestamp(result) {
     ]
 
     const resolved = pickNumber(...candidates)
-    return Number.isFinite(resolved) ? resolved : Date.now()
+    const normalized = normalizeTimestamp(resolved)
+    return Number.isFinite(normalized) ? normalized : Date.now()
 }
 
 function normalizeText(value) {
