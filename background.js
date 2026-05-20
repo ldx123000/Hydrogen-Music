@@ -20,6 +20,8 @@ const { getElectronStore } = require('./src/electron/store')
 let myWindow = null
 let lyricWindow = null
 let forceQuit = false;
+// 由 createWindow() 内部赋值，供 app.whenReady() 在 API 就绪后调用
+let loadMainContentRef = null;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
 let manualUpdateCheckInProgress = false;
 //electron单例
@@ -57,20 +59,25 @@ if (!gotTheLock) {
     process.on('uncaughtException', (err) => {
             console.error('Unhandled exception captured:', err)
     })
-        const kugouApiStartup = startKugouMusicApi()
+        // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
         createWindow()
-        void kugouApiStartup
-      .then((result) => {
-        const payload = result && typeof result == 'object'
-          ? { ready: !!result.ready, ...(result.error ? { error: result.error } : {}) }
+        // 然后启动 API 后端，等待就绪后再加载前端页面内容
+        // 避免前端在 API 尚未就绪时发起请求导致"请求错误"
+        const kugouApiResult = await startKugouMusicApi().catch((err) => {
+          console.error('KuGou API probe failed:', err);
+          return { ready: false, error: err?.message || 'unknown error' };
+        });
+        const payload = kugouApiResult && typeof kugouApiResult == 'object'
+          ? { ready: !!kugouApiResult.ready, ...(kugouApiResult.error ? { error: kugouApiResult.error } : {}) }
           : { ready: true }
-                                if (payload.ready) console.log('KuGou API ready')
-                                else console.warn('KuGou API not ready:', payload.error || 'unknown error')
-      })
-      .catch((err) => {
-        const errorMessage = err && err.message ? err.message : 'unknown error'
-                                console.error('KuGou API probe failed:', err);
-      })
+        if (payload.ready) {
+          console.log('KuGou API ready')
+          if (typeof loadMainContentRef === 'function') loadMainContentRef()
+        } else {
+          console.warn('KuGou API not ready:', payload.error || 'unknown error')
+          // 即使 API 启动失败，也要加载前端内容让用户能操作（部分功能可能受限）
+          if (typeof loadMainContentRef === 'function') loadMainContentRef()
+        }
     app.on('activate', () => {
       // 在macOS上，当点击dock图标并且没有其他窗口打开时，
       // 应该重新创建一个窗口。
@@ -224,14 +231,20 @@ const createWindow = () => {
         }
     });
 
-    if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
-        win.loadURL('http://localhost:5173/')
-        win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
-            console.warn('Dev server not available, fallback to dist:', errorCode, errorDescription)
-            try { win.loadFile(indexHtml) } catch (e) { console.error('Fallback loadFile failed:', e) }
-        })
-    } else {
-        win.loadFile(indexHtml)
+    // 窗口创建时不立即加载内容，等待 API 就绪后再通过 loadMainContentRef() 加载
+    // 避免前端在 API 后端尚未启动完成时发起请求导致"请求错误"
+    // 见 app.whenReady() 中的调用顺序
+    loadMainContentRef = () => {
+        if (!win || win.isDestroyed()) return
+        if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
+            win.loadURL('http://localhost:5173/')
+            win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+                console.warn('Dev server not available, fallback to dist:', errorCode, errorDescription)
+                try { win.loadFile(indexHtml) } catch (e) { console.error('Fallback loadFile failed:', e) }
+            })
+        } else {
+            win.loadFile(indexHtml)
+        }
     }
 
     let hasShownMainWindow = false
