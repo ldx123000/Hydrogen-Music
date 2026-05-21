@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { claimYouthDailyVip, getServerNow, getYouthVipMonthRecord, getYouthVipUnionStatus } from '../api/user'
+import { claimYouthDailyVip, getServerNow, getYouthVipMonthRecord } from '../api/user'
 import { getCookie, isLogin } from './authority'
 import { noticeOpen } from './dialog'
 
@@ -196,10 +196,13 @@ function isLoginErrorText(text) {
 
 function isSuccessResponse(result) {
     const payload = extractResponsePayload(result)
-    const status = pickNumber(payload?.status, payload?.data?.status)
-    const code = pickNumber(payload?.code, payload?.data?.code)
-    const success = payload?.success ?? payload?.data?.success
-    const text = normalizeText(payload?.msg || payload?.message || payload?.desc || payload?.data?.msg || payload?.data?.message)
+    const status = pickNumber(payload?.status, payload?.data?.status, result?.status, result?.data?.status)
+    const code = pickNumber(payload?.code, payload?.data?.code, result?.code, result?.data?.code)
+    const success = payload?.success ?? payload?.data?.success ?? result?.success ?? result?.data?.success
+    const text = normalizeText(
+        payload?.msg || payload?.message || payload?.desc || payload?.data?.msg || payload?.data?.message
+        || result?.msg || result?.message || result?.desc || result?.data?.msg || result?.data?.message
+    )
 
     if (success === true) return true
     if (status === 1 || status === 200) return true
@@ -241,19 +244,10 @@ async function resolveClaimDay() {
 }
 
 async function precheckClaimed(claimDay) {
-    const [unionStatus, monthRecord] = await Promise.allSettled([
-        getYouthVipUnionStatus(),
-        getYouthVipMonthRecord(),
-    ])
-
-    if (unionStatus.status === 'fulfilled' && hasClaimDayInPayload(unionStatus.value, claimDay)) {
+    const monthRecord = await getYouthVipMonthRecord().catch(() => null)
+    if (monthRecord && hasClaimDayInPayload(monthRecord, claimDay)) {
         return true
     }
-
-    if (monthRecord.status === 'fulfilled' && hasClaimDayInPayload(monthRecord.value, claimDay)) {
-        return true
-    }
-
     return false
 }
 
@@ -344,7 +338,10 @@ export function runDailyVipAutoClaim(source = 'startup') {
 
             const result = await claimYouthDailyVip(claimDay)
             const payload = extractResponsePayload(result)
-            const message = normalizeText(payload?.msg || payload?.message || payload?.desc || payload?.data?.msg || payload?.data?.message)
+            const message = normalizeText(
+                payload?.msg || payload?.message || payload?.desc || payload?.data?.msg || payload?.data?.message
+                || result?.msg || result?.message || result?.desc || result?.data?.msg || result?.data?.message
+            )
 
             if (isLoginErrorText(message) || !isLogin() || getCurrentUserId() !== userId) {
                 updateState({

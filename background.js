@@ -236,7 +236,9 @@ const createWindow = () => {
     // 见 app.whenReady() 中的调用顺序
     loadMainContentRef = () => {
         if (!win || win.isDestroyed()) return
+        // 开发模式下自动打开 DevTools，便于调试启动时的请求
         if (process.resourcesPath.indexOf(path.join('node_modules')) != -1) {
+            win.webContents.openDevTools({ mode: 'detach' })
             win.loadURL('http://localhost:5173/')
             win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
                 console.warn('Dev server not available, fallback to dist:', errorCode, errorDescription)
