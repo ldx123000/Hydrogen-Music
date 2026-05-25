@@ -539,6 +539,15 @@ const userLogout = async () => {
     router.push('/')
     noticeOpen('已退出账号', 2)
 }
+const confirmLogout = () => {
+    if (!isLogin()) {
+        noticeOpen('您已退出账号', 2)
+        return
+    }
+    dialogOpen('确定退出', '退出后需要重新登录才能使用账号相关功能，确定退出吗？', flag => {
+        if (flag) userLogout()
+    })
+}
 const save = () => {
     selectedShortcut.value = null
     setCustomFont()
@@ -620,7 +629,7 @@ const clearFmRecent = () => {
                         </div>
                     </div>
                 </div>
-                <div class="logout" @click="userLogout()">
+                <div class="logout" @click="confirmLogout()">
                     <span>退出</span>
                 </div>
             </div>
