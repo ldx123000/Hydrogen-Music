@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { noticeOpen } from '../utils/dialog'
+import { noticeOpen, dialogOpen } from '../utils/dialog'
 import { isLogin } from '../utils/authority'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
@@ -47,7 +47,10 @@ const userLogout = async () => {
 }
 const handleAuthOptionClick = () => {
     if (isLogin()) {
-        userLogout()
+        userStore.appOptionShow = false
+        dialogOpen('确定退出', '退出后需要重新登录才能使用账号相关功能，确定退出吗？', flag => {
+            if (flag) userLogout()
+        })
         return
     }
     userStore.appOptionShow = false
