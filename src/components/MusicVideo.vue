@@ -30,6 +30,7 @@ const isDownloading = ref(false);
 const currentSongHasVideo = ref(false); // 当前歌曲是否确实有视频文件
 let currentSongVideoCheckToken = 0;
 const BILI_PLAYURL_API = 'https://api.bilibili.com/x/player/playurl';
+const TIME_INPUT_PATTERN = /^(\d+:)?\d{1,2}(\.\d{0,1})?$/;
 migrateLegacyBiliSession();
 if (!hasStoredBiliSession() && userStore.biliUser) {
     userStore.clearBiliAccountState();
@@ -335,11 +336,23 @@ const selectQuality = (item, index) => {
     selectedInfo.value.quality = item;
     selectedInfo.value.qn = index;
 };
+const normalizeVideoTimingRange = range => {
+    if (!Array.isArray(range)) return [0, 0];
+    const start = Math.max(0, Number(range[0]) || 0);
+    const end = Math.max(start, Number(range[1]) || 0);
+    return [start, end];
+};
 watch(
     () => [musicTiming.value, videoTiming.value],
     () => {
+        const normalizedRange = normalizeVideoTimingRange(videoTiming.value);
+        if (normalizedRange[0] !== videoTiming.value[0] || normalizedRange[1] !== videoTiming.value[1]) {
+            videoTiming.value = normalizedRange;
+            return;
+        }
+        if (!addMusicVideo.value) return;
         const vInterval = videoTiming.value[1] - videoTiming.value[0];
-        const mInterval = addMusicVideo.value.dt - musicTiming.value;
+        const mInterval = Math.max(0, addMusicVideo.value.dt - musicTiming.value);
         if (vInterval > mInterval) videoTiming.value = clampVideoTimingRange(videoTiming.value, mInterval);
     }
 );
@@ -523,16 +536,66 @@ onUnmounted(() => {
 });
 
 const formatTime = time => {
-    let min = Math.floor(time / 60);
-    let sec = Math.floor(time % 60);
-    if (sec == 60) {
-        sec = 0;
+    const safeTime = Math.max(0, Number(time) || 0);
+    let min = Math.floor(safeTime / 60);
+    let sec = Math.floor(safeTime % 60);
+    let decimal = Math.round((safeTime - Math.floor(safeTime)) * 10);
+    if (decimal === 10) {
+        sec++;
+        decimal = 0;
+    }
+    if (sec >= 60) {
+        sec -= 60;
         min++;
     }
-    if (min < 10) min = '0' + min;
-    if (sec < 10) sec = '0' + sec;
-    if (time.toFixed(1).indexOf('.') != -1) sec += time.toFixed(1).split('.')[1];
-    return min + ':' + sec;
+    const minText = String(min).padStart(2, '0');
+    const secText = String(sec).padStart(2, '0');
+    return decimal > 0 ? `${minText}:${secText}.${decimal}` : `${minText}:${secText}`;
+};
+const parseTimeInput = value => {
+    const rawValue = String(value ?? '').trim();
+    if (!rawValue || !TIME_INPUT_PATTERN.test(rawValue)) return null;
+
+    const parts = rawValue.split(':');
+    const secText = parts.pop();
+    const minText = parts.length ? parts[0] : '0';
+    const min = Number.parseInt(minText, 10);
+    const sec = Number.parseFloat(secText);
+
+    if (!Number.isFinite(min) || !Number.isFinite(sec) || min < 0 || sec < 0 || sec >= 60) return null;
+    return min * 60 + sec;
+};
+const clampTimeValue = (value, max) => {
+    const parsed = Number(value);
+    const upper = Math.max(0, Number(max) || 0);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.min(Math.max(0, parsed), upper);
+};
+const commitMusicTimingInput = event => {
+    const value = parseTimeInput(event.target.value);
+    if (value === null) {
+        event.target.value = formatTime(musicTiming.value);
+        return;
+    }
+    musicTiming.value = clampTimeValue(value, addMusicVideo.value?.dt);
+    event.target.value = formatTime(musicTiming.value);
+};
+const commitVideoTimingInput = (event, index) => {
+    const value = parseTimeInput(event.target.value);
+    if (value === null) {
+        event.target.value = formatTime(videoTiming.value[index]);
+        return;
+    }
+
+    const nextTiming = [...videoTiming.value];
+    nextTiming[index] = clampTimeValue(value, currentVideoInfo.value?.duration);
+    if (index === 0 && nextTiming[0] > nextTiming[1]) nextTiming[1] = nextTiming[0];
+    if (index === 1 && nextTiming[1] < nextTiming[0]) nextTiming[0] = nextTiming[1];
+    videoTiming.value = nextTiming;
+    event.target.value = formatTime(videoTiming.value[index]);
+};
+const selectTimeInput = event => {
+    event.target.select();
 };
 const close = () => {
     if (isDownloading.value) cancelDownload();
@@ -690,6 +753,16 @@ const reopenVideo = async () => {
                         <div class="timing-axis">
                             <span class="music-timing-label">视频插入点</span>
                             <div class="timing-select">
+                                <div class="timing-input-row">
+                                    <input
+                                        class="timing-input"
+                                        :value="formatTime(musicTiming)"
+                                        spellcheck="false"
+                                        @focus="selectTimeInput"
+                                        @change="commitMusicTimingInput"
+                                        @keydown.enter.prevent="$event.target.blur()"
+                                    />
+                                </div>
                                 <vue-slider
                                     class="music-timing-progress"
                                     v-model="musicTiming"
@@ -714,6 +787,25 @@ const reopenVideo = async () => {
                         <div class="timing-axis">
                             <span class="music-timing-label">视频播放段</span>
                             <div class="timing-select">
+                                <div class="timing-input-row">
+                                    <input
+                                        class="timing-input"
+                                        :value="formatTime(videoTiming[0])"
+                                        spellcheck="false"
+                                        @focus="selectTimeInput"
+                                        @change="commitVideoTimingInput($event, 0)"
+                                        @keydown.enter.prevent="$event.target.blur()"
+                                    />
+                                    <span class="timing-input-separator">-</span>
+                                    <input
+                                        class="timing-input"
+                                        :value="formatTime(videoTiming[1])"
+                                        spellcheck="false"
+                                        @focus="selectTimeInput"
+                                        @change="commitVideoTimingInput($event, 1)"
+                                        @keydown.enter.prevent="$event.target.blur()"
+                                    />
+                                </div>
                                 <vue-slider
                                     class="music-timing-progress"
                                     v-model="videoTiming"
@@ -1153,6 +1245,31 @@ const reopenVideo = async () => {
                     width: 100%;
                     display: flex;
                     flex-direction: column;
+                    .timing-input-row {
+                        margin-bottom: 10px;
+                        display: flex;
+                        flex-direction: row;
+                        align-items: center;
+                        gap: 6px;
+                        .timing-input {
+                            width: 56px;
+                            height: 22px;
+                            padding: 0 5px;
+                            border: 1px solid rgba(255, 255, 255, 0.12);
+                            outline: none;
+                            background-color: rgba(0, 0, 0, 0.35);
+                            color: rgba(255, 255, 255, 0.82);
+                            font: 11px Bender-Bold;
+                            text-align: center;
+                            &:focus {
+                                border-color: rgba(255, 255, 255, 0.32);
+                            }
+                        }
+                        .timing-input-separator {
+                            color: rgba(255, 255, 255, 0.55);
+                            font: 11px Bender-Bold;
+                        }
+                    }
                     .music-timing-progress {
                         width: 100% !important;
                         height: 4px !important;
