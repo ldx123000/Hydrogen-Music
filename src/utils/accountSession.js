@@ -8,11 +8,14 @@ import { clearAccountScopedState } from './accountState'
 import { invalidateNcmApiCookieCache } from './request'
 import { resolveFavoritePlaylistMeta } from './favoritePlaylist'
 import { runIdleTask } from './player/idleTask'
+import { dialogOpen, noticeOpen } from './dialog'
 
 const userStore = useUserStore(pinia)
 
 let accountSessionToken = 0
 const cloudDiskDataPreloadMaxAge = 5 * 60 * 1000
+const logoutDialogTitle = '确定退出'
+const logoutDialogText = '退出后需要重新登录才能使用账号相关功能，确定退出吗？'
 
 function nextAccountSessionToken() {
     accountSessionToken += 1
@@ -151,4 +154,26 @@ export async function logoutCurrentAccountSession() {
     }
 
     await clearCurrentAccountSessionState(token)
+}
+
+export async function logoutAccount(router) {
+    if (!isLogin()) {
+        noticeOpen('您已退出账号', 2)
+        return
+    }
+
+    await logoutCurrentAccountSession()
+    router.push('/')
+    noticeOpen('已退出账号', 2)
+}
+
+export function confirmAccountLogout(router) {
+    if (!isLogin()) {
+        noticeOpen('您已退出账号', 2)
+        return
+    }
+
+    dialogOpen(logoutDialogTitle, logoutDialogText, flag => {
+        if (flag) void logoutAccount(router)
+    })
 }

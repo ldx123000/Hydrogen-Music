@@ -11,7 +11,7 @@ import Selector from '../components/Selector.vue'
 import FontSelector from '../components/FontSelector.vue'
 import UpdateDialog from '../components/UpdateDialog.vue'
 import { setTheme, getSavedTheme } from '@/utils/theme'
-import { logoutCurrentAccountSession } from '@/utils/accountSession'
+import { confirmAccountLogout } from '@/utils/accountSession'
 import { getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
 import { applyCustomFontStyle, syncDesktopLyricCustomFont } from '@/utils/setFont'
 import { buildFontOptions, loadSystemFontOptions, resolveSystemFontLabel, resolveSystemFontValue } from '@/utils/fontResolver'
@@ -529,24 +529,8 @@ const removeCustomSource = () => {
         }
     })
 }
-const userLogout = async () => {
-    if (!isLogin()) {
-        noticeOpen('您已退出账号', 2)
-        return
-    }
-
-    await logoutCurrentAccountSession()
-    router.push('/')
-    noticeOpen('已退出账号', 2)
-}
 const confirmLogout = () => {
-    if (!isLogin()) {
-        noticeOpen('您已退出账号', 2)
-        return
-    }
-    dialogOpen('确定退出', '退出后需要重新登录才能使用账号相关功能，确定退出吗？', flag => {
-        if (flag) userLogout()
-    })
+    confirmAccountLogout(router)
 }
 const save = () => {
     selectedShortcut.value = null

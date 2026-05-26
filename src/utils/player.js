@@ -820,7 +820,7 @@ export function isVideoClosedByUser(songId) {
 
 export function loadLastSong() {
     if (loadLast) {
-        loadStoredPlaylist().then(list => {
+        return loadStoredPlaylist().then(list => {
             if (list) {
                 songList.value = list.songList
                 shuffledList.value = list.shuffledList
@@ -841,6 +841,7 @@ export function loadLastSong() {
             }
         })
     }
+    return Promise.resolve()
 }
 
 function getSafeCurrentSeek() {
