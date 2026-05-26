@@ -10,7 +10,7 @@ import { usePlayerStore } from "@/store/playerStore";
 import Selector from "../components/Selector.vue";
 import UpdateDialog from "../components/UpdateDialog.vue";
 import { setTheme, getSavedTheme } from "@/utils/theme";
-import { logoutCurrentAccountSession } from "@/utils/accountSession";
+import { confirmAccountLogout } from "@/utils/accountSession";
 import { getDailyVipClaimText } from "@/utils/dailyVipClaim";
 
 const router = useRouter();
@@ -499,16 +499,12 @@ const setCoverBlur = () => {
 const openCoverBlur = (flag) => {
   if (flag) playerStore.coverBlur = !playerStore.coverBlur;
 };
-const userLogout = async () => {
-  if (!isLogin()) {
-    noticeOpen("您已退出账号", 2);
-    return;
-  }
-
-  await logoutCurrentAccountSession();
-  router.push("/");
-  noticeOpen("已退出账号", 2);
+const userLogout = () => {
+  confirmAccountLogout(router);
 };
+const confirmLogout = () => {
+  confirmAccountLogout(router);
+}
 const save = () => {
   selectedShortcut.value = null;
   setAppSettings();

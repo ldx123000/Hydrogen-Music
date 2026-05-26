@@ -1,11 +1,10 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { noticeOpen } from '../utils/dialog'
+import { confirmAccountLogout } from '../utils/accountSession'
 import { isLogin } from '../utils/authority'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
-import { logoutCurrentAccountSession } from '../utils/accountSession'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -35,19 +34,10 @@ const scheduleTrackerRealign = () => {
 const toSettings = () => {
     router.push('/settings')
 }
-const userLogout = async () => {
-    if (!isLogin()) {
-        noticeOpen('您已退出账号', 2)
-        return
-    }
-
-    await logoutCurrentAccountSession()
-    router.push('/')
-    noticeOpen('已退出账号', 2)
-}
 const handleAuthOptionClick = () => {
     if (isLogin()) {
-        userLogout()
+        userStore.appOptionShow = false
+        confirmAccountLogout(router)
         return
     }
     userStore.appOptionShow = false
