@@ -136,6 +136,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
+    const lastPlaybackProgressStore = new Store({ name: 'lastPlaybackProgress' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
     const trustedShellProtocols = new Set(['https:', 'http:'])
     const trustedExternalFetchHosts = new Set([
@@ -172,6 +173,49 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return JSON.parse(playlist)
         } catch (_) {
             return null
+        }
+    }
+    const normalizeStoredProgress = progressState => {
+        if (!progressState || typeof progressState !== 'object') return null
+
+        const progress = Number(progressState.progress)
+        const currentIndex = Number(progressState.currentIndex)
+        return {
+            progress: Number.isFinite(progress) && progress >= 0 ? progress : 0,
+            songId: progressState.songId ?? null,
+            currentIndex: Number.isFinite(currentIndex) && currentIndex >= 0 ? Math.floor(currentIndex) : 0,
+            updatedAt: Date.now(),
+        }
+    }
+    const getProgressFromStoredPlaylist = playlist => {
+        if (!playlist || typeof playlist !== 'object') return null
+        return normalizeStoredProgress({
+            progress: playlist.progress,
+            songId: playlist.songId,
+            currentIndex: playlist.currentIndex,
+        })
+    }
+    const saveStoredPlaylistPayload = playlist => {
+        const parsedPlaylist = parseStoredPlaylistPayload(playlist)
+        if (!parsedPlaylist) return false
+
+        lastPlaylistStore.set('playlist', parsedPlaylist)
+        const progressState = getProgressFromStoredPlaylist(parsedPlaylist)
+        if (progressState) lastPlaybackProgressStore.set('progress', progressState)
+        return true
+    }
+    const mergeStoredPlaybackProgress = playlist => {
+        if (!playlist || typeof playlist !== 'object') return null
+
+        const progressState = lastPlaybackProgressStore.get('progress')
+        if (!progressState || typeof progressState !== 'object') return playlist
+
+        return {
+            ...playlist,
+            progress: progressState.progress,
+            songId: progressState.songId,
+            currentIndex: progressState.currentIndex,
+            updatedAt: progressState.updatedAt,
         }
     }
 
@@ -821,17 +865,21 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         globalShortcut.unregisterAll()
     })
     ipcMain.on('save-last-playlist', (e, playlist) => {
-        const parsedPlaylist = parseStoredPlaylistPayload(playlist)
-        if (parsedPlaylist) lastPlaylistStore.set('playlist', parsedPlaylist)
+        saveStoredPlaylistPayload(playlist)
+    })
+    ipcMain.on('save-last-playback-progress', (e, progressState) => {
+        const normalizedProgress = normalizeStoredProgress(progressState)
+        if (!normalizedProgress) return
+
+        lastPlaybackProgressStore.set('progress', normalizedProgress)
     })
     ipcMain.on('exit-app', (e, playlist) => {
-        const parsedPlaylist = parseStoredPlaylistPayload(playlist)
-        if (parsedPlaylist) lastPlaylistStore.set('playlist', parsedPlaylist)
+        saveStoredPlaylistPayload(playlist)
         app.exit()
     })
     ipcMain.handle('get-last-playlist', async () => {
         const lastPlaylist = await lastPlaylistStore.get('playlist')
-        if (lastPlaylist) return lastPlaylist
+        if (lastPlaylist) return mergeStoredPlaybackProgress(lastPlaylist)
         else return null
     })
     ipcMain.on('open-local-folder', (e, targetPath) => {

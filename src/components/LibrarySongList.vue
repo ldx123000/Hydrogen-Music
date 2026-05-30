@@ -86,6 +86,10 @@ const scrollerItems = computed(() => {
     }))
 })
 const queueSongs = computed(() => (Array.isArray(props.queueSonglist) ? props.queueSonglist : props.songlist))
+const normalizeRouteName = routeName => {
+    const normalized = String(routeName || '')
+    return normalized.startsWith('~') ? normalized.slice(1) : normalized
+}
 
 const refreshRecycleScroller = async () => {
     await nextTick()
@@ -140,8 +144,13 @@ const play = async (song, index) => {
         await addToNext(song, true)
         return
     }
-    await addToList(props.queueListType || router.currentRoute.value.name, queueSongs.value || [], props.queueMeta || null)
-    await addSong(song.id, index, true)
+    if (normalizeRouteName(router.currentRoute.value.name) == 'playlist' && libraryInfo.value?.id) {
+        await libraryStore.waitForPlaylistHydration(libraryInfo.value.id)
+    }
+    const targetQueueSongs = queueSongs.value || []
+    const targetIndex = (targetQueueSongs || []).findIndex(item => item?.id == song.id)
+    await addToList(props.queueListType || router.currentRoute.value.name, targetQueueSongs, props.queueMeta || null)
+    await addSong(song.id, targetIndex >= 0 ? targetIndex : index, true)
     if (playMode.value == 3) await setShuffledList()
 }
 

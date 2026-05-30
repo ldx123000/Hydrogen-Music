@@ -14,6 +14,12 @@ export function saveStoredPlaylist(playlist) {
     } catch (_) {}
 }
 
+export function saveStoredPlaybackProgress(progressState) {
+    try {
+        windowApi.saveLastPlaybackProgress?.(progressState)
+    } catch (_) {}
+}
+
 export function persistPlaylistBeforeExit(playlist) {
     try {
         windowApi.exitApp(JSON.stringify(playlist))

@@ -120,6 +120,9 @@ function openLocalFolder(path) {
 function saveLastPlaylist(playlist) {
     ipcRenderer.send('save-last-playlist', playlist)
 }
+function saveLastPlaybackProgress(progressState) {
+    ipcRenderer.send('save-last-playback-progress', progressState)
+}
 function downloadVideoProgress(callback) {
     return subscribeChannel('download-video-progress', callback)
 }
@@ -291,6 +294,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     getLastPlaylist: () => ipcRenderer.invoke('get-last-playlist'),
     openLocalFolder,
     saveLastPlaylist,
+    saveLastPlaybackProgress,
     getBiliVideo: (request) => ipcRenderer.invoke('get-bili-video', request),
     downloadVideoProgress,
     cancelDownloadMusicVideo,

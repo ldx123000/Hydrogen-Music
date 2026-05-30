@@ -21,8 +21,9 @@ import { canTryCustomSourceForRestrictedSong, getNoCopyrightRecommendedSongId, g
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
 import { PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from './player/playbackTicker'
 import { initPlayerExternalBridge as initExternalBridge } from './player/externalBridge'
-import { loadStoredPlaylist, persistPlaylistBeforeExit, saveStoredPlaylist } from './player/playlistPersistence'
+import { loadStoredPlaylist, persistPlaylistBeforeExit, saveStoredPlaybackProgress, saveStoredPlaylist } from './player/playlistPersistence'
 import { createShuffledList } from './player/queue'
+import { normalizeQueueSong, normalizeQueueSongs } from './player/queueSong'
 import { getPrefetchedSongAssets, getSongAssetKey, prefetchSongAssets } from './player/assetPrefetch'
 import { getLyricWithCloudFallback, isCloudDiskSong, markCloudDiskSong } from './player/lyricFallback'
 import { createDecodedAudioPlayer } from './player/webAudioGapless'
@@ -66,6 +67,7 @@ let disposeGaplessTransitionTicker = null
 let gaplessTransitionInProgress = false
 let playbackSnapshotPersistTimer = null
 let lastPlaybackSnapshotPersistAt = 0
+let lastPersistedProgressSignature = ''
 let lyricLoadToken = 0
 let activeRemoteLyricFetch = null
 let pendingCurrentCloudLyricRetrySongId = ''
@@ -822,8 +824,8 @@ export function loadLastSong() {
     if (loadLast) {
         return loadStoredPlaylist().then(list => {
             if (list) {
-                songList.value = list.songList
-                shuffledList.value = list.shuffledList
+                songList.value = normalizeQueueSongs(list.songList)
+                shuffledList.value = normalizeQueueSongs(list.shuffledList)
                 const storedProgress = normalizePersistedProgress(list.progress)
                 if (storedProgress !== null) progress.value = storedProgress
             }
@@ -896,6 +898,24 @@ function buildPersistedPlaylistPayload() {
     }
 }
 
+function buildPersistedProgressPayload() {
+    return {
+        progress: getSafeCurrentSeek(),
+        songId: songId.value,
+        currentIndex: currentIndex.value,
+    }
+}
+
+function getProgressPersistSignature(payload) {
+    if (!payload) return ''
+    const progressBucket = Math.floor(normalizePlaybackNumber(payload.progress))
+    return [
+        normalizePlayerSongId(payload.songId),
+        Number.isInteger(payload.currentIndex) ? payload.currentIndex : 0,
+        progressBucket,
+    ].join('|')
+}
+
 function clearPlaybackSnapshotPersistTimer() {
     if (!playbackSnapshotPersistTimer) return
     clearTimeout(playbackSnapshotPersistTimer)
@@ -907,7 +927,22 @@ function persistPlaybackSnapshotNow() {
     if (!songList.value) return
 
     lastPlaybackSnapshotPersistAt = Date.now()
-    saveStoredPlaylist(buildPersistedPlaylistPayload())
+    const payload = buildPersistedPlaylistPayload()
+    lastPersistedProgressSignature = getProgressPersistSignature(payload)
+    saveStoredPlaylist(payload)
+}
+
+function persistPlaybackProgressNow() {
+    clearPlaybackSnapshotPersistTimer()
+    if (!songList.value) return
+
+    const payload = buildPersistedProgressPayload()
+    const signature = getProgressPersistSignature(payload)
+    if (signature && signature === lastPersistedProgressSignature) return
+
+    lastPlaybackSnapshotPersistAt = Date.now()
+    lastPersistedProgressSignature = signature
+    saveStoredPlaybackProgress(payload)
 }
 
 function schedulePlaybackSnapshotPersist() {
@@ -918,7 +953,7 @@ function schedulePlaybackSnapshotPersist() {
 
     playbackSnapshotPersistTimer = setTimeout(() => {
         playbackSnapshotPersistTimer = null
-        persistPlaybackSnapshotNow()
+        persistPlaybackProgressNow()
     }, delay)
 }
 
@@ -1467,7 +1502,7 @@ export function addToList(listType, songlist, listMeta = null) {
     //     ...
     // }
 
-    const normalizedSongList = Array.isArray(songlist) ? songlist : []
+    const normalizedSongList = normalizeQueueSongs(songlist)
     let listId = 'none'
     if (listType === 'rec') {
         listId = 'rec'
@@ -1803,7 +1838,7 @@ function buildCloudPlayableSongsById(cloudItems) {
     if (!Array.isArray(cloudItems)) return songsById
 
     cloudItems.forEach(item => {
-        const song = markCloudDiskSong(item?.simpleSong, item)
+        const song = normalizeQueueSong(markCloudDiskSong(item?.simpleSong, item))
         const id = normalizePlayerSongId(song?.id)
         if (id) songsById.set(id, song)
     })
@@ -1821,7 +1856,7 @@ function syncCloudSongsInPlaybackList(list, cloudSongsById, syncedIds) {
         const freshSong = cloudSongsById.get(id)
         if (!freshSong) return
 
-        Object.assign(song, freshSong)
+        Object.assign(song, normalizeQueueSong(freshSong))
         syncedIds.add(id)
         changed = true
     })
@@ -2116,6 +2151,7 @@ export function setShuffledList(isplayAll) {
         currentSong: getCurrentSong(),
     })
     shuffleIndex.value = 0
+    savePlaylist()
 }
 
 function wait(ms) {
@@ -2493,9 +2529,10 @@ export function addToNext(nextSong, autoplay) {
         }
     }
 
-    if (!nextSong || !nextSong.id) return
+    const normalizedNextSong = normalizeQueueSong(nextSong)
+    if (!normalizedNextSong || !normalizedNextSong.id) return
     if (!songList.value) songList.value = []
-    if (nextSong.id == songId.value) return
+    if (normalizedNextSong.id == songId.value) return
 
     // 修正当前索引越界/异常，避免“插入成功但自动播放失败”
     if (!Number.isInteger(currentIndex.value) || currentIndex.value < 0) currentIndex.value = 0
@@ -2503,7 +2540,7 @@ export function addToNext(nextSong, autoplay) {
         currentIndex.value = songList.value.length - 1
     }
 
-    const si = (songList.value || []).findIndex((song) => song.id === nextSong.id)
+    const si = (songList.value || []).findIndex((song) => song.id === normalizedNextSong.id)
     if (si != -1) {
         songList.value.splice(si, 1)
         if (si < currentIndex.value) currentIndex.value--
@@ -2511,7 +2548,7 @@ export function addToNext(nextSong, autoplay) {
     let songInsertIndex = currentIndex.value + 1
     if (songInsertIndex < 0) songInsertIndex = 0
     if (songInsertIndex > songList.value.length) songInsertIndex = songList.value.length
-    songList.value.splice(songInsertIndex, 0, nextSong)
+    songList.value.splice(songInsertIndex, 0, normalizedNextSong)
 
     let shuffledInsertIndex = 0
     if (playMode.value == 3) {
@@ -2526,7 +2563,7 @@ export function addToNext(nextSong, autoplay) {
             shuffleIndex.value = shuffledList.value.length - 1
         }
 
-        const shufflei = (shuffledList.value || []).findIndex((song) => song.id === nextSong.id)
+        const shufflei = (shuffledList.value || []).findIndex((song) => song.id === normalizedNextSong.id)
         if (shufflei != -1) {
             shuffledList.value.splice(shufflei, 1)
             if (shufflei < shuffleIndex.value) shuffleIndex.value--
@@ -2534,7 +2571,7 @@ export function addToNext(nextSong, autoplay) {
         shuffledInsertIndex = shuffleIndex.value + 1
         if (shuffledInsertIndex < 0) shuffledInsertIndex = 0
         if (shuffledInsertIndex > shuffledList.value.length) shuffledInsertIndex = shuffledList.value.length
-        shuffledList.value.splice(shuffledInsertIndex, 0, nextSong)
+        shuffledList.value.splice(shuffledInsertIndex, 0, normalizedNextSong)
     }
 
     if (!autoplay) {
@@ -2543,8 +2580,8 @@ export function addToNext(nextSong, autoplay) {
     }
 
     // 直接播放“刚插入”的目标项，避免依赖 playNext 的索引状态
-    if (playMode.value == 3) addSong(nextSong.id, shuffledInsertIndex, true)
-    else addSong(nextSong.id, songInsertIndex, true)
+    if (playMode.value == 3) addSong(normalizedNextSong.id, shuffledInsertIndex, true)
+    else addSong(normalizedNextSong.id, songInsertIndex, true)
 }
 export function addToNextLocal(song, autoplay) {
     addToNext(localMusicHandle([song], true), autoplay)
