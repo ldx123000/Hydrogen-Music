@@ -3,7 +3,7 @@
   import { formatTime } from '../utils/time'
   import { useRouter } from 'vue-router'
   import { usePlayerStore } from '../store/playerStore';
-  import { resolveImageUrl } from '../utils/initApp'
+  import { resolveImageUrl } from '../utils/imageUtils'
 
   const router = useRouter()
   const props = defineProps(['albumlist', 'type'])

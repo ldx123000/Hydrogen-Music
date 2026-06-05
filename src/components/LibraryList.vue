@@ -4,7 +4,7 @@
   import { useLibraryStore } from '../store/libraryStore'
   import { usePlayerStore } from '../store/playerStore';
   import { useOtherStore } from '../store/otherStore';
-  import { resolveImageUrl } from '../utils/initApp'
+  import { resolveImageUrl } from '../utils/imageUtils'
   import { storeToRefs } from 'pinia'
   const libraryStore = useLibraryStore()
   const { libraryList, libraryInfo, listType1, listType2, lastLibraryRoute, restoreLibraryScrollOnActivate } = storeToRefs(libraryStore)

@@ -9,7 +9,7 @@ import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
 import { getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
-import { resolveImageUrl } from '../utils/initApp';
+import { resolveImageUrl } from '../utils/imageUtils';
 const playerStore = usePlayerStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)

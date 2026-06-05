@@ -3,7 +3,7 @@ import { ref, watch, onMounted, computed } from 'vue'
 import { usePlayerStore } from '../store/playerStore'
 import { storeToRefs } from 'pinia'
 import { getDjDetail } from '../api/dj'
-import { resolveImageUrl } from '../utils/initApp'
+import { resolveImageUrl } from '../utils/imageUtils'
 
 const playerStore = usePlayerStore()
 const { listInfo } = storeToRefs(playerStore)

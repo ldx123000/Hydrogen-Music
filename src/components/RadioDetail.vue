@@ -4,7 +4,7 @@ import { onBeforeRouteUpdate, useRouter } from 'vue-router'
 import { getDjDetail, getDjPrograms } from '../api/dj'
 import { usePlayerStore } from '../store/playerStore'
 import { playAll } from '../utils/player'
-import { resolveImageUrl } from '../utils/initApp'
+import { resolveImageUrl } from '../utils/imageUtils'
 import LibrarySongList from './LibrarySongList.vue'
 
 const router = useRouter()

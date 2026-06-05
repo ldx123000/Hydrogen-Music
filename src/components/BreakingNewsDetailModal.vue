@@ -12,7 +12,7 @@ import { mapSongsPlayableStatus } from '../utils/songStatus'
 import { addToNext } from '../utils/player'
 import { noticeOpen } from '../utils/dialog'
 import { copyToClipboard } from '../utils/clipboard'
-import { resolveImageUrl } from '../utils/initApp'
+import { resolveImageUrl } from '../utils/imageUtils'
 
 const props = defineProps({
   visible: {

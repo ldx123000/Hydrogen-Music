@@ -6,7 +6,7 @@
   import { addSong, setShuffledList } from '../utils/player'
   import { usePlayerStore } from '../store/playerStore'
   import { useLocalStore } from '../store/localStore'
-  import { resolveImageUrl } from '../utils/initApp'
+  import { resolveImageUrl } from '../utils/imageUtils'
 
   const props = defineProps({
     items: {

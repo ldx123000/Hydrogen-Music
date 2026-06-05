@@ -5,7 +5,7 @@
   import { usePlayerStore } from '../store/playerStore';
   import { storeToRefs } from 'pinia';
   import { getSongDisplayName } from '../utils/songName';
-  import { resolveImageUrl } from '../utils/initApp';
+  import { resolveImageUrl } from '../utils/imageUtils';
   const router = useRouter()
   const playerStore = usePlayerStore()
   const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, localBase64Img, progress, time, playerShow, showSongTranslation } = storeToRefs(playerStore)

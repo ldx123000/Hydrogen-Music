@@ -10,7 +10,7 @@
   import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode } from '../utils/player'
   import { usePlayerStore } from '../store/playerStore'
   import { useOtherStore } from '../store/otherStore'
-  import { resolveImageUrl } from '../utils/initApp'
+  import { resolveImageUrl } from '../utils/imageUtils'
   import { storeToRefs } from 'pinia'
   import { getSongDisplayName } from '../utils/songName'
   const router = useRouter()

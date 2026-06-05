@@ -7,7 +7,7 @@
   import { useLibraryStore } from '../store/libraryStore'
   import { useLocalStore } from '../store/localStore';
   import { usePlayerStore } from '../store/playerStore';
-  import { resolveImageUrl } from '../utils/initApp';
+  import { resolveImageUrl } from '../utils/imageUtils';
   import SkeletonBox from './base/SkeletonBox.vue';
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()

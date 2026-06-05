@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { usePlayerStore } from '../store/playerStore'
 import { startMusic, pauseMusic, playNext, playLast, changeProgress } from './player'
 import { getSongDisplayName } from './songName'
-import { resolveImageUrl } from './initApp'
+import { resolveImageUrl } from './imageUtils'
 
 function getCurrentTrack(storeRefs) {
   const { songList, currentIndex } = storeRefs

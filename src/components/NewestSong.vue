@@ -6,7 +6,7 @@
   import { usePlayerStore } from '../store/playerStore';
   import { storeToRefs } from 'pinia';
   import { getSongDisplayName } from '../utils/songName';
-  import { resolveImageUrl } from '../utils/initApp';
+  import { resolveImageUrl } from '../utils/imageUtils';
   import SkeletonBox from './base/SkeletonBox.vue';
 
   const router = useRouter()

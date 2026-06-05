@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { usePlayerStore } from '../store/playerStore'
 import { storeToRefs } from 'pinia'
-import { resolveImageUrl } from '../utils/initApp'
+import { resolveImageUrl } from '../utils/imageUtils'
 
 const playerStore = usePlayerStore()
 const { songList, currentIndex } = storeToRefs(playerStore)

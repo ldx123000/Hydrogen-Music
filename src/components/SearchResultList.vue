@@ -2,7 +2,7 @@
   import { useRouter } from 'vue-router';
   import { usePlayerStore } from '../store/playerStore';
   import { useOtherStore } from '../store/otherStore';
-  import { resolveImageUrl } from '../utils/initApp';
+  import { resolveImageUrl } from '../utils/imageUtils';
 
   const router = useRouter()
   const playerStore = usePlayerStore()

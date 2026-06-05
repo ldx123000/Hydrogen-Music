@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { getDjSubList, getDjPrograms } from '../api/dj'
 import { getLyric } from '../api/song'
 import { usePlayerStore } from '../store/playerStore'
-import { resolveImageUrl } from '../utils/initApp'
+import { resolveImageUrl } from '../utils/imageUtils'
 import { getPreferredQuality } from '../utils/quality'
 import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
 

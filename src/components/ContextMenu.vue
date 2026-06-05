@@ -9,7 +9,7 @@
   import { useOtherStore } from '../store/otherStore';
   import { usePlayerStore } from '../store/playerStore'
   import { useUserStore } from '../store/userStore';
-  import { resolveImageUrl } from '../utils/initApp'
+  import { resolveImageUrl } from '../utils/imageUtils'
   import { getLikelist, getUserPlaylist } from '../api/user';
   import { extractPlaylistItems } from '../utils/accountSession'
   import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'

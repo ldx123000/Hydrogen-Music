@@ -8,7 +8,7 @@ import { subAlbum } from '../api/album';
 import { subArtist } from '../api/artist';
 import { formatTime } from '../utils/time';
 import { playAll } from '../utils/player';
-import { resolveImageUrl } from '../utils/initApp';
+import { resolveImageUrl } from '../utils/imageUtils';
 import { scheduleAlbumSublistCacheInvalidation, scheduleArtistSublistCacheInvalidation, schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation';
 import { matchSearchText, normalizeSongFilterKeyword } from '../utils/songFilter';
 import LibrarySongList from './LibrarySongList.vue';
