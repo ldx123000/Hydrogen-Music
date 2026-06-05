@@ -915,6 +915,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                 <div class="introduce-1" v-show="!isSinger">{{ isAlbum ? '发行时间' : '创建时间' }} {{ createTime }}</div>
                 <div class="introduce-1" v-if="libraryInfo.follow">{{ libraryInfo.follow.fansCnt }} 已关注</div>
                 <div class="introduce-2" @click="introduceDetailShow = !introduceDetailShow">查看详情</div>
+                <div class="introduce-2" v-if="!isAlbum && !isSinger && isLogin()" @click="togglePlaylistCollect()">{{ isPlaylistFollowed ? '已收藏' : '收藏歌单' }}</div>
             </div>
             <transition name="metro" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
                 <div class="introduce-detail-text" :class="{ 'introduce-detail-text-active': introduceDetailShowDelay }" v-if="introduceDetailShow">
