@@ -98,6 +98,7 @@ module.exports = {
   appId: 'com.hydrogenmusic.app',
   asar: true,
   compression: 'maximum',
+  npmRebuild: false,
   // Electron locale naming differs across platforms, so keep both macOS and Windows/Linux variants.
   electronLanguages: ['en', 'en-US', 'zh_CN', 'zh_TW', 'zh-CN', 'zh-TW'],
   asarUnpack: [

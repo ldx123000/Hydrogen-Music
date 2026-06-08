@@ -1,10 +1,10 @@
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  core-js: set this to true or false
+  '@parcel/watcher': true
+  core-js: true
   electron: set this to true or false
-  electron-winstaller: set this to true or false
-  esbuild: set this to true or false
-  ffmpeg-static: set this to true or false
+  electron-winstaller: true
+  esbuild: true
+  ffmpeg-static: true
   lzma-native: set this to true or false
   sharp: true
-  usocket: set this to true or false
+  usocket: true

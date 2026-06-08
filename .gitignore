@@ -13,6 +13,7 @@ dist-ssr
 # Editor directories and files
 node_modules/*
 release/*
+release2/*
 dist/*
 .vscode/*
 !.vscode/extensions.json
@@ -23,3 +24,4 @@ dist/*
 *.njsproj
 *.sln
 *.sw?
+*.zip
