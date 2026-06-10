@@ -14,9 +14,9 @@
     "preview": "vite preview",
     "start": "chcp 65001 > nul && electron .",
     "start:watch": "nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",
-    "_dist": "vite build && node scripts/build.js -p always",
-    "dist": "vite build && node scripts/build.js -p never",
-    "dist:local": "vite build && node scripts/build.js -p never",
+    "_dist": "node scripts/build-kugou-api.cjs && vite build && node scripts/build.js -p always",
+    "dist": "node scripts/build-kugou-api.cjs && vite build && node scripts/build.js -p never",
+    "dist:local": "node scripts/build-kugou-api.cjs && vite build && node scripts/build.js -p never",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run"
   },

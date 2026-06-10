@@ -8,3 +8,4 @@ allowBuilds:
   lzma-native: set this to true or false
   sharp: true
   usocket: true
+nodeLinker: hoisted

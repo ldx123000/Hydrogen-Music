@@ -14,9 +14,6 @@ importers:
       dbus-next:
         specifier: ^0.10.2
         version: 0.10.2
-      dunder-proto:
-        specifier: ^1.0.1
-        version: 1.0.1
       electron-store:
         specifier: ^11.0.2
         version: 11.0.2
@@ -44,9 +41,6 @@ importers:
       mpris-service:
         specifier: ^2.1.2
         version: 2.1.2
-      ms:
-        specifier: ^2.1.3
-        version: 2.1.3
       music-metadata:
         specifier: ^11.12.3
         version: 11.12.3
@@ -60,6 +54,9 @@ importers:
         specifier: ^0.34.5
         version: 0.34.5
     devDependencies:
+      '@electron/rebuild':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@semantic-release/commit-analyzer':
         specifier: ^13.0.1
         version: 13.0.1(semantic-release@25.0.3)
@@ -6401,14 +6398,14 @@ snapshots:
 
   node-abi@4.31.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.2
 
   node-addon-api@7.1.1:
     optional: true
 
   node-api-version@0.2.1:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.2
 
   node-emoji@2.2.0:
     dependencies:
@@ -6424,7 +6421,7 @@ snapshots:
       graceful-fs: 4.2.11
       nopt: 9.0.0
       proc-log: 6.1.0
-      semver: 7.7.4
+      semver: 7.8.2
       tar: 7.5.16
       tinyglobby: 0.2.17
       undici: 6.26.0
