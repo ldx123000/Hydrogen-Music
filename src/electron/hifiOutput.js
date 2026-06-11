@@ -2,6 +2,7 @@ const fs = require('fs')
 const os = require('os')
 const net = require('net')
 const path = require('path')
+const crypto = require('crypto')
 const zlib = require('zlib')
 const { spawn, spawnSync } = require('child_process')
 
@@ -233,6 +234,13 @@ function getExtractedBuiltinMpvPath(app = moduleState.app) {
     try {
         const userData = app?.getPath?.('userData')
         if (!userData) return ''
+
+        const archivePath = getBuiltinMpvArchivePath(app)
+        if (archivePath) {
+            const currentDestination = getExtractedBuiltinMpvDirectory(archivePath, app)
+            return findMpvExecutableInDirectory(currentDestination) || ''
+        }
+
         const extractedRoot = path.join(userData, 'mpv')
         const resourceKeys = getMpvResourceKeys()
         const candidates = resourceKeys.map(key => path.join(extractedRoot, key))
@@ -252,8 +260,16 @@ function getExtractedBuiltinMpvDirectory(archivePath, app = moduleState.app) {
         const userData = app?.getPath?.('userData')
         if (!userData || !archivePath) return ''
         const resourceKey = getMpvResourceKeys()[0] || process.platform || 'unknown'
-        const archiveName = path.basename(archivePath, path.extname(archivePath)) || 'mpv'
-        return path.join(userData, 'mpv', resourceKey, archiveName)
+        const archiveBaseName = path.basename(archivePath)
+            .replace(/\.tar\.gz$/i, '')
+            .replace(/\.tgz$/i, '')
+            .replace(/\.zip$/i, '') || 'mpv'
+        const archiveHash = crypto
+            .createHash('sha256')
+            .update(fs.readFileSync(archivePath))
+            .digest('hex')
+            .slice(0, 12)
+        return path.join(userData, 'mpv', resourceKey, `${archiveBaseName}-${archiveHash}`)
     } catch (_) {
         return ''
     }
@@ -359,6 +375,7 @@ function ensureBuiltinMpvExtracted() {
     const destinationPath = getExtractedBuiltinMpvDirectory(archivePath)
     if (!archivePath || !destinationPath) return null
 
+    try { fs.rmSync(destinationPath, { recursive: true, force: true }) } catch (_) {}
     extractMpvArchiveSync(archivePath, destinationPath)
     const nextExtractedPath = findMpvExecutableInDirectory(destinationPath)
     if (!executableExists(nextExtractedPath)) throw new Error('builtin-mpv-extract-failed')
@@ -462,7 +479,28 @@ function buildMpvSpawnOptions(resolvedMpv, options = {}) {
         }
     }
 
+    if (resolvedMpv?.path && (process.platform === 'linux' || process.platform === 'darwin')) {
+        const executableDir = path.dirname(resolvedMpv.path)
+        const libsDir = path.join(executableDir, 'libs')
+        const libraryPathKey = process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH'
+        const existingLibraryPath = process.env[libraryPathKey] || ''
+        spawnOptions.env = {
+            ...process.env,
+            ...(spawnOptions.env || {}),
+            [libraryPathKey]: [libsDir, executableDir, existingLibraryPath].filter(Boolean).join(path.delimiter),
+        }
+    }
+
     return spawnOptions
+}
+
+function formatMpvExitMessage(code, signal) {
+    if (process.platform === 'win32' && (code === -1073741515 || code === 3221225781)) {
+        return 'MPV 启动失败：缺少 Windows 运行时 DLL，请重新下载最新的 Windows MPV artifact'
+    }
+    if (code !== null && code !== undefined) return `MPV 进程提前退出，退出码 ${code}`
+    if (signal) return `MPV 进程提前退出，信号 ${signal}`
+    return 'mpv-exited-before-ipc-ready'
 }
 
 function getPublicState(config = {}) {
@@ -820,6 +858,7 @@ async function startMpvSession(request = {}) {
     })
     child.on('exit', (code, signal) => {
         session.exited = true
+        appendLog(session, formatMpvExitMessage(code, signal))
         cleanupSession(session, { kill: false })
         if (moduleState.currentSession === session) {
             moduleState.currentSession = null
@@ -950,7 +989,17 @@ function listMpvAudioDevices(config = {}) {
         child.on('error', error => {
             finish({ ok: false, code: 'mpv-device-list-failed', message: error.message, devices: [] })
         })
-        child.on('exit', () => {
+        child.on('exit', (code, signal) => {
+            if (code && code !== 0) {
+                finish({
+                    ok: false,
+                    code: 'mpv-device-list-failed',
+                    message: formatMpvExitMessage(code, signal),
+                    devices: parseAudioDevices(output),
+                })
+                return
+            }
+
             finish({
                 ok: true,
                 backend: 'mpv',

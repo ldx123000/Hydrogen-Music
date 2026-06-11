@@ -514,7 +514,7 @@ async function playPlaybackInfo(playbackInfo, autoplay, targetSongId, options = 
             return true
         } catch (error) {
             console.warn('HiFi 输出启动失败，回退普通播放:', error)
-            notifyHifiFallback()
+            notifyHifiFallback(error?.message ? `HiFi 输出不可用，已回退普通播放：${error.message}` : undefined)
         }
     }
 

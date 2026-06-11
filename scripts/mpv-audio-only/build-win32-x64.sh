@@ -53,6 +53,70 @@ for tool in gcc cc clang c++ g++ ld; do
   fi
 done
 
+is_windows_system_dll() {
+  local name
+  name="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$name" in
+    api-ms-*.dll|ext-ms-*.dll) return 0 ;;
+    advapi32.dll|avrt.dll|bcrypt.dll|comctl32.dll|comdlg32.dll|crypt32.dll) return 0 ;;
+    dwmapi.dll|gdi32.dll|imm32.dll|kernel32.dll|msvcrt.dll|ntdll.dll) return 0 ;;
+    ole32.dll|oleaut32.dll|rpcrt4.dll|secur32.dll|setupapi.dll) return 0 ;;
+    shcore.dll|shell32.dll|shlwapi.dll|user32.dll|uxtheme.dll|version.dll) return 0 ;;
+    winmm.dll|ws2_32.dll) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+find_runtime_dll() {
+  local name="$1"
+  local search_dir
+  for search_dir in \
+    "${MSYSTEM_PREFIX:-}/bin" \
+    "$(dirname "$(command -v gcc 2>/dev/null || echo /)")" \
+    /mingw64/bin \
+    /ucrt64/bin \
+    /usr/bin; do
+    [ -d "$search_dir" ] || continue
+    find "$search_dir" -maxdepth 1 -type f -iname "$name" -print -quit
+  done
+}
+
+list_import_dlls() {
+  objdump -p "$1" 2>/dev/null | sed -n 's/^[[:space:]]*DLL Name: //p'
+}
+
+copy_runtime_dependencies() {
+  local runtime_dir="$1"
+  local queue=("$runtime_dir/mpv.exe")
+  local index=0
+  local binary dll lower dll_path target_path
+  declare -A copied_dlls=()
+
+  while [ "$index" -lt "${#queue[@]}" ]; do
+    binary="${queue[$index]}"
+    index=$((index + 1))
+    [ -f "$binary" ] || continue
+
+    while IFS= read -r dll || [ -n "$dll" ]; do
+      [ -n "$dll" ] || continue
+      lower="$(printf '%s' "$dll" | tr '[:upper:]' '[:lower:]')"
+      is_windows_system_dll "$lower" && continue
+      [ -n "${copied_dlls[$lower]:-}" ] && continue
+
+      dll_path="$(find_runtime_dll "$dll" | head -n 1)"
+      if [ -z "$dll_path" ]; then
+        echo "Warning: runtime DLL not found: $dll" >&2
+        continue
+      fi
+
+      target_path="$runtime_dir/$(basename "$dll_path")"
+      cp "$dll_path" "$target_path"
+      copied_dlls[$lower]=1
+      queue+=("$target_path")
+    done < <(list_import_dlls "$binary")
+  done
+}
+
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 git clone --depth 1 "$MPV_BUILD_REPO" "$WORK_DIR/mpv-build"
@@ -78,16 +142,21 @@ bash "$SCRIPT_DIR/compose-mpv-options.sh" "$PLATFORM" "$SCRIPT_DIR" "$PWD/mpv" >
 ./clean
 ./build "-j$JOBS"
 
+RUNTIME_DIR="$WORK_DIR/mpv-runtime"
+rm -rf "$RUNTIME_DIR"
+mkdir -p "$RUNTIME_DIR"
+cp mpv/build/mpv.exe "$RUNTIME_DIR/mpv.exe"
+strip "$RUNTIME_DIR/mpv.exe" 2>/dev/null || true
+copy_runtime_dependencies "$RUNTIME_DIR"
+
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
-cp mpv/build/mpv.exe "$OUT_DIR/mpv.exe"
-strip "$OUT_DIR/mpv.exe" 2>/dev/null || true
-
-(cd "$OUT_DIR" && zip -9 -q mpv-audio-only-win32-x64.zip mpv.exe)
-rm -f "$OUT_DIR/mpv.exe"
+(cd "$RUNTIME_DIR" && zip -9 -q "$OUT_DIR/mpv-audio-only-win32-x64.zip" ./*)
 
 if command -v sha256sum >/dev/null 2>&1; then
   sha256sum "$OUT_DIR/mpv-audio-only-win32-x64.zip" > "$OUT_DIR/mpv-audio-only-win32-x64.zip.sha256"
 fi
 
+echo "Bundled Windows runtime files:"
+find "$RUNTIME_DIR" -maxdepth 1 -type f -printf '%f\n' | sort
 du -h "$OUT_DIR/mpv-audio-only-win32-x64.zip"

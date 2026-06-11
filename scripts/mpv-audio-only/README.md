@@ -30,7 +30,7 @@ bash scripts/mpv-audio-only/build-win32-x64.sh
 
 默认输出位置：
 
-- `resources/mpv/linux-x64/mpv`
+- `resources/mpv/linux-x64/mpv-audio-only-linux-x64.tar.gz`
 - `resources/mpv/darwin-arm64/mpv-audio-only-darwin-arm64.tar.gz`
 - `resources/mpv/win32-x64/mpv-audio-only-win32-x64.zip`
 
@@ -80,10 +80,13 @@ npm run mpv:download -- --platform darwin-arm64
 npm run mpv:download -- --platform linux-x64
 ```
 
-这个命令依赖 GitHub CLI，并且需要先登录：
+这个命令会直接通过 GitHub API 下载。GitHub Actions artifact 的列表信息可以公开读取，但 artifact zip 下载接口仍然需要认证；如果这里报 `Requires authentication`，需要设置 `GH_TOKEN` 或 `GITHUB_TOKEN`。
 
-```sh
-gh auth login
+推荐在 GitHub 里创建 fine-grained personal access token：`Settings` -> `Developer settings` -> `Personal access tokens` -> `Fine-grained tokens`，仓库选 `Hydrogen-Music`，权限给 `Actions: Read-only` 即可。然后在当前 PowerShell 里临时设置：
+
+```powershell
+$env:GH_TOKEN="你的 GitHub token"
+npm run mpv:download
 ```
 
 下载指定 run：

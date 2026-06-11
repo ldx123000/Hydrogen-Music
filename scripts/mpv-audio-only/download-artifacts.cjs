@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
+const githubApiBase = process.env.GITHUB_API_URL || 'https://api.github.com';
 const defaultWorkflow = 'build-mpv-audio-only.yml';
 const defaultArtifact = 'mpv-audio-only-all-platforms';
 const platforms = ['win32-x64', 'darwin-arm64', 'linux-x64'];
@@ -65,6 +68,10 @@ Options:
   --current                Shortcut for --platform current.
   --run-id id              Download a specific workflow run.
   --keep-existing          Copy over existing resources/mpv directories instead of replacing them.
+
+Authentication:
+  GitHub requires authentication when downloading Actions artifact zip files.
+  Set GH_TOKEN or GITHUB_TOKEN to a token with Actions read permission.
 `);
 }
 
@@ -88,68 +95,237 @@ function resolveArtifactName(platform) {
   return artifactByPlatform[platform];
 }
 
-function run(command, args, options = {}) {
+function tryRun(command, args) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
     encoding: 'utf8',
-    stdio: options.stdio || 'pipe',
+    stdio: 'pipe',
   });
 
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    const stderr = String(result.stderr || '').trim();
-    const stdout = String(result.stdout || '').trim();
-    throw new Error(stderr || stdout || `${command} ${args.join(' ')} failed`);
-  }
-
+  if (result.error || result.status !== 0) return '';
   return String(result.stdout || '').trim();
 }
 
-function runGh(args, options) {
-  return run('gh', args, options);
-}
+function parseRepo(value) {
+  const repo = String(value || '').trim();
+  if (!repo) return '';
 
-function ensureGhAvailable() {
-  try {
-    runGh(['--version']);
-  } catch (error) {
-    throw new Error('GitHub CLI is required. Install it, then run: gh auth login');
+  const match = repo.match(/github\.com[:/]([^/\s]+\/[^/\s?#]+?)(?:\.git)?\/?(?:[?#].*)?$/i);
+  if (match) return match[1];
+
+  if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/.test(repo)) {
+    return repo.replace(/\.git$/, '');
   }
+
+  return '';
 }
 
 function resolveRepo(explicitRepo) {
-  if (explicitRepo) return explicitRepo;
-  return runGh(['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']);
+  const explicit = parseRepo(explicitRepo);
+  if (explicit) return explicit;
+
+  const envRepo = parseRepo(process.env.GITHUB_REPOSITORY);
+  if (envRepo) return envRepo;
+
+  const origin = tryRun('git', ['config', '--get', 'remote.origin.url']);
+  const gitRepo = parseRepo(origin);
+  if (gitRepo) return gitRepo;
+
+  throw new Error('Cannot infer GitHub repository. Pass --repo owner/name.');
 }
 
-function resolveRunId(options) {
+function githubToken() {
+  return process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
+}
+
+function githubApiUrl(repo, apiPath) {
+  const base = githubApiBase.replace(/\/+$/, '');
+  const encodedRepo = repo.split('/').map(encodeURIComponent).join('/');
+  return `${base}/repos/${encodedRepo}${apiPath}`;
+}
+
+function requestHeaders(urlString) {
+  const headers = {
+    'User-Agent': 'hydrogen-music-mpv-downloader',
+  };
+
+  const apiHost = new URL(githubApiBase).hostname;
+  const targetHost = new URL(urlString).hostname;
+  if (targetHost === apiHost) {
+    headers.Accept = 'application/vnd.github+json';
+    headers['X-GitHub-Api-Version'] = '2022-11-28';
+    const token = githubToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+function formatHttpError(urlString, statusCode, body) {
+  let details = body.toString('utf8').trim();
+  try {
+    const json = JSON.parse(details);
+    details = json.message || details;
+  } catch (error) {
+    // Keep the original response body.
+  }
+
+  const authHint = statusCode === 401 || statusCode === 403
+    ? '\nGitHub requires authentication to download Actions artifact zip files, even when artifact metadata is visible. Set GH_TOKEN or GITHUB_TOKEN to a token with Actions read permission.'
+    : '';
+  return `GitHub request failed (${statusCode}) for ${urlString}${details ? `: ${details}` : ''}${authHint}`;
+}
+
+function requestBuffer(urlString, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlString);
+    const client = url.protocol === 'http:' ? http : https;
+    const request = client.request(url, { headers: requestHeaders(urlString) }, response => {
+      const status = response.statusCode || 0;
+      const location = response.headers.location;
+      if ([301, 302, 303, 307, 308].includes(status) && location) {
+        response.resume();
+        if (redirectCount >= 8) {
+          reject(new Error(`Too many redirects while requesting ${urlString}`));
+          return;
+        }
+        resolve(requestBuffer(new URL(location, url).toString(), redirectCount + 1));
+        return;
+      }
+
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('end', () => {
+        const body = Buffer.concat(chunks);
+        if (status >= 200 && status < 300) {
+          resolve(body);
+        } else {
+          reject(new Error(formatHttpError(urlString, status, body)));
+        }
+      });
+    });
+
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+async function requestJson(urlString) {
+  const body = await requestBuffer(urlString);
+  return JSON.parse(body.toString('utf8'));
+}
+
+function downloadFile(urlString, targetPath, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlString);
+    const client = url.protocol === 'http:' ? http : https;
+    const request = client.request(url, { headers: requestHeaders(urlString) }, response => {
+      const status = response.statusCode || 0;
+      const location = response.headers.location;
+      if ([301, 302, 303, 307, 308].includes(status) && location) {
+        response.resume();
+        if (redirectCount >= 8) {
+          reject(new Error(`Too many redirects while downloading ${urlString}`));
+          return;
+        }
+        resolve(downloadFile(new URL(location, url).toString(), targetPath, redirectCount + 1));
+        return;
+      }
+
+      if (status < 200 || status >= 300) {
+        const chunks = [];
+        response.on('data', chunk => chunks.push(chunk));
+        response.on('end', () => {
+          reject(new Error(formatHttpError(urlString, status, Buffer.concat(chunks))));
+        });
+        return;
+      }
+
+      const file = fs.createWriteStream(targetPath);
+      response.pipe(file);
+      file.on('finish', () => file.close(resolve));
+      file.on('error', error => {
+        fs.rmSync(targetPath, { force: true });
+        reject(error);
+      });
+    });
+
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+async function resolveRunId(options) {
   if (options.runId) return options.runId;
 
-  const runId = runGh([
-    'run',
-    'list',
-    '--repo',
+  const url = githubApiUrl(
     options.repo,
-    '--workflow',
-    options.workflow,
-    '--status',
-    'success',
-    '--limit',
-    '1',
-    '--json',
-    'databaseId',
-    '--jq',
-    '.[0].databaseId',
-  ]);
+    `/actions/workflows/${encodeURIComponent(options.workflow)}/runs?status=success&per_page=1`,
+  );
+  const data = await requestJson(url);
+  const runId = data.workflow_runs && data.workflow_runs[0] && data.workflow_runs[0].id;
 
   if (!runId) {
     throw new Error(`No successful ${options.workflow} run was found. Run the workflow on GitHub Actions first.`);
   }
 
-  return runId;
+  return String(runId);
+}
+
+async function downloadArtifactZip(repo, runId, artifactName, targetPath) {
+  const url = githubApiUrl(repo, `/actions/runs/${encodeURIComponent(runId)}/artifacts?per_page=100`);
+  const data = await requestJson(url);
+  const artifacts = Array.isArray(data.artifacts) ? data.artifacts : [];
+  const artifact = artifacts.find(item => item.name === artifactName);
+
+  if (!artifact) {
+    const names = artifacts.map(item => item.name).join(', ') || 'none';
+    throw new Error(`Artifact "${artifactName}" was not found in run ${runId}. Available artifacts: ${names}`);
+  }
+
+  if (artifact.expired) {
+    throw new Error(`Artifact "${artifactName}" in run ${runId} has expired. Re-run the workflow first.`);
+  }
+
+  await downloadFile(artifact.archive_download_url, targetPath);
+}
+
+function shellQuoteForPowerShell(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function extractZip(zipPath, targetDir) {
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  const attempts = process.platform === 'win32'
+    ? [
+        ['pwsh', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath ${shellQuoteForPowerShell(zipPath)} -DestinationPath ${shellQuoteForPowerShell(targetDir)} -Force`]],
+        ['powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath ${shellQuoteForPowerShell(zipPath)} -DestinationPath ${shellQuoteForPowerShell(targetDir)} -Force`]],
+        ['tar', ['-xf', zipPath, '-C', targetDir]],
+      ]
+    : [
+        ['unzip', ['-q', zipPath, '-d', targetDir]],
+        ['python3', ['-m', 'zipfile', '-e', zipPath, targetDir]],
+        ['python', ['-m', 'zipfile', '-e', zipPath, targetDir]],
+        ['tar', ['-xf', zipPath, '-C', targetDir]],
+      ];
+
+  const errors = [];
+  for (const [command, args] of attempts) {
+    const result = spawnSync(command, args, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+
+    if (!result.error && result.status === 0) return;
+    const message = result.error
+      ? result.error.message
+      : String(result.stderr || result.stdout || '').trim();
+    errors.push(`${command}: ${message || `exit ${result.status}`}`);
+  }
+
+  throw new Error(`Failed to extract artifact zip.\n${errors.join('\n')}`);
 }
 
 function isInside(parentPath, childPath) {
@@ -229,45 +405,39 @@ function formatBytes(bytes) {
   return `${bytes} B`;
 }
 
-function main() {
+async function main() {
   const options = parseArgs(process.argv.slice(2));
-  ensureGhAvailable();
   options.repo = resolveRepo(options.repo);
-  const runId = resolveRunId(options);
+  const runId = await resolveRunId(options);
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hydrogen-mpv-artifacts-'));
+  const extractDir = path.join(downloadDir, 'artifact');
+  const artifactZip = path.join(downloadDir, `${options.artifact}.zip`);
   const selectedPlatforms = options.platform === 'all' ? platforms : [options.platform];
 
-  console.log(`Downloading ${options.artifact} from ${options.repo} run ${runId}...`);
-  runGh([
-    'run',
-    'download',
-    runId,
-    '--repo',
-    options.repo,
-    '--name',
-    options.artifact,
-    '--dir',
-    downloadDir,
-  ], { stdio: 'inherit' });
+  try {
+    console.log(`Downloading ${options.artifact} from ${options.repo} run ${runId}...`);
+    await downloadArtifactZip(options.repo, runId, options.artifact, artifactZip);
+    extractZip(artifactZip, extractDir);
 
-  const sourceRoot = options.platform === 'all' ? findSourceRoot(downloadDir, selectedPlatforms) : '';
-  if (options.platform === 'all' && !sourceRoot) {
-    throw new Error(`Downloaded artifact, but no resources/mpv platform directories were found: ${downloadDir}`);
-  }
-
-  for (const platform of selectedPlatforms) {
-    const sourceDir = options.platform === 'all'
-      ? path.join(sourceRoot, platform)
-      : findPlatformSourceDir(downloadDir, platform, options.platform);
-    if (!sourceDir || !fs.existsSync(sourceDir)) {
-      throw new Error(`Artifact is missing ${platform}`);
+    const sourceRoot = options.platform === 'all' ? findSourceRoot(extractDir, selectedPlatforms) : '';
+    if (options.platform === 'all' && !sourceRoot) {
+      throw new Error(`Downloaded artifact, but no resources/mpv platform directories were found: ${extractDir}`);
     }
 
-    const targetDir = path.join(repoRoot, 'resources', 'mpv', platform);
-    copyDirectory(sourceDir, targetDir, options.clean);
-  }
+    for (const platform of selectedPlatforms) {
+      const sourceDir = options.platform === 'all'
+        ? path.join(sourceRoot, platform)
+        : findPlatformSourceDir(extractDir, platform, options.platform);
+      if (!sourceDir || !fs.existsSync(sourceDir)) {
+        throw new Error(`Artifact is missing ${platform}`);
+      }
 
-  fs.rmSync(downloadDir, { recursive: true, force: true });
+      const targetDir = path.join(repoRoot, 'resources', 'mpv', platform);
+      copyDirectory(sourceDir, targetDir, options.clean);
+    }
+  } finally {
+    fs.rmSync(downloadDir, { recursive: true, force: true });
+  }
 
   console.log('Updated MPV resources:');
   for (const platform of selectedPlatforms) {
@@ -280,7 +450,10 @@ function main() {
 }
 
 try {
-  main();
+  main().catch(error => {
+    console.error(error.message || error);
+    process.exit(1);
+  });
 } catch (error) {
   console.error(error.message || error);
   process.exit(1);
