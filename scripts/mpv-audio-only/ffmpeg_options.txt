@@ -7,8 +7,8 @@
 --disable-muxers
 --disable-devices
 --disable-avdevice
---disable-postproc
 --disable-network
+--disable-openssl
 --enable-small
 --enable-protocol=file
 --enable-protocol=pipe
