@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Show runner
         run: |
@@ -79,7 +79,7 @@ jobs:
       - name: List output
         run: find resources/mpv/linux-x64 -maxdepth 2 -type f -print -exec du -h {} \;
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: mpv-audio-only-linux-x64
           path: resources/mpv/linux-x64/**
@@ -91,7 +91,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Show runner
         run: |
@@ -108,7 +108,7 @@ jobs:
       - name: List output
         run: find resources/mpv/darwin-arm64 -maxdepth 2 -type f -print -exec du -h {} \;
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: mpv-audio-only-darwin-arm64
           path: resources/mpv/darwin-arm64/**
@@ -120,7 +120,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Show runner
         shell: pwsh
@@ -129,7 +129,7 @@ jobs:
 
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: CLANG64
+          msystem: MINGW64
           update: true
           install: >-
             autoconf
@@ -138,17 +138,17 @@ jobs:
             git
             libtool
             make
-            mingw-w64-clang-x86_64-meson
-            mingw-w64-clang-x86_64-cmake
-            mingw-w64-clang-x86_64-fontconfig
-            mingw-w64-clang-x86_64-freetype
-            mingw-w64-clang-x86_64-fribidi
-            mingw-w64-clang-x86_64-harfbuzz
-            mingw-w64-clang-x86_64-nasm
-            mingw-w64-clang-x86_64-ninja
-            mingw-w64-clang-x86_64-pkgconf
-            mingw-w64-clang-x86_64-toolchain
-            mingw-w64-clang-x86_64-yasm
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-fontconfig
+            mingw-w64-x86_64-freetype
+            mingw-w64-x86_64-fribidi
+            mingw-w64-x86_64-harfbuzz
+            mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-yasm
             zip
 
       - name: Build
@@ -159,7 +159,7 @@ jobs:
         shell: pwsh
         run: Get-ChildItem resources/mpv/win32-x64 -Recurse | Select-Object FullName,Length
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: mpv-audio-only-win32-x64
           path: resources/mpv/win32-x64/**
@@ -174,24 +174,24 @@ jobs:
       - darwin-arm64
       - win32-x64
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Prepare clean MPV resource directories
         run: |
           rm -rf resources/mpv/linux-x64 resources/mpv/darwin-arm64 resources/mpv/win32-x64
           mkdir -p resources/mpv/linux-x64 resources/mpv/darwin-arm64 resources/mpv/win32-x64
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: mpv-audio-only-linux-x64
           path: resources/mpv/linux-x64
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: mpv-audio-only-darwin-arm64
           path: resources/mpv/darwin-arm64
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: mpv-audio-only-win32-x64
           path: resources/mpv/win32-x64
@@ -202,7 +202,7 @@ jobs:
           cp -R resources _mpv-audio-only-artifact/
           find _mpv-audio-only-artifact/resources/mpv -maxdepth 2 -type f -print -exec du -h {} \;
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: mpv-audio-only-all-platforms
           path: _mpv-audio-only-artifact/**

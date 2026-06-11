@@ -24,7 +24,7 @@ bash scripts/mpv-audio-only/build-linux-x64.sh
 # macOS Apple Silicon
 bash scripts/mpv-audio-only/build-darwin-arm64.sh
 
-# Windows x64，需要在 MSYS2 CLANG64/MINGW64/UCRT64 shell 中运行
+# Windows x64，需要在 MSYS2 MINGW64 shell 中运行
 bash scripts/mpv-audio-only/build-win32-x64.sh
 ```
 

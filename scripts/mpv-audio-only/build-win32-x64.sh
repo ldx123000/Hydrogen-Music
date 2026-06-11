@@ -2,9 +2,14 @@
 set -euo pipefail
 
 case "${MSYSTEM:-}" in
-  CLANG64|MINGW64|UCRT64) ;;
+  MINGW64|UCRT64) ;;
+  CLANG64)
+    echo "build-win32-x64.sh should run inside an MSYS2 MINGW64 shell." >&2
+    echo "CLANG64 uses libc++, but mpv-build currently appends -lstdc++ for FFmpeg." >&2
+    exit 1
+    ;;
   *)
-    echo "build-win32-x64.sh must run inside an MSYS2 CLANG64/MINGW64/UCRT64 shell." >&2
+    echo "build-win32-x64.sh must run inside an MSYS2 MINGW64/UCRT64 shell." >&2
     exit 1
     ;;
 esac
@@ -18,6 +23,35 @@ JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 MPV_REF="${MPV_REF:-release}"
 FFMPEG_REF="${FFMPEG_REF:-release}"
 MPV_BUILD_REPO="${MPV_BUILD_REPO:-https://github.com/mpv-player/mpv-build.git}"
+
+dump_build_logs() {
+  local status="$?"
+  if [ "$status" -ne 0 ]; then
+    echo "Build failed with exit code $status. Dumping available build logs..." >&2
+    local log
+    for log in \
+      "$WORK_DIR/mpv-build/ffmpeg_build/ffbuild/config.log" \
+      "$WORK_DIR/mpv-build/mpv/build/meson-logs/meson-log.txt" \
+      "$WORK_DIR/mpv-build/libplacebo/build/meson-logs/meson-log.txt" \
+      "$WORK_DIR/mpv-build/libass/config.log"; do
+      if [ -f "$log" ]; then
+        echo "::group::$log" >&2
+        tail -n "${MPV_AUDIO_ONLY_LOG_TAIL:-260}" "$log" >&2 || true
+        echo "::endgroup::" >&2
+      fi
+    done
+  fi
+  exit "$status"
+}
+trap dump_build_logs EXIT
+
+echo "MSYSTEM=$MSYSTEM"
+for tool in gcc cc clang c++ g++ ld; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    printf '%s: ' "$tool"
+    "$tool" --version 2>/dev/null | head -n 1 || true
+  fi
+done
 
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
