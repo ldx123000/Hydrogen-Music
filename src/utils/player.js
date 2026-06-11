@@ -81,12 +81,6 @@ const levelFieldMap = {
     hires: 'hr',
 }
 
-watch(volume, (v) => {
-  window.playerApi?.setVolume?.(v)
-  if (gaplessPreload?.howl && !isCurrentHowl(gaplessPreload.howl)) {
-    gaplessPreload.howl.volume?.(v)
-  }
-})
 watch(showSongTranslation, () => {
     updateWindowTitleDock()
 })
@@ -95,6 +89,25 @@ function normalizePlaybackNumber(value) {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : 0
 }
+
+function normalizePlaybackVolume(value) {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return 0
+    if (parsed > 1 && parsed <= 100) return parsed / 100
+    return Math.max(0, Math.min(1, parsed))
+}
+
+watch(volume, (v) => {
+  const normalizedVolume = normalizePlaybackVolume(v)
+  if (normalizedVolume !== v) {
+    volume.value = normalizedVolume
+    return
+  }
+  window.playerApi?.setVolume?.(normalizedVolume)
+  if (gaplessPreload?.howl && !isCurrentHowl(gaplessPreload.howl)) {
+    gaplessPreload.howl.volume?.(normalizedVolume)
+  }
+})
 
 function normalizePlaybackDuration(value) {
     const parsed = normalizePlaybackNumber(value)
@@ -2827,7 +2840,7 @@ export function musicVideoCheck(seek, update) {
 
 
 function setVolumeForPlay(value) {
-  volume.value = Math.max(0, Math.min(1, value))
+  volume.value = normalizePlaybackVolume(value)
   currentMusic.value?.volume?.(volume.value)
 }
 

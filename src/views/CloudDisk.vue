@@ -12,6 +12,20 @@
   const userStore = useUserStore()
   const cloudStore = useCloudStore()
   const { count, size, maxSize, cloudSongs } = storeToRefs(cloudStore)
+  const normalizeCapacityValue = value => {
+    const number = Number(value)
+    return Number.isFinite(number) && number > 0 ? number : 0
+  }
+  const safeCapacityMax = computed(() => Math.max(
+    normalizeCapacityValue(maxSize.value),
+    normalizeCapacityValue(size.value)
+  ))
+  const safeCapacitySize = computed({
+    get: () => Math.min(normalizeCapacityValue(size.value), safeCapacityMax.value),
+    set: value => {
+      size.value = Math.min(normalizeCapacityValue(value), safeCapacityMax.value)
+    }
+  })
 
   const CLOUD_CATEGORY_ALL = 1
   const CLOUD_CATEGORY_IMAGE = 2
@@ -731,7 +745,7 @@
                 <div class="item-lable">云盘容量</div>
                 <div class="disk-capacity">
                   <div class="capacity">
-                    <vue-slider id="widget-progress" class="cloud-capacity"  v-model="size" :min="0" :max="maxSize" :interval="0.1" :duration="0.5" tooltip="none" :clickable="false" :disabled="true"></vue-slider>
+                    <vue-slider id="widget-progress" class="cloud-capacity"  v-model="safeCapacitySize" :min="0" :max="safeCapacityMax" :interval="0.1" :duration="0.5" tooltip="none" :clickable="false" :disabled="true"></vue-slider>
                   </div>
                   <div class="capacity-num">{{ size }}G / {{ maxSize }}G</div>
                 </div>

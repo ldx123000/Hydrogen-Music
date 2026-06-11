@@ -32,7 +32,17 @@
     return Math.max(normalizedTime, normalizedProgress)
   })
 
-  const safeSliderMax = computed(() => Math.ceil(safeSliderRange.value))
+  const safeSliderMax = ref(1)
+
+  watch(
+    () => [songId.value, safeSliderRange.value],
+    ([, range], previousValue) => {
+      const nextMax = Math.max(1, Math.ceil(Number(range) || 0))
+      const songChanged = previousValue && previousValue[0] !== songId.value
+      safeSliderMax.value = songChanged ? nextMax : Math.max(safeSliderMax.value, nextMax)
+    },
+    { immediate: true }
+  )
 
   const sliderDuration = computed(() => {
     const currentTime = Number(time.value)
@@ -48,6 +58,22 @@
     set: value => {
       const nextValue = Number(value)
       progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0
+    }
+  })
+
+  function normalizeSliderVolume(value) {
+    const currentVolume = Number(value)
+    if (!Number.isFinite(currentVolume)) return 0
+    if (currentVolume > 1 && currentVolume <= 100) return currentVolume / 100
+    return Math.max(0, Math.min(1, currentVolume))
+  }
+
+  const safeVolume = computed({
+    get: () => {
+      return normalizeSliderVolume(volume.value)
+    },
+    set: value => {
+      volume.value = normalizeSliderVolume(value)
     }
   })
   
@@ -98,8 +124,13 @@
   const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '', showSongTranslation.value))
 
   watch(() => volume.value, () => {
-    currentMusic.value?.volume?.(volume.value)
-  })
+    const normalizedVolume = normalizeSliderVolume(volume.value)
+    if (normalizedVolume !== volume.value) {
+      volume.value = normalizedVolume
+      return
+    }
+    currentMusic.value?.volume?.(normalizedVolume)
+  }, { immediate: true })
 
   const checkIsLike = computed(() => (id) => {
     return Array.isArray(userStore.likelist) && userStore.likelist.includes(id)
@@ -160,7 +191,7 @@
 <template>
   <div class="music-widget">
     <div class="music-progress-container">
-        <vue-slider id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
+        <vue-slider :key="'widget-progress-' + (songId || currentIndex)" id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
         <div class="music-time">{{songTime2(sliderProgress)}} / {{songTime2(sliderDuration)}}</div>
     </div>
     <div class="music-info">
@@ -195,10 +226,10 @@
         </div>
         <div class="music-volume">
             <div class="volume-container">
-                <vue-slider class="volume-slider" v-model="volume" :min="0" :max="1" :interval="0.01" :duration="0.3" tooltip="none"></vue-slider>
+                <vue-slider class="volume-slider" v-model="safeVolume" :min="0" :max="1" :interval="0.01" :duration="0.3" tooltip="none"></vue-slider>
                 <div class="volume-info">
                     <div class="volume-lable">VOLUME</div>
-                    <div class="volume-num">{{Math.round(volume * 100)}}</div>
+                    <div class="volume-num">{{Math.round(safeVolume * 100)}}</div>
                 </div>
             </div>
         </div>

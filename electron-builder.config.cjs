@@ -90,6 +90,7 @@ const BASE_FILE_PATTERNS = [
   '!**/node_modules/**/*.d.ts',
   '!**/node_modules/**/*.map',
   '!**/node_modules/@neteasecloudmusicapienhanced/api/public{,/**/*}',
+  '!**/node_modules/@neteasecloudmusicapienhanced/api/data/china_ip_ranges.txt',
   '!**/node_modules/@neteasecloudmusicapienhanced/api/data/deviceid.txt',
   '!**/node_modules/@neteasecloudmusicapienhanced/api/node_modules/xml2js/lib/xml2js.bc.js',
   '!**/node_modules/ffmpeg-static/example.js',

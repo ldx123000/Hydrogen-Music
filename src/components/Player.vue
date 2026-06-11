@@ -105,7 +105,17 @@ const safeSliderRange = computed(() => {
     return Math.max(normalizedTime, normalizedProgress);
 });
 
-const safeSliderMax = computed(() => Math.ceil(safeSliderRange.value));
+const safeSliderMax = ref(1);
+
+watch(
+    () => [songId.value, safeSliderRange.value],
+    ([, range], previousValue) => {
+        const nextMax = Math.max(1, Math.ceil(Number(range) || 0));
+        const songChanged = previousValue && previousValue[0] !== songId.value;
+        safeSliderMax.value = songChanged ? nextMax : Math.max(safeSliderMax.value, nextMax);
+    },
+    { immediate: true },
+);
 
 const sliderDuration = computed(() => {
     const currentTime = Number(time.value);
@@ -121,6 +131,22 @@ const sliderProgress = computed({
     set: value => {
         const nextValue = Number(value);
         progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0;
+    },
+});
+
+function normalizeSliderVolume(value) {
+    const currentVolume = Number(value);
+    if (!Number.isFinite(currentVolume)) return 0;
+    if (currentVolume > 1 && currentVolume <= 100) return currentVolume / 100;
+    return Math.max(0, Math.min(1, currentVolume));
+}
+
+const safeVolume = computed({
+    get: () => {
+        return normalizeSliderVolume(volume.value);
+    },
+    set: value => {
+        volume.value = normalizeSliderVolume(value);
     },
 });
 
@@ -326,6 +352,7 @@ const toggleDjSub = async isSubscribe => {
                         </div>
                         <div class="process">
                             <vue-slider
+                            :key="'player-progress-' + (songId || currentIndex)"
                             id="widget-progress"
                             class="music-progress"
                             @click="changeProgress(sliderProgress)"
@@ -429,11 +456,11 @@ const toggleDjSub = async isSubscribe => {
 
                 <div class="player-voluem">
                     <div class="voluem">
-                        <vue-slider class="volume-slider" v-model="volume" :min="0" :max="1" :interval="0.01" :duration="0.3" tooltip="none"></vue-slider>
+                        <vue-slider class="volume-slider" v-model="safeVolume" :min="0" :max="1" :interval="0.01" :duration="0.3" tooltip="none"></vue-slider>
                     </div>
                     <div class="voluem-num">
                         <span class="voluem-title">VOLUME</span>
-                        <span class="num">{{ Math.round(volume * 100) }}</span>
+                        <span class="num">{{ Math.round(safeVolume * 100) }}</span>
                     </div>
                 </div>
             </div>

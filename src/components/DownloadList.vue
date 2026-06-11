@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, onUnmounted } from 'vue'
+  import { computed, ref, onUnmounted } from 'vue'
   import VueSlider from 'vue-slider-component'
   import { noticeOpen } from '../utils/dialog'
   import { checkMusic, getMusicUrl } from '../api/song'
@@ -14,6 +14,17 @@
   const playerStore = usePlayerStore()
   const { quality, showSongTranslation } =storeToRefs(playerStore)
   const progress = ref(0)
+  const clampProgress = value => {
+    const progressValue = Number(value)
+    if (!Number.isFinite(progressValue)) return 0
+    return Math.max(0, Math.min(100, progressValue))
+  }
+  const safeProgress = computed({
+    get: () => clampProgress(progress.value),
+    set: value => {
+      progress.value = clampProgress(value)
+    }
+  })
   
   // 确保下载管理器已初始化
   initDownloadManager()
@@ -74,9 +85,9 @@
         <div class="download">
           <div class="item-name">{{getSongDisplayName(item, '', showSongTranslation)}}</div>
           <div class="download-progress">
-            <VueSlider class="progress" v-if="index == 0" v-model="progress" :min="0" :max="100" :interval="1" :duration="0.5" :clickable="false" tooltip="none"></VueSlider>
+            <VueSlider class="progress" v-if="index == 0" v-model="safeProgress" :min="0" :max="100" :interval="1" :duration="0.5" :clickable="false" tooltip="none"></VueSlider>
             <div class="progress" v-show="index != 0"></div>
-            <span class="progress-num" >{{(index == 0) ? Math.trunc(progress) : 0}}%</span>
+            <span class="progress-num" >{{(index == 0) ? Math.trunc(safeProgress) : 0}}%</span>
           </div>
         </div>
       </div>

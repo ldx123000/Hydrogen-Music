@@ -1,5 +1,5 @@
 <script setup>
-  import { computed, onBeforeUnmount } from 'vue'
+  import { computed, onBeforeUnmount, ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import VueSlider from 'vue-slider-component'
   import { songTime2 } from '../utils/time';
@@ -12,7 +12,7 @@
   import { useStableImageSource } from '../composables/useStableImageSource';
   const router = useRouter()
   const playerStore = usePlayerStore()
-  const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, localBase64Img, progress, time, playerShow, showSongTranslation } = storeToRefs(playerStore)
+  const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, songId, localBase64Img, progress, time, playerShow, showSongTranslation } = storeToRefs(playerStore)
 
   const safeSliderRange = computed(() => {
     const currentTime = Number(time.value)
@@ -22,7 +22,17 @@
     return Math.max(normalizedTime, normalizedProgress)
   })
 
-  const safeSliderMax = computed(() => Math.ceil(safeSliderRange.value))
+  const safeSliderMax = ref(1)
+
+  watch(
+    () => [songId.value, safeSliderRange.value],
+    ([, range], previousValue) => {
+      const nextMax = Math.max(1, Math.ceil(Number(range) || 0))
+      const songChanged = previousValue && previousValue[0] !== songId.value
+      safeSliderMax.value = songChanged ? nextMax : Math.max(safeSliderMax.value, nextMax)
+    },
+    { immediate: true }
+  )
 
   const sliderDuration = computed(() => {
     const currentTime = Number(time.value)
@@ -75,7 +85,7 @@
         <div class="music-info">
           <span class="music-name">{{getSongDisplayName(currentSong, '', showSongTranslation)}}</span>
           <div class="music-time">
-            <vue-slider id='widget-progress' class="music-progress" @click.stop="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
+            <vue-slider :key="'title-progress-' + (songId || currentIndex)" id='widget-progress' class="music-progress" @click.stop="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
             <span class="remaining-time">{{songTime2(Math.max(0, sliderDuration - sliderProgress))}}</span>
           </div>
         </div>

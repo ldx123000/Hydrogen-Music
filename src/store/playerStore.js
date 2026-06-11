@@ -13,6 +13,32 @@ function readInitialProgress() {
     }
 }
 
+function normalizePersistedVolume(value) {
+    const volume = Number(value)
+    if (!Number.isFinite(volume)) return 0.3
+    if (volume > 1 && volume <= 100) return volume / 100
+    return Math.max(0, Math.min(1, volume))
+}
+
+function normalizePlayerStorePayload(key, value) {
+    if (key !== 'playerStore' || typeof value !== 'string' || !value) return value
+
+    try {
+        const parsed = JSON.parse(value)
+        if (!parsed || typeof parsed !== 'object' || parsed.volume === undefined) return value
+
+        const normalizedVolume = normalizePersistedVolume(parsed.volume)
+        if (normalizedVolume === parsed.volume) return value
+
+        return JSON.stringify({
+            ...parsed,
+            volume: normalizedVolume,
+        })
+    } catch (_) {
+        return value
+    }
+}
+
 function createDedupedLocalStorage() {
     const lastValues = new Map()
     const getStorage = () => typeof localStorage === 'undefined' ? null : localStorage
@@ -22,7 +48,7 @@ function createDedupedLocalStorage() {
             const storage = getStorage()
             if (!storage) return null
 
-            const value = storage.getItem(key)
+            const value = normalizePlayerStorePayload(key, storage.getItem(key))
             lastValues.set(key, value)
             return value
         },

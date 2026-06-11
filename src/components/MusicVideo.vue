@@ -571,6 +571,34 @@ const clampTimeValue = (value, max) => {
     if (!Number.isFinite(parsed)) return 0;
     return Math.min(Math.max(0, parsed), upper);
 };
+const musicTimingMax = computed(() => Math.max(0, Number(addMusicVideo.value?.dt) || 0));
+const videoTimingMax = computed(() => Math.max(0, Number(currentVideoInfo.value?.duration) || 0));
+const safeMusicTiming = computed({
+    get: () => clampTimeValue(musicTiming.value, musicTimingMax.value),
+    set: value => {
+        musicTiming.value = clampTimeValue(value, musicTimingMax.value);
+    },
+});
+const safeVideoTiming = computed({
+    get: () => {
+        const max = videoTimingMax.value;
+        const start = clampTimeValue(videoTiming.value?.[0], max);
+        const end = clampTimeValue(videoTiming.value?.[1], max);
+        return start <= end ? [start, end] : [end, start];
+    },
+    set: value => {
+        if (!Array.isArray(value)) {
+            videoTiming.value = [0, 0];
+            return;
+        }
+
+        const max = videoTimingMax.value;
+        const start = clampTimeValue(value[0], max);
+        const end = clampTimeValue(value[1], max);
+        videoTiming.value = start <= end ? [start, end] : [end, start];
+    },
+});
+const safeVideoTimingMaxRange = computed(() => Math.max(0, musicTimingMax.value - safeMusicTiming.value));
 const commitMusicTimingInput = event => {
     const value = parseTimeInput(event.target.value);
     if (value === null) {
@@ -765,9 +793,9 @@ const reopenVideo = async () => {
                                 </div>
                                 <vue-slider
                                     class="music-timing-progress"
-                                    v-model="musicTiming"
+                                    v-model="safeMusicTiming"
                                     :min="0"
-                                    :max="addMusicVideo.dt"
+                                    :max="musicTimingMax"
                                     :interval="0.1"
                                     :process="false"
                                     :tooltip="'always'"
@@ -808,11 +836,11 @@ const reopenVideo = async () => {
                                 </div>
                                 <vue-slider
                                     class="music-timing-progress"
-                                    v-model="videoTiming"
+                                    v-model="safeVideoTiming"
                                     :min="0"
-                                    :max="currentVideoInfo.duration"
+                                    :max="videoTimingMax"
                                     :min-range="0"
-                                    :max-range="addMusicVideo.dt - musicTiming"
+                                    :max-range="safeVideoTimingMaxRange"
                                     :interval="0.1"
                                     :tooltip="'always'"
                                     :tooltipPlacement="'bottom'"

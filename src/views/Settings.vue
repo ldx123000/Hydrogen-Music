@@ -107,11 +107,13 @@ const customSourceTesting = ref(false)
 const customSourceImportUrl = ref('')
 let systemFontsLoadPromise = null
 
-const fontOptions = computed(() => buildFontOptions({
-    systemFonts: systemFonts.value,
-    customFont: customFont.value,
-    customFontLabel: customFontLabel.value,
-}))
+const fontOptions = computed(() =>
+    buildFontOptions({
+        systemFonts: systemFonts.value,
+        customFont: customFont.value,
+        customFontLabel: customFontLabel.value,
+    })
+)
 
 // 更新相关状态
 const showUpdateDialog = ref(false)
@@ -121,7 +123,7 @@ let removeUpdateListeners = null
 const PERFORMANCE_CONFIRM_MESSAGE = '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？'
 const GAPLESS_CONFIRM_MESSAGE = '开启后会提前预缓冲下一首音频，可能增加网络流量和内存占用，确定开启吗？'
 const CUSTOM_SOURCE_CONFIRM_MESSAGE = '开启后会在网易云无法解析歌曲时调用导入的脚本获取播放地址，确定开启吗？'
-const LOCAL_HIFI_OUTPUT_CONFIRM_MESSAGE = '开启后本地音乐会优先使用 MPV 后端输出，独占模式会占用音频设备，确定开启吗？'
+const LOCAL_HIFI_OUTPUT_CONFIRM_MESSAGE = '开启后本地音乐会使用 MPV 后端输出，独占模式会占用音频设备，确定开启吗？'
 
 const loadVipInfo = async () => {
     const requestUserId = userStore.user?.userId
@@ -309,9 +311,7 @@ const setCustomFont = (font, option = null) => {
     const rawFont = typeof font === 'string' ? font : customFont.value
     const resolvedFont = resolveSystemFontValue(rawFont)
     const fallbackLabel = option?.label || customFontLabel.value || rawFont
-    const resolvedLabel = resolvedFont
-        ? String(resolveSystemFontLabel(resolvedFont, fallbackLabel, systemFonts.value)).trim()
-        : ''
+    const resolvedLabel = resolvedFont ? String(resolveSystemFontLabel(resolvedFont, fallbackLabel, systemFonts.value)).trim() : ''
     const appliedFont = applyCustomFontStyle(resolvedFont, resolvedLabel)
     customFont.value = appliedFont
     customFontLabel.value = appliedFont ? resolvedLabel : ''
@@ -520,11 +520,7 @@ const loadHifiAudioDevices = async () => {
                 value: device.value,
             })
         })
-        if (
-            playerStore.localHifiAudioDevice
-            && playerStore.localHifiAudioDevice !== 'auto'
-            && !options.some(option => option.value === playerStore.localHifiAudioDevice)
-        ) {
+        if (playerStore.localHifiAudioDevice && playerStore.localHifiAudioDevice !== 'auto' && !options.some(option => option.value === playerStore.localHifiAudioDevice)) {
             options.push({
                 label: playerStore.localHifiAudioDevice,
                 value: playerStore.localHifiAudioDevice,
@@ -619,7 +615,7 @@ const importCustomSource = async () => {
     try {
         const result = applyCustomSourceResult(await windowApi.importCustomSource())
         if (result?.canceled) return
-        noticeOpen(result?.ok ? '已导入自定义解析源' : (result?.message || '导入失败'), result?.ok ? 2 : 3)
+        noticeOpen(result?.ok ? '已导入自定义解析源' : result?.message || '导入失败', result?.ok ? 2 : 3)
     } catch (error) {
         console.error('导入自定义解析源失败:', error)
         noticeOpen('导入失败', 3)
@@ -639,7 +635,7 @@ const importCustomSourceFromUrl = async () => {
     try {
         const result = applyCustomSourceResult(await windowApi.importCustomSourceFromUrl(url))
         if (result?.ok) customSourceImportUrl.value = ''
-        noticeOpen(result?.ok ? '已从链接导入自定义解析源' : (result?.message || '导入失败'), result?.ok ? 2 : 3)
+        noticeOpen(result?.ok ? '已从链接导入自定义解析源' : result?.message || '导入失败', result?.ok ? 2 : 3)
     } catch (error) {
         console.error('从链接导入自定义解析源失败:', error)
         noticeOpen('导入失败', 3)
@@ -651,10 +647,12 @@ const testCustomSource = async () => {
     if (customSourceBusy.value || customSourceTesting.value || !windowApi?.testCustomSource) return
     customSourceTesting.value = true
     try {
-        const result = applyCustomSourceResult(await windowApi.testCustomSource({
-            quality: musicLevel.value,
-        }))
-        noticeOpen(result?.ok ? (result?.message || '解析源可用') : (result?.message || '测试失败'), result?.ok ? 2 : 3)
+        const result = applyCustomSourceResult(
+            await windowApi.testCustomSource({
+                quality: musicLevel.value,
+            })
+        )
+        noticeOpen(result?.ok ? result?.message || '解析源可用' : result?.message || '测试失败', result?.ok ? 2 : 3)
     } catch (error) {
         console.error('测试自定义解析源失败:', error)
         noticeOpen('测试失败', 3)
@@ -1062,13 +1060,7 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">自定义字体</div>
                             <div class="option-operation">
-                                <FontSelector
-                                    v-model="customFont"
-                                    :options="fontOptions"
-                                    :loading="systemFontsLoading"
-                                    @open="loadSystemFonts"
-                                    @change="setCustomFont"
-                                ></FontSelector>
+                                <FontSelector v-model="customFont" :options="fontOptions" :loading="systemFontsLoading" @open="loadSystemFonts" @change="setCustomFont"></FontSelector>
                             </div>
                         </div>
                         <div class="option">
