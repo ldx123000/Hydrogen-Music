@@ -27,6 +27,7 @@ import { normalizeQueueSong, normalizeQueueSongs } from './player/queueSong'
 import { getPrefetchedSongAssets, getSongAssetKey, prefetchSongAssets } from './player/assetPrefetch'
 import { getLyricWithCloudFallback, isCloudDiskSong, markCloudDiskSong } from './player/lyricFallback'
 import { createDecodedAudioPlayer } from './player/webAudioGapless'
+import { createHifiOutputPlayer } from './player/hifiOutputPlayer'
 import { runIdleTask } from './player/idleTask'
 import { createEmptyLyric, hasUsableLyricPayload } from './player/lyricPayload'
 import { verifyStoredMusicVideo } from './musicVideoLookup'
@@ -44,7 +45,7 @@ const userStore = useUserStore()
 const libraryStore = useLibraryStore(pinia)
 const playerStore = usePlayerStore(pinia)
 const { libraryInfo } = storeToRefs(libraryStore)
-const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation, gaplessPlayback } = storeToRefs(playerStore)
+const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation, gaplessPlayback, localHifiOutput, localHifiOutputMode, localHifiMpvPath, localHifiAudioDevice } = storeToRefs(playerStore)
 
 const PLAYBACK_SNAPSHOT_PERSIST_INTERVAL_MS = 5000
 let isProgress = false
@@ -71,6 +72,7 @@ let lastPersistedProgressSignature = ''
 let lyricLoadToken = 0
 let activeRemoteLyricFetch = null
 let pendingCurrentCloudLyricRetrySongId = ''
+let lastLocalHifiFallbackNoticeAt = 0
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -97,6 +99,27 @@ function normalizePlaybackNumber(value) {
 function normalizePlaybackDuration(value) {
     const parsed = normalizePlaybackNumber(value)
     return parsed > 0 ? parsed : 0
+}
+
+function normalizeSongDurationSeconds(value, options = {}) {
+    const parsed = normalizePlaybackNumber(value)
+    if (parsed <= 0) return 0
+    return options.milliseconds === true || parsed > 1000 ? parsed / 1000 : parsed
+}
+
+function getSongDurationSeconds(song) {
+    if (!song || typeof song !== 'object') return 0
+    const dtDuration = normalizeSongDurationSeconds(song.dt, { milliseconds: true })
+    if (dtDuration > 0) return dtDuration
+    return normalizeSongDurationSeconds(song.duration)
+}
+
+function getPlaybackDurationSeconds(playbackInfo = {}, targetSongId = songId.value) {
+    const playbackDuration = normalizeSongDurationSeconds(playbackInfo.duration)
+    if (playbackDuration > 0) return playbackDuration
+
+    const currentSong = getSongByIdOrIndex(targetSongId, currentIndex.value)
+    return getSongDurationSeconds(currentSong)
 }
 
 function clampPlaybackProgress(value, maxDuration = null) {
@@ -441,12 +464,80 @@ async function resolveSongPlaybackInfo(song, options = {}) {
     return buildRemotePlaybackInfo(trackInfo, trackInfo?.source === 'custom-source')
 }
 
+function shouldUseHifiOutput(playbackInfo = {}) {
+    return localHifiOutput.value === true && !!playbackInfo.localPath
+}
+
+function buildHifiOutputOptions(playbackInfo = {}, targetSongId = songId.value) {
+    return {
+        mode: localHifiOutputMode.value || 'shared',
+        mpvPath: localHifiMpvPath.value || '',
+        audioDevice: localHifiAudioDevice.value || 'auto',
+        volume: volume.value,
+        duration: getPlaybackDurationSeconds(playbackInfo, targetSongId),
+        localPath: playbackInfo.localPath || '',
+        url: '',
+    }
+}
+
+function notifyHifiFallback(message = 'HiFi 输出不可用，已回退普通播放') {
+    const now = Date.now()
+    if (now - lastLocalHifiFallbackNoticeAt < 8000) return
+    lastLocalHifiFallbackNoticeAt = now
+    noticeOpen(message, 2)
+}
+
+async function playPlaybackInfo(playbackInfo, autoplay, targetSongId, options = {}) {
+    const resumeSeek = typeof options.resumeSeek === 'number' && !Number.isNaN(options.resumeSeek)
+        ? Math.max(0, options.resumeSeek)
+        : null
+
+    if (shouldUseHifiOutput(playbackInfo)) {
+        clearGaplessPreload()
+        preparePlaybackSwitch(null, true)
+
+        try {
+            const source = playbackInfo.localPath
+            const nextPlayer = markRaw(await createHifiOutputPlayer(source, buildHifiOutputOptions(playbackInfo, targetSongId)))
+            if (songId.value !== targetSongId) {
+                nextPlayer.unload?.()
+                return true
+            }
+
+            nextPlayer.loop?.(playMode.value == 2)
+            activatePlaybackHowl(nextPlayer, {
+                autoplay,
+                resumeSeek,
+                instantStart: true,
+                fadeInMs: 0,
+            })
+            return true
+        } catch (error) {
+            console.warn('HiFi 输出启动失败，回退普通播放:', error)
+            notifyHifiFallback()
+        }
+    }
+
+    if (songId.value !== targetSongId) return false
+    play(playbackInfo.url, autoplay, resumeSeek)
+    return false
+}
+
+export async function playResolvedPlaybackInfo(playbackInfo, autoplay, options = {}) {
+    const targetSongId = options.targetSongId ?? songId.value
+    return playPlaybackInfo(playbackInfo, autoplay, targetSongId, options)
+}
+
 export function preloadGaplessSongPlayback(song, options = {}) {
     if (!gaplessPlayback.value || playMode.value == 2) {
         clearGaplessPreload()
         return Promise.resolve(null)
     }
     if (!song || typeof song !== 'object') {
+        clearGaplessPreload()
+        return Promise.resolve(null)
+    }
+    if (localHifiOutput.value === true && song?.type === 'local') {
         clearGaplessPreload()
         return Promise.resolve(null)
     }
@@ -982,10 +1073,18 @@ function isCurrentHowl(howl) {
     return currentMusic.value === howl || toRaw(currentMusic.value) === howl
 }
 
+function disposePlaybackImmediately(playback) {
+    if (!playback) return
+    try { playback.volume?.(0) } catch (_) {}
+    try { playback.stop?.() } catch (_) {}
+    try { playback.pause?.() } catch (_) {}
+    try { playback.unload?.() } catch (_) {}
+}
+
 function resetFailedPlaybackState() {
     stopProgressSampling()
     try {
-        currentMusic.value?.unload?.()
+        disposePlaybackImmediately(currentMusic.value)
     } catch (error) {
         console.warn('清理失败的播放器实例时出错:', error)
     }
@@ -1069,7 +1168,7 @@ async function refreshStreamAndResume(eventType, error) {
         }
 
         progress.value = resumePosition
-        play(nextStreamUrl, true, resumePosition)
+        await playPlaybackInfo(playbackInfo, true, targetSongId, { resumeSeek: resumePosition })
     } catch (fetchError) {
         console.error('刷新歌曲播放地址失败:', fetchError)
         noticeOpen('刷新播放地址失败，请尝试切换歌曲', 2)
@@ -1122,7 +1221,7 @@ function preparePlaybackSwitch(nextHowl = null, allowGlobalUnload = false) {
     stopProgressSampling()
     const previousHowl = getCurrentHowl()
     if (previousHowl && previousHowl !== nextHowl) {
-        try { previousHowl.unload() } catch (_) {}
+        disposePlaybackImmediately(previousHowl)
     }
     if (allowGlobalUnload) {
         try { Howler.unload() } catch (_) {}
@@ -1131,7 +1230,7 @@ function preparePlaybackSwitch(nextHowl = null, allowGlobalUnload = false) {
 
 function syncActivatedHowlAfterLoad(nextHowl, normalizedSeek, autoplay) {
     if (!isCurrentHowl(nextHowl)) return
-    const loadedDuration = normalizePlaybackDuration(nextHowl.duration())
+    const loadedDuration = normalizePlaybackDuration(nextHowl.duration() || getSongDurationSeconds(getCurrentSong()))
     time.value = loadedDuration
     updateCurrentSongDurationFromHowl()
     let targetSeek = null
@@ -1160,7 +1259,7 @@ function syncActivatedHowlAfterLoad(nextHowl, normalizedSeek, autoplay) {
 function activatePlaybackHowl(nextHowl, { autoplay, resumeSeek = null, instantStart = false, fadeInMs = 200 } = {}) {
     const normalizedSeek = typeof resumeSeek === 'number' && !Number.isNaN(resumeSeek) ? Math.max(resumeSeek, 0) : null
     bindPlaybackLifecycleEvents(nextHowl, {
-        endEvent: nextHowl?.__hmWebAudioPlayer ? 'end' : '',
+        endEvent: (nextHowl?.__hmWebAudioPlayer || nextHowl?.__hmHifiOutputPlayer) ? 'end' : '',
     })
     currentMusic.value = nextHowl
     window.playerApi?.setVolume?.(volume.value)
@@ -1193,13 +1292,25 @@ function bindPlaybackLifecycleEvents(playback, options = {}) {
             handlePlaybackEnded()
         })
     }
+    if (playback.__hmHifiOutputPlayer) {
+        playback.on('duration', duration => {
+            if (!isCurrentHowl(playback)) return
+            const normalizedDuration = normalizePlaybackDuration(duration)
+            if (normalizedDuration <= 0) return
+            time.value = normalizedDuration
+            updateCurrentSongDurationFromHowl()
+        })
+        playback.on('loaderror', (_id, error) => {
+            handleHowlPlaybackError(playback, 'loaderror', error, 'HiFi 输出播放失败，尝试刷新播放地址')
+        })
+    }
 }
 
 function handlePlaybackStarted(playback) {
     if (!isCurrentHowl(playback)) return
     const fadeInMs = fadeInDurationByHowl.has(playback) ? fadeInDurationByHowl.get(playback) : 200
     fadeInDurationByHowl.delete(playback)
-    if (fadeInMs <= 0) {
+    if (playback?.__hmHifiOutputPlayer || fadeInMs <= 0) {
         playback.volume(volume.value)
     } else {
         playback.fade(0, volume.value, fadeInMs)
@@ -1218,6 +1329,7 @@ function handlePlaybackPaused(playback) {
     playing.value = false
     windowApi.playOrPauseMusicCheck(playing.value)
     syncWindowsTaskbarPlaybackState()
+    if (playback?.__hmHifiOutputPlayer) return
     playback.fade(volume.value, 0, 200)
 }
 
@@ -1440,9 +1552,12 @@ export function startProgress() {
     if (!currentHowl || typeof currentHowl.seek !== 'function') return
 
     const durationLimit = normalizePlaybackDuration(time.value || currentHowl.duration?.())
+    if (durationLimit > 0) time.value = durationLimit
     progress.value = clampPlaybackProgress(currentHowl.seek(), durationLimit)
     disposeProgressTicker = subscribePlaybackTick(snapshot => {
-        progress.value = clampPlaybackProgress(snapshot.seek, snapshot.duration)
+        const snapshotDuration = normalizePlaybackDuration(snapshot.duration)
+        if (snapshotDuration > 0) time.value = snapshotDuration
+        progress.value = clampPlaybackProgress(snapshot.seek, snapshotDuration)
         schedulePlaybackSnapshotPersist()
     }, {
         id: 'player-progress',
@@ -1740,6 +1855,11 @@ export function addSong(id, index, autoplay, isLocal) {
 
     const currentHowl = getCurrentHowl()
     if (currentHowl && volume.value != 0) {
+        if (currentHowl.__hmHifiOutputPlayer) {
+            disposePlaybackImmediately(currentHowl)
+            getSongUrl(id, index, autoplay, isLocal)
+            return
+        }
         currentHowl.fade(volume.value, 0, 200)
         currentHowl.once('fade', () => {
             getSongUrl(id, index, autoplay, isLocal)
@@ -1909,7 +2029,7 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         const playbackInfo = await resolveSongPlaybackInfo(targetSong)
         if (songId.value !== targetSongId) return
         if (!playbackInfo?.url) return
-        play(playbackInfo.url, autoplay)
+        await playPlaybackInfo(playbackInfo, autoplay, targetSongId)
         await hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
         return
     }
@@ -1929,15 +2049,20 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
                 return
             }
 
-            play(playbackInfo.url, autoplay)
+            const hifiStarted = await playPlaybackInfo(playbackInfo, autoplay, targetSongId)
+            if (songId.value !== targetSongId) return
 
-            // 在音频加载完成后设置塞壬歌曲音质信息
-            const sirenHowl = getCurrentHowl()
-            if (sirenHowl) {
-                sirenHowl.once('load', () => {
-                    if (songId.value !== targetSongId) return
-                    applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
-                })
+            if (hifiStarted) {
+                applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
+            } else {
+                // 在音频加载完成后设置塞壬歌曲音质信息
+                const sirenHowl = getCurrentHowl()
+                if (sirenHowl) {
+                    sirenHowl.once('load', () => {
+                        if (songId.value !== targetSongId) return
+                        applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
+                    })
+                }
             }
 
             await hydrateSongAssets(targetSong, targetSongId, {
@@ -1980,7 +2105,8 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
             return
         }
 
-        play(playbackInfo.url, autoplay)
+        await playPlaybackInfo(playbackInfo, autoplay, targetSongId)
+        if (songId.value !== targetSongId) return
         applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
         void hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
     } catch (error) {
@@ -2036,7 +2162,12 @@ export function pauseMusic() {
     stopProgressSampling()
     const currentHowl = getCurrentHowl()
     persistPlaybackSnapshotNow()
-    if (playing.value && currentHowl && typeof currentHowl.fade === 'function' && typeof currentHowl.once === 'function') {
+    if (playing.value && currentHowl?.__hmHifiOutputPlayer) {
+        currentHowl.pause?.()
+        playing.value = false
+        windowApi.playOrPauseMusicCheck(playing.value)
+        syncWindowsTaskbarPlaybackState()
+    } else if (playing.value && currentHowl && typeof currentHowl.fade === 'function' && typeof currentHowl.once === 'function') {
         currentHowl.fade(volume.value, 0, 200)
         currentHowl.once('fade', () => {
             currentHowl.pause?.()
@@ -2700,13 +2831,20 @@ function setVolumeForPlay(value) {
   currentMusic.value?.volume?.(volume.value)
 }
 
+function isProgressSliderEvent(event) {
+    const target = event?.target
+    if (!target) return false
+    if (typeof target.closest === 'function') return !!target.closest('#widget-progress')
+    return target?.parentNode?.parentNode?.id == 'widget-progress'
+}
+
 export function initPlayerExternalBridge() {
     if (playerExternalBridgeInitialized) return
     playerExternalBridgeInitialized = true
 
     initExternalBridge({
         onMouseDown(event) {
-            if (event?.target?.parentNode?.parentNode?.id == 'widget-progress') {
+            if (isProgressSliderEvent(event)) {
                 changeProgressByDragStart()
                 isProgress = true
             }

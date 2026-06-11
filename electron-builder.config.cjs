@@ -14,6 +14,9 @@ const NODE_MODULE_PRUNE_DIRS = [
   '.yarn',
 ];
 
+const fs = require('fs');
+const path = require('path');
+
 const NODE_MODULE_PRUNE_FILE_PATTERNS = [
   'README',
   'README.*',
@@ -134,6 +137,20 @@ const LINUX_ONLY_DEPENDENCY_EXCLUDES = [
 ];
 
 const KEEP_NODE_MODULE_FILE = /(^|\/)(LICENSE(?:\.[^/]+)?|LICENCE(?:\.[^/]+)?|NOTICE(?:\.[^/]+)?|THIRD-PARTY-NOTICES(?:\.[^/]+)?)$/i;
+const MPV_RESOURCE_ROOT = path.resolve(__dirname, 'resources', 'mpv');
+
+function getMpvExtraResourcesForPlatform(platform) {
+  if (!fs.existsSync(MPV_RESOURCE_ROOT)) return [];
+
+  const platformDirs = fs.readdirSync(MPV_RESOURCE_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && (entry.name === platform || entry.name.startsWith(`${platform}-`)))
+    .map((entry) => entry.name);
+
+  return platformDirs.map((name) => ({
+    from: path.join(MPV_RESOURCE_ROOT, name),
+    to: path.posix.join('mpv', name),
+  }));
+}
 
 module.exports = {
   productName: 'Hydrogen Music',
@@ -164,11 +181,13 @@ module.exports = {
   mac: {
     category: 'public.app-category.music',
     icon: './src/assets/icon/icon.icns',
+    extraResources: getMpvExtraResourcesForPlatform('darwin'),
     target: ['dmg'],
     artifactName: 'Hydrogen.Music-${version}-${arch}.${ext}',
   },
   win: {
     icon: './src/assets/icon/icon.ico',
+    extraResources: getMpvExtraResourcesForPlatform('win32'),
     target: ['nsis', 'portable', 'zip'],
     verifyUpdateCodeSignature: false,
     artifactName: 'Hydrogen.Music.${version}.${ext}',
@@ -176,6 +195,7 @@ module.exports = {
   linux: {
     category: 'Audio',
     icon: './src/assets/icon/icon.png',
+    extraResources: getMpvExtraResourcesForPlatform('linux'),
     target: [
       {
         target: 'AppImage',

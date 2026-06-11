@@ -10,12 +10,13 @@ import { getSettingsSnapshot, setCachedSettingsSnapshot } from './settingsSnapsh
 import { initPlayerExternalBridge, loadLastSong } from './player/lazy'
 import { applyCustomFontStyle, syncDesktopLyricCustomFont } from './setFont'
 import { resolveSystemFontOptionAsync, resolveSystemFontValueAsync } from './fontResolver'
+import { resolveInitialHifiOutputMode } from './hifiOutputModeMigration'
 import settingsSchema from '../shared/settingsSchema.js'
 
 const { normalizeSettings } = settingsSchema
 
 const playerStore = usePlayerStore()
-const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation, gaplessPlayback, audioVisualizer } = storeToRefs(playerStore)
+const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation, gaplessPlayback, audioVisualizer, localHifiOutput, localHifiOutputMode, localHifiMpvPath, localHifiAudioDevice } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const userStore = useUserStore()
 
@@ -108,6 +109,10 @@ export function applySettingsSnapshot(settings, options = {}) {
     showSongTranslation.value = normalizedSettings?.music?.showSongTranslation !== false
     gaplessPlayback.value = normalizedSettings?.music?.gaplessPlayback === true
     audioVisualizer.value = normalizedSettings?.music?.audioVisualizer === true
+    localHifiOutput.value = normalizedSettings?.music?.localHifiOutput === true
+    localHifiOutputMode.value = resolveInitialHifiOutputMode(normalizedSettings?.music?.localHifiOutputMode)
+    localHifiMpvPath.value = normalizedSettings?.music?.localHifiMpvPath || ''
+    localHifiAudioDevice.value = normalizedSettings?.music?.localHifiAudioDevice || 'auto'
     applyCustomFontSetting(normalizedSettings)
 
     applyLocalSettings(normalizedSettings, options)

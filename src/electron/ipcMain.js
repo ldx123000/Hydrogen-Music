@@ -7,6 +7,7 @@ const { spawn } = require('child_process')
 const { loadLocalLyricPayload } = require('./localLyrics')
 const { registerSettingsIpc } = require('./ipc/settingsIpc')
 const { registerCustomSourceIpc } = require('./customSource')
+const { registerHifiOutputIpc } = require('./hifiOutput')
 const { listSystemFonts } = require('./systemFonts')
 const {
     getBufferLength,
@@ -728,6 +729,10 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
         return ''
     }
+    const normalizeAllowedAudioUrl = targetUrl => {
+        const urlObj = parseUrlSafely(targetUrl)
+        return isTrustedAudioFetchUrl(urlObj) ? urlObj.toString() : ''
+    }
     const getTrustedResourceHeaderAllowList = urlObj => {
         if (!urlObj) return trustedResourceHeaderNames
         if (urlObj.hostname === 'passport.bilibili.com' || urlObj.hostname === 'api.bilibili.com') {
@@ -846,6 +851,13 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     registerSettingsIpc({ ipcMain, settingsStore, win, registerShortcuts })
     registerCustomSourceIpc({ ipcMain })
+    registerHifiOutputIpc({
+        ipcMain,
+        dialog,
+        app,
+        getWindow: getActiveWindow,
+        normalizeAllowedMediaPath,
+    })
     ipcMain.handle('system-fonts:list', () => listSystemFonts())
     const handleOpenDirectoryDialog = async () => {
         try {

@@ -145,6 +145,10 @@ function configureAnalyser(nextAnalyser) {
     return nextAnalyser
 }
 
+function isHifiPlayback(playback = currentMusic.value) {
+    return playback?.__hmHifiOutputPlayer === true
+}
+
 function getWebAudioAnalyser(playback) {
     const context = playback?._context
     const gain = playback?._gain
@@ -217,6 +221,24 @@ function getMediaStreamAnalyser(playback) {
     return nextAnalyser
 }
 
+function getHifiAnalyser(playback) {
+    if (!isHifiPlayback(playback)) return null
+
+    const existingAnalyser = playback.getAnalyser?.()
+    if (existingAnalyser) return configureAnalyser(existingAnalyser)
+
+    const preparePromise = playback.prepareAnalyser?.()
+    if (preparePromise && typeof preparePromise.then === 'function') {
+        preparePromise
+            .then(() => {
+                if (currentMusic.value === playback && visible.value) refreshAnalyserForPlayback(playback)
+            })
+            .catch(() => {})
+    }
+
+    return null
+}
+
 function tryAttachAnalyser(retryCount = 0) {
     clearAttachTimer()
     if (!visible.value) return
@@ -231,9 +253,13 @@ function tryAttachAnalyser(retryCount = 0) {
     }
 
     try {
-        analyser = playback.__hmWebAudioPlayer
-            ? getWebAudioAnalyser(playback)
-            : getHowlBufferAnalyser(playback) || getMediaStreamAnalyser(playback)
+        if (isHifiPlayback(playback)) {
+            analyser = getHifiAnalyser(playback)
+        } else if (playback.__hmWebAudioPlayer) {
+            analyser = getWebAudioAnalyser(playback)
+        } else {
+            analyser = getHowlBufferAnalyser(playback) || getMediaStreamAnalyser(playback)
+        }
 
         if (analyser) {
             analyserData = new Uint8Array(analyser.frequencyBinCount)

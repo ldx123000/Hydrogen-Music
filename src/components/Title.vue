@@ -24,6 +24,11 @@
 
   const safeSliderMax = computed(() => Math.ceil(safeSliderRange.value))
 
+  const sliderDuration = computed(() => {
+    const currentTime = Number(time.value)
+    return Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0
+  })
+
   const sliderProgress = computed({
     get: () => {
       const currentProgress = Number(progress.value)
@@ -71,7 +76,7 @@
           <span class="music-name">{{getSongDisplayName(currentSong, '', showSongTranslation)}}</span>
           <div class="music-time">
             <vue-slider id='widget-progress' class="music-progress" @click.stop="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
-            <span class="remaining-time">{{songTime2(Math.max(0, safeSliderRange - sliderProgress))}}</span>
+            <span class="remaining-time">{{songTime2(Math.max(0, sliderDuration - sliderProgress))}}</span>
           </div>
         </div>
       </div>

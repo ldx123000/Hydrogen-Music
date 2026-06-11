@@ -1,0 +1,204 @@
+name: Build audio-only MPV
+
+run-name: Build audio-only MPV (${{ github.event.inputs.mpv_ref || 'release' }}, ${{ github.event.inputs.ffmpeg_ref || 'release' }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      mpv_ref:
+        description: MPV ref passed to mpv-build
+        default: release
+        required: true
+      ffmpeg_ref:
+        description: FFmpeg ref passed to mpv-build
+        default: release
+        required: true
+  push:
+    paths:
+      - '.github/workflows/build-mpv-audio-only.yml'
+      - 'resources/mpv/README.md'
+      - 'scripts/mpv-audio-only/**'
+  pull_request:
+    paths:
+      - '.github/workflows/build-mpv-audio-only.yml'
+      - 'resources/mpv/README.md'
+      - 'scripts/mpv-audio-only/**'
+
+permissions:
+  contents: read
+
+env:
+  MPV_REF: ${{ github.event.inputs.mpv_ref || 'release' }}
+  FFMPEG_REF: ${{ github.event.inputs.ffmpeg_ref || 'release' }}
+
+concurrency:
+  group: mpv-audio-only-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-x64:
+    name: Linux x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show runner
+        run: |
+          uname -a
+          lsb_release -a || true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf \
+            automake \
+            build-essential \
+            git \
+            libasound2-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libfribidi-dev \
+            libharfbuzz-dev \
+            libpipewire-0.3-dev \
+            libtool \
+            meson \
+            nasm \
+            ninja-build \
+            pkg-config \
+            python3-docutils \
+            python3-jinja2 \
+            yasm
+
+      - name: Build
+        run: bash scripts/mpv-audio-only/build-linux-x64.sh
+
+      - name: List output
+        run: find resources/mpv/linux-x64 -maxdepth 2 -type f -print -exec du -h {} \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mpv-audio-only-linux-x64
+          path: resources/mpv/linux-x64/**
+          if-no-files-found: error
+          retention-days: 14
+
+  darwin-arm64:
+    name: macOS 15 arm64
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show runner
+        run: |
+          sw_vers
+          uname -a
+
+      - name: Install build dependencies
+        run: |
+          brew update
+          brew install autoconf automake libtool meson nasm ninja pkg-config yasm
+
+      - name: Build
+        run: bash scripts/mpv-audio-only/build-darwin-arm64.sh
+
+      - name: List output
+        run: find resources/mpv/darwin-arm64 -maxdepth 2 -type f -print -exec du -h {} \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mpv-audio-only-darwin-arm64
+          path: resources/mpv/darwin-arm64/**
+          if-no-files-found: error
+          retention-days: 14
+
+  win32-x64:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show runner
+        shell: pwsh
+        run: |
+          systeminfo | Select-String 'OS Name', 'OS Version', 'System Type'
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            autoconf
+            automake
+            base-devel
+            git
+            libtool
+            make
+            mingw-w64-clang-x86_64-meson
+            mingw-w64-clang-x86_64-nasm
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-pkgconf
+            mingw-w64-clang-x86_64-toolchain
+            mingw-w64-clang-x86_64-yasm
+            zip
+
+      - name: Build
+        shell: msys2 {0}
+        run: bash scripts/mpv-audio-only/build-win32-x64.sh
+
+      - name: List output
+        shell: pwsh
+        run: Get-ChildItem resources/mpv/win32-x64 -Recurse | Select-Object FullName,Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mpv-audio-only-win32-x64
+          path: resources/mpv/win32-x64/**
+          if-no-files-found: error
+          retention-days: 14
+
+  bundle:
+    name: Bundle all platforms
+    runs-on: ubuntu-24.04
+    needs:
+      - linux-x64
+      - darwin-arm64
+      - win32-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare clean MPV resource directories
+        run: |
+          rm -rf resources/mpv/linux-x64 resources/mpv/darwin-arm64 resources/mpv/win32-x64
+          mkdir -p resources/mpv/linux-x64 resources/mpv/darwin-arm64 resources/mpv/win32-x64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mpv-audio-only-linux-x64
+          path: resources/mpv/linux-x64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mpv-audio-only-darwin-arm64
+          path: resources/mpv/darwin-arm64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mpv-audio-only-win32-x64
+          path: resources/mpv/win32-x64
+
+      - name: Stage bundle
+        run: |
+          mkdir -p _mpv-audio-only-artifact
+          cp -R resources _mpv-audio-only-artifact/
+          find _mpv-audio-only-artifact/resources/mpv -maxdepth 2 -type f -print -exec du -h {} \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mpv-audio-only-all-platforms
+          path: _mpv-audio-only-artifact/**
+          if-no-files-found: error
+          retention-days: 14

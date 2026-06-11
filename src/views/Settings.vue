@@ -15,6 +15,7 @@ import { confirmAccountLogout } from '@/utils/accountSession'
 import { getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
 import { applyCustomFontStyle, syncDesktopLyricCustomFont } from '@/utils/setFont'
 import { buildFontOptions, loadSystemFontOptions, resolveSystemFontLabel, resolveSystemFontValue } from '@/utils/fontResolver'
+import { markHifiOutputModeConfigured, resolveInitialHifiOutputMode } from '@/utils/hifiOutputModeMigration'
 import settingsSchema from '@/shared/settingsSchema.js'
 
 const { MUSIC_LEVEL_OPTIONS, normalizeSettings } = settingsSchema
@@ -49,6 +50,40 @@ const themeOptions = ref([
     { label: '浅色', value: 'light' },
     { label: '深色', value: 'dark' },
 ])
+const hifiAudioDeviceOptions = ref([{ label: '自动', value: 'auto' }])
+const hifiOutputState = ref({
+    available: false,
+    mpvPath: '',
+    source: '',
+    platform: '',
+})
+const getRendererPlatform = () => {
+    try {
+        return globalThis.process?.platform || ''
+    } catch (_) {
+        return ''
+    }
+}
+const hifiOutputPlatform = computed(() => hifiOutputState.value.platform || getRendererPlatform())
+const localHifiOutputModeOptions = computed(() => {
+    if (hifiOutputPlatform.value === 'darwin') {
+        return [
+            { label: 'CoreAudio 共享', value: 'shared' },
+            { label: 'CoreAudio 独占', value: 'exclusive' },
+        ]
+    }
+    if (hifiOutputPlatform.value === 'linux') {
+        return [
+            { label: 'PipeWire 共享', value: 'shared' },
+            { label: 'PipeWire 独占', value: 'exclusive' },
+        ]
+    }
+    return [
+        { label: 'WASAPI 共享', value: 'shared' },
+        { label: 'WASAPI 独占', value: 'exclusive' },
+    ]
+})
+const hifiOutputBusy = ref(false)
 const downloadFolder = ref(null)
 const downloadCreateSongFolder = ref(false)
 const downloadSaveLyricFile = ref(false)
@@ -86,6 +121,7 @@ let removeUpdateListeners = null
 const PERFORMANCE_CONFIRM_MESSAGE = '开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？'
 const GAPLESS_CONFIRM_MESSAGE = '开启后会提前预缓冲下一首音频，可能增加网络流量和内存占用，确定开启吗？'
 const CUSTOM_SOURCE_CONFIRM_MESSAGE = '开启后会在网易云无法解析歌曲时调用导入的脚本获取播放地址，确定开启吗？'
+const LOCAL_HIFI_OUTPUT_CONFIRM_MESSAGE = '开启后本地音乐会优先使用 MPV 后端输出，独占模式会占用音频设备，确定开启吗？'
 
 const loadVipInfo = async () => {
     const requestUserId = userStore.user?.userId
@@ -135,6 +171,10 @@ const applySettingsToForm = settings => {
     playerStore.showSongTranslation = normalizedSettings.music.showSongTranslation !== false
     playerStore.gaplessPlayback = normalizedSettings.music.gaplessPlayback === true
     playerStore.audioVisualizer = normalizedSettings.music.audioVisualizer === true
+    playerStore.localHifiOutput = normalizedSettings.music.localHifiOutput === true
+    playerStore.localHifiOutputMode = resolveInitialHifiOutputMode(normalizedSettings.music.localHifiOutputMode)
+    playerStore.localHifiMpvPath = normalizedSettings.music.localHifiMpvPath
+    playerStore.localHifiAudioDevice = normalizedSettings.music.localHifiAudioDevice
     videoFolder.value = normalizedSettings.local.videoFolder
     downloadFolder.value = normalizedSettings.local.downloadFolder
     downloadCreateSongFolder.value = !!normalizedSettings.local.downloadCreateSongFolder
@@ -151,6 +191,7 @@ onActivated(() => {
     void getSettingsSnapshot().then(applySettingsToForm)
     void loadSystemFonts()
     void loadCustomSourceState()
+    void refreshHifiOutputBackend()
 
     // Initialize theme selection
     try {
@@ -212,6 +253,13 @@ watch(
     }
 )
 
+watch(
+    () => playerStore.localHifiOutputMode,
+    mode => {
+        markHifiOutputModeConfigured(mode)
+    }
+)
+
 const setAppSettings = () => {
     const settings = {
         music: {
@@ -224,6 +272,10 @@ const setAppSettings = () => {
             showSongTranslation: playerStore.showSongTranslation,
             gaplessPlayback: playerStore.gaplessPlayback,
             audioVisualizer: playerStore.audioVisualizer,
+            localHifiOutput: playerStore.localHifiOutput,
+            localHifiOutputMode: playerStore.localHifiOutputMode,
+            localHifiMpvPath: playerStore.localHifiMpvPath,
+            localHifiAudioDevice: playerStore.localHifiAudioDevice,
         },
         local: {
             videoFolder: videoFolder.value,
@@ -436,6 +488,103 @@ const setLyricBlur = () => setConfirmedPlayerFlag('lyricBlur', PERFORMANCE_CONFI
 const setCoverBlur = () => setConfirmedPlayerFlag('coverBlur', PERFORMANCE_CONFIRM_MESSAGE)
 const setGaplessPlayback = () => setConfirmedPlayerFlag('gaplessPlayback', GAPLESS_CONFIRM_MESSAGE)
 const setAudioVisualizer = () => setConfirmedPlayerFlag('audioVisualizer', PERFORMANCE_CONFIRM_MESSAGE)
+const buildHifiOutputConfig = () => ({
+    mpvPath: playerStore.localHifiMpvPath,
+    mode: playerStore.localHifiOutputMode,
+    audioDevice: playerStore.localHifiAudioDevice,
+})
+const applyHifiOutputState = state => {
+    if (state && typeof state === 'object') hifiOutputState.value = state
+}
+const loadHifiOutputState = async () => {
+    if (!windowApi?.getHifiOutputState) return null
+    try {
+        const state = await windowApi.getHifiOutputState(buildHifiOutputConfig())
+        applyHifiOutputState(state)
+        return state
+    } catch (error) {
+        console.error('加载 HiFi 输出状态失败:', error)
+        return null
+    }
+}
+const loadHifiAudioDevices = async () => {
+    if (!windowApi?.listHifiOutputDevices) return hifiAudioDeviceOptions.value
+    try {
+        const result = await windowApi.listHifiOutputDevices(buildHifiOutputConfig())
+        const devices = Array.isArray(result?.devices) ? result.devices : []
+        const options = [{ label: '自动', value: 'auto' }]
+        devices.forEach(device => {
+            if (!device?.value || device.value === 'auto') return
+            options.push({
+                label: device.label || device.value,
+                value: device.value,
+            })
+        })
+        if (
+            playerStore.localHifiAudioDevice
+            && playerStore.localHifiAudioDevice !== 'auto'
+            && !options.some(option => option.value === playerStore.localHifiAudioDevice)
+        ) {
+            options.push({
+                label: playerStore.localHifiAudioDevice,
+                value: playerStore.localHifiAudioDevice,
+            })
+        }
+        hifiAudioDeviceOptions.value = options
+        return options
+    } catch (error) {
+        console.error('加载 HiFi 输出设备失败:', error)
+        return hifiAudioDeviceOptions.value
+    }
+}
+const refreshHifiOutputBackend = async () => {
+    if (hifiOutputBusy.value) return
+    hifiOutputBusy.value = true
+    try {
+        await loadHifiOutputState()
+        if (playerStore.localHifiOutput) await loadHifiAudioDevices()
+    } finally {
+        hifiOutputBusy.value = false
+    }
+}
+const setLocalHifiOutput = async () => {
+    if (playerStore.localHifiOutput) {
+        playerStore.localHifiOutput = false
+        return
+    }
+
+    const state = await loadHifiOutputState()
+    if (!state?.available) {
+        noticeOpen('未找到 MPV 后端', 2)
+        return
+    }
+
+    dialogOpen('确定开启', LOCAL_HIFI_OUTPUT_CONFIRM_MESSAGE, flag => {
+        if (!flag) return
+        playerStore.localHifiOutput = true
+        void loadHifiAudioDevices()
+    })
+}
+const selectHifiMpvPath = async () => {
+    if (hifiOutputBusy.value || !windowApi?.selectHifiOutputMpv) return
+    hifiOutputBusy.value = true
+    try {
+        const filePath = await windowApi.selectHifiOutputMpv()
+        if (!filePath) return
+        playerStore.localHifiMpvPath = filePath
+        await loadHifiOutputState()
+        await loadHifiAudioDevices()
+    } catch (error) {
+        console.error('选择 MPV 后端失败:', error)
+        noticeOpen('选择失败', 2)
+    } finally {
+        hifiOutputBusy.value = false
+    }
+}
+const clearHifiMpvPath = async () => {
+    playerStore.localHifiMpvPath = ''
+    await refreshHifiOutputBackend()
+}
 const setCustomSourceEnabled = () => {
     if (!customSourceState.value?.hasSource) {
         noticeOpen('请先导入自定义解析源', 2)
@@ -771,6 +920,47 @@ const clearFmRecent = () => {
                     <h2 class="item-title">本地</h2>
                     <div class="line"></div>
                     <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">本地音乐 HiFi 输出</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click="setLocalHifiOutput()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.localHifiOutput }">{{ playerStore.localHifiOutput ? '已开启' : '已关闭' }}</div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.localHifiOutput"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.localHifiOutput">
+                            <div class="option-name">本地 HiFi 输出模式</div>
+                            <div class="option-operation">
+                                <Selector v-model="playerStore.localHifiOutputMode" :options="localHifiOutputModeOptions"></Selector>
+                            </div>
+                        </div>
+                        <div class="option" v-if="playerStore.localHifiOutput">
+                            <div class="option-name">本地 HiFi 输出设备</div>
+                            <div class="option-operation">
+                                <Selector
+                                    v-model="playerStore.localHifiAudioDevice"
+                                    :options="hifiAudioDeviceOptions"
+                                    :maxItems="8"
+                                    :searchable="true"
+                                    :optionWidth="280"
+                                    @open="loadHifiAudioDevices"
+                                ></Selector>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">MPV 后端</div>
+                            <div class="select-download-folder">
+                                <div class="selected-folder" :title="hifiOutputState.mpvPath || playerStore.localHifiMpvPath">
+                                    {{ hifiOutputState.available ? (hifiOutputState.source === 'builtin' ? '内置 MPV' : hifiOutputState.mpvPath) : '未检测到' }}
+                                </div>
+                                <div class="select-option" @click="selectHifiMpvPath">{{ hifiOutputBusy ? '检测中' : '选择' }}</div>
+                                <div class="select-option" @click="refreshHifiOutputBackend">刷新</div>
+                                <div class="select-option" v-if="playerStore.localHifiMpvPath" @click="clearHifiMpvPath">清除</div>
+                            </div>
+                        </div>
                         <div class="option" v-if="playerStore.musicVideo">
                             <div class="option-name">音乐视频缓存</div>
                             <div class="select-download-folder">

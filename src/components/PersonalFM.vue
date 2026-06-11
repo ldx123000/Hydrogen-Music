@@ -176,7 +176,7 @@ import { useUserStore } from '../store/userStore'
 import { mapSongsPlayableStatus } from '../utils/songStatus'
 import {
     likeSong as likePlayerSong,
-    play,
+    playResolvedPlaybackInfo,
     preloadGaplessSongPlayback,
     setSongLevel,
 } from '../utils/player/lazy'
@@ -1116,8 +1116,12 @@ const togglePlay = async () => {
             })
             await setSongLevel(trackInfo.level, trackInfo)
 
-            // 直接播放音乐
-            await play(musicUrl, true)
+            await playResolvedPlaybackInfo({
+                url: musicUrl,
+                trackInfo,
+                isSiren: false,
+                isCustomSource: trackInfo.source === 'custom-source',
+            }, true, { targetSongId })
 
             if (prefetchedLyric) {
                 if (playerStore.songId === targetSongId) playerStore.lyric = prefetchedLyric

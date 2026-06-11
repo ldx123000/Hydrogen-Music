@@ -21,7 +21,11 @@
       "searchAssistLimit": 8,
       "showSongTranslation": true,
       "gaplessPlayback": false,
-      "audioVisualizer": false
+      "audioVisualizer": false,
+      "localHifiOutput": false,
+      "localHifiOutputMode": "shared",
+      "localHifiMpvPath": "",
+      "localHifiAudioDevice": "auto"
     },
     "local": {
       "videoFolder": null,

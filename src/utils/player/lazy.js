@@ -37,6 +37,7 @@ export const reopenCurrentMusicVideo = lazyPlayerExport('reopenCurrentMusicVideo
 export const isVideoClosedByUser = lazyPlayerExport('isVideoClosedByUser');
 export const loadLastSong = lazyPlayerExport('loadLastSong');
 export const play = lazyPlayerExport('play');
+export const playResolvedPlaybackInfo = lazyPlayerExport('playResolvedPlaybackInfo');
 export const startProgress = lazyPlayerExport('startProgress');
 export const setId = lazyPlayerExport('setId');
 export const addToList = lazyPlayerExport('addToList');

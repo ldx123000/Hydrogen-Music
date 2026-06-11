@@ -107,6 +107,11 @@ const safeSliderRange = computed(() => {
 
 const safeSliderMax = computed(() => Math.ceil(safeSliderRange.value));
 
+const sliderDuration = computed(() => {
+    const currentTime = Number(time.value);
+    return Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0;
+});
+
 const sliderProgress = computed({
     get: () => {
         const currentProgress = Number(progress.value);
@@ -317,7 +322,7 @@ const toggleDjSub = async isSubscribe => {
                     <div class="player-process">
                         <div class="process-time">
                         <span class="time-current">{{ songTime2(sliderProgress) }}</span>
-                        <span class="time-end">{{ songTime2(safeSliderRange) }}</span>
+                        <span class="time-end">{{ songTime2(sliderDuration) }}</span>
                         </div>
                         <div class="process">
                             <vue-slider

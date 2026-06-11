@@ -97,6 +97,10 @@ export const usePlayerStore = defineStore('playerStore', {
             showSongTranslation: true, // 歌曲名是否显示翻译（原名 (翻译)）
             gaplessPlayback: false, // 是否预缓冲下一首以减少切歌空隙
             audioVisualizer: false, // 是否显示顶部音频可视化
+            localHifiOutput: false, // 本地音乐是否使用 HiFi 输出后端
+            localHifiOutputMode: 'shared', // 本地 HiFi 输出模式
+            localHifiMpvPath: '', // 自定义 MPV 可执行文件路径
+            localHifiAudioDevice: 'auto', // MPV 音频输出设备
             isDesktopLyricOpen: false, // 桌面歌词是否打开
             coverBlur: false, // 播放页使用封面模糊背景
         }
@@ -105,6 +109,6 @@ export const usePlayerStore = defineStore('playerStore', {
     },
     persist: {
         storage: playerPersistStorage,
-        pick: ['volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','lyricLineOffsets','musicVideo','lyricBlur','showSongTranslation','gaplessPlayback','audioVisualizer','coverBlur']
+        pick: ['volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','lyricLineOffsets','musicVideo','lyricBlur','showSongTranslation','gaplessPlayback','audioVisualizer','localHifiOutput','localHifiOutputMode','localHifiMpvPath','localHifiAudioDevice','coverBlur']
     },
 })

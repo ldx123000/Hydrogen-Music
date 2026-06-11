@@ -1,0 +1,11 @@
+-Dalsa=enabled
+-Dpipewire=enabled
+-Dpulse=disabled
+-Djack=disabled
+-Dopenal=disabled
+-Doss-audio=disabled
+-Dsdl2-audio=disabled
+-Dsndio=disabled
+-Dwasapi=disabled
+-Dcoreaudio=disabled
+-Davfoundation=disabled

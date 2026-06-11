@@ -186,6 +186,37 @@ function requestAudioArrayBuffer(request) {
 function readLocalAudioBuffer(filePath) {
     return ipcRenderer.invoke('read-local-audio-buffer', filePath)
 }
+function getHifiOutputState(config) {
+    return ipcRenderer.invoke('hifi-output:get-state', config)
+}
+function selectHifiOutputMpv() {
+    return ipcRenderer.invoke('hifi-output:select-mpv')
+}
+function listHifiOutputDevices(config) {
+    return ipcRenderer.invoke('hifi-output:list-devices', config)
+}
+function startHifiOutput(request) {
+    return ipcRenderer.invoke('hifi-output:start', request)
+}
+function setHifiOutputPaused(sessionId, paused) {
+    return ipcRenderer.invoke('hifi-output:set-paused', { sessionId, paused })
+}
+function seekHifiOutput(sessionId, position) {
+    return ipcRenderer.invoke('hifi-output:seek', { sessionId, position })
+}
+function setHifiOutputVolume(sessionId, volume) {
+    return ipcRenderer.invoke('hifi-output:set-volume', { sessionId, volume })
+}
+function setHifiOutputLoop(sessionId, loop) {
+    return ipcRenderer.invoke('hifi-output:set-loop', { sessionId, loop })
+}
+function stopHifiOutput(sessionId) {
+    return ipcRenderer.invoke('hifi-output:stop', { sessionId })
+}
+function onHifiOutputEvent(callback) {
+    const listener = (_event, payload) => callback?.(payload)
+    return subscribeChannel('hifi-output:event', listener)
+}
 function clearNcmApiCookies() {
     return ipcRenderer.invoke('ncm-api-cookie-clear')
 }
@@ -323,6 +354,16 @@ contextBridge.exposeInMainWorld('windowApi', {
     resolveCustomMusicUrl: (request) => ipcRenderer.invoke('custom-source:resolve-music-url', request),
     requestAudioArrayBuffer,
     readLocalAudioBuffer,
+    getHifiOutputState,
+    selectHifiOutputMpv,
+    listHifiOutputDevices,
+    startHifiOutput,
+    setHifiOutputPaused,
+    seekHifiOutput,
+    setHifiOutputVolume,
+    setHifiOutputLoop,
+    stopHifiOutput,
+    onHifiOutputEvent,
     clearNcmApiCookies,
     downloadUpdate,
     installUpdate,
