@@ -161,6 +161,10 @@ function updateDockMenu(songInfo) {
         // ignore
     }
 }
+function onKugouApiError(callback) {
+    ipcRenderer.on('kugou-api-error', (_event, info) => callback?.(info))
+}
+
 function sendMetaData(metadata) {
   ipcRenderer.send('metadata', metadata);
 }
@@ -240,6 +244,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     updateDownloadProgress,
     updateDownloaded,
     updateError,
+    onKugouApiError,
     checkForUpdate,
     downloadUpdate,
     installUpdate,

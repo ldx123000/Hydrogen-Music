@@ -16,10 +16,31 @@ function delay(ms) {
 }
 
 function getBackendCandidates() {
-    return [
+    const candidates = [
         path.join(process.resourcesPath || '', 'KuGouMusicApi'),
         path.resolve(__dirname, '../../../KuGouMusicApi'),
     ].filter((candidate) => candidate && fs.existsSync(candidate))
+
+    // 诊断日志：记录找到的后端路径，帮助排查 API 版本问题
+    if (candidates.length > 0) {
+        console.log('[KuGou API] 找到后端候选路径:', candidates.map(c => c.replace(/\\/g, '/')))
+        // 尝试读取 package.json 确定 API 版本
+        for (const candidate of candidates) {
+            try {
+                const pkgPath = path.join(candidate, 'package.json')
+                if (fs.existsSync(pkgPath)) {
+                    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+                    if (pkg.name || pkg.version) {
+                        console.log(`[KuGou API] 后端版本: ${pkg.name || 'unknown'}@${pkg.version || 'unknown'} (${candidate.replace(/\\/g, '/')})`)
+                    }
+                }
+            } catch (_) {}
+        }
+    } else {
+        console.warn('[KuGou API] 未找到任何后端候选路径')
+    }
+
+    return candidates
 }
 
 function resolveBackendLaunch() {

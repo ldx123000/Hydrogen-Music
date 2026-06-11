@@ -63,6 +63,30 @@ if (!gotTheLock) {
         createWindow()
         // 然后启动 API 后端，等待就绪后再加载前端页面内容
         // 避免前端在 API 尚未就绪时发起请求导致"请求错误"
+        // 数据迁移：清理旧版（Netease 版）可能遗留的不兼容数据
+        try {
+          const Store = await getElectronStore()
+          const settingsStore = new Store({ name: 'settings' })
+          const existingSettings = await settingsStore.get('settings')
+          if (existingSettings && typeof existingSettings === 'object') {
+            // 旧版 Netease 遗留数据没有 KuGou 特有的 music.level 字段，触发重置
+            // 同时清理旧版可能残留的其他兼容性脏数据
+            if (existingSettings.music && !existingSettings.music.level) {
+              console.log('[migration] 检测到旧版 Netease 数据格式，重置 settings/lastPlaylist/musicVideo')
+              await settingsStore.delete('settings')
+              // 同样清理其他可能不兼容的 store
+              try {
+                const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
+                await lastPlaylistStore.clear()
+              } catch (_) {}
+              try {
+                const musicVideoStore = new Store({ name: 'musicVideo' })
+                await musicVideoStore.clear()
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+
         const kugouApiResult = await startKugouMusicApi().catch((err) => {
           console.error('KuGou API probe failed:', err);
           return { ready: false, error: err?.message || 'unknown error' };
@@ -77,6 +101,13 @@ if (!gotTheLock) {
           console.warn('KuGou API not ready:', payload.error || 'unknown error')
           // 即使 API 启动失败，也要加载前端内容让用户能操作（部分功能可能受限）
           if (typeof loadMainContentRef === 'function') loadMainContentRef()
+          // 将详细的 API 错误信息发送到渲染进程，便于诊断
+          if (myWindow && !myWindow.isDestroyed()) {
+            myWindow.webContents.send('kugou-api-error', {
+              message: payload.error || '未知错误',
+              detail: '后端服务启动失败，部分功能（搜索、播放等）可能不可用。请检查日志或重装应用。'
+            })
+          }
         }
     app.on('activate', () => {
       // 在macOS上，当点击dock图标并且没有其他窗口打开时，

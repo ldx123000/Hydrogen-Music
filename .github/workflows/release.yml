@@ -23,7 +23,8 @@ jobs:
       - name: Checkout KuGouMusicApi
         uses: actions/checkout@v4
         with:
-          repository: MakcRe/KuGouMusicApi
+          repository: Arihara-Satoru/KuGouMusicApi
+          ref: Hydrogen-backend
           path: KuGouMusicApi
           token: ${{ github.token }}
           fetch-depth: 1
