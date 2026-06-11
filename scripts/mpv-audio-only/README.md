@@ -60,10 +60,24 @@ MPV_REF=master FFMPEG_REF=master bash scripts/mpv-audio-only/build-linux-x64.sh
 
 ## 下载构建产物
 
-成功跑完 GitHub Actions 后，可以用下面命令把总 artifact 下载到本地 `resources/mpv` 对应目录：
+成功跑完 GitHub Actions 后，可以用下面命令把当前系统的 artifact 下载到本地 `resources/mpv` 对应目录：
 
 ```sh
 npm run mpv:download
+```
+
+需要一次性下载三端：
+
+```sh
+npm run mpv:download:all
+```
+
+也可以手动指定平台：
+
+```sh
+npm run mpv:download -- --platform win32-x64
+npm run mpv:download -- --platform darwin-arm64
+npm run mpv:download -- --platform linux-x64
 ```
 
 这个命令依赖 GitHub CLI，并且需要先登录：
@@ -80,9 +94,8 @@ npm run mpv:download -- --run-id 123456789
 
 下载脚本默认会替换这些目录：
 
-- `resources/mpv/win32-x64`
-- `resources/mpv/darwin-arm64`
-- `resources/mpv/linux-x64`
+- 当前系统：只替换当前平台目录
+- `--platform all`：替换 `resources/mpv/win32-x64`、`resources/mpv/darwin-arm64`、`resources/mpv/linux-x64`
 
 ## 存储建议
 

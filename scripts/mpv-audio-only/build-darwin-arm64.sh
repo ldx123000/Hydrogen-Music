@@ -39,7 +39,7 @@ elif [ "$FFMPEG_REF" != "master" ]; then
   ./use-ffmpeg-custom "$FFMPEG_REF"
 fi
 
-cp "$SCRIPT_DIR/ffmpeg_options.txt" ffmpeg_options
+sed 's/\r$//' "$SCRIPT_DIR/ffmpeg_options.txt" > ffmpeg_options
 
 ./update --skip-selfupdate
 bash "$SCRIPT_DIR/compose-mpv-options.sh" "$PLATFORM" "$SCRIPT_DIR" "$PWD/mpv" > mpv_options

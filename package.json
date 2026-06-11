@@ -15,7 +15,8 @@
     "start": "nodemon --exec electron . --watch ./ --ext js,vue,html,css,json",
     "_dist": "vite build && node scripts/build.js -p always",
     "dist": "vite build && node scripts/build.js -p never",
-    "mpv:download": "node scripts/mpv-audio-only/download-artifacts.cjs"
+    "mpv:download": "node scripts/mpv-audio-only/download-artifacts.cjs",
+    "mpv:download:all": "node scripts/mpv-audio-only/download-artifacts.cjs --platform all"
   },
   "dependencies": {
     "@neteasecloudmusicapienhanced/api": "^4.32.0",

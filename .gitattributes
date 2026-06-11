@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+*.sh text eol=lf
+.github/workflows/*.yml text eol=lf
+scripts/mpv-audio-only/*.txt text eol=lf

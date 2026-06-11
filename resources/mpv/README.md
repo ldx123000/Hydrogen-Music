@@ -22,10 +22,16 @@
 - macOS：CoreAudio
 - Linux：PipeWire，另保留 ALSA 作为备用输出
 
-GitHub Actions 会生成一个合并后的 `mpv-audio-only-all-platforms` artifact。跑完后可以下载到本地：
+GitHub Actions 会生成单平台 artifact 和一个合并后的 `mpv-audio-only-all-platforms` artifact。跑完后默认只下载当前系统：
 
 ```sh
 npm run mpv:download
+```
+
+需要下载三端时运行：
+
+```sh
+npm run mpv:download:all
 ```
 
 下载后本目录会得到对应平台资源，例如：
