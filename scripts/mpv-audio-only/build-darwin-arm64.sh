@@ -64,6 +64,12 @@ resolve_macos_dependency_path() {
 }
 
 list_macos_dependencies() {
+  if [ "${1##*.}" = "dylib" ]; then
+    # The first library entry for a dylib is its own install name, not a dependency.
+    otool -L "$1" 2>/dev/null | tail -n +3 | awk '{ print $1 }'
+    return
+  fi
+
   otool -L "$1" 2>/dev/null | tail -n +2 | awk '{ print $1 }'
 }
 
@@ -109,6 +115,11 @@ copy_runtime_dependencies() {
 
       dep_name="$(basename "$dep_path")"
       target_path="$libs_dir/$dep_name"
+      if [ "$dep_path" = "$target_path" ]; then
+        rewrite_macos_dependency "$binary" "$dep" "$dep_name"
+        continue
+      fi
+
       if ! grep -Fxq "$dep_path" "$copied_paths_file"; then
         cp -L "$dep_path" "$target_path"
         chmod u+w "$target_path" 2>/dev/null || true
