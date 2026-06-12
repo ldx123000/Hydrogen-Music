@@ -1,3 +1,4 @@
+-Dcocoa=disabled
 -Dalsa=enabled
 -Dpipewire=enabled
 -Dpulse=disabled

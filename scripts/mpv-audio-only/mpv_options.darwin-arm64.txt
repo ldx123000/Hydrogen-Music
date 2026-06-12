@@ -1,3 +1,4 @@
+-Dcocoa=enabled
 -Dcoreaudio=enabled
 -Davfoundation=disabled
 -Dalsa=disabled
@@ -11,4 +12,4 @@
 -Dwasapi=disabled
 -Dmacos-media-player=disabled
 -Dmacos-touchbar=disabled
--Dswift-build=disabled
+-Dswift-build=enabled

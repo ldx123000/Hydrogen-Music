@@ -1,7 +1,6 @@
 -Dbuild-date=false
 -Dcdda=disabled
 -Dcplugins=disabled
--Dcocoa=disabled
 -Ddvbin=disabled
 -Ddvdnav=disabled
 -Dhtml-build=disabled

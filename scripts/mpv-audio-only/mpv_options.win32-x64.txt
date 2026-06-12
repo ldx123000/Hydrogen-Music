@@ -1,3 +1,4 @@
+-Dcocoa=disabled
 -Dwasapi=enabled
 -Dwin32-smtc=disabled
 -Dalsa=disabled
