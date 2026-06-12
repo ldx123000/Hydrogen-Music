@@ -4,6 +4,7 @@ const path = require('path')
 // 启动内置的增强版网易云 API 服务。
 let enhancedApi = null;
 try {
+    process.env.DOTENV_CONFIG_QUIET = process.env.DOTENV_CONFIG_QUIET || 'true'
     enhancedApi = require('@neteasecloudmusicapienhanced/api');
 } catch (error) {
     console.log('增强版API加载失败:', error.message);

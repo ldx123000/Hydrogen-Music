@@ -19,6 +19,9 @@ function isHttpUrl(value) {
 }
 
 let sharedAnalyserAudioContext = null
+const ANALYSER_RETRY_BASE_DELAY_MS = 1200
+const ANALYSER_RETRY_MAX_DELAY_MS = 5000
+const ANALYSER_MAX_FAILURES = 3
 
 function getAnalyserAudioContext() {
     if (sharedAnalyserAudioContext) return sharedAnalyserAudioContext
@@ -81,6 +84,8 @@ class HifiOutputPlayer {
         this._analyserSourceToken = 0
         this._analyserPreparing = null
         this._analyserFailed = false
+        this._analyserFailureCount = 0
+        this._analyserRetryAt = 0
     }
 
     async load() {
@@ -196,11 +201,26 @@ class HifiOutputPlayer {
     prepareAnalyser() {
         if (this._state === 'unloaded') return null
         if (this._analyser) return Promise.resolve(this._analyser)
-        if (this._analyserFailed) return null
+        if (this._analyserFailed) {
+            if (this._analyserFailureCount >= ANALYSER_MAX_FAILURES) return null
+            if (Date.now() < this._analyserRetryAt) return null
+            this._analyserFailed = false
+        }
         if (this._analyserPreparing) return this._analyserPreparing
 
         this._analyserPreparing = this._prepareAnalyser()
+            .then(analyser => {
+                this._analyserFailed = false
+                this._analyserFailureCount = 0
+                this._analyserRetryAt = 0
+                return analyser
+            })
             .catch(error => {
+                this._analyserFailureCount += 1
+                this._analyserRetryAt = Date.now() + Math.min(
+                    ANALYSER_RETRY_MAX_DELAY_MS,
+                    ANALYSER_RETRY_BASE_DELAY_MS * this._analyserFailureCount,
+                )
                 this._analyserFailed = true
                 throw error
             })
@@ -506,6 +526,10 @@ class HifiOutputPlayer {
         this._analyserSilentGain = null
         this._analyser = null
         this._analyserContext = null
+        this._analyserPreparing = null
+        this._analyserFailed = false
+        this._analyserFailureCount = 0
+        this._analyserRetryAt = 0
     }
 
     _clampAnalyserOffset(value) {

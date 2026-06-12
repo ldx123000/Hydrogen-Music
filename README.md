@@ -178,6 +178,62 @@ npm start
 
 开发环境下主窗口会加载 `http://localhost:5173/`，桌面歌词窗口会加载 `http://localhost:5173/desktop-lyric.html`。应用内置网易云 API 服务默认使用本地端口 `36530`。
 
+### 本地 HiFi 输出与 MPV 后端
+
+本地音乐的 HiFi 输出使用 MPV 作为后端。普通在线播放和默认本地播放不依赖 MPV；只有在「设置 - 音乐 - 本地音乐 HiFi 输出」开启后，才会走这个后端。
+
+仓库提供了音频专用 MPV 构建脚本，生成的运行时放在 `resources/mpv/<platform-arch>/` 下。开发或打包前，建议先下载对应平台的构建产物：
+
+MPV 构建由 `.github/workflows/build-mpv-audio-only.yml` 负责。这个 workflow 会在 `scripts/mpv-audio-only/**`、`resources/mpv/README.md` 或 workflow 自身变化时自动运行，也可以在 GitHub Actions 页面手动运行。手动运行时可以指定 `mpv_ref` 和 `ffmpeg_ref`，默认都是 `release`。
+
+每次 workflow 会分别构建并上传这些 artifact：
+
+- `mpv-audio-only-linux-x64`
+- `mpv-audio-only-darwin-arm64`
+- `mpv-audio-only-win32-x64`
+- `mpv-audio-only-all-platforms`
+
+下面的下载命令不会在本机重新编译 MPV，只会把 GitHub Actions 已经构建好的 artifact 拉到 `resources/mpv`：
+
+```shell
+npm run mpv:download
+```
+
+如果要一次性准备 Windows、macOS、Linux 三端资源：
+
+```shell
+npm run mpv:download:all
+```
+
+GitHub Actions artifact 的下载接口需要认证。如果命令提示 `Requires authentication`，先设置有 `Actions: Read-only` 权限的 `GH_TOKEN` 或 `GITHUB_TOKEN`。已安装 GitHub CLI 时，可以这样临时使用当前登录凭据：
+
+```shell
+GH_TOKEN="$(gh auth token)" npm run mpv:download:all
+```
+
+下载后会得到类似这些目录：
+
+- `resources/mpv/win32-x64`
+- `resources/mpv/darwin-arm64`
+- `resources/mpv/linux-x64`
+
+`electron-builder` 打包时只会带上当前目标平台对应的 MPV 目录。运行时会优先使用内置 MPV；如果没有内置资源，可以在设置里手动选择 MPV 可执行文件，也可以通过 `HYDROGEN_MPV_PATH` 指定路径。
+
+如需自己构建精简 MPV，需要在目标系统上执行对应脚本：
+
+```shell
+# Linux x64
+bash scripts/mpv-audio-only/build-linux-x64.sh
+
+# macOS Apple Silicon
+bash scripts/mpv-audio-only/build-darwin-arm64.sh
+
+# Windows x64，需要在 MSYS2 MINGW64 shell 中运行
+bash scripts/mpv-audio-only/build-win32-x64.sh
+```
+
+更多构建细节见 [scripts/mpv-audio-only/README.md](scripts/mpv-audio-only/README.md) 和 [resources/mpv/README.md](resources/mpv/README.md)。
+
 ### 构建前端资源
 
 ```shell

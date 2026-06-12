@@ -191,7 +191,7 @@
 <template>
   <div class="music-widget">
     <div class="music-progress-container">
-        <vue-slider :key="'widget-progress-' + (songId || currentIndex)" id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
+        <vue-slider :key="'widget-progress-' + (songId || currentIndex)" id="widget-progress" class="music-progress" @click="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" :silent="true" tooltip="none"></vue-slider>
         <div class="music-time">{{songTime2(sliderProgress)}} / {{songTime2(sliderDuration)}}</div>
     </div>
     <div class="music-info">
@@ -226,7 +226,7 @@
         </div>
         <div class="music-volume">
             <div class="volume-container">
-                <vue-slider class="volume-slider" v-model="safeVolume" :min="0" :max="1" :interval="0.01" :duration="0.3" tooltip="none"></vue-slider>
+                <vue-slider class="volume-slider" v-model="safeVolume" :min="0" :max="1" :interval="0.01" :duration="0.3" :silent="true" tooltip="none"></vue-slider>
                 <div class="volume-info">
                     <div class="volume-lable">VOLUME</div>
                     <div class="volume-num">{{Math.round(safeVolume * 100)}}</div>

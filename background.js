@@ -1,3 +1,5 @@
+require('./src/electron/logSanitizer')()
+
 const startNeteaseMusicApi = require('./src/electron/services')
 // Avoid depending on src/utils in packaged build; compute inline
 const isCreateMpris = process.platform === 'linux';
@@ -398,7 +400,11 @@ const createWindow = () => {
     })
     win.webContents.on('console-message', (details) => {
         if (details.level === 'warning' || details.level === 'error') {
-            console.error(`Renderer console [${details.level}] ${details.sourceId}:${details.lineNumber} ${details.message}`)
+            console.error(
+                `Renderer console [${details.level}]`,
+                `${details.sourceId}:${details.lineNumber}`,
+                details.message,
+            )
         }
     })
     setTimeout(() => {

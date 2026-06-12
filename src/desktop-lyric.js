@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import { installLogSanitizer } from './utils/logSanitizer'
 import DesktopLyric from './components/DesktopLyric.vue'
 import './assets/css/common.css'
 import './assets/css/fonts.css'
@@ -6,6 +7,8 @@ import './assets/css/theme.css'
 import { initTheme, setTheme } from './utils/theme'
 import { applyCustomFontStyle } from './utils/setFont'
 import { resolveSystemFontOptionAsync } from './utils/fontResolver'
+
+installLogSanitizer()
 
 const app = createApp(DesktopLyric)
 app.mount('#desktop-lyric-app')

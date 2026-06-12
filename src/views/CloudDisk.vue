@@ -745,7 +745,7 @@
                 <div class="item-lable">云盘容量</div>
                 <div class="disk-capacity">
                   <div class="capacity">
-                    <vue-slider id="widget-progress" class="cloud-capacity"  v-model="safeCapacitySize" :min="0" :max="safeCapacityMax" :interval="0.1" :duration="0.5" tooltip="none" :clickable="false" :disabled="true"></vue-slider>
+                    <vue-slider id="widget-progress" class="cloud-capacity"  v-model="safeCapacitySize" :min="0" :max="safeCapacityMax" :interval="0.1" :duration="0.5" :silent="true" tooltip="none" :clickable="false" :disabled="true"></vue-slider>
                   </div>
                   <div class="capacity-num">{{ size }}G / {{ maxSize }}G</div>
                 </div>

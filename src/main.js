@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import { installLogSanitizer } from './utils/logSanitizer'
 import App from './App.vue'
 import router from './router/router.js'
 import pinia from './store/pinia'
@@ -10,6 +11,9 @@ import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
 import { init } from './utils/initApp'
+
+installLogSanitizer()
+
 const app = createApp(App)
 app.use(router)
 app.use(pinia)

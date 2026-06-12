@@ -85,7 +85,7 @@
         <div class="download">
           <div class="item-name">{{getSongDisplayName(item, '', showSongTranslation)}}</div>
           <div class="download-progress">
-            <VueSlider class="progress" v-if="index == 0" v-model="safeProgress" :min="0" :max="100" :interval="1" :duration="0.5" :clickable="false" tooltip="none"></VueSlider>
+            <VueSlider class="progress" v-if="index == 0" v-model="safeProgress" :min="0" :max="100" :interval="1" :duration="0.5" :clickable="false" :silent="true" tooltip="none"></VueSlider>
             <div class="progress" v-show="index != 0"></div>
             <span class="progress-num" >{{(index == 0) ? Math.trunc(safeProgress) : 0}}%</span>
           </div>
