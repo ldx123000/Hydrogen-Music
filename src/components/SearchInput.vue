@@ -3,7 +3,7 @@ import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { noticeOpen } from '../utils/dialog'
 import { usePlayerStore } from '../store/playerStore'
-import { searchHotDetail, searchSuggest } from '../api/other'
+import { searchHotDetail, searchSuggest, searchSuggestPc } from '../api/other'
 
 const DEFAULT_ASSIST_LIMIT = 8
 const MIN_ASSIST_LIMIT = 1
@@ -136,6 +136,23 @@ function parseWebSuggestItems(data) {
         }
     }
     return items
+}
+
+function getPcSuggestType(item) {
+    const resourceType = String(item?.relatedResource?.resourceType || item?.resourceType || '').toLowerCase()
+    if (resourceType === 'song') return 1
+    if (resourceType === 'artist') return 100
+    if (resourceType === 'album') return 10
+    if (resourceType === 'playlist') return 1000
+    return 0
+}
+
+function parsePcSuggestItems(data) {
+    const suggests = Array.isArray(data?.data?.suggests) ? data.data.suggests : []
+    return suggests.map(item => ({
+        keyword: item?.keyword,
+        type: getPcSuggestType(item),
+    }))
 }
 
 async function setActiveAssistIndex(index, align = 'nearest') {
@@ -310,10 +327,13 @@ async function fetchSuggestList(keyword) {
     loadingSuggest.value = true
 
     try {
-        const [mobileResult, webResult] = await Promise.allSettled([
+        const [mobileResult, pcResult, webResult] = await Promise.allSettled([
             searchSuggest({
                 keywords: value,
                 type: 'mobile',
+            }),
+            searchSuggestPc({
+                keyword: value,
             }),
             searchSuggest({
                 keywords: value,
@@ -329,6 +349,13 @@ async function fetchSuggestList(keyword) {
             const allMatch = Array.isArray(mobileResult.value?.result?.allMatch) ? mobileResult.value.result.allMatch : []
             for (let i = 0; i < allMatch.length; i++) {
                 appendSuggestItem(list, keywordSet, allMatch[i]?.keyword, allMatch[i]?.type || 0, 'mobile')
+            }
+        }
+
+        if (pcResult.status === 'fulfilled') {
+            const pcItems = parsePcSuggestItems(pcResult.value)
+            for (let i = 0; i < pcItems.length; i++) {
+                appendSuggestItem(list, keywordSet, pcItems[i].keyword, pcItems[i].type, 'pc')
             }
         }
 
@@ -717,7 +744,7 @@ $boderPosition: -1px;
                 color: var(--assist-item-text);
                 transition:
                     color 0.28s ease,
-                    background-size 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+                    background-size 0.68s cubic-bezier(0.08, 0.88, 0.18, 1);
                 background-image: linear-gradient(90deg, var(--assist-hover-fill), var(--assist-hover-fill));
                 background-repeat: no-repeat;
                 background-size: 0 100%;

@@ -20,7 +20,7 @@
     "mpv:download:all": "node scripts/mpv-audio-only/download-artifacts.cjs --platform all"
   },
   "dependencies": {
-    "@neteasecloudmusicapienhanced/api": "^4.32.0",
+    "@neteasecloudmusicapienhanced/api": "^4.35.1",
     "axios": "^1.12.2",
     "dbus-next": "^0.10.2",
     "electron-store": "^11.0.2",

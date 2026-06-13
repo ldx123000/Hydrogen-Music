@@ -1,5 +1,32 @@
 import request from "../utils/request";
 
+const QR_DEVICE_ID_KEY = 'hm_ncm_qr_s_device_id'
+
+function generateQrDeviceId() {
+    const bytes = new Uint8Array(26)
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+        crypto.getRandomValues(bytes)
+    } else {
+        for (let index = 0; index < bytes.length; index += 1) {
+            bytes[index] = Math.floor(Math.random() * 256)
+        }
+    }
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('').toUpperCase()
+}
+
+function getQrDeviceId() {
+    try {
+        const currentDeviceId = localStorage.getItem(QR_DEVICE_ID_KEY)
+        if (currentDeviceId) return currentDeviceId
+
+        const nextDeviceId = generateQrDeviceId()
+        localStorage.setItem(QR_DEVICE_ID_KEY, nextDeviceId)
+        return nextDeviceId
+    } catch (_) {
+        return generateQrDeviceId()
+    }
+}
+
 /**
  * 调用此接口可生成一个 key
  * @returns 
@@ -26,6 +53,8 @@ export function createQRcode(key) {
         params: {
             key,
             qrimg: true,
+            platform: 'web',
+            cookie: `sDeviceId=${getQrDeviceId()}`,
             timestamp: new Date().getTime(),
         },
     })

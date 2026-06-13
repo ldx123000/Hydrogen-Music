@@ -60,3 +60,15 @@ export function searchSuggest(params) {
         params,
     })
 }
+
+/**
+ * PC 端搜索建议。
+ * 必选参数 : keyword : 关键词
+ */
+export function searchSuggestPc(params) {
+    return request({
+        url: '/search/suggest/pc',
+        method: 'get',
+        params,
+    })
+}

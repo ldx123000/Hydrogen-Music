@@ -3,11 +3,20 @@ const path = require('path')
 
 // 启动内置的增强版网易云 API 服务。
 let enhancedApi = null;
+let generateNcmApiConfig = null;
 try {
     process.env.DOTENV_CONFIG_QUIET = process.env.DOTENV_CONFIG_QUIET || 'true'
     enhancedApi = require('@neteasecloudmusicapienhanced/api');
 } catch (error) {
     console.log('增强版API加载失败:', error.message);
+}
+
+if (enhancedApi) {
+    try {
+        generateNcmApiConfig = require('@neteasecloudmusicapienhanced/api/generateConfig');
+    } catch (error) {
+        console.log('API配置初始化模块加载失败:', error.message);
+    }
 }
 
 const API_PORT = 36530
@@ -107,6 +116,9 @@ async function getNcmApiModuleDefs() {
 module.exports = async function startNeteaseMusicApi() {
     if (enhancedApi && enhancedApi.serveNcmApi) {
         try {
+            if (typeof generateNcmApiConfig === 'function') {
+                await generateNcmApiConfig()
+            }
             const moduleDefs = await getNcmApiModuleDefs()
             const appExt = await enhancedApi.serveNcmApi({
                 checkVersion: false,

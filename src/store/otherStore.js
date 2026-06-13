@@ -100,6 +100,12 @@ export const useOtherStore = defineStore('otherStore', {
                 name: '显示专辑'
             }
           ],
+          tree6: [
+            {
+                id: 10,
+                name: '打开文件夹'
+            }
+          ],
           selectedPlaylist: null,
           selectedItem: null,
           addPlaylistShow: false,

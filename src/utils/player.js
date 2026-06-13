@@ -1055,14 +1055,25 @@ export function loadLastSong() {
     if (loadLast) {
         return loadStoredPlaylist().then(list => {
             if (list) {
-                songList.value = normalizeQueueSongs(list.songList)
+                const restoredSongList = normalizeQueueSongs(list.songList)
+                const restoredSelection = resolveRestoredSongSelection(list, restoredSongList)
+                songList.value = restoredSongList.length > 0 ? restoredSongList : null
                 shuffledList.value = normalizeQueueSongs(list.shuffledList)
-                const storedProgress = normalizePersistedProgress(list.progress)
-                if (storedProgress !== null) progress.value = storedProgress
+
+                if (restoredSelection) {
+                    currentIndex.value = restoredSelection.index
+                    songId.value = restoredSelection.song?.id ?? null
+                    const storedProgress = normalizePersistedProgress(list.progress)
+                    progress.value = storedProgress !== null && shouldApplyRestoredProgress(list, restoredSelection) ? storedProgress : 0
+                } else {
+                    currentIndex.value = 0
+                    songId.value = null
+                    progress.value = 0
+                }
             }
             syncWindowsTaskbarPlaybackState()
             if (songList.value) {
-                const currentSong = getCurrentSongOrFirst()
+                const currentSong = getCurrentSong()
                 if (!currentSong) return
                 // 恢复播放状态时，需要先设置歌曲ID
                 setId(currentSong.id, currentIndex.value)
@@ -1116,6 +1127,55 @@ function normalizePersistedProgress(value) {
     const progressValue = Number(value)
     if (!Number.isFinite(progressValue) || progressValue < 0) return null
     return progressValue
+}
+
+function normalizeRestoredIndex(value) {
+    const index = Number(value)
+    return Number.isFinite(index) && index >= 0 ? Math.floor(index) : -1
+}
+
+function resolveRestoredSongSelection(restoredPayload, restoredSongs) {
+    const songs = Array.isArray(restoredSongs) ? restoredSongs : []
+    if (songs.length === 0) return null
+
+    const restoredSongId = normalizePlayerSongId(restoredPayload?.songId)
+    if (restoredSongId) {
+        const songIdIndex = songs.findIndex(song => normalizePlayerSongId(song?.id) === restoredSongId)
+        if (songIdIndex >= 0) {
+            return {
+                index: songIdIndex,
+                song: songs[songIdIndex],
+            }
+        }
+    }
+
+    const restoredIndex = normalizeRestoredIndex(restoredPayload?.currentIndex)
+    if (restoredIndex >= 0 && restoredIndex < songs.length) {
+        return {
+            index: restoredIndex,
+            song: songs[restoredIndex],
+        }
+    }
+
+    const currentStoreIndex = normalizeRestoredIndex(currentIndex.value)
+    if (currentStoreIndex >= 0 && currentStoreIndex < songs.length) {
+        return {
+            index: currentStoreIndex,
+            song: songs[currentStoreIndex],
+        }
+    }
+
+    return {
+        index: 0,
+        song: songs[0],
+    }
+}
+
+function shouldApplyRestoredProgress(restoredPayload, restoredSelection) {
+    if (!restoredSelection?.song) return false
+    const restoredSongId = normalizePlayerSongId(restoredPayload?.songId)
+    if (!restoredSongId) return true
+    return normalizePlayerSongId(restoredSelection.song.id) === restoredSongId
 }
 
 function buildPersistedPlaylistPayload() {

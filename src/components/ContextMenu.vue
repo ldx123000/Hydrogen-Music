@@ -243,7 +243,12 @@
     if(id == 7) { deleteMyPlaylist(); return; }
     if(id == 8) { addToNextLocal(otherStore.selectedItem, true); return; }
     if(id == 9) { addToNextLocal(otherStore.selectedItem, false); return; }
-    if(id == 10) { windowApi.openLocalFolder(otherStore.selectedItem.dirPath);return; }
+    if(id == 10) {
+      const folderPath = otherStore.selectedItem?.dirPath || otherStore.selectedItem?.path
+      if (folderPath) windowApi.openLocalFolder(folderPath)
+      otherStore.contextMenuShow = false
+      return
+    }
   }
   const createAndAdd = () => {
     const playlistName = String(newPlaylistTitle.value || '').trim()

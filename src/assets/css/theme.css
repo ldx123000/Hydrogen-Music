@@ -1339,16 +1339,16 @@ body {
 }
 
 /* My Music: Local/Downloaded folder lists (dark) */
-.dark .local-music-list .list-folder .list-item-open {
+.dark .local-music-list .list-folder .list-item-open,
+.dark .local-music-list .children-folder .list-item-open,
+.dark .local-music-list .list-folder .list-item:hover,
+.dark .local-music-list .children-folder .list-item:hover {
   background-color: rgba(255, 255, 255, 0.04) !important;
 }
 
-.dark .local-music-list .list-folder .list-item:hover {
-  background-color: rgba(255, 255, 255, 0.04) !important;
-}
-
-.dark .local-music-list .list-folder .list-item-selected {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+.dark .local-music-list .list-folder .list-item-selected,
+.dark .local-music-list .children-folder .list-item-selected {
+  background-color: transparent !important;
   box-shadow: inset 0 0 0 0.5Px var(--text) !important;
 }
 
@@ -1360,19 +1360,6 @@ body {
 .dark .local-music-list .folder-more svg path {
   fill: var(--text) !important;
   stroke: var(--text) !important;
-}
-
-.dark .local-music-list .children-folder .list-item-open {
-  background-color: rgba(255, 255, 255, 0.04) !important;
-}
-
-.dark .local-music-list .children-folder .list-item:hover {
-  background-color: rgba(255, 255, 255, 0.04) !important;
-}
-
-.dark .local-music-list .children-folder .list-item-selected {
-  background-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: inset 0 0 0 0.5Px var(--text) !important;
 }
 
 .dark .local-music-list .children-folder .folder-name .name {
