@@ -111,6 +111,79 @@ function patchRequestSuccessLog() {
   writeIfChanged(serverTarget, source)
 }
 
+function patchLoopbackClientIpForwarding() {
+  if (!fs.existsSync(serverTarget)) return
+
+  let source = fs.readFileSync(serverTarget, 'utf8')
+
+  const helperMarker = 'function normalizeForwardedClientIp(value) {'
+  if (!source.includes(helperMarker)) {
+    const insertBefore = 'function createConsoleSpinner(message = \'启动中\') {'
+    const helper = `function normalizeForwardedClientIp(value) {
+  let ip = String(value || '').trim()
+  if (!ip) return ''
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7)
+  if (ip === '::1' || ip === '0:0:0:0:0:0:0:1' || ip === 'localhost') return ''
+  if (/^127(?:\\.|$)/.test(ip)) return ''
+  return ip
+}
+
+`
+
+    if (!source.includes(insertBefore)) {
+      console.warn('[patch-ncm-api] client IP helper insertion point not found')
+      return
+    }
+    source = source.replace(insertBefore, `${helper}${insertBefore}`)
+  }
+
+  const oldIpBlock = `          // 参数注入客户端IP
+          const obj = [...params]
+          const options = obj[2] || {}
+          let ip = ''
+
+          if (options.randomCNIP) {
+            ip = global.cnIp
+            // logger.info('Using random Chinese IP for request:', ip)
+          } else {
+            ip = req.ip
+
+            if (ip.substring(0, 7) == '::ffff:') {
+              ip = ip.substring(7)
+            }
+            if (ip == '::1') {
+              ip = global.cnIp
+            }
+            // logger.info('Requested from ip:', ip)
+          }
+
+          obj[2] = {
+            ...options,
+            ip,
+          }
+`
+
+  const newIpBlock = `          // 参数注入客户端IP；本地回环地址不能作为真实 IP 继续透传给网易云。
+          const obj = [...params]
+          const options = obj[2] || {}
+          const ip = options.randomCNIP ? (global.cnIp || '') : normalizeForwardedClientIp(req.ip)
+          const nextOptions = { ...options }
+
+          if (ip) nextOptions.ip = ip
+          else delete nextOptions.ip
+
+          obj[2] = nextOptions
+`
+
+  if (source.includes(oldIpBlock)) {
+    source = source.replace(oldIpBlock, newIpBlock)
+  } else if (!source.includes('normalizeForwardedClientIp(req.ip)')) {
+    console.warn('[patch-ncm-api] client IP forwarding block not found')
+  }
+
+  writeIfChanged(serverTarget, source)
+}
+
 function patchDotenvQuiet() {
   for (const filePath of [serverTarget, songUrlV1Target]) {
     if (!fs.existsSync(filePath)) continue
@@ -122,6 +195,7 @@ function patchDotenvQuiet() {
 }
 
 patchRandomChineseIp()
+patchLoopbackClientIpForwarding()
 patchRequestSuccessLog()
 patchDotenvQuiet()
 
