@@ -161,17 +161,33 @@ jobs:
             exit 1
           fi
 
+          release_version="${RELEASE_TAG#v}"
+          cat > _release-notes.md <<EOF
+          ### Windows
+          - Hydrogen.Music.${release_version}.exe: Windows便携版
+          - Hydrogen.Music.Setup ${release_version}.exe: Windows安装版
+
+          ### Linux
+          - Hydrogen.Music-${release_version}.AppImage: 便携式自包含的可执行文件
+          - Hydrogen.Music-${release_version}.deb: Debian 系/Ubuntu 等使用的二进制包
+          - Hydrogen.Music-${release_version}.rpm: RPM 系统使用的包（Fedora、RHEL、CentOS、openSUSE 等）
+
+          ### Mac
+          - Hydrogen.Music-${release_version}-arm64.dmg: mac版，适用于M系列
+          EOF
+
           release_is_draft="$(gh release view "$RELEASE_TAG" --json isDraft -q '.isDraft' 2>/dev/null || true)"
           if [ -n "$release_is_draft" ]; then
             if [ "$release_is_draft" != "true" ] && [ "$OVERWRITE_EXISTING" != "true" ]; then
               echo "Release $RELEASE_TAG already exists and is published. Re-run manually with overwrite_existing=true to replace assets."
               exit 1
             fi
+            gh release edit "$RELEASE_TAG" --notes-file _release-notes.md
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" \
               --draft \
               --target "$GITHUB_SHA" \
               --title "$RELEASE_TAG" \
-              --notes "自动构建的发布包。"
+              --notes-file _release-notes.md
           fi
