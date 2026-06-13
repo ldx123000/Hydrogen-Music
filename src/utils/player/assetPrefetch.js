@@ -1,7 +1,8 @@
 import { getSongDetail } from '../../api/song'
 import { getSirenLyricText, getSirenSong } from '../../api/siren'
 import { getPreferredQuality } from '../quality'
-import { resolveTrackByQualityPreference } from '../musicUrlResolver'
+import { resolveMatchedTrackByQualityPreference, resolveTrackByQualityPreference } from '../musicUrlResolver'
+import { getNoCopyrightRecommendedSongId, hasNoCopyrightAlternativeHint } from '../restrictedPlaybackAvailability'
 import { getSirenSourceId, isSirenSong } from '../siren'
 import { getSongCoverUrl, normalizeCoverUrl, withCoverParam } from '../coverBackdrop'
 import { runIdleTask } from './idleTask'
@@ -256,6 +257,17 @@ async function getSirenLyric(song) {
 async function prefetchPlaybackUrl(song, preferredQuality) {
     if (!song?.id || song.type === 'local' || isSirenSong(song)) return null
     const quality = getPreferredQuality(preferredQuality)
+
+    const recommendedId = getNoCopyrightRecommendedSongId(song)
+    const canUseMatchedSource = hasNoCopyrightAlternativeHint(song)
+    if (recommendedId || canUseMatchedSource) {
+        const tasks = []
+        if (recommendedId) tasks.push(resolveTrackByQualityPreference(recommendedId, quality).catch(() => null))
+        if (canUseMatchedSource) tasks.push(resolveMatchedTrackByQualityPreference(song.id, quality).catch(() => null))
+        const results = await Promise.allSettled(tasks)
+        return results.find(result => result.status === 'fulfilled' && result.value?.url)?.value || null
+    }
+
     return resolveTrackByQualityPreference(song.id, quality)
 }
 

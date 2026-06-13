@@ -93,7 +93,10 @@ export const initDownloadManager = () => {
         const id = currentItem.id
         try {
             const preferredQuality = getPreferredQuality(quality.value)
-            const trackInfo = await resolveTrackWithMatchedFallback(currentItem, preferredQuality, { id })
+            const trackInfo = await resolveTrackWithMatchedFallback(currentItem, preferredQuality, {
+                id,
+                waitForMatchedMetadata: true,
+            })
             if (!trackInfo || !trackInfo.url) {
                 noticeOpen("该歌曲无法下载！", 2)
                 downloadList.value.splice(currentIndex, 1)

@@ -220,12 +220,30 @@ async function requestTrack(id, level, requestParams = {}) {
     return extractTrackInfo(songInfo)
 }
 
-async function requestMatchedTrack(id, preferredLevel) {
+function hydrateMatchedTrackMetadataInBackground(trackInfo, cacheKey = '') {
+    if (!trackInfo?.url) return
+    void requestRemoteAudioMetadata(trackInfo.url).then(metadata => {
+        const hydratedTrackInfo = applyMatchedAudioMetadata(trackInfo, metadata)
+        writeCachedTrackInfo(cacheKey, hydratedTrackInfo)
+    })
+}
+
+async function requestMatchedTrack(id, preferredLevel, options = {}) {
     const matchedInfo = await getMatchedMusicUrl(id)
     const trackInfo = normalizeMatchedTrackInfo(id, matchedInfo, preferredLevel)
     if (!trackInfo) return null
-    const metadata = await requestRemoteAudioMetadata(trackInfo.url)
-    return applyMatchedAudioMetadata(trackInfo, metadata)
+
+    const metadataCacheKey = getRemoteAudioMetadataCacheKey(trackInfo.url)
+    const cachedMetadata = readCachedRemoteAudioMetadata(metadataCacheKey)
+    if (cachedMetadata) return applyMatchedAudioMetadata(trackInfo, cachedMetadata)
+
+    if (options.waitForMetadata === true) {
+        const metadata = await requestRemoteAudioMetadata(trackInfo.url)
+        return applyMatchedAudioMetadata(trackInfo, metadata)
+    }
+
+    hydrateMatchedTrackMetadataInBackground(trackInfo, options.cacheKey)
+    return trackInfo
 }
 
 function getTrackCacheKey(id, preferredLevel) {
@@ -320,8 +338,31 @@ export async function resolveTrackByQualityPreference(id, preferredLevel, option
     return requestPromise
 }
 
-export async function resolveMatchedTrackByQualityPreference(id, preferredLevel) {
-    return requestMatchedTrack(id, preferredLevel)
+export async function resolveMatchedTrackByQualityPreference(id, preferredLevel, options = {}) {
+    const normalizedPreferredLevel = getPreferredQuality(preferredLevel)
+    const cacheKey = getTrackCacheKey(id, `matched:${normalizedPreferredLevel}`)
+
+    if (!options.force) {
+        const cachedTrackInfo = readCachedTrackInfo(cacheKey)
+        if (cachedTrackInfo) return cachedTrackInfo
+        const pendingRequest = pendingTrackInfoRequests.get(cacheKey)
+        if (pendingRequest) return pendingRequest
+    }
+
+    const requestPromise = requestMatchedTrack(id, normalizedPreferredLevel, {
+        cacheKey,
+        waitForMetadata: options.waitForMetadata === true,
+    }).then(trackInfo => {
+        writeCachedTrackInfo(cacheKey, trackInfo)
+        return trackInfo
+    }).finally(() => {
+        if (pendingTrackInfoRequests.get(cacheKey) === requestPromise) {
+            pendingTrackInfoRequests.delete(cacheKey)
+        }
+    })
+
+    if (cacheKey) pendingTrackInfoRequests.set(cacheKey, requestPromise)
+    return requestPromise
 }
 
 export async function resolveTrackWithMatchedFallback(song, preferredLevel, options = {}) {
@@ -332,5 +373,7 @@ export async function resolveTrackWithMatchedFallback(song, preferredLevel, opti
         })
         : null
     if (isPlayableTrack(trackInfo) || !hasNoCopyrightAlternativeHint(song)) return trackInfo
-    return resolveMatchedTrackByQualityPreference(song?.id ?? playbackId, preferredLevel)
+    return resolveMatchedTrackByQualityPreference(song?.id ?? playbackId, preferredLevel, {
+        waitForMetadata: options.waitForMatchedMetadata === true,
+    })
 }

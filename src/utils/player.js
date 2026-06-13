@@ -63,6 +63,8 @@ const GAPLESS_PRELOAD_MAX_AGE_MS = 15 * 60 * 1000
 const GAPLESS_PRELOAD_IDLE_TIMEOUT_MS = 1500
 const GAPLESS_EARLY_START_SECONDS = 0.85
 const GAPLESS_CROSSFADE_MS = 700
+const REMOTE_DURATION_MISMATCH_TOLERANCE = 0.15
+const STREAM_RECOVERY_MAX_ATTEMPTS_PER_SOURCE = 2
 const fadeInDurationByHowl = new WeakMap()
 let disposeGaplessTransitionTicker = null
 let gaplessTransitionInProgress = false
@@ -73,6 +75,11 @@ let lyricLoadToken = 0
 let activeRemoteLyricFetch = null
 let pendingCurrentCloudLyricRetrySongId = ''
 let lastLocalHifiFallbackNoticeAt = 0
+let playbackLoadToken = 0
+let pendingPlaybackSongId = ''
+let pendingPlaybackAutoplay = false
+let streamRecoveryKey = ''
+let streamRecoveryAttempts = 0
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -143,6 +150,28 @@ function clampPlaybackProgress(value, maxDuration = null) {
     return safeMax > 0 ? Math.min(parsed, safeMax) : parsed
 }
 
+function getPlaybackExpectedDurationSeconds(playback, song = getCurrentSong()) {
+    const playbackDuration = normalizePlaybackDuration(playback?.__hmExpectedDuration)
+    if (playbackDuration > 0) return playbackDuration
+    return getSongDurationSeconds(song)
+}
+
+function isRemoteNativeDurationMismatch(nativeDuration, expectedDuration) {
+    if (nativeDuration <= 0 || expectedDuration <= 0) return false
+    const lowerBound = expectedDuration * (1 - REMOTE_DURATION_MISMATCH_TOLERANCE)
+    const upperBound = expectedDuration * (1 + REMOTE_DURATION_MISMATCH_TOLERANCE)
+    return nativeDuration < lowerBound || nativeDuration > upperBound
+}
+
+function getStablePlaybackDuration(playback = getCurrentHowl(), song = getCurrentSong()) {
+    const nativeDuration = normalizePlaybackDuration(playback?.duration?.())
+    const expectedDuration = getPlaybackExpectedDurationSeconds(playback, song)
+
+    if (playback?.__hmTrustNativeDuration) return nativeDuration || expectedDuration
+    if (isRemoteNativeDurationMismatch(nativeDuration, expectedDuration)) return expectedDuration
+    return nativeDuration || expectedDuration
+}
+
 function getCurrentSong() {
     return getIndexedSong(songList.value, currentIndex.value)
 }
@@ -153,6 +182,45 @@ function getCurrentSongOrFirst() {
 
 function normalizePlayerSongId(value) {
     return value === undefined || value === null || value === '' ? '' : String(value)
+}
+
+function beginPendingPlayback(targetSongId, autoplay = false) {
+    const normalizedTargetSongId = normalizePlayerSongId(targetSongId)
+    playbackLoadToken += 1
+    pendingPlaybackSongId = normalizedTargetSongId
+    pendingPlaybackAutoplay = autoplay === true
+    return {
+        token: playbackLoadToken,
+        targetSongId: normalizedTargetSongId,
+    }
+}
+
+function isActivePendingPlayback(request) {
+    if (!request) return false
+    return request.token === playbackLoadToken
+        && pendingPlaybackSongId === request.targetSongId
+        && normalizePlayerSongId(songId.value) === request.targetSongId
+}
+
+function isPendingPlaybackForCurrentSong() {
+    return !!pendingPlaybackSongId
+        && pendingPlaybackSongId === normalizePlayerSongId(songId.value)
+}
+
+function requestPendingPlaybackAutoplay() {
+    if (!isPendingPlaybackForCurrentSong()) return false
+    pendingPlaybackAutoplay = true
+    return true
+}
+
+function shouldAutoplayPendingPlayback(request, autoplay) {
+    return autoplay === true || (isActivePendingPlayback(request) && pendingPlaybackAutoplay)
+}
+
+function clearPendingPlayback(request) {
+    if (request && request.token !== playbackLoadToken) return
+    pendingPlaybackSongId = ''
+    pendingPlaybackAutoplay = false
 }
 
 function createLyricLoadRequest(targetSongId) {
@@ -209,7 +277,7 @@ function updateCurrentSongDurationFromHowl() {
     const currentSong = getCurrentSong()
     if (!currentSong || !currentMusic.value || typeof currentMusic.value.duration !== 'function') return
 
-    const durationMs = Math.round((currentMusic.value.duration() || 0) * 1000)
+    const durationMs = Math.round(getStablePlaybackDuration(currentMusic.value, currentSong) * 1000)
     if (!Number.isFinite(durationMs) || durationMs <= 0) return
 
     currentSong.duration = durationMs
@@ -392,35 +460,68 @@ function isGaplessPreloadUsable(entry, song, url = '') {
     return !!(entry.howl && typeof entry.howl.play === 'function' && entry.howl.state?.() !== 'unloaded')
 }
 
-function buildRemotePlaybackInfo(trackInfo) {
+function buildRemotePlaybackInfo(trackInfo, source = '') {
     return trackInfo?.url
         ? {
             url: trackInfo.url,
             trackInfo,
+            source: source || trackInfo.source || 'netease',
             isSiren: false,
         }
         : null
 }
 
+function isMatchedSourcePlaybackInfo(playbackInfo = {}) {
+    return playbackInfo?.source === 'matched-source' || playbackInfo?.trackInfo?.source === 'matched-source'
+}
+
 async function resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options = {}) {
+    if (options.skipRecommended === true) return null
     const recommendedId = getNoCopyrightRecommendedSongId(song)
     if (!recommendedId) return null
 
     const trackInfo = await resolveTrackByQualityPreference(recommendedId, preferredQuality, {
         force: options.force === true,
     })
-    return buildRemotePlaybackInfo(trackInfo)
+    return buildRemotePlaybackInfo(trackInfo, 'netease-recommended')
 }
 
 async function resolveMatchedPlaybackInfo(song, preferredQuality) {
     if (!hasNoCopyrightAlternativeHint(song)) return null
     try {
-        const trackInfo = await resolveMatchedTrackByQualityPreference(song.id, preferredQuality)
-        return buildRemotePlaybackInfo(trackInfo)
+        const trackInfo = await resolveMatchedTrackByQualityPreference(song.id, preferredQuality, {
+            waitForMetadata: false,
+        })
+        return buildRemotePlaybackInfo(trackInfo, 'matched-source')
     } catch (error) {
         console.warn('匹配替代音源失败:', error)
         return null
     }
+}
+
+async function resolveRestrictedFallbackPlaybackInfo(song, preferredQuality, options = {}) {
+    const pendingFallbacks = [
+        resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options)
+            .then(playbackInfo => ({ playbackInfo, error: null }))
+            .catch(error => ({ playbackInfo: null, error })),
+        resolveMatchedPlaybackInfo(song, preferredQuality)
+            .then(playbackInfo => ({ playbackInfo, error: null }))
+            .catch(error => ({ playbackInfo: null, error })),
+    ]
+    let firstError = null
+
+    while (pendingFallbacks.length > 0) {
+        const { index, result } = await Promise.race(
+            pendingFallbacks.map((fallbackPromise, index) => fallbackPromise.then(result => ({ index, result })))
+        )
+        pendingFallbacks.splice(index, 1)
+
+        if (result.playbackInfo) return result.playbackInfo
+        if (!firstError && result.error) firstError = result.error
+    }
+
+    if (firstError) throw firstError
+    return null
 }
 
 async function resolveSongPlaybackInfo(song, options = {}) {
@@ -451,15 +552,19 @@ async function resolveSongPlaybackInfo(song, options = {}) {
     const playbackId = options.id ?? song.id
     if (!playbackId) return null
     const preferredQuality = getPreferredQuality(options.quality ?? quality.value)
+    const shouldUseKnownAlternative = options.checkAvailability === true && hasAnyPlaybackAlternative(song)
+
+    if (options.preferAlternative === true || shouldUseKnownAlternative) {
+        const fallbackPlaybackInfo = await resolveRestrictedFallbackPlaybackInfo(song, preferredQuality, options)
+        if (fallbackPlaybackInfo) return fallbackPlaybackInfo
+        if (options.alternativeOnly === true || shouldUseKnownAlternative) return null
+    }
 
     if (options.checkAvailability) {
         const availability = await checkMusic(playbackId)
         if (availability?.success != true) {
-            const recommendedPlaybackInfo = await resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options)
-            if (recommendedPlaybackInfo) return recommendedPlaybackInfo
-
-            const matchedPlaybackInfo = await resolveMatchedPlaybackInfo(song, preferredQuality)
-            if (matchedPlaybackInfo) return matchedPlaybackInfo
+            const fallbackPlaybackInfo = await resolveRestrictedFallbackPlaybackInfo(song, preferredQuality, options)
+            if (fallbackPlaybackInfo) return fallbackPlaybackInfo
 
             return {
                 unavailable: true,
@@ -474,7 +579,7 @@ async function resolveSongPlaybackInfo(song, options = {}) {
     const trackInfo = await resolveTrackByQualityPreference(playbackId, preferredQuality, {
         force: options.force === true,
     })
-    const playbackInfo = buildRemotePlaybackInfo(trackInfo)
+    const playbackInfo = buildRemotePlaybackInfo(trackInfo, 'netease')
     if (playbackInfo) return playbackInfo
 
     return resolveMatchedPlaybackInfo(song, preferredQuality)
@@ -535,7 +640,11 @@ async function playPlaybackInfo(playbackInfo, autoplay, targetSongId, options = 
     }
 
     if (songId.value !== targetSongId) return false
-    play(playbackInfo.url, autoplay, resumeSeek)
+    play(playbackInfo.url, autoplay, resumeSeek, {
+        expectedDuration: getPlaybackDurationSeconds(playbackInfo, targetSongId),
+        trustNativeDuration: !!playbackInfo.localPath,
+        source: playbackInfo.source || playbackInfo.trackInfo?.source || 'netease',
+    })
     return false
 }
 
@@ -578,12 +687,26 @@ export function preloadGaplessSongPlayback(song, options = {}) {
         try {
             if (token !== gaplessPreloadToken || !gaplessPlayback.value) return null
 
-            const playbackInfo = await resolveSongPlaybackInfo(song, { quality: preferredQuality })
+            const shouldPreloadAlternative = song?.type !== 'local' && !isSirenSong(song) && hasAnyPlaybackAlternative(song)
+            const playbackInfo = await resolveSongPlaybackInfo(song, {
+                quality: preferredQuality,
+                checkAvailability: shouldPreloadAlternative,
+            })
             if (token !== gaplessPreloadToken || !gaplessPlayback.value || !playbackInfo?.url) return null
+            if (isMatchedSourcePlaybackInfo(playbackInfo)) {
+                clearGaplessPreload(false)
+                return null
+            }
 
             const nextHowl = markRaw(await createDecodedAudioPlayer(playbackInfo.url, {
                 localPath: playbackInfo.localPath,
             }))
+            if (token !== gaplessPreloadToken || !gaplessPlayback.value) {
+                try { nextHowl.unload?.() } catch (_) {}
+                return null
+            }
+            nextHowl.__hmExpectedDuration = getPlaybackDurationSeconds(playbackInfo, song.id)
+            nextHowl.__hmTrustNativeDuration = true
             const entry = {
                 key,
                 song,
@@ -591,6 +714,8 @@ export function preloadGaplessSongPlayback(song, options = {}) {
                 url: playbackInfo.url,
                 quality: preferredQuality,
                 trackInfo: playbackInfo.trackInfo,
+                expectedDuration: nextHowl.__hmExpectedDuration,
+                source: playbackInfo.source || playbackInfo.trackInfo?.source || 'netease',
                 howl: nextHowl,
                 createdAt: Date.now(),
             }
@@ -1096,6 +1221,15 @@ function disposePlaybackImmediately(playback) {
     try { playback.unload?.() } catch (_) {}
 }
 
+function clearActivePlaybackForSongSwitch() {
+    const currentHowl = getCurrentHowl()
+    if (currentHowl) currentMusic.value = null
+    disposePlaybackImmediately(currentHowl)
+    playing.value = false
+    try { windowApi.playOrPauseMusicCheck(false) } catch (_) {}
+    syncWindowsTaskbarPlaybackState()
+}
+
 function resetFailedPlaybackState() {
     stopProgressSampling()
     try {
@@ -1142,6 +1276,55 @@ function startMusicVideoSampling() {
     })
 }
 
+function getPlaybackSource(playback) {
+    return playback?.__hmPlaybackSource || 'netease'
+}
+
+function hasMatchedPlaybackAlternative(song) {
+    return hasNoCopyrightAlternativeHint(song)
+}
+
+function hasAnyPlaybackAlternative(song) {
+    return !!getNoCopyrightRecommendedSongId(song) || hasMatchedPlaybackAlternative(song)
+}
+
+function getStreamRecoveryOptions(song, failedPlayback) {
+    const failedSource = getPlaybackSource(failedPlayback)
+    if (failedSource === 'matched-source') {
+        return {
+            failedSource,
+            preferAlternative: true,
+            alternativeOnly: true,
+        }
+    }
+
+    const skipRecommended = failedSource === 'netease-recommended'
+    const canUseAlternative = skipRecommended ? hasMatchedPlaybackAlternative(song) : hasAnyPlaybackAlternative(song)
+    const shouldTryAlternative = canUseAlternative || skipRecommended
+    return {
+        failedSource,
+        preferAlternative: shouldTryAlternative,
+        alternativeOnly: shouldTryAlternative,
+        skipRecommended,
+    }
+}
+
+function registerStreamRecoveryAttempt(targetSongId, failedSource) {
+    const nextKey = `${normalizePlayerSongId(targetSongId)}:${failedSource || 'netease'}`
+    if (streamRecoveryKey === nextKey) {
+        streamRecoveryAttempts += 1
+    } else {
+        streamRecoveryKey = nextKey
+        streamRecoveryAttempts = 1
+    }
+    return streamRecoveryAttempts
+}
+
+function resetStreamRecoveryAttempts() {
+    streamRecoveryKey = ''
+    streamRecoveryAttempts = 0
+}
+
 async function refreshStreamAndResume(eventType, error) {
     const now = Date.now()
     if (refreshingStream || now - lastRefreshAttempt < 500) return
@@ -1156,12 +1339,23 @@ async function refreshStreamAndResume(eventType, error) {
     const token = ++streamRefreshToken
 
     const resumePosition = getSafeCurrentSeek()
+    const recoveryOptions = getStreamRecoveryOptions(currentSong, targetHowl)
+    const recoveryAttempts = registerStreamRecoveryAttempt(targetSongId, recoveryOptions.failedSource)
+    if (recoveryAttempts > STREAM_RECOVERY_MAX_ATTEMPTS_PER_SOURCE) {
+        noticeOpen('当前播放地址持续加载失败，请尝试切换歌曲', 2)
+        resetFailedPlaybackState()
+        refreshingStream = false
+        return
+    }
 
     try {
         const playbackInfo = await resolveSongPlaybackInfo(currentSong, {
             id: targetSongId,
             quality: quality.value,
             force: true,
+            preferAlternative: recoveryOptions.preferAlternative,
+            alternativeOnly: recoveryOptions.alternativeOnly,
+            skipRecommended: recoveryOptions.skipRecommended,
         })
         const nextStreamUrl = playbackInfo?.url || ''
 
@@ -1172,7 +1366,8 @@ async function refreshStreamAndResume(eventType, error) {
 
         if (!nextStreamUrl) {
             console.error('刷新歌曲播放地址失败：未返回url', playbackInfo?.trackInfo)
-            noticeOpen('当前歌曲链接已失效，请尝试切换下一首', 2)
+            noticeOpen(recoveryOptions.alternativeOnly ? '当前歌曲链接已失效，未找到可用替代音源' : '当前歌曲链接已失效，请尝试切换下一首', 2)
+            resetFailedPlaybackState()
             return
         }
 
@@ -1245,7 +1440,7 @@ function preparePlaybackSwitch(nextHowl = null, allowGlobalUnload = false) {
 
 function syncActivatedHowlAfterLoad(nextHowl, normalizedSeek, autoplay) {
     if (!isCurrentHowl(nextHowl)) return
-    const loadedDuration = normalizePlaybackDuration(nextHowl.duration() || getSongDurationSeconds(getCurrentSong()))
+    const loadedDuration = getStablePlaybackDuration(nextHowl, getCurrentSong())
     time.value = loadedDuration
     updateCurrentSongDurationFromHowl()
     let targetSeek = null
@@ -1323,6 +1518,7 @@ function bindPlaybackLifecycleEvents(playback, options = {}) {
 
 function handlePlaybackStarted(playback) {
     if (!isCurrentHowl(playback)) return
+    resetStreamRecoveryAttempts()
     const fadeInMs = fadeInDurationByHowl.has(playback) ? fadeInDurationByHowl.get(playback) : 200
     fadeInDurationByHowl.delete(playback)
     if (playback?.__hmHifiOutputPlayer || fadeInMs <= 0) {
@@ -1546,9 +1742,24 @@ function handlePlaybackEnded() {
     if (playMode.value == 2) { clearLycAnimation() }
 }
 
-export function play(url, autoplay, resumeSeek = null) {
+function applyPlaybackDurationHints(playback, options = {}) {
+    if (!playback) return
+    const expectedDuration = normalizePlaybackDuration(options.expectedDuration)
+    if (expectedDuration > 0) playback.__hmExpectedDuration = expectedDuration
+    playback.__hmTrustNativeDuration = options.trustNativeDuration === true
+    playback.__hmPlaybackSource = options.source || 'netease'
+    playback.__hmPlaybackUrl = options.url || ''
+}
+
+export function play(url, autoplay, resumeSeek = null, options = {}) {
     const preloadedEntry = takeGaplessPreloadForCurrentSong(url)
     if (preloadedEntry?.howl) {
+        applyPlaybackDurationHints(preloadedEntry.howl, {
+            expectedDuration: preloadedEntry.expectedDuration || options.expectedDuration,
+            trustNativeDuration: true,
+            source: preloadedEntry.source || options.source,
+            url,
+        })
         preparePlaybackSwitch(preloadedEntry.howl, false)
         activatePlaybackHowl(preloadedEntry.howl, { autoplay, resumeSeek, instantStart: false })
         scheduleNextSongAssetPrefetch()
@@ -1558,6 +1769,7 @@ export function play(url, autoplay, resumeSeek = null) {
     clearGaplessPreload()
     preparePlaybackSwitch(null, true)
     const nextHowl = createPlaybackHowl(url)
+    applyPlaybackDurationHints(nextHowl, { ...options, url })
     activatePlaybackHowl(nextHowl, { autoplay, resumeSeek, instantStart: false })
 }
 
@@ -1566,11 +1778,13 @@ export function startProgress() {
     const currentHowl = getCurrentHowl()
     if (!currentHowl || typeof currentHowl.seek !== 'function') return
 
-    const durationLimit = normalizePlaybackDuration(time.value || currentHowl.duration?.())
+    const durationLimit = normalizePlaybackDuration(time.value || getStablePlaybackDuration(currentHowl, getCurrentSong()))
     if (durationLimit > 0) time.value = durationLimit
     progress.value = clampPlaybackProgress(currentHowl.seek(), durationLimit)
     disposeProgressTicker = subscribePlaybackTick(snapshot => {
-        const snapshotDuration = normalizePlaybackDuration(snapshot.duration)
+        const sampledDuration = normalizePlaybackDuration(snapshot.duration)
+        const stableDuration = getStablePlaybackDuration(currentHowl, getCurrentSong())
+        const snapshotDuration = normalizePlaybackDuration(Math.max(sampledDuration, stableDuration))
         if (snapshotDuration > 0) time.value = snapshotDuration
         progress.value = clampPlaybackProgress(snapshot.seek, snapshotDuration)
         schedulePlaybackSnapshotPersist()
@@ -1852,10 +2066,13 @@ export function loadMusicVideo(id) {
 
 export function addSong(id, index, autoplay, isLocal) {
     reportCurrentNcmPlaybackEnd('interrupt')
+    resetStreamRecoveryAttempts()
     // 先停止旧的进度计时，避免残留计时在下一秒把UI回写为上一首的进度
     stopProgressSampling()
     resetSongSwitchState()
     setId(id, index)
+    const playbackRequest = beginPendingPlayback(id, autoplay)
+    clearActivePlaybackForSongSwitch()
     syncWindowsTaskbarPlaybackState()
     scheduleNextSongAssetPrefetch()
 
@@ -1863,30 +2080,15 @@ export function addSong(id, index, autoplay, isLocal) {
     unloadMusicVideo()
 
     const targetSong = getSongByIdOrIndex(id, currentIndex.value)
-    if (!targetSong) return
+    if (!targetSong) {
+        clearPendingPlayback(playbackRequest)
+        return
+    }
 
     if (targetSong.type == 'local') isLocal = true
     else isLocal = false
 
-    const currentHowl = getCurrentHowl()
-    if (currentHowl && volume.value != 0) {
-        if (currentHowl.__hmHifiOutputPlayer) {
-            disposePlaybackImmediately(currentHowl)
-            getSongUrl(id, index, autoplay, isLocal)
-            return
-        }
-        currentHowl.fade(volume.value, 0, 200)
-        currentHowl.once('fade', () => {
-            getSongUrl(id, index, autoplay, isLocal)
-            return
-        })
-        if (currentHowl.state() == 'loading' || currentHowl.state() == 'unloaded') {
-            currentHowl.unload()
-            getSongUrl(id, index, autoplay, isLocal)
-        }
-    } else {
-        getSongUrl(id, index, autoplay, isLocal)
-    }
+    void getSongUrl(id, index, autoplay, isLocal, playbackRequest)
 }
 
 function buildLevelInfoFromStream(streamInfo = {}) {
@@ -2006,109 +2208,123 @@ export async function syncCloudDiskSongsFromItems(cloudItems, options = {}) {
     return syncedIds.size > 0
 }
 
-export async function getSongUrl(id, index, autoplay, isLocal) {
+export async function getSongUrl(id, index, autoplay, isLocal, pendingRequest = null) {
     const targetSongId = id
-    const targetSong = getSongByIdOrIndex(targetSongId, index)
-    if (!targetSong) return
+    const playbackRequest = pendingRequest || beginPendingPlayback(targetSongId, autoplay)
 
-    updateWindowTitleDock()
+    try {
+        const targetSong = getSongByIdOrIndex(targetSongId, index)
+        if (!targetSong) return
 
-    resetCurrentLyricState()
+        updateWindowTitleDock()
 
-    if (isLocal) {
-        const playbackInfo = await resolveSongPlaybackInfo(targetSong)
-        if (songId.value !== targetSongId) return
-        if (!playbackInfo?.url) return
-        await playPlaybackInfo(playbackInfo, autoplay, targetSongId)
-        await hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
-        return
-    }
-    if (isSirenSong(targetSong)) {
-        clearCurrentSongLevel(targetSong)
-        try {
+        resetCurrentLyricState()
+
+        if (isLocal) {
             const playbackInfo = await resolveSongPlaybackInfo(targetSong)
             if (songId.value !== targetSongId) return
+            if (!playbackInfo?.url) return
+            await playPlaybackInfo(playbackInfo, shouldAutoplayPendingPlayback(playbackRequest, autoplay), targetSongId)
+            clearPendingPlayback(playbackRequest)
+            await hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
+            return
+        }
+        if (isSirenSong(targetSong)) {
+            clearCurrentSongLevel(targetSong)
+            try {
+                const playbackInfo = await resolveSongPlaybackInfo(targetSong)
+                if (songId.value !== targetSongId) return
 
-            if (!playbackInfo?.url) {
+                if (!playbackInfo?.url) {
+                    noticeOpen('当前歌曲无法播放', 2)
+                    stopProgressSampling()
+                    playing.value = false
+                    currentMusic.value = null
+                    lyric.value = null
+                    playNext()
+                    return
+                }
+
+                const hifiStarted = await playPlaybackInfo(playbackInfo, shouldAutoplayPendingPlayback(playbackRequest, autoplay), targetSongId)
+                clearPendingPlayback(playbackRequest)
+                if (songId.value !== targetSongId) return
+
+                if (hifiStarted) {
+                    applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
+                } else {
+                    // 在音频加载完成后设置塞壬歌曲音质信息
+                    const sirenHowl = getCurrentHowl()
+                    if (sirenHowl) {
+                        sirenHowl.once('load', () => {
+                            if (songId.value !== targetSongId) return
+                            applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
+                        })
+                    }
+                }
+
+                await hydrateSongAssets(targetSong, targetSongId, {
+                    resetLyric: false,
+                    lyricUrl: playbackInfo.lyricUrl,
+                })
+            } catch (error) {
+                console.error('获取塞壬歌曲播放地址失败:', error)
                 noticeOpen('当前歌曲无法播放', 2)
                 stopProgressSampling()
                 playing.value = false
                 currentMusic.value = null
                 lyric.value = null
                 playNext()
+            }
+            return
+        }
+        try {
+            const playbackInfo = await resolveSongPlaybackInfo(targetSong, {
+                id,
+                quality: quality.value,
+                checkAvailability: true,
+            })
+            if (songId.value !== targetSongId) return
+
+            if (playbackInfo?.unavailable) {
+                handlePlaybackLoadFailure(null, {
+                    advance: true,
+                    song: targetSong,
+                    availability: playbackInfo.availability,
+                })
                 return
             }
 
-            const hifiStarted = await playPlaybackInfo(playbackInfo, autoplay, targetSongId)
-            if (songId.value !== targetSongId) return
-
-            if (hifiStarted) {
-                applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
-            } else {
-                // 在音频加载完成后设置塞壬歌曲音质信息
-                const sirenHowl = getCurrentHowl()
-                if (sirenHowl) {
-                    sirenHowl.once('load', () => {
-                        if (songId.value !== targetSongId) return
-                        applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
-                    })
-                }
+            if (!playbackInfo || !playbackInfo.url) {
+                handlePlaybackLoadFailure(null, {
+                    advance: true,
+                    song: targetSong,
+                })
+                return
             }
 
-            await hydrateSongAssets(targetSong, targetSongId, {
-                resetLyric: false,
-                lyricUrl: playbackInfo.lyricUrl,
-            })
+            await playPlaybackInfo(playbackInfo, shouldAutoplayPendingPlayback(playbackRequest, autoplay), targetSongId)
+            clearPendingPlayback(playbackRequest)
+            if (songId.value !== targetSongId) return
+            applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
+            void hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
         } catch (error) {
-            console.error('获取塞壬歌曲播放地址失败:', error)
-            noticeOpen('当前歌曲无法播放', 2)
-            stopProgressSampling()
-            playing.value = false
-            currentMusic.value = null
-            lyric.value = null
-            playNext()
-        }
-        return
-    }
-    try {
-        const playbackInfo = await resolveSongPlaybackInfo(targetSong, {
-            id,
-            quality: quality.value,
-            checkAvailability: true,
-        })
-        if (songId.value !== targetSongId) return
-
-        if (playbackInfo?.unavailable) {
-            handlePlaybackLoadFailure(null, {
-                advance: true,
-                song: targetSong,
-                availability: playbackInfo.availability,
-            })
-            return
-        }
-
-        if (!playbackInfo || !playbackInfo.url) {
-            handlePlaybackLoadFailure(null, {
-                advance: true,
+            if (songId.value !== targetSongId) return
+            handlePlaybackLoadFailure(error, {
+                advance: !isTransientPlaybackRequestError(error),
                 song: targetSong,
             })
-            return
         }
-
-        await playPlaybackInfo(playbackInfo, autoplay, targetSongId)
-        if (songId.value !== targetSongId) return
-        applyPlaybackInfoToCurrentSong(targetSong, playbackInfo)
-        void hydrateSongAssets(targetSong, targetSongId, { resetLyric: false })
-    } catch (error) {
-        if (songId.value !== targetSongId) return
-        handlePlaybackLoadFailure(error, {
-            advance: !isTransientPlaybackRequestError(error),
-            song: targetSong,
-        })
+    } finally {
+        clearPendingPlayback(playbackRequest)
     }
 }
 
 export function startMusic() {
+    if (isPendingPlaybackForCurrentSong()) {
+        requestPendingPlaybackAutoplay()
+        return
+    }
+
     const currentHowl = getCurrentHowl()
     const list = Array.isArray(songList.value) ? songList.value : []
 
@@ -2216,7 +2432,7 @@ const clearLycAnimation = () => {
 export function changeProgress(toTime) {
     if (!widgetState.value && lyricShow.value && lyricEle.value) clearLycAnimation()
     const currentHowl = getCurrentHowl()
-    const durationLimit = normalizePlaybackDuration(currentHowl?.duration?.() || time.value)
+    const durationLimit = normalizePlaybackDuration(getStablePlaybackDuration(currentHowl, getCurrentSong()) || time.value)
     const normalizedTime = clampPlaybackProgress(toTime, durationLimit)
     if (videoIsPlaying.value) {
         musicVideoCheck(normalizedTime, true)
@@ -2227,7 +2443,11 @@ export function changeProgress(toTime) {
         syncLyricIndexForSeek(normalizedTime)
     }
     if (currentHowl && typeof currentHowl.seek === 'function') {
-        currentHowl.seek(normalizedTime)
+        try {
+            currentHowl.seek(normalizedTime)
+        } catch (error) {
+            console.warn('设置播放进度失败:', error)
+        }
     }
     // 静态策略下，仅在显式 seek 时通知一次系统进度
     try {

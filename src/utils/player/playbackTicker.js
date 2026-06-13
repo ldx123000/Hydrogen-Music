@@ -14,6 +14,7 @@ let tickerInterval = 0
 const subscribers = new Map()
 const DEFAULT_PLAYBACK_TICK_INTERVAL_MS = 1000
 const MIN_PLAYBACK_TICK_INTERVAL_MS = 25
+const REMOTE_DURATION_MISMATCH_TOLERANCE = 0.15
 
 function normalizeInterval(interval) {
     const parsedInterval = Number(interval)
@@ -34,15 +35,30 @@ function getSafeCurrentSeek() {
 }
 
 function getSafeCurrentDuration() {
+    const expectedDuration = Number(currentMusic.value?.__hmExpectedDuration)
+    const safeExpectedDuration = Number.isFinite(expectedDuration) && expectedDuration > 0 ? expectedDuration : 0
+    const fallbackDuration = Number(time.value)
+    const safeFallbackDuration = Number.isFinite(fallbackDuration) && fallbackDuration > 0 ? fallbackDuration : 0
+
     try {
         if (currentMusic.value && typeof currentMusic.value.duration === 'function') {
             const durationValue = currentMusic.value.duration()
-            if (typeof durationValue === 'number' && !Number.isNaN(durationValue) && durationValue > 0) return durationValue
+            const safeDurationValue = typeof durationValue === 'number' && !Number.isNaN(durationValue) && durationValue > 0
+                ? durationValue
+                : 0
+            if (currentMusic.value.__hmTrustNativeDuration) return safeDurationValue || safeExpectedDuration || safeFallbackDuration
+            if (safeExpectedDuration > 0 && safeDurationValue > 0) {
+                const lowerBound = safeExpectedDuration * (1 - REMOTE_DURATION_MISMATCH_TOLERANCE)
+                const upperBound = safeExpectedDuration * (1 + REMOTE_DURATION_MISMATCH_TOLERANCE)
+                if (safeDurationValue < lowerBound || safeDurationValue > upperBound) {
+                    return Math.max(safeExpectedDuration, safeFallbackDuration)
+                }
+            }
+            if (safeDurationValue > 0) return Math.max(safeDurationValue, safeFallbackDuration)
         }
     } catch (_) {}
 
-    const fallbackDuration = Number(time.value)
-    return Number.isFinite(fallbackDuration) && fallbackDuration > 0 ? fallbackDuration : 0
+    return safeFallbackDuration || safeExpectedDuration
 }
 
 function createSnapshot() {

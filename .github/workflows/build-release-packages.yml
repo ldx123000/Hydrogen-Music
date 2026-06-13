@@ -1,0 +1,177 @@
+name: Build release packages
+
+run-name: Build release packages (${{ github.event.inputs.tag || github.ref_name }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag. Defaults to v{package.json version}.
+        default: ''
+        required: false
+      overwrite_existing:
+        description: Overwrite assets when the release already exists and is published.
+        default: false
+        required: false
+        type: boolean
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+concurrency:
+  group: release-packages-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-15
+          - name: Windows x64
+            os: windows-latest
+          - name: Linux x64
+            os: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux packaging dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run dist
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const releaseDir = path.join(process.cwd(), 'release')
+          const outputDir = path.join(process.cwd(), '_release-assets')
+          fs.rmSync(outputDir, { recursive: true, force: true })
+          fs.mkdirSync(outputDir, { recursive: true })
+
+          const keep = fileName => {
+            if (/^latest(?:-.+)?\.yml$/.test(fileName)) return true
+            if (/^Hydrogen\.Music\..+\.exe$/.test(fileName)) return true
+            if (/^Hydrogen\.Music-.+\.dmg$/.test(fileName)) return true
+            if (/^Hydrogen\.Music-.+\.AppImage$/.test(fileName)) return true
+            if (/^Hydrogen\.Music-.+\.deb$/.test(fileName)) return true
+            if (/^Hydrogen\.Music-.+\.rpm$/.test(fileName)) return true
+            return false
+          }
+
+          const walk = dir => {
+            if (!fs.existsSync(dir)) return []
+            return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+              const target = path.join(dir, entry.name)
+              if (entry.isDirectory()) return walk(target)
+              if (!entry.isFile() || !keep(entry.name)) return []
+              return [target]
+            })
+          }
+
+          const assets = walk(releaseDir)
+          if (assets.length === 0) {
+            throw new Error('No release assets were collected from release/')
+          }
+
+          for (const asset of assets) {
+            fs.copyFileSync(asset, path.join(outputDir, path.basename(asset)))
+          }
+          console.log(assets.map(asset => path.basename(asset)).sort().join('\n'))
+          NODE
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-package-${{ runner.os }}
+          path: _release-assets/**
+          if-no-files-found: error
+          retention-days: 14
+
+  draft-release:
+    name: Create draft release
+    runs-on: ubuntu-24.04
+    needs: build
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-package-*
+          path: _release-assets
+          merge-multiple: true
+
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        run: |
+          input_tag='${{ github.event.inputs.tag }}'
+          if [ -n "$input_tag" ]; then
+            tag="$input_tag"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            version="$(node -p "require('./package.json').version")"
+            tag="v${version}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: List release assets
+        shell: bash
+        run: |
+          find _release-assets -maxdepth 1 -type f -print | sort
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          OVERWRITE_EXISTING: ${{ github.event.inputs.overwrite_existing || 'false' }}
+        shell: bash
+        run: |
+          mapfile -t assets < <(find _release-assets -maxdepth 1 -type f -print | sort)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No release assets found"
+            exit 1
+          fi
+
+          release_is_draft="$(gh release view "$RELEASE_TAG" --json isDraft -q '.isDraft' 2>/dev/null || true)"
+          if [ -n "$release_is_draft" ]; then
+            if [ "$release_is_draft" != "true" ] && [ "$OVERWRITE_EXISTING" != "true" ]; then
+              echo "Release $RELEASE_TAG already exists and is published. Re-run manually with overwrite_existing=true to replace assets."
+              exit 1
+            fi
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --draft \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TAG" \
+              --notes "自动构建的发布包。"
+          fi

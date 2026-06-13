@@ -97,29 +97,17 @@ const {
 } = storeToRefs(playerStore);
 const playlistWidgetLoaded = ref(false);
 
-const safeSliderRange = computed(() => {
-    const currentTime = Number(time.value);
-    const currentProgress = Number(progress.value);
-    const normalizedTime = Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0;
-    const normalizedProgress = Number.isFinite(currentProgress) && currentProgress > 0 ? currentProgress : 0;
-    return Math.max(normalizedTime, normalizedProgress);
-});
-
-const safeSliderMax = ref(1);
-
-watch(
-    () => [songId.value, safeSliderRange.value],
-    ([, range], previousValue) => {
-        const nextMax = Math.max(1, Math.ceil(Number(range) || 0));
-        const songChanged = previousValue && previousValue[0] !== songId.value;
-        safeSliderMax.value = songChanged ? nextMax : Math.max(safeSliderMax.value, nextMax);
-    },
-    { immediate: true },
-);
-
 const sliderDuration = computed(() => {
     const currentTime = Number(time.value);
     return Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0;
+});
+
+const safeSliderMax = computed(() => {
+    const currentDuration = sliderDuration.value;
+    if (currentDuration > 0) return Math.max(1, Math.ceil(currentDuration));
+
+    const currentProgress = Number(progress.value);
+    return Number.isFinite(currentProgress) && currentProgress > 0 ? Math.ceil(currentProgress) : 1;
 });
 
 const sliderProgress = computed({
