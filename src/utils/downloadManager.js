@@ -2,12 +2,11 @@
 import { useLocalStore } from '../store/localStore'
 import { usePlayerStore } from '../store/playerStore'
 import { storeToRefs } from 'pinia'
-import { checkMusic } from '../api/song'
 import { getSirenLyricText, getSirenSong } from '../api/siren'
 import { noticeOpen } from './dialog'
 import { scanMusic } from './locaMusic'
 import { getPreferredQuality } from './quality'
-import { resolveTrackByQualityPreference } from './musicUrlResolver'
+import { resolveTrackWithMatchedFallback } from './musicUrlResolver'
 import { getSirenAudioExtension, getSirenSourceId, SIREN_SOURCE } from './siren'
 import { getLyricWithCloudFallback } from './player/lyricFallback'
 
@@ -91,55 +90,55 @@ export const initDownloadManager = () => {
             return
         }
 
-        let id = downloadList.value[currentIndex].id
-        checkMusic(id).then(async result => {
-            if(result.success == true) {
-                const preferredQuality = getPreferredQuality(quality.value)
-                resolveTrackByQualityPreference(id, preferredQuality).then(async trackInfo => {
-                    if (!trackInfo || !trackInfo.url) {
-                        noticeOpen("该歌曲无法下载！", 2)
-                        downloadList.value.splice(currentIndex, 1)
-                        downNext()
-                        return
-                    }
-                    // 获取歌词（不阻塞音频下载；即使失败也继续）
-                    let lyricPayload = null
-                    try {
-                        const lyr = await getLyricWithCloudFallback(currentItem)
-                        lyricPayload = {
-                            id,
-                            lrc: lyr && lyr.lrc && lyr.lrc.lyric ? lyr.lrc.lyric : null,
-                            tlyric: lyr && lyr.tlyric && lyr.tlyric.lyric ? lyr.tlyric.lyric : null,
-                            romalrc: lyr && lyr.romalrc && lyr.romalrc.lyric ? lyr.romalrc.lyric : null,
-                        }
-                    } catch (_) {
-                        // ignore lyric fetch errors
-                    }
-                    // 提取封面地址（优先专用 coverUrl，其次专辑图 al.picUrl）
-                    const item = downloadList.value[currentIndex] || {}
-                    const coverUrl = item.coverUrl || (item.al && item.al.picUrl) || null
-                    const artists = Array.isArray(item.ar) ? item.ar.map(a => a && a.name ? a.name : '') : []
-                    const album = (item.al && item.al.name) || (item.album && item.album.name) || null
-
-                    let fileObj = {
-                        url: trackInfo.url,
-                        name: downloadList.value[currentIndex].name,
-                        type: trackInfo.type,
-                        id,
-                        source: 'netease',
-                        lyrics: lyricPayload,
-                        coverUrl,
-                        artists,
-                        album
-                    }
-                    windowApi.download(fileObj)
-                })
-            } else {
+        const id = currentItem.id
+        try {
+            const preferredQuality = getPreferredQuality(quality.value)
+            const trackInfo = await resolveTrackWithMatchedFallback(currentItem, preferredQuality, { id })
+            if (!trackInfo || !trackInfo.url) {
                 noticeOpen("该歌曲无法下载！", 2)
                 downloadList.value.splice(currentIndex, 1)
                 downNext()
+                return
             }
-        })
+
+            // 获取歌词（不阻塞音频下载；即使失败也继续）
+            let lyricPayload = null
+            try {
+                const lyr = await getLyricWithCloudFallback(currentItem)
+                lyricPayload = {
+                    id,
+                    lrc: lyr && lyr.lrc && lyr.lrc.lyric ? lyr.lrc.lyric : null,
+                    tlyric: lyr && lyr.tlyric && lyr.tlyric.lyric ? lyr.tlyric.lyric : null,
+                    romalrc: lyr && lyr.romalrc && lyr.romalrc.lyric ? lyr.romalrc.lyric : null,
+                }
+            } catch (_) {
+                // ignore lyric fetch errors
+            }
+
+            // 提取封面地址（优先专用 coverUrl，其次专辑图 al.picUrl）
+            const item = downloadList.value[currentIndex] || {}
+            const coverUrl = item.coverUrl || (item.al && item.al.picUrl) || null
+            const artists = Array.isArray(item.ar) ? item.ar.map(a => a && a.name ? a.name : '') : []
+            const album = (item.al && item.al.name) || (item.album && item.album.name) || null
+
+            const fileObj = {
+                url: trackInfo.url,
+                name: item.name,
+                type: trackInfo.type,
+                id,
+                source: trackInfo.source === 'matched-source' ? 'matched-source' : 'netease',
+                lyrics: lyricPayload,
+                coverUrl,
+                artists,
+                album,
+            }
+            windowApi.download(fileObj)
+        } catch (error) {
+            console.error('歌曲下载解析失败:', error)
+            noticeOpen("该歌曲无法下载！", 2)
+            downloadList.value.splice(currentIndex, 1)
+            downNext()
+        }
     }
 
     const downNext = () => {

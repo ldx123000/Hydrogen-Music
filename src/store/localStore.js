@@ -167,4 +167,8 @@ export const useLocalStore = defineStore('localStore', {
             }
         }
     },
+    persist: {
+        storage: localStorage,
+        pick: ['downloadList'],
+    },
 })

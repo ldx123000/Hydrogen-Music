@@ -6,7 +6,6 @@ const { parseFile, parseBuffer } = require('music-metadata')
 const { spawn } = require('child_process')
 const { loadLocalLyricPayload } = require('./localLyrics')
 const { registerSettingsIpc } = require('./ipc/settingsIpc')
-const { registerCustomSourceIpc } = require('./customSource')
 const { registerHifiOutputIpc } = require('./hifiOutput')
 const { listSystemFonts } = require('./systemFonts')
 const {
@@ -151,11 +150,15 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const ncmApiCookieUrls = Object.freeze(['http://localhost:36530', 'http://127.0.0.1:36530'])
     const disallowedForwardHeaders = new Set(['host', 'connection', 'content-length'])
     const trustedResourceHeaderNames = new Set(['accept', 'accept-language', 'content-type', 'referer', 'user-agent'])
+    const audioMetadataHeaderNames = new Set([...trustedResourceHeaderNames, 'range'])
     const trustedBiliResourceHeaderNames = new Set(['accept', 'accept-language', 'content-type', 'cookie', 'origin', 'referer', 'user-agent'])
     const transientNetworkErrorCodes = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND'])
     const timeoutNetworkErrorCodes = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ESOCKETTIMEDOUT'])
     const ncmApiRetryDelays = Object.freeze([300, 900])
     const trustedResourceRetryDelays = Object.freeze([500])
+    const remoteAudioMetadataMaxBytes = 1024 * 1024
+    const remoteAudioMetadataMaxContentLength = remoteAudioMetadataMaxBytes * 2
+    const remoteAudioMetadataTimeoutMs = 8000
     const trustedResourceErrorMarker = '__hydrogenMusicTrustedResourceError'
     const ncmClientLogEndpoint = 'https://clientlogusf.music.163.com/weapi/feedback/weblog'
     const ncmOfficialReferer = 'https://music.163.com/'
@@ -316,6 +319,34 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const isTrustedShellUrl = urlObj => !!(urlObj && trustedShellProtocols.has(urlObj.protocol))
 
     const isTrustedExternalFetchUrl = urlObj => !!(urlObj && urlObj.protocol === 'https:' && trustedExternalFetchHosts.has(urlObj.hostname))
+    const isPrivateNetworkHost = hostname => {
+        const normalizedHost = String(hostname || '')
+            .trim()
+            .toLowerCase()
+            .replace(/\.$/, '')
+            .replace(/^\[|\]$/g, '')
+
+        if (!normalizedHost) return true
+        if (normalizedHost === 'localhost' || normalizedHost.endsWith('.localhost') || normalizedHost.endsWith('.local')) return true
+        if (normalizedHost.includes(':')) return true
+        if (!normalizedHost.includes('.')) return true
+
+        if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalizedHost)) return false
+
+        const octets = normalizedHost.split('.').map(part => Number.parseInt(part, 10))
+        if (octets.length !== 4 || octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true
+
+        const [first, second] = octets
+        if (first === 0 || first === 10 || first === 127) return true
+        if (first === 169 && second === 254) return true
+        if (first === 172 && second >= 16 && second <= 31) return true
+        if (first === 192 && second === 168) return true
+        if (first === 100 && second >= 64 && second <= 127) return true
+        if (first === 198 && (second === 18 || second === 19)) return true
+        if (first >= 224) return true
+        return false
+    }
+    const isSafeRemoteAudioMetadataUrl = urlObj => !!(isHttpUrl(urlObj) && !isPrivateNetworkHost(urlObj.hostname))
     const isTrustedAudioFetchUrl = urlObj => {
         if (!isHttpUrl(urlObj)) return false
         const hostname = urlObj.hostname || ''
@@ -470,6 +501,74 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             ...(status ? { status } : {}),
             ...(statusText ? { statusText } : {}),
             ...(code ? { code } : {}),
+        }
+    }
+
+    const normalizePositiveNumber = value => {
+        const parsed = Number(value)
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+    }
+
+    const normalizeContentType = value => String(value || '').split(';')[0].trim().toLowerCase()
+
+    const parseContentLength = value => {
+        const parsed = Number.parseInt(String(value || ''), 10)
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+    }
+
+    const parseContentRangeTotalSize = value => {
+        const matched = String(value || '').match(/\/(\d+)\s*$/)
+        if (!matched) return 0
+        return parseContentLength(matched[1])
+    }
+
+    const getRemoteAudioSize = headers => {
+        if (!headers || typeof headers !== 'object') return 0
+        return parseContentRangeTotalSize(headers['content-range']) || parseContentLength(headers['content-length'])
+    }
+
+    const inferAudioTypeFromMime = mimeType => {
+        const normalizedMime = normalizeContentType(mimeType)
+        if (normalizedMime === 'audio/mpeg' || normalizedMime === 'audio/mp3') return 'mp3'
+        if (normalizedMime === 'audio/flac' || normalizedMime === 'audio/x-flac') return 'flac'
+        if (normalizedMime === 'audio/wav' || normalizedMime === 'audio/x-wav' || normalizedMime === 'audio/wave') return 'wav'
+        if (normalizedMime === 'audio/ogg') return 'ogg'
+        if (normalizedMime === 'audio/aac') return 'aac'
+        if (normalizedMime === 'audio/mp4' || normalizedMime === 'audio/x-m4a') return 'm4a'
+        return ''
+    }
+
+    const inferAudioTypeFromUrl = url => {
+        try {
+            const pathname = new URL(url).pathname || ''
+            const matched = pathname.match(/\.([a-z0-9]+)$/i)
+            return matched?.[1]?.toLowerCase() || ''
+        } catch (_) {
+            const matched = String(url || '').match(/\.([a-z0-9]+)(?:\?|#|$)/i)
+            return matched?.[1]?.toLowerCase() || ''
+        }
+    }
+
+    const buildRemoteAudioMetadata = (metadata, headers, url) => {
+        const format = metadata?.format || {}
+        const sampleRate = normalizePositiveNumber(format.sampleRate)
+        const bitrate = normalizePositiveNumber(format.bitrate)
+        const bitsPerSample = normalizePositiveNumber(format.bitsPerSample)
+        const duration = normalizePositiveNumber(format.duration)
+        const mimeType = normalizeContentType(headers?.['content-type'])
+        const type = inferAudioTypeFromMime(mimeType) || inferAudioTypeFromUrl(url)
+
+        return {
+            sampleRate: sampleRate ? Math.round(sampleRate) : 0,
+            bitrate: bitrate ? Math.round(bitrate) : 0,
+            bitsPerSample: bitsPerSample ? Math.round(bitsPerSample) : 0,
+            duration,
+            size: getRemoteAudioSize(headers),
+            type,
+            mimeType,
+            container: typeof format.container === 'string' ? format.container : '',
+            codec: typeof format.codec === 'string' ? format.codec : '',
+            lossless: format.lossless === true,
         }
     }
 
@@ -850,7 +949,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     })
     registerSettingsIpc({ ipcMain, settingsStore, win, registerShortcuts })
-    registerCustomSourceIpc({ ipcMain })
     registerHifiOutputIpc({
         ipcMain,
         dialog,
@@ -1062,6 +1160,45 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
 
         return Buffer.from(response.data)
+    })
+    ipcMain.removeHandler('remote-audio-metadata')
+    ipcMain.handle('remote-audio-metadata', async (_event, request = {}) => {
+        const requestUrl = typeof request === 'string' ? request : request?.url
+        const parsedUrl = parseUrlSafely(requestUrl)
+        const option = request?.option && typeof request.option === 'object' ? request.option : request
+        if (!isSafeRemoteAudioMetadataUrl(parsedUrl)) {
+            throw new Error('unsupported-remote-audio-metadata-request')
+        }
+
+        const headers = normalizeRequestHeaders(option.headers, audioMetadataHeaderNames)
+        headers.Range = `bytes=0-${remoteAudioMetadataMaxBytes - 1}`
+        if (!headers.Accept && !headers.accept) headers.Accept = 'audio/*,*/*'
+
+        const response = await requestWithTransientRetry({
+            url: parsedUrl.toString(),
+            method: 'get',
+            params: normalizePlainObject(option.params),
+            headers,
+            timeout: normalizeTimeout(option.timeout || remoteAudioMetadataTimeoutMs),
+            responseType: 'arraybuffer',
+            maxContentLength: remoteAudioMetadataMaxContentLength,
+            maxBodyLength: remoteAudioMetadataMaxContentLength,
+            validateStatus: () => true,
+        }, trustedResourceRetryDelays)
+
+        if (response.status < 200 || response.status >= 300) {
+            throw buildTrustedResourceError({ response }, parsedUrl.toString())
+        }
+
+        const buffer = Buffer.from(response.data || [])
+        if (!buffer.length) return null
+
+        const mimeType = normalizeContentType(response.headers?.['content-type'])
+        const metadata = await parseBuffer(buffer, mimeType || undefined, {
+            duration: false,
+            skipCovers: true,
+        })
+        return buildRemoteAudioMetadata(metadata, response.headers || {}, parsedUrl.toString())
     })
     ipcMain.removeHandler('read-local-audio-buffer')
     ipcMain.handle('read-local-audio-buffer', async (e, filePath) => {

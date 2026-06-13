@@ -8,6 +8,7 @@
   import { storeToRefs } from 'pinia'
   import { getSongDisplayName } from '../utils/songName'
   import { getIndexedSong } from '../utils/songList'
+  import { shouldBlockRestrictedPlayback } from '../utils/restrictedPlaybackAvailability'
   const router = useRouter()
   const playerStore = usePlayerStore()
   const { playing, progress, playMode, currentMusic, currentIndex, listInfo, songList, shuffledList, shuffleIndex, songId, widgetState, playlistWidgetShow, lyricShow, showSongTranslation } = storeToRefs(playerStore)
@@ -114,7 +115,7 @@
         key-field="id"
         v-slot="{ item, index }"
       >
-        <div class="list-item" :class="{'list-item-playing': songId == item.id, 'list-item-disabled': item.playable !== undefined && !item.playable }" @dblclick="play(item.id, index)">
+        <div class="list-item" :class="{'list-item-playing': songId == item.id, 'list-item-disabled': shouldBlockRestrictedPlayback(item) }" @dblclick="play(item.id, index)">
           <div class="item-info">
             <div class="playing-eq" v-show="(songId == item.id)" :class="{ 'is-paused': !playing }" aria-hidden="true">
               <span class="bar"></span>

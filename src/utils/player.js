@@ -13,11 +13,11 @@ import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
 import { markRaw, toRaw, watch } from "vue";
 import { getPreferredQuality } from './quality'
-import { resolveCustomTrackByQualityPreference, resolveTrackByQualityPreference, resolveTrackWithCustomFallback } from './musicUrlResolver'
+import { resolveMatchedTrackByQualityPreference, resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSongDisplayName } from './songName'
 import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from './siren'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
-import { canTryCustomSourceForRestrictedSong, getNoCopyrightRecommendedSongId, getRestrictedPlaybackFailureMessage } from './customSourceAvailability'
+import { getNoCopyrightRecommendedSongId, getRestrictedPlaybackFailureMessage, hasNoCopyrightAlternativeHint } from './restrictedPlaybackAvailability'
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
 import { PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from './player/playbackTicker'
 import { initPlayerExternalBridge as initExternalBridge } from './player/externalBridge'
@@ -392,22 +392,14 @@ function isGaplessPreloadUsable(entry, song, url = '') {
     return !!(entry.howl && typeof entry.howl.play === 'function' && entry.howl.state?.() !== 'unloaded')
 }
 
-function buildRemotePlaybackInfo(trackInfo, isCustomSource = false) {
+function buildRemotePlaybackInfo(trackInfo) {
     return trackInfo?.url
         ? {
             url: trackInfo.url,
             trackInfo,
             isSiren: false,
-            isCustomSource,
         }
         : null
-}
-
-async function resolveCustomSongPlaybackInfo(song, preferredQuality, options = {}) {
-    const trackInfo = await resolveCustomTrackByQualityPreference(song, preferredQuality, {
-        allowDisabled: options.allowDisabled === true,
-    })
-    return buildRemotePlaybackInfo(trackInfo, true)
 }
 
 async function resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options = {}) {
@@ -418,6 +410,17 @@ async function resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality,
         force: options.force === true,
     })
     return buildRemotePlaybackInfo(trackInfo)
+}
+
+async function resolveMatchedPlaybackInfo(song, preferredQuality) {
+    if (!hasNoCopyrightAlternativeHint(song)) return null
+    try {
+        const trackInfo = await resolveMatchedTrackByQualityPreference(song.id, preferredQuality)
+        return buildRemotePlaybackInfo(trackInfo)
+    } catch (error) {
+        console.warn('匹配替代音源失败:', error)
+        return null
+    }
 }
 
 async function resolveSongPlaybackInfo(song, options = {}) {
@@ -448,7 +451,6 @@ async function resolveSongPlaybackInfo(song, options = {}) {
     const playbackId = options.id ?? song.id
     if (!playbackId) return null
     const preferredQuality = getPreferredQuality(options.quality ?? quality.value)
-    const allowDisabledCustomSource = canTryCustomSourceForRestrictedSong(song)
 
     if (options.checkAvailability) {
         const availability = await checkMusic(playbackId)
@@ -456,10 +458,10 @@ async function resolveSongPlaybackInfo(song, options = {}) {
             const recommendedPlaybackInfo = await resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options)
             if (recommendedPlaybackInfo) return recommendedPlaybackInfo
 
-            const customPlaybackInfo = await resolveCustomSongPlaybackInfo(song, preferredQuality, {
-                allowDisabled: allowDisabledCustomSource,
-            })
-            return customPlaybackInfo || {
+            const matchedPlaybackInfo = await resolveMatchedPlaybackInfo(song, preferredQuality)
+            if (matchedPlaybackInfo) return matchedPlaybackInfo
+
+            return {
                 unavailable: true,
                 availability,
             }
@@ -469,12 +471,13 @@ async function resolveSongPlaybackInfo(song, options = {}) {
     const recommendedPlaybackInfo = await resolveNoCopyrightRecommendedPlaybackInfo(song, preferredQuality, options)
     if (recommendedPlaybackInfo) return recommendedPlaybackInfo
 
-    const trackInfo = await resolveTrackWithCustomFallback(song, preferredQuality, {
-        id: playbackId,
+    const trackInfo = await resolveTrackByQualityPreference(playbackId, preferredQuality, {
         force: options.force === true,
-        allowDisabled: allowDisabledCustomSource,
     })
-    return buildRemotePlaybackInfo(trackInfo, trackInfo?.source === 'custom-source')
+    const playbackInfo = buildRemotePlaybackInfo(trackInfo)
+    if (playbackInfo) return playbackInfo
+
+    return resolveMatchedPlaybackInfo(song, preferredQuality)
 }
 
 function shouldUseHifiOutput(playbackInfo = {}) {
@@ -577,7 +580,6 @@ export function preloadGaplessSongPlayback(song, options = {}) {
 
             const playbackInfo = await resolveSongPlaybackInfo(song, { quality: preferredQuality })
             if (token !== gaplessPreloadToken || !gaplessPlayback.value || !playbackInfo?.url) return null
-            if (playbackInfo.isCustomSource) return null
 
             const nextHowl = markRaw(await createDecodedAudioPlayer(playbackInfo.url, {
                 localPath: playbackInfo.localPath,
@@ -1905,50 +1907,25 @@ export function setSongLevel(level, streamInfo = null) {
 
     const normalizedLevel = typeof level === 'string' && level ? level : 'unknown'
     const levelField = levelFieldMap[normalizedLevel]
-    const mappedLevelInfo = streamInfo?.source === 'custom-source' ? null : (levelField ? currentSong[levelField] : null)
+    const mappedLevelInfo = levelField ? currentSong[levelField] : null
     const streamLevelInfo = buildLevelInfoFromStream(streamInfo || {})
+    const preferStreamLevelInfo = streamInfo?.source === 'matched-source'
 
-    currentSong.level = mappedLevelInfo || streamLevelInfo || null
+    currentSong.level = preferStreamLevelInfo
+        ? (streamLevelInfo || mappedLevelInfo || null)
+        : (mappedLevelInfo || streamLevelInfo || null)
     currentSong.actualLevel = normalizedLevel
     // 保持旧字段兼容：quality 表示当前曲目实际返回档位，而非用户偏好。
     currentSong.quality = normalizedLevel
-    if (streamInfo?.source === 'custom-source') {
-        currentSong.hmPlaybackSource = 'custom-source'
-        currentSong.hmCustomSourceName = streamInfo.sourceName || ''
-    } else {
-        clearPlaybackSourceMeta(currentSong)
-    }
-}
-
-function clearPlaybackSourceMeta(song) {
-    if (!song) return
-    delete song.hmPlaybackSource
-    delete song.hmCustomSourceName
-}
-
-function applyCustomSourceTrackInfo(song, trackInfo = {}) {
-    if (!song) return
-    const normalizedLevel = typeof trackInfo.level === 'string' && trackInfo.level ? trackInfo.level : 'custom'
-    song.level = buildLevelInfoFromStream(trackInfo)
-    song.actualLevel = normalizedLevel
-    song.quality = normalizedLevel
-    song.hmPlaybackSource = 'custom-source'
-    song.hmCustomSourceName = trackInfo.sourceName || ''
 }
 
 function applyPlaybackInfoToCurrentSong(targetSong, playbackInfo) {
     if (!targetSong || !playbackInfo) return
     if (playbackInfo.isSiren) {
-        clearPlaybackSourceMeta(targetSong)
         applySirenTrackInfo(targetSong, playbackInfo.url)
         return
     }
-    if (playbackInfo.isCustomSource) {
-        applyCustomSourceTrackInfo(targetSong, playbackInfo.trackInfo)
-        return
-    }
     if (playbackInfo.trackInfo) {
-        clearPlaybackSourceMeta(targetSong)
         setSongLevel(playbackInfo.trackInfo.level, playbackInfo.trackInfo)
     }
 }

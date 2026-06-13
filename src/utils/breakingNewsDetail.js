@@ -3,6 +3,7 @@ import { getAlbumDetail } from '../api/album'
 import { getPlaylistDetail } from '../api/playlist'
 import { getMVDetail } from '../api/mv'
 import { mapSongsPlayableStatus } from './songStatus'
+import { shouldBlockRestrictedPlayback } from './restrictedPlaybackAvailability'
 
 const RESOLVABLE_TARGET_TYPES = new Set([1, 10, 1000, 1004])
 const detailCache = new Map()
@@ -148,7 +149,7 @@ async function fetchBreakingNewsDetail(banner) {
       title: song?.name || '未命名歌曲',
       subtitle: artistText,
       desc: `收录于专辑《${albumName}》`,
-      stats: song?.playable === false ? `当前状态：${song?.reason || '不可播放'}` : `歌曲 ID: ${song?.id || id}`,
+      stats: shouldBlockRestrictedPlayback(song) ? `当前状态：${song?.reason || '不可播放'}` : `歌曲 ID: ${song?.id || id}`,
       cover: song?.al?.picUrl || fallbackCover,
       shareUrl: buildSongUrl(song?.id || id),
       song,

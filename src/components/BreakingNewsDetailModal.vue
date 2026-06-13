@@ -7,6 +7,7 @@ import { useOtherStore } from '../store/otherStore'
 import { addToNext } from '../utils/player/lazy'
 import { noticeOpen } from '../utils/dialog'
 import { copyToClipboard } from '../utils/clipboard'
+import { getRestrictedPlaybackFailureMessage, shouldBlockRestrictedPlayback } from '../utils/restrictedPlaybackAvailability'
 import {
   getBreakingNewsDetail,
   getCachedBreakingNewsDetail,
@@ -213,8 +214,8 @@ const handlePrimaryAction = async () => {
       return
     }
 
-    if (song.playable === false) {
-      noticeOpen(song.reason || '当前歌曲无法播放', 2)
+    if (shouldBlockRestrictedPlayback(song)) {
+      noticeOpen(getRestrictedPlaybackFailureMessage(song), 2)
       return
     }
 

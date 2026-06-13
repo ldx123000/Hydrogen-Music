@@ -183,6 +183,9 @@ function requestTrustedResource(request) {
 function requestAudioArrayBuffer(request) {
     return ipcRenderer.invoke('audio-buffer-request', request)
 }
+function getRemoteAudioMetadata(request) {
+    return ipcRenderer.invoke('remote-audio-metadata', request)
+}
 function readLocalAudioBuffer(filePath) {
     return ipcRenderer.invoke('read-local-audio-buffer', filePath)
 }
@@ -345,14 +348,8 @@ contextBridge.exposeInMainWorld('windowApi', {
     requestNcmApi,
     submitNcmClientLog,
     requestTrustedResource,
-    getCustomSourceState: () => ipcRenderer.invoke('custom-source:get-state'),
-    importCustomSource: () => ipcRenderer.invoke('custom-source:import'),
-    importCustomSourceFromUrl: (url) => ipcRenderer.invoke('custom-source:import-url', url),
-    setCustomSourceEnabled: (enabled) => ipcRenderer.invoke('custom-source:set-enabled', enabled),
-    removeCustomSource: () => ipcRenderer.invoke('custom-source:remove'),
-    testCustomSource: (request) => ipcRenderer.invoke('custom-source:test', request),
-    resolveCustomMusicUrl: (request) => ipcRenderer.invoke('custom-source:resolve-music-url', request),
     requestAudioArrayBuffer,
+    getRemoteAudioMetadata,
     readLocalAudioBuffer,
     getHifiOutputState,
     selectHifiOutputMpv,

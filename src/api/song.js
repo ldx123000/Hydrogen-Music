@@ -37,6 +37,15 @@ export function getMusicUrl(id, level = 'lossless', requestParams = {}) {
 }
 
 /**
+ * 匹配不可播歌曲的可用音源
+ * @param {string|number} id - 歌曲 ID
+ * @param {object} requestParams - 额外透传参数
+ */
+export function getMatchedMusicUrl(id, requestParams = {}) {
+    return get('/song/url/match', { ...requestParams, id });
+}
+
+/**
  * 喜欢/取消喜欢音乐
  * @param {string|number} id - 歌曲ID
  * @param {boolean} like - true为喜欢，false为取消喜欢

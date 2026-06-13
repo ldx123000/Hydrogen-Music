@@ -395,4 +395,27 @@
             }
         }
     }
+
+  :global(html.dark .library-type .type-option .option) {
+    color: var(--muted-text) !important;
+    -webkit-text-fill-color: var(--muted-text) !important;
+  }
+
+  :global(html.dark .library-type .type-option .option-selected) {
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+  }
+
+  :global(html.dark .library-type .type-one .option-tracker .tracker-line) {
+    background-color: var(--border) !important;
+  }
+
+  :global(html.dark .library-type .type-one .option-tracker .tracker) {
+    background-color: var(--text) !important;
+  }
+
+  :global(html.dark .library-type .refresh:hover) {
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+  }
 </style>

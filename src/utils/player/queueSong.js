@@ -49,7 +49,9 @@ function normalizeAlbum(album) {
 function normalizeNoCopyrightRcmd(value) {
     if (!value || typeof value !== 'object') return null
     const songId = value.songId ?? value.id
-    return isBlankValue(songId) ? null : { songId }
+    const normalized = pickDefined(value, ['type', 'typeDesc', 'thirdPartySong', 'expInfo'])
+    if (!isBlankValue(songId)) normalized.songId = songId
+    return Object.keys(normalized).length > 0 ? normalized : null
 }
 
 function normalizePrivilege(privilege) {
@@ -124,8 +126,6 @@ export function normalizeQueueSong(song) {
         'hmCloudId',
         'hmCloudFileName',
         'hmCloudSongName',
-        'hmPlaybackSource',
-        'hmCustomSourceName',
         'actualLevel',
         'quality',
         'level',

@@ -12,7 +12,7 @@ import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
 import { noticeOpen } from '../utils/dialog'
 import { getSongDisplayName } from '../utils/songName'
-import { canPlayRestrictedSong, getCustomSourceAvailability, getRestrictedPlaybackFailureMessage, hasRestrictedPlaybackAlternative } from '../utils/customSourceAvailability'
+import { getRestrictedPlaybackFailureMessage, shouldBlockRestrictedPlayback } from '../utils/restrictedPlaybackAvailability'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -57,7 +57,6 @@ const props = defineProps({
 })
 const hoverRowKey = ref(null)
 const recycleScroller = ref(null)
-const customSourceHasSource = ref(false)
 const rowKeyBySong = new WeakMap()
 let rowKeySeed = 0
 
@@ -107,16 +106,11 @@ const refreshRecycleScroller = async () => {
 const scheduleRecycleScrollerRefresh = () => {
     void refreshRecycleScroller()
 }
-const refreshCustomSourceAvailability = async () => {
-    const state = await getCustomSourceAvailability()
-    customSourceHasSource.value = state.hasSource === true
-}
 const refreshListRuntimeState = () => {
     scheduleRecycleScrollerRefresh()
-    void refreshCustomSourceAvailability()
 }
 const isSongDisabled = song => {
-    return song?.playable !== undefined && !song.playable && !hasRestrictedPlaybackAlternative(song, customSourceHasSource.value)
+    return shouldBlockRestrictedPlayback(song)
 }
 
 watch(scrollerItems, scheduleRecycleScrollerRefresh, { flush: 'post' })
@@ -131,13 +125,9 @@ const checkArtist = artistId => {
     playerStore.forbidLastRouter = true
 }
 const play = async (song, index) => {
-    if (!song.playable) {
-        const canPlayRestricted = await canPlayRestrictedSong(song)
-        if (!canPlayRestricted) {
-            noticeOpen(getRestrictedPlaybackFailureMessage(song), 2)
-            return
-        }
-        // 交给播放器主链路：网易不可用时会走自定义解析源 fallback。
+    if (shouldBlockRestrictedPlayback(song)) {
+        noticeOpen(getRestrictedPlaybackFailureMessage(song), 2)
+        return
     }
     if (props.type == 'search') {
         // 搜索结果播放时：沿用“新增到现有播放列表并立即播放”的统一逻辑

@@ -1,8 +1,6 @@
 <script setup>
   import { computed, ref, onUnmounted } from 'vue'
   import VueSlider from 'vue-slider-component'
-  import { noticeOpen } from '../utils/dialog'
-  import { checkMusic, getMusicUrl } from '../api/song'
   import { usePlayerStore } from '../store/playerStore'
   import { useLocalStore } from '../store/localStore'
   import { initDownloadManager } from '../utils/downloadManager'
@@ -12,7 +10,7 @@
   const localStore = useLocalStore()
   const { isFirstDownload, isDownloading, downloadList } = storeToRefs(localStore)
   const playerStore = usePlayerStore()
-  const { quality, showSongTranslation } =storeToRefs(playerStore)
+  const { showSongTranslation } = storeToRefs(playerStore)
   const progress = ref(0)
   const clampProgress = value => {
     const progressValue = Number(value)
@@ -100,6 +98,14 @@
 
 <style scoped lang="scss">
   .download-list{
+    --download-text: #000000;
+    --download-muted-text: #000000;
+    --download-selected-bg: #000000;
+    --download-selected-text: #ffffff;
+    --download-hover-bg: rgba(0, 0, 0, 0.045);
+    --download-progress-bg: rgba(0, 0, 0, 0.1);
+    --download-progress-fill: #000000;
+
     width: 100%;
     height: 100%;
     position: relative;
@@ -109,7 +115,7 @@
       flex-direction: row;
       align-items: center;
       font: 14Px SourceHanSansCN-Bold;
-      color: black;
+      color: var(--download-text);
       position: relative;
       .download-start, .download-pause{
         padding: 1Px 6Px;
@@ -120,12 +126,12 @@
       }
       .selected{
         // background-color: black;
-        color: white;
+        color: var(--download-selected-text) !important;
       }
       .tracker{
         width: 40Px;
         height: 100%;
-        background-color: black;
+        background-color: var(--download-selected-bg);
         position: absolute;
         top: 0;
         left: 0;
@@ -141,10 +147,15 @@
       .download-clear{
         width: 20Px;
         height: 20Px;
+        color: var(--download-text);
         position: absolute;
         right: 0;
+        path{
+          fill: currentColor;
+        }
         &:hover{
           cursor: pointer;
+          opacity: 0.72;
         }
       }
     }
@@ -158,19 +169,19 @@
         align-items: center;
         transition: 0.2s;
         &:hover{
-          background-color: rgba(0, 0, 0, 0.045);
+          background-color: var(--download-hover-bg);
         }
         .download-index{
           width: 30Px;
           font: 14Px Bender-Bold;
-          color: black;
+          color: var(--download-muted-text);
         }
         .download{
           width: 100%;
           .item-name{
             width: calc(100% - 50Px);
             font: 14Px SourceHanSansCN-Bold;
-            color: black;
+            color: var(--download-text);
             text-align: left;
             overflow: hidden;
             display: -webkit-box;
@@ -185,12 +196,18 @@
             .progress{
               width: 100% !important;
               height: 8Px !important;
-              background-color: rgba(0, 0, 0, 0.1);
+              background-color: var(--download-progress-bg);
+              :deep(.vue-slider-rail){
+                background-color: var(--download-progress-bg);
+              }
+              :deep(.vue-slider-process){
+                background-color: var(--download-progress-fill);
+              }
             }
             .progress-num{
               width: 50Px;
               font: 12Px Bender-Bold;
-              color: black;
+              color: var(--download-muted-text);
             }
           }
         }
@@ -199,7 +216,7 @@
     .list-none{
       width: 100%;
       font: 16Px Bender-Bold;;
-      color: black;
+      color: var(--download-muted-text);
       position: absolute;
       top: 50%;
       transform: translateY(-50%);
@@ -216,5 +233,25 @@
       opacity: 0;
       transform: scale(0.95);
     }
+  }
+
+  :global(html.dark) .download-list{
+    --download-text: var(--text);
+    --download-muted-text: var(--muted-text);
+    --download-selected-bg: rgba(255, 255, 255, 0.9);
+    --download-selected-text: #000000;
+    --download-hover-bg: rgba(255, 255, 255, 0.06);
+    --download-progress-bg: rgba(255, 255, 255, 0.16);
+    --download-progress-fill: rgba(255, 255, 255, 0.9);
+  }
+
+  :global(html.dark .download-list .download-control .selected){
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+  }
+
+  :global(html.dark .download-list .download-control .tracker){
+    background-color: rgba(255, 255, 255, 0.9) !important;
   }
 </style>

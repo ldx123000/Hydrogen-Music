@@ -5,7 +5,7 @@ import { getDjSubList, getDjPrograms } from '../api/dj'
 import { getLyric } from '../api/song'
 import { usePlayerStore } from '../store/playerStore'
 import { getPreferredQuality } from '../utils/quality'
-import { resolveTrackWithCustomFallback } from '../utils/musicUrlResolver'
+import { resolveTrackWithMatchedFallback } from '../utils/musicUrlResolver'
 
 const router = useRouter()
 const playerStore = usePlayerStore()
@@ -44,7 +44,7 @@ const playLatestProgram = async (radio) => {
     if (!mainSong?.id) return
 
     const preferredQuality = getPreferredQuality(playerStore.quality)
-    const trackInfo = await resolveTrackWithCustomFallback(mainSong, preferredQuality)
+    const trackInfo = await resolveTrackWithMatchedFallback(mainSong, preferredQuality, { id: mainSong.id })
     const url = trackInfo?.url
     if (!url) return
 
@@ -60,7 +60,8 @@ const playLatestProgram = async (radio) => {
       coverUrl: (program && (program.coverUrl || program.blurCoverUrl)) || (mainSong.album && mainSong.album.picUrl) || (mainSong.al && mainSong.al.picUrl) || null,
       programId: program?.id,
       programName: program?.name,
-      programDesc: program?.description || program?.desc || ''
+      programDesc: program?.description || program?.desc || '',
+      noCopyrightRcmd: mainSong.noCopyrightRcmd || null,
     }
 
     playerStore.songId = songItem.id
@@ -75,7 +76,6 @@ const playLatestProgram = async (radio) => {
       url,
       trackInfo,
       isSiren: false,
-      isCustomSource: trackInfo.source === 'custom-source',
     }, true, { targetSongId: songItem.id })
 
     // 加载歌词（可能无歌词，忽略错误）
