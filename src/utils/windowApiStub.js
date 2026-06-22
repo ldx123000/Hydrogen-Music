@@ -3,11 +3,11 @@
  * 避免因 windowApi 未定义导致 ReferenceError 崩溃（白屏）
  */
 (function () {
-  if (typeof windowApi !== 'undefined') return
+  if (typeof windowApi !== "undefined") return;
 
-  const noop = () => {}
-  const noopPromise = () => Promise.resolve()
-  const noopResolve = (val) => () => Promise.resolve(val)
+  const noop = () => {};
+  const noopPromise = () => Promise.resolve();
+  const noopResolve = (val) => () => Promise.resolve(val);
 
   window.windowApi = {
     // ── 窗口控制 ──
@@ -32,7 +32,7 @@
     // ── 设置 ──
     getSettings: noopResolve({
       music: {
-        level: 'high',
+        level: "high",
         lyricSize: 28,
         tlyricSize: 22,
         rlyricSize: 22,
@@ -42,11 +42,11 @@
         coverSize: 400,
       },
       local: {
-        downloadFolder: '',
+        downloadFolder: "",
         localFolder: [],
       },
       other: {
-        quitApp: 'minimize',
+        quitApp: "minimize",
         enableUpdate: false,
       },
     }),
@@ -58,10 +58,10 @@
     localMusicCount: noop,
     clearLocalMusicData: noop,
     openLocalFolder: noop,
-    openFile: noopResolve(''),
-    toFileUrl: (path) => path || '',
-    getLocalMusicImage: noopResolve(''),
-    getLocalMusicLyric: noopResolve(''),
+    openFile: noopResolve(""),
+    toFileUrl: (path) => path || "",
+    getLocalMusicImage: noopResolve(""),
+    getLocalMusicLyric: noopResolve(""),
 
     // ── 歌单 ──
     getLastPlaylist: noopResolve(null),
@@ -118,13 +118,17 @@
     lyricControl: noop,
     getRequestData: noopResolve(null),
     getBiliVideo: noopResolve(null),
-  }
+
+    // ── 数据重置 ──
+    resetAllData: noopResolve({ success: false, error: "Not in Electron" }),
+    onResetLocalStorage: noop,
+  };
 
   // 如果 electronAPI 也未定义，也补充一个空对象避免引用错误
-  if (typeof window.electronAPI === 'undefined') {
-    window.electronAPI = {}
+  if (typeof window.electronAPI === "undefined") {
+    window.electronAPI = {};
   }
-  if (typeof window.playerApi === 'undefined') {
+  if (typeof window.playerApi === "undefined") {
     window.playerApi = {
       onSetPosition: noop,
       onPlayPause: noop,
@@ -138,9 +142,9 @@
       sendPlayerCurrentTrackTime: noop,
       setVolume: noop,
       onVolumeChanged: noop,
-    }
+    };
   }
-  if (typeof window.process === 'undefined') {
-    window.process = { platform: 'browser' }
+  if (typeof window.process === "undefined") {
+    window.process = { platform: "browser" };
   }
-})()
+})();
