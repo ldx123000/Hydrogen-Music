@@ -329,6 +329,11 @@ function syncWindowsTaskbarPlaybackState() {
     }
 }
 
+function syncExternalPlaybackState() {
+    try { windowApi.playOrPauseMusicCheck(playing.value) } catch (_) {}
+    syncWindowsTaskbarPlaybackState()
+}
+
 watch(
     () => [Array.isArray(songList.value) ? songList.value.length : 0, currentIndex.value, songId.value],
     () => {
@@ -1286,8 +1291,7 @@ function clearActivePlaybackForSongSwitch() {
     if (currentHowl) currentMusic.value = null
     disposePlaybackImmediately(currentHowl)
     playing.value = false
-    try { windowApi.playOrPauseMusicCheck(false) } catch (_) {}
-    syncWindowsTaskbarPlaybackState()
+    syncExternalPlaybackState()
 }
 
 function resetFailedPlaybackState() {
@@ -1302,8 +1306,7 @@ function resetFailedPlaybackState() {
     lyric.value = null
     progress.value = 0
     time.value = 0
-    try { windowApi.playOrPauseMusicCheck(playing.value) } catch (_) {}
-    syncWindowsTaskbarPlaybackState()
+    syncExternalPlaybackState()
 }
 
 function isTransientPlaybackRequestError(error) {
@@ -1588,8 +1591,7 @@ function handlePlaybackStarted(playback) {
     }
     startProgress()
     playing.value = true
-    windowApi.playOrPauseMusicCheck(playing.value)
-    syncWindowsTaskbarPlaybackState()
+    syncExternalPlaybackState()
     updateWindowTitleDock()
     reportCurrentNcmPlaybackStart()
 }
@@ -1598,8 +1600,7 @@ function handlePlaybackPaused(playback) {
     if (!isCurrentHowl(playback)) return
     stopProgressSampling()
     playing.value = false
-    windowApi.playOrPauseMusicCheck(playing.value)
-    syncWindowsTaskbarPlaybackState()
+    syncExternalPlaybackState()
     if (playback?.__hmHifiOutputPlayer) return
     playback.fade(volume.value, 0, 200)
 }
@@ -1796,7 +1797,7 @@ function handlePlaybackEnded() {
     }
 
     if (playMode.value == 0 && currentIndex.value < songList.value.length - 1) { playNext(); return }
-    if (playMode.value == 0 && currentIndex.value == songList.value.length - 1) { playing.value = false; playModeOne = true; windowApi.playOrPauseMusicCheck(playing.value); syncWindowsTaskbarPlaybackState(); return }
+    if (playMode.value == 0 && currentIndex.value == songList.value.length - 1) { playing.value = false; playModeOne = true; syncExternalPlaybackState(); return }
     if (playMode.value == 1) { playNext(); return }
     if (playMode.value == 3) { playNext() }
     if (playMode.value == 2) { clearLycAnimation() }
@@ -2431,16 +2432,17 @@ export function pauseMusic() {
     if (playing.value && currentHowl?.__hmHifiOutputPlayer) {
         currentHowl.pause?.()
         playing.value = false
-        windowApi.playOrPauseMusicCheck(playing.value)
-        syncWindowsTaskbarPlaybackState()
+        syncExternalPlaybackState()
     } else if (playing.value && currentHowl && typeof currentHowl.fade === 'function' && typeof currentHowl.once === 'function') {
         currentHowl.fade(volume.value, 0, 200)
         currentHowl.once('fade', () => {
             currentHowl.pause?.()
             playing.value = false
+            syncExternalPlaybackState()
         })
     } else if (!currentHowl) {
         playing.value = false
+        syncExternalPlaybackState()
     }
     if (musicVideoDOM.value) {
         pauseMusicVideoDOM()
@@ -3216,10 +3218,27 @@ export function initPlayerExternalBridge() {
         onPlayerPause() {
             pauseMusic()
         },
-        onPlayerRepeat() {
+        onPlayerRepeat(loopStatus) {
+            if (loopStatus === 'None' || loopStatus === 'Track' || loopStatus === 'Playlist') {
+                if (isPersonalFMContext()) {
+                    applyPlayMode(loopStatus === 'Track' ? 2 : 3, { inFM: true })
+                    return
+                }
+                const mode = loopStatus === 'Track' ? 2 : loopStatus === 'Playlist' ? 1 : playMode.value === 3 ? 3 : 0
+                applyPlayMode(mode, { inFM: false })
+                return
+            }
             changePlayMode()
         },
-        onPlayerShuffle() {
+        onPlayerShuffle(shuffle) {
+            if (typeof shuffle === 'boolean') {
+                if (isPersonalFMContext()) {
+                    if (shuffle || playMode.value === 3) applyPlayMode(shuffle ? 3 : 2, { inFM: true })
+                    return
+                }
+                if (shuffle || playMode.value === 3) applyPlayMode(shuffle ? 3 : 0, { inFM: false })
+                return
+            }
             if (isPersonalFMContext()) {
                 applyPlayMode(playMode.value === 2 ? 3 : 2, { inFM: true })
                 return
@@ -3231,7 +3250,6 @@ export function initPlayerExternalBridge() {
         },
     })
 
-    windowApi.playOrPauseMusicCheck(playing.value)
+    syncExternalPlaybackState()
     windowApi.changeTrayMusicPlaymode(playMode.value)
-    syncWindowsTaskbarPlaybackState()
 }

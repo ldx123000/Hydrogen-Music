@@ -53,8 +53,8 @@ export function initPlayerExternalBridge(handlers = {}) {
         pushDisposable(window.playerApi.onPrevious(() => handlers.onPlayerPrevious?.()))
         pushDisposable(window.playerApi.onPlayM(() => handlers.onPlayerPlay?.()))
         pushDisposable(window.playerApi.onPauseM(() => handlers.onPlayerPause?.()))
-        pushDisposable(window.playerApi.onRepeat(() => handlers.onPlayerRepeat?.()))
-        pushDisposable(window.playerApi.onShuffle(() => handlers.onPlayerShuffle?.()))
+        pushDisposable(window.playerApi.onRepeat((event, loopStatus) => handlers.onPlayerRepeat?.(loopStatus, event)))
+        pushDisposable(window.playerApi.onShuffle((event, shuffle) => handlers.onPlayerShuffle?.(shuffle, event)))
         pushDisposable(window.playerApi.onVolumeChanged(volume => handlers.onPlayerVolumeChanged?.(volume)))
     }
 }

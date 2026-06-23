@@ -254,6 +254,8 @@ const createWindow = () => {
             nodeIntegration: false,
             contextIsolation: true,
             allowRunningInsecureContent: true,
+            // Playback state transitions must keep running while the window is hidden.
+            backgroundThrottling: false,
         }
     })
     myWindow = win
@@ -505,6 +507,8 @@ const createLyricWindow = () => {
             nodeIntegration: false,
             contextIsolation: true,
             allowRunningInsecureContent: true,
+            // Desktop lyrics should keep animating while another app is focused.
+            backgroundThrottling: false,
         }
     })
 

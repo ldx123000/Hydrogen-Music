@@ -201,12 +201,6 @@ function resetStartupPlayerState() {
 async function ensureMediaSessionReady() {
     if (mediaSessionInitialized) return
 
-    const runtimePlatform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
-    if (/Win/i.test(runtimePlatform)) {
-        mediaSessionInitialized = true
-        return
-    }
-
     try {
         const { initMediaSession } = await import('./mediaSession')
         initMediaSession()
