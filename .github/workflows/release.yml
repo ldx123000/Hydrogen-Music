@@ -54,7 +54,7 @@ jobs:
 
       - name: Install KuGouMusicApi dependencies
         working-directory: KuGouMusicApi
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --legacy-peer-deps
 
       - name: Build KuGouMusicApi JS bundle
         run: node scripts/build-kugou-api.cjs
