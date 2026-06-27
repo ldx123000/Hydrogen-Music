@@ -38,21 +38,52 @@ export const initSettings = () => {
       : 8;
     showSongTranslation.value = settings?.music?.showSongTranslation !== false;
     coverSize.value = settings?.music?.coverSize ?? 400;
+    // 记录旧的文件夹设置，用于检测变化
+    const prevDownloadFolder = localStore.downloadedFolderSettings;
+    const prevLocalFolders = [...(localStore.localFolderSettings || [])];
+
     localStore.downloadedFolderSettings = settings.local.downloadFolder;
     localStore.localFolderSettings = settings.local.localFolder;
     localStore.quitApp = settings.other.quitApp;
+
+    // 检测下载文件夹是否新增或变化
+    const downloadFolderChanged =
+      localStore.downloadedFolderSettings &&
+      localStore.downloadedFolderSettings !== prevDownloadFolder;
+    if (downloadFolderChanged) {
+      // 文件夹有变化，清除旧缓存并重新扫描
+      if (localStore.downloadedMusicFolder) {
+        windowApi.clearLocalMusicData("downloaded");
+        localStore.downloadedMusicFolder = null;
+        localStore.downloadedFiles = null;
+      }
+    }
     if (
       localStore.downloadedFolderSettings &&
       !localStore.downloadedMusicFolder
     ) {
-      scanMusic({ type: "downloaded", refresh: false });
+      scanMusic({ type: "downloaded", refresh: downloadFolderChanged });
     }
-    if (
-      localStore.localFolderSettings.length != 0 &&
-      !localStore.localMusicFolder
-    ) {
-      scanMusic({ type: "local", refresh: false });
+
+    // 检测本地文件夹列表是否有变化
+    const newLocalFolders = localStore.localFolderSettings || [];
+    const localFoldersChanged =
+      prevLocalFolders.length !== newLocalFolders.length ||
+      prevLocalFolders.some((f, i) => f !== newLocalFolders[i]);
+    if (localFoldersChanged) {
+      // 文件夹列表有变化，清除旧缓存并重新扫描
+      if (localStore.localMusicFolder) {
+        windowApi.clearLocalMusicData("local");
+        localStore.localMusicFolder = null;
+        localStore.localMusicList = null;
+        localStore.localMusicClassify = null;
+      }
     }
+    if (newLocalFolders.length != 0 && !localStore.localMusicFolder) {
+      scanMusic({ type: "local", refresh: localFoldersChanged });
+    }
+
+    // 如果设置中已无文件夹但仍有缓存数据，清除它们
     if (
       !localStore.downloadedFolderSettings &&
       localStore.downloadedMusicFolder
@@ -61,10 +92,7 @@ export const initSettings = () => {
       localStore.downloadedFiles = null;
       windowApi.clearLocalMusicData("downloaded");
     }
-    if (
-      localStore.localFolderSettings.length == 0 &&
-      localStore.localMusicFolder
-    ) {
+    if (newLocalFolders.length == 0 && localStore.localMusicFolder) {
       ((localStore.localMusicFolder = null),
         (localStore.localMusicList = null));
       localStore.localMusicClassify = null;
