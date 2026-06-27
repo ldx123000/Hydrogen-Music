@@ -65,8 +65,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Create GitHub Release
-        run: pnpm run release
+      - name: Build application
+        run: pnpm run dist
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "Creating release for ${TAG}"
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --generate-notes \
+            release/*.exe release/*.zip release/*.blockmap release/latest.yml || \
+            echo "Release ${TAG} already exists or creation failed"
