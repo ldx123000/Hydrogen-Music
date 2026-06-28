@@ -156,12 +156,13 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     if (!Number.isFinite(num)) return 8;
     return Math.max(1, num);
   };
-  const defaultMusicLevel = "lossless";
+  const defaultMusicLevel = "flac";
   const availableMusicLevel = new Set([
     "standard",
     "higher",
     "exhigh",
     "lossless",
+    "flac",
     "hires",
     "jyeffect",
     "sky",
