@@ -34,6 +34,7 @@ let playModeOne = false //为true代表顺序播放已全部结束
 let refreshingStream = false
 let lastRefreshAttempt = 0
 let streamRefreshToken = 0
+let lastPersistedProgressSignature = ''
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -641,18 +642,29 @@ export function loadLastSong() {
             if (list) {
                 songList.value = list.songList
                 shuffledList.value = list.shuffledList
+                if (Number.isInteger(list.currentIndex) && list.currentIndex >= 0) {
+                    currentIndex.value = list.currentIndex
+                }
+                if (list.songId !== undefined && list.songId !== null) {
+                    songId.value = list.songId
+                }
+                const storedProgress = Number(list.progress)
+                if (Number.isFinite(storedProgress) && storedProgress >= 0) {
+                    progress.value = storedProgress
+                }
             }
             syncWindowsTaskbarPlaybackState()
             if (songList.value) {
-                const restoredSong = songList.value[currentIndex.value]
+                const restoreIndex = Number.isInteger(currentIndex.value) && currentIndex.value >= 0 ? currentIndex.value : 0
+                const restoredSong = songList.value[restoreIndex]
                 if (!restoredSong) return
 
                 // 恢复播放状态时，需要先设置歌曲ID
-                setId(restoredSong.id, currentIndex.value)
+                setId(restoredSong.id, restoreIndex)
                 syncWindowsTaskbarPlaybackState()
 
                 if (restoredSong.type == 'local') {
-                    getSongUrl(restoredSong.id, currentIndex.value, false, true)
+                    getSongUrl(restoredSong.id, restoreIndex, false, true)
                     return
                 }
 
@@ -669,7 +681,7 @@ export function loadLastSong() {
                     return
                 }
 
-                getSongUrl(restoredSong.id, currentIndex.value, false, false)
+                getSongUrl(restoredSong.id, restoreIndex, false, false)
                 if (musicVideo.value) loadMusicVideo(restoredSong.id)
             }
         })
@@ -687,6 +699,45 @@ function getSafeCurrentSeek() {
         console.warn('获取播放进度失败:', error)
     }
     return typeof progress.value === 'number' && !Number.isNaN(progress.value) ? progress.value : 0
+}
+
+function buildPlaybackSnapshotPayload() {
+    return {
+        songList: songList.value,
+        shuffledList: shuffledList.value,
+        progress: getSafeCurrentSeek(),
+        songId: songId.value,
+        currentIndex: currentIndex.value,
+    }
+}
+
+function buildPlaybackProgressPayload() {
+    return {
+        progress: getSafeCurrentSeek(),
+        songId: songId.value,
+        currentIndex: currentIndex.value,
+    }
+}
+
+function getPlaybackProgressSignature(payload) {
+    if (!payload) return ''
+    const progressBucket = Math.floor((Number(payload.progress) || 0) / 5)
+    return [
+        String(payload.songId ?? ''),
+        Number.isInteger(payload.currentIndex) ? payload.currentIndex : 0,
+        progressBucket,
+    ].join('|')
+}
+
+function persistPlaybackProgress() {
+    if (!Array.isArray(songList.value) || songList.value.length === 0 || !windowApi.saveLastPlaybackProgress) return
+
+    const payload = buildPlaybackProgressPayload()
+    const signature = getPlaybackProgressSignature(payload)
+    if (signature && signature === lastPersistedProgressSignature) return
+
+    lastPersistedProgressSignature = signature
+    windowApi.saveLastPlaybackProgress(payload)
 }
 
 async function refreshStreamAndResume(eventType, error) {
@@ -851,8 +902,10 @@ export function startProgress() {
     clearInterval(musicProgress)
     progress.value = currentMusic.value.seek()
     musicProgress = setInterval(() => {
-        if (currentMusic.value.seek() < time.value)
+        if (currentMusic.value.seek() < time.value) {
             progress.value = currentMusic.value.seek()
+            persistPlaybackProgress()
+        }
     }, 1000);
 }
 
@@ -1370,6 +1423,7 @@ export function pauseMusic() {
         currentMusic.value.once('fade', () => {
             currentMusic.value.pause()
             playing.value = false
+            persistPlaybackProgress()
         })
     }
     if (videoIsPlaying.value) {
@@ -1495,6 +1549,7 @@ export function changeProgressByDragStart() {
 }
 export function changeProgressByDragEnd(toTime) {
     changeProgress(toTime)
+    persistPlaybackProgress()
     if (playing.value) startProgress()
 }
 // ------------
@@ -2006,11 +2061,9 @@ export function addToNextLocal(song, autoplay) {
     addToNext(localMusicHandle([song], true), autoplay)
 }
 export function savePlaylist() {
-    let list = {
-        songList: songList.value,
-        shuffledList: shuffledList.value
-    }
-    windowApi.saveLastPlaylist(JSON.stringify(list))
+    const snapshot = buildPlaybackSnapshotPayload()
+    lastPersistedProgressSignature = getPlaybackProgressSignature(snapshot)
+    windowApi.saveLastPlaylist(JSON.stringify(snapshot))
 }
 export function songTime(dt) {
     if (dt) {
@@ -2188,11 +2241,8 @@ syncWindowsTaskbarPlaybackState()
 windowApi.beforeQuit(() => {
     //关闭之前清除下载管理中的状态
     windowApi.downloadPause('shutdown')
-    let list = {
-        songList: songList.value,
-        shuffledList: shuffledList.value
-    }
-    windowApi.exitApp(JSON.stringify(list))
+    const snapshot = buildPlaybackSnapshotPayload()
+    windowApi.exitApp(JSON.stringify(snapshot))
 })
 
 window.playerApi.onSetPosition((positionSeconds) => {

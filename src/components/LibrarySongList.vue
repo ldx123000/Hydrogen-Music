@@ -93,25 +93,34 @@ const scrollerItems = computed(() => {
     }))
 })
 const queueSongs = computed(() => (Array.isArray(props.queueSonglist) ? props.queueSonglist : props.songlist))
+const normalizeRouteName = routeName => {
+    const normalized = String(routeName || '')
+    return normalized.startsWith('~') ? normalized.slice(1) : normalized
+}
 
 const checkArtist = artistId => {
     if (!props.artistRouteEnabled || !artistId) return
     router.push('/mymusic/artist/' + artistId)
     playerStore.forbidLastRouter = true
 }
-const play = (song, index) => {
+const play = async (song, index) => {
     if (!song.playable) {
         noticeOpen(`当前歌曲无法播放${!!song.reason ? ', ' + song.reason : ''}`, 2)
         return
     }
     if (props.type == 'search') {
         // 搜索结果播放时：沿用“新增到现有播放列表并立即播放”的统一逻辑
-        addToNext(song, true)
+        await addToNext(song, true)
         return
     }
-    addToList(props.queueListType || router.currentRoute.value.name, queueSongs.value || [], props.queueMeta || null)
-    addSong(song.id, index, true)
-    if (playMode.value == 3) setShuffledList()
+    if (normalizeRouteName(router.currentRoute.value.name) == 'playlist' && libraryInfo.value?.id) {
+        await libraryStore.waitForPlaylistHydration(libraryInfo.value.id)
+    }
+    const targetQueueSongs = queueSongs.value || []
+    const targetIndex = targetQueueSongs.findIndex(item => item?.id == song.id)
+    await addToList(props.queueListType || router.currentRoute.value.name, targetQueueSongs, props.queueMeta || null)
+    await addSong(song.id, targetIndex >= 0 ? targetIndex : index, true)
+    if (playMode.value == 3) await setShuffledList()
 }
 
 const togglePlay = (song, index) => {
@@ -123,7 +132,7 @@ const togglePlay = (song, index) => {
         }
         return
     }
-    play(song, index)
+    void play(song, index)
 }
 
 const openMenu = (e, item) => {

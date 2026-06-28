@@ -31,6 +31,8 @@ app.setName("Hydrogen Music");
 let myWindow = null;
 let lyricWindow = null;
 let forceQuit = false;
+const MAIN_WINDOW_MIN_WIDTH = 1080;
+const MAIN_WINDOW_MIN_HEIGHT = 672;
 // 由 createWindow() 内部赋值，供 app.whenReady() 在 API 就绪后调用
 let loadMainContentRef = null;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
@@ -272,13 +274,13 @@ const createWindow = () => {
   const Winstate = require("electron-win-state").default;
   const winstate = new Winstate({
     //自定义默认窗口大小
-    defaultWidth: 1024,
-    defaultHeight: 672,
+    defaultWidth: MAIN_WINDOW_MIN_WIDTH,
+    defaultHeight: MAIN_WINDOW_MIN_HEIGHT,
   });
   const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
-    minWidth: 1024,
-    minHeight: 672,
+    minWidth: MAIN_WINDOW_MIN_WIDTH,
+    minHeight: MAIN_WINDOW_MIN_HEIGHT,
     // macOS 使用原生交通灯；其他平台仍用自定义无边框
     frame: isMac ? true : false,
     titleBarStyle: isMac ? "hiddenInset" : undefined,
