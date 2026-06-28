@@ -17,11 +17,15 @@ module.exports = async function MusicDownload(win) {
   let isClose = false
   const sanitize = (name) => {
     try {
-      return String(name || '')
+      const normalized = String(name || '')
         .replace(/[\\/:*?"<>|]/g, ' ')
+        .replace(/[\u0000-\u001f]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
+        .replace(/[. ]+$/g, '')
         .slice(0, 120) || 'unknown'
+      if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(normalized)) return `_${normalized}`
+      return normalized
     } catch (_) {
       return 'unknown'
     }

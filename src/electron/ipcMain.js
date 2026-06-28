@@ -12,6 +12,7 @@ const path = require("path");
 const { parseFile } = require("./musicMetadata");
 const { spawn } = require("child_process");
 const { loadLocalLyricPayload } = require("./localLyrics");
+const { listSystemFonts } = require("./systemFonts");
 let ffmpegPath = null;
 try {
   ffmpegPath = require("ffmpeg-static");
@@ -45,7 +46,7 @@ function normalizeDirectoryList(list) {
 }
 
 function normalizeStoredSettings(settings = {}, appVersion = "") {
-  const normalized = { ...settings };
+    const normalized = { ...settings };
   normalized.music = normalizeMusicSettings(normalized.music || {});
   normalized.local = {
     ...(normalized.local || {}),
@@ -57,6 +58,8 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
     globalShortcuts: normalized.other?.globalShortcuts !== false,
     enableUpdate: normalized.other?.enableUpdate !== false,
     quitApp: normalized.other?.quitApp === "quit" ? "quit" : "minimize",
+    customFont: typeof normalized.other?.customFont === "string" ? normalized.other.customFont.trim() : "",
+    customFontLabel: typeof normalized.other?.customFontLabel === "string" ? normalized.other.customFontLabel.trim() : "",
   };
   normalized._appVersion = appVersion || normalized._appVersion;
   return normalized;
@@ -220,6 +223,8 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     );
     normalized.level = normalizeMusicLevel(normalized.level);
     normalized.showSongTranslation = normalized.showSongTranslation !== false;
+    normalized.gaplessPlayback = normalized.gaplessPlayback === true;
+    normalized.audioVisualizer = normalized.audioVisualizer === true;
     // 兼容历史版本：读取后清理旧迁移标记字段。
     delete normalized.levelMigratedToLosslessV1;
     return normalized;
@@ -298,6 +303,8 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           lyricInterlude: 13,
           searchAssistLimit: 8,
           showSongTranslation: true,
+          gaplessPlayback: false,
+          audioVisualizer: false,
           coverSize: 400,
         },
         local: {
@@ -355,6 +362,8 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           globalShortcuts: true,
           enableUpdate: true,
           quitApp: "minimize",
+          customFont: "",
+          customFontLabel: "",
         },
       };
       initSettings = normalizeStoredSettings(initSettings, app.getVersion());
@@ -373,6 +382,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
       return normalizeDirectoryPath(filePaths[0]);
     }
   };
+  ipcMain.handle("system-fonts:list", () => listSystemFonts());
   ipcMain.handle("dialog:openDirectory", openDirectoryDialog);
   ipcMain.handle("dialog:openFile", openDirectoryDialog);
   ipcMain.on("register-shortcuts", () => {
@@ -417,6 +427,17 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     }
   });
   ipcMain.on("open-local-folder", (e, path) => {
+    try {
+      const targetPath = normalizeDirectoryPath(path);
+      if (!targetPath) return;
+
+      const stats = fs.statSync(targetPath);
+      if (stats.isDirectory()) {
+        shell.openPath(targetPath);
+        return;
+      }
+    } catch (_) {}
+
     shell.showItemInFolder(path);
   });
   ipcMain.handle("get-request-data", async (e, request) => {

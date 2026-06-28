@@ -242,6 +242,7 @@ contextBridge.exposeInMainWorld("windowApi", {
   hidePlayer,
   setSettings,
   getSettings: () => ipcRenderer.invoke("get-settings"),
+  getSystemFonts: () => ipcRenderer.invoke("system-fonts:list"),
   openDirectory: () => ipcRenderer.invoke("dialog:openDirectory"),
   openFile: () => ipcRenderer.invoke("dialog:openFile"),
   clearLocalMusicData,

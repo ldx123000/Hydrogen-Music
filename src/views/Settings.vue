@@ -8,10 +8,13 @@ import { isLogin } from "@/utils/authority";
 import { useUserStore } from "@/store/userStore";
 import { usePlayerStore } from "@/store/playerStore";
 import Selector from "../components/Selector.vue";
+import FontSelector from "../components/FontSelector.vue";
 import UpdateDialog from "../components/UpdateDialog.vue";
 import { setTheme, getSavedTheme } from "@/utils/theme";
 import { confirmAccountLogout } from "@/utils/accountSession";
 import { getDailyVipClaimText } from "@/utils/dailyVipClaim";
+import { applyCustomFontStyle } from "@/utils/setFont";
+import { buildFontOptions, loadSystemFontOptions, resolveSystemFontLabel, resolveSystemFontValue } from "@/utils/fontResolver";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -119,6 +122,20 @@ const themeOptions = ref([
   { label: "浅色", value: "light" },
   { label: "深色", value: "dark" },
 ]);
+const customFont = ref("");
+const customFontLabel = ref("");
+const systemFonts = ref([]);
+const systemFontsLoading = ref(false);
+let systemFontsLoadPromise = null;
+const PERFORMANCE_CONFIRM_MESSAGE =
+  "开启后此功能会消耗一定性能且可能造成卡顿，确定开启吗？";
+const fontOptions = computed(() =>
+  buildFontOptions({
+    systemFonts: systemFonts.value,
+    customFont: customFont.value,
+    customFontLabel: customFontLabel.value,
+  }),
+);
 const downloadFolder = ref(null);
 const downloadCreateSongFolder = ref(false);
 const downloadSaveLyricFile = ref(false);
@@ -190,6 +207,8 @@ onActivated(() => {
     coverSize.value = settings.music.coverSize ?? 400;
     playerStore.showSongTranslation =
       settings?.music?.showSongTranslation !== false;
+    playerStore.gaplessPlayback = settings?.music?.gaplessPlayback === true;
+    playerStore.audioVisualizer = settings?.music?.audioVisualizer === true;
     videoFolder.value = settings.local.videoFolder;
     downloadFolder.value = settings.local.downloadFolder;
     downloadCreateSongFolder.value = !!settings.local.downloadCreateSongFolder;
@@ -200,6 +219,8 @@ onActivated(() => {
     // 兼容旧配置：未写入过该字段时默认保持开启更新。
     appUpdateEnabled.value = settings?.other?.enableUpdate !== false;
     quitApp.value = settings.other.quitApp;
+    customFont.value = settings?.other?.customFont || "";
+    customFontLabel.value = settings?.other?.customFontLabel || "";
   });
 
   // Initialize theme selection
@@ -210,6 +231,7 @@ onActivated(() => {
   }
 
   void loadVipInfo();
+  void loadSystemFonts();
 
   // 设置更新事件监听器
   setupUpdateListeners();
@@ -268,6 +290,8 @@ const setAppSettings = () => {
       searchAssistLimit: normalizeSearchAssistLimit(searchAssistLimit.value),
       showSongTranslation: playerStore.showSongTranslation,
       coverSize: coverSize.value,
+      gaplessPlayback: playerStore.gaplessPlayback,
+      audioVisualizer: playerStore.audioVisualizer,
     },
     local: {
       videoFolder: videoFolder.value,
@@ -282,10 +306,48 @@ const setAppSettings = () => {
       // 关闭后会同时禁用启动自动检查和手动检查更新入口。
       enableUpdate: appUpdateEnabled.value,
       quitApp: quitApp.value,
+      customFont: customFont.value,
+      customFontLabel: customFont.value ? customFontLabel.value : "",
     },
   };
   playerStore.quality = musicLevel.value;
   windowApi.setSettings(JSON.stringify(settings));
+};
+
+const setCustomFont = (font, option = null) => {
+  const rawFont = typeof font === "string" ? font : customFont.value;
+  const resolvedFont = resolveSystemFontValue(rawFont, systemFonts.value);
+  const resolvedLabel = resolvedFont
+    ? String(
+        resolveSystemFontLabel(
+          resolvedFont,
+          option?.label || customFontLabel.value || rawFont,
+          systemFonts.value,
+        ),
+      ).trim()
+    : "";
+  const appliedFont = applyCustomFontStyle(resolvedFont);
+  customFont.value = appliedFont;
+  customFontLabel.value = appliedFont ? resolvedLabel : "";
+};
+
+const loadSystemFonts = async () => {
+  if (systemFonts.value.length > 0) return systemFonts.value;
+  if (systemFontsLoadPromise) return systemFontsLoadPromise;
+
+  systemFontsLoading.value = true;
+  systemFontsLoadPromise = loadSystemFontOptions()
+    .then((fonts) => {
+      systemFonts.value = Array.isArray(fonts) ? fonts : [];
+      if (customFont.value) setCustomFont(customFont.value);
+      return systemFonts.value;
+    })
+    .finally(() => {
+      systemFontsLoading.value = false;
+      systemFontsLoadPromise = null;
+    });
+
+  return systemFontsLoadPromise;
 };
 
 // apply theme immediately when user changes
@@ -514,6 +576,14 @@ const setCoverBlur = () => {
 const openCoverBlur = (flag) => {
   if (flag) playerStore.coverBlur = !playerStore.coverBlur;
 };
+const setAudioVisualizer = () => {
+  if (!playerStore.audioVisualizer)
+    dialogOpen("确定开启", PERFORMANCE_CONFIRM_MESSAGE, openAudioVisualizer);
+  else openAudioVisualizer(true);
+};
+const openAudioVisualizer = (flag) => {
+  if (flag) playerStore.audioVisualizer = !playerStore.audioVisualizer;
+};
 const userLogout = () => {
   confirmAccountLogout(router);
 };
@@ -522,6 +592,7 @@ const confirmLogout = () => {
 }
 const save = () => {
   selectedShortcut.value = null;
+  setCustomFont();
   setAppSettings();
   initSettings();
   noticeOpen("设置已保存", 2);
@@ -737,6 +808,49 @@ const clearFmRecent = () => {
                   v-model="coverSize"
                   :options="coverSizeOptions"
                 ></Selector>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name">歌曲无缝衔接</div>
+              <div class="option-operation">
+                <div
+                  class="toggle"
+                  @click="
+                    playerStore.gaplessPlayback = !playerStore.gaplessPlayback
+                  "
+                >
+                  <div
+                    class="toggle-off"
+                    :class="{ 'toggle-on-in': playerStore.gaplessPlayback }"
+                  >
+                    {{ playerStore.gaplessPlayback ? "已开启" : "已关闭" }}
+                  </div>
+                  <Transition name="toggle">
+                    <div
+                      class="toggle-on"
+                      v-show="playerStore.gaplessPlayback"
+                    ></div>
+                  </Transition>
+                </div>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name">音乐可视化</div>
+              <div class="option-operation">
+                <div class="toggle" @click="setAudioVisualizer()">
+                  <div
+                    class="toggle-off"
+                    :class="{ 'toggle-on-in': playerStore.audioVisualizer }"
+                  >
+                    {{ playerStore.audioVisualizer ? "已开启" : "已关闭" }}
+                  </div>
+                  <Transition name="toggle">
+                    <div
+                      class="toggle-on"
+                      v-show="playerStore.audioVisualizer"
+                    ></div>
+                  </Transition>
+                </div>
               </div>
             </div>
             <div class="option">
@@ -961,6 +1075,17 @@ const clearFmRecent = () => {
               <div class="option-name">主题</div>
               <div class="option-operation">
                 <Selector v-model="theme" :options="themeOptions"></Selector>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name">自定义字体</div>
+              <div class="option-operation">
+                <FontSelector
+                  v-model="customFont"
+                  :options="fontOptions"
+                  :max-items="8"
+                  @update:modelValue="setCustomFont"
+                ></FontSelector>
               </div>
             </div>
             <div class="option">

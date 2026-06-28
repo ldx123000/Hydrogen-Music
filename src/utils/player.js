@@ -11,7 +11,7 @@ import { usePlayerStore } from '../store/playerStore'
 import { useLibraryStore } from '../store/libraryStore'
 import { useOtherStore } from '../store/otherStore'
 import { storeToRefs } from 'pinia'
-import {watch} from "vue";
+import { markRaw, watch } from "vue";
 import { getPreferredQuality } from './quality'
 import { resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSongDisplayName } from './songName'
@@ -19,13 +19,14 @@ import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from './siren'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
 import { isLogin } from './authority'
+import { createDecodedAudioPlayer } from './webAudioGapless'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
 const libraryStore = useLibraryStore(pinia)
 const playerStore = usePlayerStore(pinia)
 const { libraryInfo } = storeToRefs(libraryStore)
-const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation, chorusMode } = storeToRefs(playerStore)
+const { currentMusic, playing, progress, volume, quality, playMode, songList, shuffledList, shuffleIndex, listInfo, songId, currentIndex, time, playlistWidgetShow, playerChangeSong, lyric, lyricsObjArr, lyricShow, lyricEle, isLyricDelay, widgetState, localBase64Img, musicVideo, currentMusicVideo, musicVideoDOM, videoIsPlaying, playerShow, lyricBlur, currentLyricIndex, showSongTranslation, gaplessPlayback, chorusMode } = storeToRefs(playerStore)
 
 let isProgress = false
 let musicProgress = null
@@ -35,6 +36,8 @@ let refreshingStream = false
 let lastRefreshAttempt = 0
 let streamRefreshToken = 0
 let lastPersistedProgressSignature = ''
+let gaplessPreload = null
+let gaplessPreloadToken = 0
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -61,6 +64,26 @@ watch(volume, (v) => {
 watch(showSongTranslation, () => {
     updateWindowTitleDock()
 })
+watch(
+    [
+        gaplessPlayback,
+        playMode,
+        quality,
+        songId,
+        currentIndex,
+        shuffleIndex,
+        chorusMode,
+    ],
+    () => {
+        scheduleGaplessPreload()
+    },
+)
+watch(
+    () => (Array.isArray(songList.value) ? songList.value.map(song => song?.id).join(',') : ''),
+    () => {
+        scheduleGaplessPreload()
+    },
+)
 
 function hasCurrentSongSelected() {
     const list = Array.isArray(songList.value) ? songList.value : []
@@ -207,6 +230,131 @@ function clearChorusPrefetchData() {
             delete song._chorusPrefetch
         }
     }
+}
+
+function clearGaplessPreload({ invalidate = true, unload = true } = {}) {
+    if (invalidate) gaplessPreloadToken += 1
+    if (unload && gaplessPreload?.player) {
+        try { gaplessPreload.player.unload?.() } catch (_) {}
+    }
+    gaplessPreload = null
+}
+
+function getGaplessPreloadCandidate() {
+    if (!gaplessPlayback.value || playMode.value == 2 || chorusMode.value) return null
+
+    const next = getNextSongInfo()
+    if (!next) return null
+
+    const targetSong = getSongByIdOrIndex(next.id, next.index)
+    if (!targetSong) return null
+
+    return {
+        id: next.id,
+        index: next.index,
+        song: targetSong,
+    }
+}
+
+async function resolveGaplessPlaybackInfo(targetSong, targetSongId) {
+    if (!targetSong) return null
+
+    if (targetSong.type === 'local') {
+        const fileUrl = windowApi?.toFileUrl ? windowApi.toFileUrl(targetSong.url) : targetSong.url
+        return fileUrl ? { url: fileUrl } : null
+    }
+
+    if (isSirenSong(targetSong)) {
+        const sirenPlayback = await resolveSirenSongPlayback(targetSong)
+        if (!sirenPlayback?.streamUrl) return null
+        return {
+            url: sirenPlayback.streamUrl,
+            level: getSirenAudioExtension(sirenPlayback.streamUrl),
+        }
+    }
+
+    const prefetched = targetSong._chorusPrefetch
+    if (prefetched?.url) {
+        return {
+            url: prefetched.url,
+            level: prefetched.level,
+            trackInfo: prefetched.trackInfo,
+        }
+    }
+
+    const checkResult = await checkMusic(targetSongId)
+    if (!checkResult?.success) return null
+
+    const preferredQuality = getPreferredQuality(quality.value)
+    const trackInfo = await resolveTrackByQualityPreference(targetSong, preferredQuality)
+    if (!trackInfo?.url) return null
+
+    return {
+        url: trackInfo.url,
+        level: trackInfo.level,
+        trackInfo,
+    }
+}
+
+async function preloadGaplessSong() {
+    const candidate = getGaplessPreloadCandidate()
+    if (!candidate) {
+        clearGaplessPreload()
+        return null
+    }
+
+    const preloadKey = `${candidate.id}:${quality.value || 'default'}`
+    if (gaplessPreload?.key === preloadKey && gaplessPreload?.player?.state?.() !== 'unloaded') {
+        return gaplessPreload
+    }
+
+    clearGaplessPreload({ unload: true })
+    const token = gaplessPreloadToken
+
+    try {
+        const playbackInfo = await resolveGaplessPlaybackInfo(candidate.song, candidate.id)
+        if (token !== gaplessPreloadToken || !gaplessPlayback.value || !playbackInfo?.url) return null
+
+        const player = markRaw(await createDecodedAudioPlayer(playbackInfo.url))
+        if (token !== gaplessPreloadToken || !gaplessPlayback.value) {
+            try { player.unload?.() } catch (_) {}
+            return null
+        }
+
+        gaplessPreload = {
+            key: preloadKey,
+            songId: String(candidate.id),
+            url: playbackInfo.url,
+            player,
+            level: playbackInfo.level,
+            trackInfo: playbackInfo.trackInfo,
+        }
+        return gaplessPreload
+    } catch (_) {
+        if (token === gaplessPreloadToken) gaplessPreload = null
+        return null
+    }
+}
+
+function scheduleGaplessPreload() {
+    if (!gaplessPlayback.value) {
+        clearGaplessPreload()
+        return
+    }
+
+    setTimeout(() => {
+        void preloadGaplessSong()
+    }, 0)
+}
+
+function takeGaplessPreload(targetSongId, url) {
+    if (!gaplessPlayback.value || !gaplessPreload) return null
+    if (String(gaplessPreload.songId) !== String(targetSongId)) return null
+    if (url && gaplessPreload.url !== url) return null
+
+    const entry = gaplessPreload
+    gaplessPreload = null
+    return entry
 }
 
 async function prefetchNextSongUrl() {
@@ -820,11 +968,11 @@ async function refreshStreamAndResume(eventType, error) {
     }
 }
 
-export function play(url, autoplay, resumeSeek = null) {
+export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
     // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
     clearInterval(musicProgress)
     if (currentMusic.value) {
-        currentMusic.value.unload()
+        try { currentMusic.value.unload?.() } catch (_) {}
         Howler.unload()
     }
     // 播放前更新音量
@@ -834,33 +982,8 @@ export function play(url, autoplay, resumeSeek = null) {
 
     const normalizedSeek = typeof resumeSeek === 'number' && !Number.isNaN(resumeSeek) ? Math.max(resumeSeek, 0) : null
 
-    currentMusic.value = new Howl({
-        src: url,
-        autoplay: autoplay,
-        html5: true,
-        preload: true,
-        format: ['mp3', 'flac', 'aac', 'm4a', 'wav', 'ogg', 'webm', 'mp4', 'weba', 'oga'],
-        loop: (playMode.value == 2),
-        volume: volume.value,
-        xhr: {
-            method: 'GET',
-            withCredentials: true,
-        },
-        onplayerror: function (_id, err) {
-            console.warn('检测到播放错误，尝试刷新播放地址', err)
-            refreshStreamAndResume('playerror', err)
-        },
-        onloaderror: function (_id, err) {
-            console.warn('加载音频失败，尝试刷新播放地址', err)
-            refreshStreamAndResume('loaderror', err)
-        },
-        onend: function () {
-            clearInterval(musicProgress)
-            clearChorusPlaybackState()
-            handleTrackPlaybackEnded()
-        }
-    })
-    currentMusic.value.once('load', () => {
+    const applyLoadedState = () => {
+        if (!currentMusic.value) return
         time.value = Math.floor(currentMusic.value.duration())
         updateCurrentSongDurationFromHowl()
         let targetSeek = null
@@ -896,21 +1019,67 @@ export function play(url, autoplay, resumeSeek = null) {
                 detail: { duration: Math.floor(currentMusic.value.duration() || 0), toTime: progress.value || 0 }
             }))
         } catch (_) {}
-    })
-    currentMusic.value.on('play', () => {
+    }
+    const handlePlaybackEnd = () => {
+        clearInterval(musicProgress)
+        clearChorusPlaybackState()
+        handleTrackPlaybackEnded()
+    }
+    const handlePlaybackStart = () => {
+        if (!currentMusic.value) return
         currentMusic.value.fade(0, volume.value, 200)
         startProgress()
         playing.value = true
         syncExternalPlaybackState()
         // 切歌/播放开始时统一更新窗口标题与（macOS）Dock 菜单
         updateWindowTitleDock()
-    })
-    currentMusic.value.on('pause', () => {
+        scheduleGaplessPreload()
+    }
+    const handlePlaybackPause = () => {
+        if (!currentMusic.value) return
         clearInterval(musicProgress)
         playing.value = false
         syncExternalPlaybackState()
         currentMusic.value.fade(volume.value, 0, 200)
+    }
+
+    if (preloadedPlayer) {
+        currentMusic.value = markRaw(preloadedPlayer)
+        currentMusic.value.loop?.(playMode.value == 2)
+        currentMusic.value.volume?.(volume.value)
+        currentMusic.value.on?.('play', handlePlaybackStart)
+        currentMusic.value.on?.('pause', handlePlaybackPause)
+        currentMusic.value.on?.('end', handlePlaybackEnd)
+        applyLoadedState()
+        if (autoplay) currentMusic.value.play?.()
+        return
+    }
+
+    currentMusic.value = new Howl({
+        src: url,
+        autoplay: autoplay,
+        html5: true,
+        preload: true,
+        format: ['mp3', 'flac', 'aac', 'm4a', 'wav', 'ogg', 'webm', 'mp4', 'weba', 'oga'],
+        loop: (playMode.value == 2),
+        volume: volume.value,
+        xhr: {
+            method: 'GET',
+            withCredentials: true,
+        },
+        onplayerror: function (_id, err) {
+            console.warn('检测到播放错误，尝试刷新播放地址', err)
+            refreshStreamAndResume('playerror', err)
+        },
+        onloaderror: function (_id, err) {
+            console.warn('加载音频失败，尝试刷新播放地址', err)
+            refreshStreamAndResume('loaderror', err)
+        },
     })
+    currentMusic.value.once('load', applyLoadedState)
+    currentMusic.value.on('play', handlePlaybackStart)
+    currentMusic.value.on('pause', handlePlaybackPause)
+    currentMusic.value.on('end', handlePlaybackEnd)
 }
 
 export function startProgress() {
@@ -1165,6 +1334,13 @@ export function addSong(id, index, autoplay, isLocal) {
     if (targetSong.type == 'local') isLocal = true
     else isLocal = false
 
+    const canUseGaplessTransition = gaplessPlayback.value && String(gaplessPreload?.songId || '') === String(id || '')
+
+    if (canUseGaplessTransition) {
+        getSongUrl(id, index, autoplay, isLocal)
+        return
+    }
+
     if (currentMusic.value && volume.value != 0) {
         currentMusic.value.fade(volume.value, 0, 200)
         currentMusic.value.once('fade', () => {
@@ -1244,6 +1420,51 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
     lyricsObjArr.value = null
     currentLyricIndex.value = -1
 
+    const directPreloadedEntry = takeGaplessPreload(targetSongId)
+    if (directPreloadedEntry?.player) {
+        if (isLocal) {
+            windowApi.getLocalMusicImage(targetSong.url).then(base64 => {
+                localBase64Img.value = base64
+                try { window.dispatchEvent(new CustomEvent('mediaSession:updateArtwork')) } catch (_) {}
+            })
+            play(directPreloadedEntry.url, autoplay, null, directPreloadedEntry.player)
+            const localLyric = await getLocalLyric(targetSong.url)
+            if (songId.value !== targetSongId) return
+            lyric.value = localLyric || { lrc: { lyric: '' } }
+            restorePlayerLyricAfterSongChange()
+            return
+        }
+
+        if (isSirenSong(targetSong)) {
+            targetSong.level = { sr: Howler.ctx?.sampleRate || 44100, br: (Howler.ctx?.sampleRate || 44100) * 16 * 2, size: 0 }
+            targetSong.actualLevel = directPreloadedEntry.level || getSirenAudioExtension(directPreloadedEntry.url)
+            targetSong.quality = targetSong.actualLevel
+            play(directPreloadedEntry.url, autoplay, null, directPreloadedEntry.player)
+            try {
+                const sirenPlayback = await resolveSirenSongPlayback(targetSong)
+                if (songId.value !== targetSongId) return
+                const sirenLyric = await getSirenLyricPayload(sirenPlayback?.lyricUrl)
+                if (songId.value !== targetSongId) return
+                lyric.value = sirenLyric
+            } catch (error) {
+                console.error('加载塞壬歌词失败:', error)
+                if (songId.value !== targetSongId) return
+                lyric.value = { lrc: { lyric: '' } }
+            }
+            restorePlayerLyricAfterSongChange()
+            return
+        }
+
+        play(directPreloadedEntry.url, autoplay, null, directPreloadedEntry.player)
+        setSongLevel(directPreloadedEntry.level, directPreloadedEntry.trackInfo)
+        getLyric(targetSong.hash).then(songLiric => {
+            if (songId.value !== targetSongId) return
+            lyric.value = songLiric
+            restorePlayerLyricAfterSongChange()
+        })
+        return
+    }
+
     if (isLocal) {
         windowApi.getLocalMusicImage(targetSong.url).then(base64 => {
             localBase64Img.value = base64
@@ -1252,7 +1473,8 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
         })
         const localPath = targetSong.url
         const fileUrl = windowApi?.toFileUrl ? windowApi.toFileUrl(localPath) : localPath
-        play(fileUrl, autoplay)
+        const preloadedEntry = takeGaplessPreload(targetSongId, fileUrl)
+        play(fileUrl, autoplay, null, preloadedEntry?.player || null)
         //获取本地歌词
         const localLyric = await getLocalLyric(targetSong.url)
         if (songId.value !== targetSongId) return
@@ -1281,9 +1503,15 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
                 return
             }
 
-            play(sirenPlayback.streamUrl, autoplay)
+            const preloadedEntry = takeGaplessPreload(targetSongId, sirenPlayback.streamUrl)
+            play(sirenPlayback.streamUrl, autoplay, null, preloadedEntry?.player || null)
 
             // 在音频加载完成后设置塞壬歌曲音质信息
+            if (preloadedEntry) {
+                targetSong.level = { sr: Howler.ctx?.sampleRate || 44100, br: (Howler.ctx?.sampleRate || 44100) * 16 * 2, size: 0 }
+                targetSong.actualLevel = preloadedEntry.level || getSirenAudioExtension(sirenPlayback.streamUrl)
+                targetSong.quality = targetSong.actualLevel
+            }
             if (currentMusic.value) {
                 const sirenStreamUrl = sirenPlayback.streamUrl
                 currentMusic.value.once('load', () => {
@@ -1327,16 +1555,19 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
     if (prefetched?.url) {
         const { url, level, trackInfo } = prefetched
         delete targetSong._chorusPrefetch
-        play(url, autoplay)
-        setSongLevel(level, trackInfo)
+        const preloadedEntry = takeGaplessPreload(targetSongId, url)
+        play(url, autoplay, null, preloadedEntry?.player || null)
+        setSongLevel(preloadedEntry?.level || level, preloadedEntry?.trackInfo || trackInfo)
         if (autoplay && chorusMode.value) {
-            currentMusic.value?.once?.('load', () => {
+            const startChorusPlayback = () => {
                 if (songId.value !== targetSongId || !chorusMode.value) return
                 void playCurrentSongChorus({
                     showNotice: false,
                     suppressUnsupportedNotice: true,
                 })
-            })
+            }
+            if (preloadedEntry?.player) setTimeout(startChorusPlayback, 0)
+            else currentMusic.value?.once?.('load', startChorusPlayback)
         }
         getLyric(targetSong.hash).then(songLiric => {
             if (songId.value !== targetSongId) return
@@ -1359,17 +1590,20 @@ export async function getSongUrl(id, index, autoplay, isLocal) {
                     playNext()
                     return
                 }
-                play(trackInfo.url, autoplay)
-                setSongLevel(trackInfo.level, trackInfo)
+                const preloadedEntry = takeGaplessPreload(targetSongId, trackInfo.url)
+                play(trackInfo.url, autoplay, null, preloadedEntry?.player || null)
+                setSongLevel(preloadedEntry?.level || trackInfo.level, preloadedEntry?.trackInfo || trackInfo)
                 if (autoplay && chorusMode.value) {
                     // 只在自动播放链路里自动套用副歌模式，避免恢复暂停歌曲时被强制拉起播放。
-                    currentMusic.value?.once?.('load', () => {
+                    const startChorusPlayback = () => {
                         if (songId.value !== targetSongId || !chorusMode.value) return
                         void playCurrentSongChorus({
                             showNotice: false,
                             suppressUnsupportedNotice: true,
                         })
-                    })
+                    }
+                    if (preloadedEntry?.player) setTimeout(startChorusPlayback, 0)
+                    else currentMusic.value?.once?.('load', startChorusPlayback)
                 }
             })
             getLyric(targetSong.hash).then(songLiric => {
@@ -1571,9 +1805,11 @@ export function changeProgressByDragEnd(toTime) {
 export function changePlayMode() {
     if (isPersonalFMContext()) {
         applyPlayMode(playMode.value == 2 ? 3 : 2, { inFM: true })
+        scheduleGaplessPreload()
         return
     }
     applyPlayMode(playMode.value != 3 ? playMode.value + 1 : 0, { inFM: false })
+    scheduleGaplessPreload()
 }
 
 export function playAll(listType, list, listMeta = null) {
