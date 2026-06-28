@@ -20,6 +20,7 @@ import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
 import { schedulePlaylistCacheInvalidation } from './cacheInvalidation'
 import { isLogin } from './authority'
 import { createDecodedAudioPlayer } from './webAudioGapless'
+import { PLAYBACK_TICK_FAST_INTERVAL_MS, subscribePlaybackTick } from './player/playbackTicker'
 
 const otherStore = useOtherStore()
 const userStore = useUserStore()
@@ -38,6 +39,10 @@ let streamRefreshToken = 0
 let lastPersistedProgressSignature = ''
 let gaplessPreload = null
 let gaplessPreloadToken = 0
+let disposeGaplessTransitionTicker = null
+let gaplessTransitionInProgress = false
+const GAPLESS_EARLY_START_SECONDS = 0.85
+const GAPLESS_CROSSFADE_MS = 700
 const levelFieldMap = {
     standard: 'l',
     higher: 'm',
@@ -164,6 +169,8 @@ function setCurrentSongChorusCache(song, segment) {
 }
 
 function handleTrackPlaybackEnded({ fromChorus = false } = {}) {
+    if (tryStartGaplessNextFromEnd()) return
+
     // FM 模式保持原有事件分发逻辑，避免影响漫游链路。
     if (listInfo.value && listInfo.value.type === 'personalfm') {
         const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
@@ -256,6 +263,13 @@ function getGaplessPreloadCandidate() {
     }
 }
 
+function isGaplessPreloadUsable(entry, targetSong = null, url = null) {
+    if (!entry?.player || entry.player.state?.() === 'unloaded') return false
+    if (targetSong && String(entry.songId || '') !== String(targetSong.id || '')) return false
+    if (url && entry.url !== url) return false
+    return true
+}
+
 async function resolveGaplessPlaybackInfo(targetSong, targetSongId) {
     if (!targetSong) return null
 
@@ -328,6 +342,7 @@ async function preloadGaplessSong() {
             player,
             level: playbackInfo.level,
             trackInfo: playbackInfo.trackInfo,
+            createdAt: Date.now(),
         }
         return gaplessPreload
     } catch (_) {
@@ -355,6 +370,195 @@ function takeGaplessPreload(targetSongId, url) {
     const entry = gaplessPreload
     gaplessPreload = null
     return entry
+}
+
+function stopProgressSampling() {
+    clearInterval(musicProgress)
+    musicProgress = null
+    if (disposeGaplessTransitionTicker) {
+        disposeGaplessTransitionTicker()
+        disposeGaplessTransitionTicker = null
+    }
+}
+
+function normalizePlaybackDuration(value) {
+    const duration = Number(value)
+    if (!Number.isFinite(duration) || duration <= 0) return 0
+    return duration
+}
+
+function clampPlaybackProgress(value, duration = time.value) {
+    const seek = Number(value)
+    const safeDuration = normalizePlaybackDuration(duration)
+    if (!Number.isFinite(seek) || seek <= 0) return 0
+    if (safeDuration <= 0) return seek
+    return Math.max(0, Math.min(seek, safeDuration))
+}
+
+function fadeOutPreviousPlayback(previousPlayback, nextPlayback) {
+    if (!previousPlayback || previousPlayback === nextPlayback) return
+
+    try {
+        const fromVolume = typeof previousPlayback.volume === 'function' ? previousPlayback.volume() : volume.value
+        previousPlayback.fade(fromVolume, 0, GAPLESS_CROSSFADE_MS)
+        previousPlayback.once?.('fade', () => {
+            try { previousPlayback.unload?.() } catch (_) {}
+        })
+    } catch (_) {
+        try { previousPlayback.unload?.() } catch (_) {}
+        return
+    }
+
+    setTimeout(() => {
+        try { previousPlayback.unload?.() } catch (_) {}
+    }, GAPLESS_CROSSFADE_MS + 80)
+}
+
+function updateNowPlayingWindowState(targetSong) {
+    if (!targetSong) return
+
+    const songName = getSongDisplayName(targetSong, 'Hydrogen Music', showSongTranslation.value)
+    const artistName = (targetSong.ar && targetSong.ar[0] && targetSong.ar[0].name) ? targetSong.ar[0].name : ''
+    const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
+    const isMac = /Mac/i.test(platform)
+    if (isMac) {
+        windowApi.updateDockMenu({ name: songName, artist: artistName })
+    } else {
+        const title = artistName ? `${songName} - ${artistName}` : songName
+        windowApi.setWindowTile(title)
+    }
+}
+
+async function hydrateGaplessStartedSongAssets(targetSong, targetSongId, entry) {
+    if (!targetSong) return
+    updateNowPlayingWindowState(targetSong)
+
+    if (targetSong.type === 'local') {
+        windowApi.getLocalMusicImage(targetSong.url).then(base64 => {
+            localBase64Img.value = base64
+            try { window.dispatchEvent(new CustomEvent('mediaSession:updateArtwork')) } catch (_) {}
+        })
+        const localLyric = await getLocalLyric(targetSong.url)
+        if (songId.value !== targetSongId) return
+        lyric.value = localLyric || { lrc: { lyric: '' } }
+        restorePlayerLyricAfterSongChange()
+        return
+    }
+
+    if (isSirenSong(targetSong)) {
+        targetSong.level = { sr: Howler.ctx?.sampleRate || 44100, br: (Howler.ctx?.sampleRate || 44100) * 16 * 2, size: 0 }
+        targetSong.actualLevel = entry?.level || getSirenAudioExtension(entry?.url || '')
+        targetSong.quality = targetSong.actualLevel
+        try {
+            const sirenPlayback = await resolveSirenSongPlayback(targetSong)
+            if (songId.value !== targetSongId) return
+            const sirenLyric = await getSirenLyricPayload(sirenPlayback?.lyricUrl)
+            if (songId.value !== targetSongId) return
+            lyric.value = sirenLyric
+        } catch (error) {
+            console.error('加载塞壬歌词失败:', error)
+            if (songId.value !== targetSongId) return
+            lyric.value = { lrc: { lyric: '' } }
+        }
+        restorePlayerLyricAfterSongChange()
+        return
+    }
+
+    setSongLevel(entry?.level, entry?.trackInfo)
+    getLyric(targetSong.hash).then(songLiric => {
+        if (songId.value !== targetSongId) return
+        lyric.value = songLiric
+        restorePlayerLyricAfterSongChange()
+    })
+}
+
+function getGaplessStartTarget(entry) {
+    const next = getNextSongInfo()
+    if (!next || String(entry?.songId || '') !== String(next.id || '')) return null
+
+    const targetSong = getSongByIdOrIndex(next.id, next.index)
+    if (!targetSong) return null
+
+    return {
+        id: next.id,
+        index: next.index,
+        song: targetSong,
+    }
+}
+
+function startGaplessTarget(target, entry, options = {}) {
+    if (!target?.song || target.id == null || !entry?.player) return false
+
+    const previousPlayback = currentMusic.value
+    gaplessPreloadToken += 1
+    gaplessPreload = null
+    gaplessTransitionInProgress = true
+    clearChorusPlaybackState()
+    stopProgressSampling()
+    lyric.value = null
+    lyricsObjArr.value = null
+    currentLyricIndex.value = -1
+    try { localBase64Img.value = null } catch (_) {}
+
+    setId(target.id, target.index)
+    syncWindowsTaskbarPlaybackState()
+    unloadMusicVideo()
+    progress.value = 0
+    time.value = Math.floor(entry.player.duration?.() || 0)
+
+    void hydrateGaplessStartedSongAssets(target.song, target.id, entry)
+    play(entry.url, true, null, entry.player, {
+        keepPrevious: true,
+        fadeInMs: GAPLESS_CROSSFADE_MS,
+    })
+    fadeOutPreviousPlayback(previousPlayback, currentMusic.value)
+
+    setTimeout(() => {
+        gaplessTransitionInProgress = false
+    }, options.early === true ? GAPLESS_CROSSFADE_MS + 120 : 80)
+
+    return true
+}
+
+function tryStartGaplessNextFromEnd(options = {}) {
+    if (!gaplessPlayback.value) return false
+
+    const entry = gaplessPreload
+    const target = getGaplessStartTarget(entry)
+    if (!target || !isGaplessPreloadUsable(entry, target.song)) return false
+
+    return startGaplessTarget(target, entry, options)
+}
+
+function maybeStartGaplessNextBeforeEnd(snapshot) {
+    if (gaplessTransitionInProgress) return
+    if (!gaplessPlayback.value || playMode.value == 2 || chorusMode.value) return
+    if (!snapshot?.playing) return
+
+    const duration = normalizePlaybackDuration(snapshot.duration)
+    const seek = clampPlaybackProgress(snapshot.seek, duration)
+    if (duration <= 0 || seek <= 0) return
+
+    const remaining = duration - seek
+    if (remaining <= 0 || remaining > GAPLESS_EARLY_START_SECONDS) return
+
+    if (!tryStartGaplessNextFromEnd({ early: true })) {
+        gaplessTransitionInProgress = false
+    }
+}
+
+function startGaplessTransitionMonitor() {
+    if (disposeGaplessTransitionTicker) {
+        disposeGaplessTransitionTicker()
+        disposeGaplessTransitionTicker = null
+    }
+    if (!gaplessPlayback.value || playMode.value == 2 || chorusMode.value) return
+
+    disposeGaplessTransitionTicker = subscribePlaybackTick(maybeStartGaplessNextBeforeEnd, {
+        id: 'player-gapless-transition',
+        interval: PLAYBACK_TICK_FAST_INTERVAL_MS,
+        immediate: false,
+    })
 }
 
 async function prefetchNextSongUrl() {
@@ -969,10 +1173,15 @@ async function refreshStreamAndResume(eventType, error) {
 }
 
 export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
+    const playOptions = arguments[4] || {}
+    const keepPreviousPlayback = playOptions.keepPrevious === true
+    const fadeInMs = Number.isFinite(playOptions.fadeInMs) ? Math.max(0, playOptions.fadeInMs) : 200
+    const previousPlayback = currentMusic.value
+
     // 切歌或重新播放前，先停止旧的进度计时，避免残留一帧旧进度覆盖UI
-    clearInterval(musicProgress)
-    if (currentMusic.value) {
-        try { currentMusic.value.unload?.() } catch (_) {}
+    stopProgressSampling()
+    if (previousPlayback && !keepPreviousPlayback) {
+        try { previousPlayback.unload?.() } catch (_) {}
         Howler.unload()
     }
     // 播放前更新音量
@@ -982,9 +1191,9 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
 
     const normalizedSeek = typeof resumeSeek === 'number' && !Number.isNaN(resumeSeek) ? Math.max(resumeSeek, 0) : null
 
-    const applyLoadedState = () => {
-        if (!currentMusic.value) return
-        time.value = Math.floor(currentMusic.value.duration())
+    const applyLoadedState = (playback) => {
+        if (currentMusic.value !== playback) return
+        time.value = Math.floor(playback.duration())
         updateCurrentSongDurationFromHowl()
         let targetSeek = null
         const pendingChorusForCurrentSong = pendingChorusPlayback
@@ -993,41 +1202,42 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
             : null
 
         if (pendingChorusForCurrentSong) {
-            targetSeek = Math.min(pendingChorusForCurrentSong.startTime, currentMusic.value.duration() || pendingChorusForCurrentSong.startTime)
+            targetSeek = Math.min(pendingChorusForCurrentSong.startTime, playback.duration() || pendingChorusForCurrentSong.startTime)
             loadLast = false
         } else if (normalizedSeek !== null) {
-            targetSeek = Math.min(normalizedSeek, currentMusic.value.duration() || normalizedSeek)
+            targetSeek = Math.min(normalizedSeek, playback.duration() || normalizedSeek)
             loadLast = false
         } else if (loadLast && !autoplay) {
-            targetSeek = Math.min(progress.value || 0, currentMusic.value.duration() || 0)
+            targetSeek = Math.min(progress.value || 0, playback.duration() || 0)
             loadLast = false
         }
 
         if (targetSeek !== null && !Number.isNaN(targetSeek)) {
-            currentMusic.value.volume(0)
-            currentMusic.value.seek(targetSeek)
+            playback.volume(0)
+            playback.seek(targetSeek)
             progress.value = targetSeek
         }
         if (pendingChorusForCurrentSong) {
             pendingChorusPlayback = null
-            startChorusMonitor(Math.min(pendingChorusForCurrentSong.endTime, currentMusic.value.duration() || pendingChorusForCurrentSong.endTime))
+            startChorusMonitor(Math.min(pendingChorusForCurrentSong.endTime, playback.duration() || pendingChorusForCurrentSong.endTime))
         }
         playerChangeSong.value = false
         // 通知 Media Session：新曲目加载完成，刷新一次系统时长/进度（静态策略）
         try {
             window.dispatchEvent(new CustomEvent('mediaSession:seeked', {
-                detail: { duration: Math.floor(currentMusic.value.duration() || 0), toTime: progress.value || 0 }
+                detail: { duration: Math.floor(playback.duration() || 0), toTime: progress.value || 0 }
             }))
         } catch (_) {}
     }
-    const handlePlaybackEnd = () => {
-        clearInterval(musicProgress)
+    const handlePlaybackEnd = (playback) => {
+        if (currentMusic.value !== playback) return
+        stopProgressSampling()
         clearChorusPlaybackState()
         handleTrackPlaybackEnded()
     }
-    const handlePlaybackStart = () => {
-        if (!currentMusic.value) return
-        currentMusic.value.fade(0, volume.value, 200)
+    const handlePlaybackStart = (playback) => {
+        if (currentMusic.value !== playback) return
+        playback.fade(0, volume.value, fadeInMs)
         startProgress()
         playing.value = true
         syncExternalPlaybackState()
@@ -1035,27 +1245,28 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
         updateWindowTitleDock()
         scheduleGaplessPreload()
     }
-    const handlePlaybackPause = () => {
-        if (!currentMusic.value) return
-        clearInterval(musicProgress)
+    const handlePlaybackPause = (playback) => {
+        if (currentMusic.value !== playback) return
+        stopProgressSampling()
         playing.value = false
         syncExternalPlaybackState()
-        currentMusic.value.fade(volume.value, 0, 200)
+        playback.fade(volume.value, 0, 200)
     }
 
     if (preloadedPlayer) {
-        currentMusic.value = markRaw(preloadedPlayer)
-        currentMusic.value.loop?.(playMode.value == 2)
-        currentMusic.value.volume?.(volume.value)
-        currentMusic.value.on?.('play', handlePlaybackStart)
-        currentMusic.value.on?.('pause', handlePlaybackPause)
-        currentMusic.value.on?.('end', handlePlaybackEnd)
-        applyLoadedState()
-        if (autoplay) currentMusic.value.play?.()
+        const playback = markRaw(preloadedPlayer)
+        currentMusic.value = playback
+        playback.loop?.(playMode.value == 2)
+        playback.volume?.(keepPreviousPlayback ? 0 : volume.value)
+        playback.on?.('play', () => handlePlaybackStart(playback))
+        playback.on?.('pause', () => handlePlaybackPause(playback))
+        playback.on?.('end', () => handlePlaybackEnd(playback))
+        applyLoadedState(playback)
+        if (autoplay) playback.play?.()
         return
     }
 
-    currentMusic.value = new Howl({
+    const playback = new Howl({
         src: url,
         autoplay: autoplay,
         html5: true,
@@ -1076,14 +1287,15 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
             refreshStreamAndResume('loaderror', err)
         },
     })
-    currentMusic.value.once('load', applyLoadedState)
-    currentMusic.value.on('play', handlePlaybackStart)
-    currentMusic.value.on('pause', handlePlaybackPause)
-    currentMusic.value.on('end', handlePlaybackEnd)
+    currentMusic.value = playback
+    playback.once('load', () => applyLoadedState(playback))
+    playback.on('play', () => handlePlaybackStart(playback))
+    playback.on('pause', () => handlePlaybackPause(playback))
+    playback.on('end', () => handlePlaybackEnd(playback))
 }
 
 export function startProgress() {
-    clearInterval(musicProgress)
+    stopProgressSampling()
     progress.value = currentMusic.value.seek()
     musicProgress = setInterval(() => {
         if (currentMusic.value.seek() < time.value) {
@@ -1091,6 +1303,7 @@ export function startProgress() {
             persistPlaybackProgress()
         }
     }, 1000);
+    startGaplessTransitionMonitor()
 }
 
 function findSongIndexById(id) {
