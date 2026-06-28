@@ -11,27 +11,26 @@ const API_READY_SETTLE_DELAY_MS = 250;
 
 let kugouApiProcess = null;
 let kugouApiStartupPromise = null;
-let firewallWarmupPromise = null;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getFirewallWarmupMarkerPath() {
+function getWindowsNetworkAccessMarkerPath() {
   try {
-    return path.join(app.getPath("userData"), "firewall-warmed.marker");
+    return path.join(app.getPath("userData"), "windows-network-access-guided.marker");
   } catch (_) {
     return null;
   }
 }
 
-function hasCompletedFirewallWarmup() {
-  const markerPath = getFirewallWarmupMarkerPath();
+function hasCompletedWindowsNetworkAccessGuide() {
+  const markerPath = getWindowsNetworkAccessMarkerPath();
   return Boolean(markerPath && fs.existsSync(markerPath));
 }
 
-function markFirewallWarmupCompleted() {
-  const markerPath = getFirewallWarmupMarkerPath();
+function markWindowsNetworkAccessGuideCompleted() {
+  const markerPath = getWindowsNetworkAccessMarkerPath();
   if (!markerPath) return;
   try {
     fs.writeFileSync(markerPath, String(Date.now()));
@@ -178,57 +177,6 @@ function waitForServerListening(server, timeoutMs = 4000) {
   });
 }
 
-/**
- * 预热 Windows Defender 防火墙，提前触发网络授权弹窗
- *
- * 首次启动时，Windows 防火墙检测到新程序请求出站连接会弹出安全警报。
- * 但后端子进程以 ELECTRON_RUN_AS_NODE=1 方式启动，弹窗可能被隐藏。
- * 本函数在主进程中主动发起多个外部请求，让防火墙弹窗在主窗口可见时出现，
- * 避免用户错过弹窗导致连接被静默阻止。
- *
- * 会尝试多个目标地址，覆盖不同安全软件可能监控的域名。
- */
-function wakeWindowsFirewall() {
-  // 只对 Windows 有效
-  if (process.platform !== "win32") return Promise.resolve();
-  // ponytail: 这里用 userData 标记做“一次性预热”；如果后续改成按版本/签名重试，就把 marker 带上版本或二进制指纹。
-  if (hasCompletedFirewallWarmup()) return Promise.resolve();
-  if (firewallWarmupPromise) return firewallWarmupPromise;
-
-  const targets = [
-    "http://www.baidu.com",
-    "http://www.kugou.com",
-    "http://www.qianqian.com",
-  ];
-
-  console.log("[Firewall] 正在预热防火墙规则，确保网络请求不会被拦截...");
-
-  firewallWarmupPromise = Promise.allSettled(
-    targets.map((target) => {
-      return new Promise((resolve) => {
-        const req = http.get(target, (res) => {
-          res.resume();
-          resolve();
-        });
-        req.setTimeout(2000, () => {
-          req.destroy();
-          resolve();
-        });
-        req.on("error", () => resolve());
-      });
-    }),
-  )
-    .then(() => {
-      markFirewallWarmupCompleted();
-      console.log("[Firewall] 防火墙预热完成");
-    })
-    .finally(() => {
-      firewallWarmupPromise = null;
-    });
-
-  return firewallWarmupPromise;
-}
-
 function probeServer(url, timeoutMs = 1000) {
   return new Promise((resolve, reject) => {
     const req = http.get(url, (res) => {
@@ -320,10 +268,6 @@ async function startKugouMusicApi() {
 
   kugouApiStartupPromise = (async () => {
     const readyUrl = `http://127.0.0.1:${API_PORT}/`;
-
-    // 预热防火墙：在主进程中先发一个外部请求，触发 Windows 防火墙弹窗
-    // 避免后端子进程以 ELECTRON_RUN_AS_NODE 启动后弹窗被隐藏，导致请求被静默拦截
-    await wakeWindowsFirewall();
 
     // 先探测端口是否有服务在监听
     try {
@@ -448,6 +392,8 @@ module.exports = {
   stopKugouMusicApi,
   getKugouMusicApiProcess,
   resolveBackendLaunch,
+  hasCompletedWindowsNetworkAccessGuide,
+  markWindowsNetworkAccessGuideCompleted,
   waitForApiReachable,
   API_PORT,
   delay,
