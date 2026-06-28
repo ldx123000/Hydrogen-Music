@@ -1,49 +1,109 @@
 const dbus = require('dbus-next');
 const {ipcMain, app} = require ('electron');
 const Player = require ("mpris-service");
+const { buildMprisMetadata } = require('./mprisMetadata');
+
+const mprisState = {
+  initialized: false,
+  window: null,
+  player: null,
+  hasCurrentTrack: false,
+  currentTrackPath: '',
+}
+
+function getRenderer() {
+  return mprisState.window?.webContents || null;
+}
 
 function createMpris(window){
+  if (mprisState.initialized && mprisState.player) {
+    mprisState.window = window;
+    return mprisState.player;
+  }
+
   const renderer = window.webContents;
+  mprisState.window = window;
 
   const player = Player({
     name: 'hydrogenmusic',
     identity: 'HydrogenMusic',
+    desktopEntry: 'hydrogenmusic',
+    supportedUriSchemes: ['file', 'http', 'https'],
+    supportedMimeTypes: [
+      'audio/mpeg',
+      'audio/mp4',
+      'audio/flac',
+      'audio/ogg',
+      'audio/wav',
+      'audio/x-wav',
+      'audio/aac',
+      'audio/webm',
+    ],
+    supportedInterfaces: ['player'],
   });
+  mprisState.player = player;
+  mprisState.initialized = true;
+  player.canControl = true;
+  player.canPlay = true;
+  player.canPause = true;
+  player.canGoNext = true;
+  player.canGoPrevious = true;
+  player.canSeek = true;
+  player.playbackStatus = Player.PLAYBACK_STATUS_STOPPED;
+  player.loopStatus = Player.LOOP_STATUS_NONE;
+  player.shuffle = false;
+  player.volume = 1;
 
-  player.on('next', () => renderer.send('next'));
-  player.on('previous', () => renderer.send('previous'));
-  player.on('playpause', () => renderer.send('playpause'));
-  player.on('play', () => renderer.send('play'));
-  player.on('pause', () => renderer.send('pause'));
-  player.on('quit', () => app.exit());
+  player.on('next', () => getRenderer()?.send('next'));
+  player.on('previous', () => getRenderer()?.send('previous'));
+  player.on('playpause', () => getRenderer()?.send('playpause'));
+  player.on('play', () => getRenderer()?.send('play'));
+  player.on('pause', () => getRenderer()?.send('pause'));
+  player.on('stop', () => getRenderer()?.send('pause'));
+  player.on('quit', () => {
+    const activeRenderer = getRenderer();
+    if (activeRenderer) activeRenderer.send('player-save');
+    else app.exit();
+  });
+  player.on('seek', offset => {
+    const currentPosition = Number(player.getPosition?.() || 0);
+    const nextPosition = Math.max(0, currentPosition + Number(offset || 0));
+    getRenderer()?.send('setPosition', nextPosition / 1000 / 1000);
+  });
   player.on('position', args =>
-    renderer.send('setPosition', args.position / 1000 / 1000)
+    {
+      if (args?.trackId && mprisState.currentTrackPath && args.trackId !== mprisState.currentTrackPath) return;
+      getRenderer()?.send('setPosition', Math.max(0, Number(args.position || 0)) / 1000 / 1000);
+    }
   );
-  player.on('loopStatus', () => renderer.send('repeat'));
-  player.on('shuffle', () => renderer.send('shuffle'));
+  player.on('loopStatus', loopStatus => getRenderer()?.send('repeat', loopStatus));
+  player.on('shuffle', shuffle => getRenderer()?.send('shuffle', Boolean(shuffle)));
   // 当外部通过 MPRIS 改变音量时触发
   player.on('volume', (value) => {
-    renderer.send('volume_changed', value);
+    getRenderer()?.send('volume_changed', value);
   })
 
   ipcMain.on('music-playing-check', (e, playing) => {
-    player.playbackStatus = playing
+    player.playbackStatus = !mprisState.hasCurrentTrack
+      ? Player.PLAYBACK_STATUS_STOPPED
+      : playing
       ? Player.PLAYBACK_STATUS_PLAYING
       : Player.PLAYBACK_STATUS_PAUSED;
   });
 
   ipcMain.on('metadata', (e, metadata) => {
+    const nextMetadata = buildMprisMetadata(player, metadata);
+    mprisState.hasCurrentTrack = !!nextMetadata;
+    if (!nextMetadata) {
+      player.metadata = {};
+      player.playbackStatus = Player.PLAYBACK_STATUS_STOPPED;
+      mprisState.currentTrackPath = '';
+      return;
+    }
     // 更新 Mpris 状态前将位置设为0, 否则 OSDLyrics 获取到的进度是上首音乐切换时的进度
     player.getPosition = () => 0;
-    player.metadata = {
-      'mpris:trackid': player.objectPath('track/' + metadata.trackId),
-      'mpris:artUrl': metadata.artwork[0].src,
-      'mpris:length': metadata.length * 1000 * 1000,
-      'xesam:title': metadata.title,
-      'xesam:album': metadata.album,
-      'xesam:artist': metadata.artist,
-      'xesam:url': metadata.url,
-    };
+    player.metadata = nextMetadata;
+    mprisState.currentTrackPath = nextMetadata['mpris:trackid'];
   });
 
   ipcMain.on('playerCurrentTrackTime', (e, position) => {
@@ -78,6 +138,7 @@ function createMpris(window){
     player.volume = volume;
   });
 
+  return player;
 }
 
 async function createDbus(window) {
