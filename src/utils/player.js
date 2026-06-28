@@ -140,7 +140,7 @@ function handleTrackPlaybackEnded({ fromChorus = false } = {}) {
 
     const list = Array.isArray(songList.value) ? songList.value : []
     if (playMode.value == 0 && currentIndex.value < list.length - 1) { playNext(); return } //顺序播放
-    if (playMode.value == 0 && currentIndex.value == list.length - 1) { playing.value = false; playModeOne = true; windowApi.playOrPauseMusicCheck(playing.value); syncWindowsTaskbarPlaybackState(); return } //顺序播放结束暂停状态
+    if (playMode.value == 0 && currentIndex.value == list.length - 1) { playing.value = false; playModeOne = true; syncExternalPlaybackState(); return } //顺序播放结束暂停状态
     if (playMode.value == 1) { playNext(); return } //列表循环
     if (playMode.value == 3) { playNext(); return } //随机播放(为列表循环)
     if (playMode.value == 2) {
@@ -479,6 +479,11 @@ function syncPlayModeExternalState(mode) {
 
     // 通知 MPRIS 随机状态
     window.playerApi.switchShuffle(mode === 3)
+}
+
+function syncExternalPlaybackState() {
+    windowApi.playOrPauseMusicCheck(playing.value)
+    syncWindowsTaskbarPlaybackState()
 }
 
 function applyPlayMode(mode, options = {}) {
@@ -884,16 +889,14 @@ export function play(url, autoplay, resumeSeek = null) {
         currentMusic.value.fade(0, volume.value, 200)
         startProgress()
         playing.value = true
-        windowApi.playOrPauseMusicCheck(playing.value)
-        syncWindowsTaskbarPlaybackState()
+        syncExternalPlaybackState()
         // 切歌/播放开始时统一更新窗口标题与（macOS）Dock 菜单
         updateWindowTitleDock()
     })
     currentMusic.value.on('pause', () => {
         clearInterval(musicProgress)
         playing.value = false
-        windowApi.playOrPauseMusicCheck(playing.value)
-        syncWindowsTaskbarPlaybackState()
+        syncExternalPlaybackState()
         currentMusic.value.fade(volume.value, 0, 200)
     })
 }
@@ -2235,9 +2238,8 @@ windowApi.musicProcessControl((event, mode) => {
     // 统一使用 changeProgress，确保歌词、视频等状态同步
     changeProgress(progress.value)
 })
-windowApi.playOrPauseMusicCheck(playing.value)
+syncExternalPlaybackState()
 windowApi.changeTrayMusicPlaymode(playMode.value)
-syncWindowsTaskbarPlaybackState()
 windowApi.beforeQuit(() => {
     //关闭之前清除下载管理中的状态
     windowApi.downloadPause('shutdown')
@@ -2272,12 +2274,28 @@ window.playerApi.onPauseM(() => {
 })
 
 //循环模式切换
-window.playerApi.onRepeat(() => {
+window.playerApi.onRepeat((_event, loopStatus) => {
+  if (loopStatus === 'off' || loopStatus === 'on' || loopStatus === 'one') {
+    if (isPersonalFMContext()) {
+      applyPlayMode(loopStatus === 'one' ? 2 : 3, { inFM: true })
+      return
+    }
+    applyPlayMode(loopStatus === 'one' ? 2 : loopStatus === 'on' ? 1 : playMode.value === 3 ? 3 : 0, { inFM: false })
+    return
+  }
   changePlayMode()
 })
 
 // 随机播放切换
-window.playerApi.onShuffle(() => {
+window.playerApi.onShuffle((_event, shuffle) => {
+  if (typeof shuffle === 'boolean') {
+    if (isPersonalFMContext()) {
+      applyPlayMode(shuffle ? 3 : 2, { inFM: true })
+      return
+    }
+    applyPlayMode(shuffle ? 3 : 0, { inFM: false })
+    return
+  }
   if (isPersonalFMContext()) {
     applyPlayMode(playMode.value === 2 ? 3 : 2, { inFM: true })
     return

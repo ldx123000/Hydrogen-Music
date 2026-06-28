@@ -301,6 +301,7 @@ const createWindow = () => {
       //预加载脚本
       preload: path.resolve(__dirname, "./src/electron/preload.js"),
       webSecurity: false,
+      backgroundThrottling: false,
     },
   });
   myWindow = win;
@@ -595,6 +596,7 @@ const createLyricWindow = () => {
       webSecurity: false,
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,
     },
   });
 

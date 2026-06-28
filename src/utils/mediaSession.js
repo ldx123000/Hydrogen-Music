@@ -32,10 +32,7 @@ export function initMediaSession() {
 
   const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''
   const isMac = /Mac/i.test(platform)
-  const isWindows = /Win/i.test(platform)
-
-  // Windows deliberately skips system media controls.
-  if (!(navigator.mediaSession && !isWindows)) return
+  if (!navigator.mediaSession) return
 
   const playerStore = usePlayerStore(pinia)
   const refs = storeToRefs(playerStore)

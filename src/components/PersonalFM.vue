@@ -2327,7 +2327,8 @@ const handleFmClearRecent = () => {
     width: 100%;
     height: 100%;
     border-radius: 2px;
-    object-fit: cover;
+    object-fit: contain;
+    background: var(--fm-slot-bg);
     border: 1px solid var(--fm-panel-border);
     display: block;
     transform: translateZ(0);
