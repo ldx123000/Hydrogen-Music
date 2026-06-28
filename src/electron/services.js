@@ -51,6 +51,20 @@ function getBackendCandidates() {
 function resolveBackendLaunch() {
   const candidates = getBackendCandidates();
   for (const backendRoot of candidates) {
+    // 优先使用源码版 (app.js)，开发调试更方便
+    const appScript = path.join(backendRoot, "app.js");
+    if (fs.existsSync(appScript)) {
+      return {
+        command: process.execPath,
+        args: [appScript],
+        cwd: backendRoot,
+        env: {
+          ELECTRON_RUN_AS_NODE: "1",
+        },
+        label: appScript,
+      };
+    }
+
     const apiJs = path.join(backendRoot, "bin", "api_js", "app.js");
     if (fs.existsSync(apiJs)) {
       return {
@@ -75,19 +89,6 @@ function resolveBackendLaunch() {
           label: winBinary,
         };
       }
-    }
-
-    const appScript = path.join(backendRoot, "app.js");
-    if (fs.existsSync(appScript)) {
-      return {
-        command: process.execPath,
-        args: [appScript],
-        cwd: backendRoot,
-        env: {
-          ELECTRON_RUN_AS_NODE: "1",
-        },
-        label: appScript,
-      };
     }
   }
 
