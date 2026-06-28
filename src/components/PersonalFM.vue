@@ -1,2326 +1,2693 @@
 <template>
-    <div class="personal-fm">
-        <div class="fm-stage">
-            <div class="fm-panel" :class="{ 'fm-panel-intro-active': isPanelIntroActive, 'fm-panel-outline-ready': isPanelOutlineReady }">
-                <span class="frame-corner frame-tl"></span>
-                <span class="frame-corner frame-tr"></span>
-                <span class="frame-corner frame-bl"></span>
-                <span class="frame-corner frame-br"></span>
-                <div class="fm-outline-draw" aria-hidden="true">
-                    <span class="outline-seg top"></span>
-                    <span class="outline-seg right"></span>
-                    <span class="outline-seg bottom"></span>
-                    <span class="outline-seg left"></span>
-                </div>
-                <div class="fm-mode-floating" ref="modePanelRef" :class="{ open: modePanelOpen }">
-                    <button class="fm-mode-trigger" :disabled="loading || modeSwitching" @click.stop="toggleModePanel">
-                        <span class="mode-trigger-code">MODE</span>
-                        <span class="mode-trigger-value">{{ selectedFmModeSummary }}</span>
-                        <svg class="mode-trigger-arrow" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                            <path d="M7 10l5 5 5-5z" />
-                        </svg>
-                    </button>
-                    <Transition name="fm-mode-float">
-                        <div v-if="modePanelOpen" class="fm-mode-dropdown" role="group" aria-label="私人漫游模式" @click.stop>
-                            <div class="fm-mode-title">
-                                <span class="fm-mode-title-code">MODE SELECT</span>
-                                <span class="fm-mode-title-text">{{ selectedFmModeSummary }}</span>
-                            </div>
-                            <div class="fm-mode-grid">
-                                <button
-                                    v-for="mode in FM_MODE_OPTIONS"
-                                    :key="mode.value"
-                                    class="fm-mode-btn"
-                                    :class="{ active: selectedFmMode === mode.value }"
-                                    :disabled="loading || modeSwitching"
-                                    @click="changeFmMode(mode.value)"
-                                >
-                                    <span class="mode-code">{{ mode.value }}</span>
-                                    <span class="mode-label">{{ mode.label }}</span>
-                                </button>
-                            </div>
-                        <div v-if="selectedFmMode === 'ai_pool'" class="fm-submode-grid">
-                                <button
-                                    v-for="scene in FM_SCENE_SUBMODE_OPTIONS"
-                                    :key="scene.value"
-                                    class="fm-submode-btn"
-                                    :class="{ active: selectedFmSubmode === scene.value }"
-                                    :disabled="loading || modeSwitching"
-                                    @click="changeFmSubmode(scene.value)"
-                                >
-                                    <span class="mode-code">{{ scene.value }}</span>
-                                    <span class="mode-label">{{ scene.label }}</span>
-                                </button>
-                            </div>
-                        </div>
-                    </Transition>
-                </div>
-
-                <div class="fm-header">
-                    <div class="fm-headline">PERSONAL FM</div>
-                    <h1>私人漫游</h1>
-                    <span class="fm-subtitle">根据你的音乐喜好为你推荐</span>
-                </div>
-
-                <div class="fm-content" v-if="currentSong && !loading">
-                    <div class="fm-main">
-                        <div class="fm-cover-carousel">
-                            <TransitionGroup :name="coverTransitionName" :css="!modeSwitching" tag="div" class="fm-cover-track">
-                                <div
-                                    v-for="item in coverTrackItems"
-                                    :key="item.key"
-                                    class="fm-cover-slot"
-                                    :class="[
-                                        `slot-${item.role}`,
-                                        {
-                                            'slot-center': item.role === 'center',
-                                            'slot-side': item.role !== 'center',
-                                            'slot-placeholder': item.isPlaceholder,
-                                            'slot-clickable': item.clickable,
-                                        },
-                                    ]"
-                                    @click="handleCoverSlotClick(item)"
-                                >
-                                    <template v-if="item.song && !item.isPlaceholder">
-                                        <img :src="getFmSongCover(item.song) || '/src/assets/default-cover.png'" :alt="item.song.name || 'FM Cover'" />
-                                        <div v-if="item.role === 'center'" class="fm-play-overlay">
-                                            <svg v-if="!isPlaying" width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M8 5v14l11-7z" />
-                                            </svg>
-                                            <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                                            </svg>
-                                        </div>
-                                        <div v-else class="slot-side-overlay"></div>
-                                    </template>
-                                    <template v-else>
-                                        <div class="slot-placeholder-text">{{ item.placeholderText }}</div>
-                                    </template>
-                                </div>
-                            </TransitionGroup>
-                        </div>
-
-                        <div class="fm-info">
-                            <h2 class="song-name">{{ getSongDisplayName(currentSong, '', showSongTranslation) }}</h2>
-                            <p class="artist-name">
-                                <template v-for="(artist, index) in currentSongArtists" :key="artist?.id || artist?.name || index">
-                                    <span class="artist-link" :class="{ clickable: canOpenArtist(artist) }" @click="openArtist(artist)">
-                                        {{ artist?.name || '' }}
-                                    </span>
-                                    <span v-if="index != currentSongArtists.length - 1" class="artist-separator">/</span>
-                                </template>
-                            </p>
-                            <p class="album-name" :class="{ clickable: canOpenAlbum(currentSongAlbum) }" @click="openAlbum(currentSongAlbum)">
-                                {{ getFmSongAlbumName(currentSong) }}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="fm-actions">
-                        <div class="action-btn prev" @click="goPrev" title="上一首">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-                            </svg>
-                        </div>
-
-                        <div class="action-btn trash" @click="trashSong" title="不喜欢">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                            </svg>
-                        </div>
-
-                        <div class="action-btn like" @click="likeSong" :class="{ active: isCurrentSongLiked }" title="喜欢">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path
-                                    d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                                />
-                            </svg>
-                        </div>
-
-                        <div class="action-btn next" @click="goNext" title="下一首">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="fm-loading" v-else-if="loading">
-                    <div class="loading-spinner"></div>
-                    <p>正在为你准备音乐...</p>
-                </div>
-
-                <div class="fm-empty" v-else>
-                    <div class="empty-icon">
-                        <svg width="60" height="60" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
-                        </svg>
-                    </div>
-                    <p>无法加载漫游歌曲</p>
-                    <p class="error-hint">请检查网络连接或稍后重试</p>
-                    <div class="refresh-button" @click="refreshFM()">重试</div>
-                </div>
-            </div>
+  <div class="personal-fm">
+    <div class="fm-stage">
+      <div
+        class="fm-panel"
+        :class="{
+          'fm-panel-intro-active': isPanelIntroActive,
+          'fm-panel-outline-ready': isPanelOutlineReady,
+        }"
+      >
+        <span class="frame-corner frame-tl"></span>
+        <span class="frame-corner frame-tr"></span>
+        <span class="frame-corner frame-bl"></span>
+        <span class="frame-corner frame-br"></span>
+        <div class="fm-outline-draw" aria-hidden="true">
+          <span class="outline-seg top"></span>
+          <span class="outline-seg right"></span>
+          <span class="outline-seg bottom"></span>
+          <span class="outline-seg left"></span>
         </div>
+        <div
+          class="fm-mode-floating"
+          ref="modePanelRef"
+          :class="{ open: modePanelOpen }"
+        >
+          <button
+            class="fm-mode-trigger"
+            :disabled="loading || modeSwitching"
+            @click.stop="toggleModePanel"
+          >
+            <span class="mode-trigger-code">MODE</span>
+            <span class="mode-trigger-value">{{ selectedFmModeSummary }}</span>
+            <svg
+              class="mode-trigger-arrow"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M7 10l5 5 5-5z" />
+            </svg>
+          </button>
+          <Transition name="fm-mode-float">
+            <div
+              v-if="modePanelOpen"
+              class="fm-mode-dropdown"
+              role="group"
+              aria-label="私人漫游模式"
+              @click.stop
+            >
+              <div class="fm-mode-title">
+                <span class="fm-mode-title-code">MODE SELECT</span>
+                <span class="fm-mode-title-text">{{
+                  selectedFmModeSummary
+                }}</span>
+              </div>
+              <div class="fm-mode-grid">
+                <button
+                  v-for="mode in FM_MODE_OPTIONS"
+                  :key="mode.value"
+                  class="fm-mode-btn"
+                  :class="{ active: selectedFmMode === mode.value }"
+                  :disabled="loading || modeSwitching"
+                  @click="changeFmMode(mode.value)"
+                >
+                  <span class="mode-code">{{ mode.value }}</span>
+                  <span class="mode-label">{{ mode.label }}</span>
+                </button>
+              </div>
+              <div v-if="selectedFmMode === 'ai_pool'" class="fm-submode-grid">
+                <button
+                  v-for="scene in FM_SCENE_SUBMODE_OPTIONS"
+                  :key="scene.value"
+                  class="fm-submode-btn"
+                  :class="{ active: selectedFmSubmode === scene.value }"
+                  :disabled="loading || modeSwitching"
+                  @click="changeFmSubmode(scene.value)"
+                >
+                  <span class="mode-code">{{ scene.value }}</span>
+                  <span class="mode-label">{{ scene.label }}</span>
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+
+        <div class="fm-header">
+          <div class="fm-headline">PERSONAL FM</div>
+          <h1>私人漫游</h1>
+          <span class="fm-subtitle">根据你的音乐喜好为你推荐</span>
+        </div>
+
+        <div class="fm-content" v-if="currentSong && !loading">
+          <div class="fm-main">
+            <div class="fm-cover-carousel">
+              <TransitionGroup
+                :name="coverTransitionName"
+                :css="!modeSwitching"
+                tag="div"
+                class="fm-cover-track"
+              >
+                <div
+                  v-for="item in coverTrackItems"
+                  :key="item.key"
+                  class="fm-cover-slot"
+                  :class="[
+                    `slot-${item.role}`,
+                    {
+                      'slot-center': item.role === 'center',
+                      'slot-side': item.role !== 'center',
+                      'slot-placeholder': item.isPlaceholder,
+                      'slot-clickable': item.clickable,
+                    },
+                  ]"
+                  @click="handleCoverSlotClick(item)"
+                >
+                  <template v-if="item.song && !item.isPlaceholder">
+                    <img
+                      :src="
+                        getFmSongCover(item.song) ||
+                        '/src/assets/default-cover.png'
+                      "
+                      :alt="item.song.name || 'FM Cover'"
+                    />
+                    <div v-if="item.role === 'center'" class="fm-play-overlay">
+                      <svg
+                        v-if="!isPlaying"
+                        width="40"
+                        height="40"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                      <svg
+                        v-else
+                        width="40"
+                        height="40"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                      </svg>
+                    </div>
+                    <div v-else class="slot-side-overlay"></div>
+                  </template>
+                  <template v-else>
+                    <div class="slot-placeholder-text">
+                      {{ item.placeholderText }}
+                    </div>
+                  </template>
+                </div>
+              </TransitionGroup>
+            </div>
+
+            <div class="fm-info">
+              <h2 class="song-name">
+                {{ getSongDisplayName(currentSong, "", showSongTranslation) }}
+              </h2>
+              <p class="artist-name">
+                <template
+                  v-for="(artist, index) in currentSongArtists"
+                  :key="artist?.id || artist?.name || index"
+                >
+                  <span
+                    class="artist-link"
+                    :class="{ clickable: canOpenArtist(artist) }"
+                    @click="openArtist(artist)"
+                  >
+                    {{ artist?.name || "" }}
+                  </span>
+                  <span
+                    v-if="index != currentSongArtists.length - 1"
+                    class="artist-separator"
+                    >/</span
+                  >
+                </template>
+              </p>
+              <p
+                class="album-name"
+                :class="{ clickable: canOpenAlbum(currentSongAlbum) }"
+                @click="openAlbum(currentSongAlbum)"
+              >
+                {{ getFmSongAlbumName(currentSong) }}
+              </p>
+            </div>
+          </div>
+
+          <div class="fm-actions">
+            <div class="action-btn prev" @click="goPrev" title="上一首">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+              </svg>
+            </div>
+
+            <div class="action-btn trash" @click="trashSong" title="不喜欢">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                />
+              </svg>
+            </div>
+
+            <div
+              class="action-btn like"
+              @click="likeSong"
+              :class="{ active: isCurrentSongLiked }"
+              title="喜欢"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                />
+              </svg>
+            </div>
+
+            <div class="action-btn next" @click="goNext" title="下一首">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="fm-loading" v-else-if="loading">
+          <div class="loading-spinner"></div>
+          <p>正在为你准备音乐...</p>
+        </div>
+
+        <div class="fm-empty" v-else>
+          <div class="empty-icon">
+            <svg width="60" height="60" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
+              />
+            </svg>
+          </div>
+          <p>无法加载漫游歌曲</p>
+          <p class="error-hint">请检查网络连接或稍后重试</p>
+          <div class="refresh-button" @click="refreshFM()">重试</div>
+        </div>
+      </div>
     </div>
+  </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, onActivated, onDeactivated, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { getPersonalFM, getPersonalFMByMode, fmTrash, getLyric, likeMusic } from '../api/song'
-import { getRecommendSongs, normalizePlaylistSong } from '../api/playlist'
-import { usePlayerStore } from '../store/playerStore'
-import { useUserStore } from '../store/userStore'
-import { useLibraryStore } from '../store/libraryStore'
-import { noticeOpen } from '../utils/dialog'
-import { mapSongsPlayableStatus } from '../utils/songStatus'
 import {
-    applyOptimisticLikeState,
-    createLikeActionToken,
-    getFavoritePlaylistNoticeText,
-    getLikeActionErrorMessage,
-    isActiveLikeActionToken,
-    play,
-    queueLikeRequest,
-    setSongLevel,
-    syncLikelistAfterLikeAction,
-    updateFavoritePlaylistTrack,
-} from '../utils/player'
-import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
-import { storeToRefs } from 'pinia'
-import { getPreferredQuality } from '../utils/quality'
-import { resolveTrackByQualityPreference } from '../utils/musicUrlResolver'
-import { getSongDisplayName } from '../utils/songName'
+  ref,
+  onMounted,
+  onUnmounted,
+  onActivated,
+  onDeactivated,
+  computed,
+  watch,
+} from "vue";
+import { useRouter } from "vue-router";
+import {
+  getPersonalFM,
+  getPersonalFMByMode,
+  fmTrash,
+  getLyric,
+  likeMusic,
+} from "../api/song";
+import { getRecommendSongs, normalizePlaylistSong } from "../api/playlist";
+import { usePlayerStore } from "../store/playerStore";
+import { useUserStore } from "../store/userStore";
+import { useLibraryStore } from "../store/libraryStore";
+import { noticeOpen } from "../utils/dialog";
+import { mapSongsPlayableStatus } from "../utils/songStatus";
+import {
+  applyOptimisticLikeState,
+  createLikeActionToken,
+  getFavoritePlaylistNoticeText,
+  getLikeActionErrorMessage,
+  isActiveLikeActionToken,
+  play,
+  queueLikeRequest,
+  setSongLevel,
+  syncLikelistAfterLikeAction,
+  updateFavoritePlaylistTrack,
+} from "../utils/player";
+import { schedulePlaylistCacheInvalidation } from "../utils/cacheInvalidation";
+import { storeToRefs } from "pinia";
+import { getPreferredQuality } from "../utils/quality";
+import { resolveTrackByQualityPreference } from "../utils/musicUrlResolver";
+import { getSongDisplayName } from "../utils/songName";
 
-const router = useRouter()
-const playerStore = usePlayerStore()
-const userStore = useUserStore()
-const libraryStore = useLibraryStore()
-const { songId, playing, quality, showSongTranslation, time } = storeToRefs(playerStore)
-const { likelist } = storeToRefs(userStore)
+const router = useRouter();
+const playerStore = usePlayerStore();
+const userStore = useUserStore();
+const libraryStore = useLibraryStore();
+const { songId, playing, quality, showSongTranslation, time } =
+  storeToRefs(playerStore);
+const { likelist } = storeToRefs(userStore);
 
 // 创建一个计算属性来实时判断当前歌曲是否被喜欢
 const isCurrentSongLiked = computed(() => {
-    if (!currentSong.value || !likelist.value) {
-        return false
-    }
-    return likelist.value.includes(currentSong.value.id)
-})
-const currentSongArtists = computed(() => getFmSongArtists(currentSong.value))
-const currentSongAlbum = computed(() => getFmSongAlbum(currentSong.value))
+  if (!currentSong.value || !likelist.value) {
+    return false;
+  }
+  return likelist.value.includes(currentSong.value.id);
+});
+const currentSongArtists = computed(() => getFmSongArtists(currentSong.value));
+const currentSongAlbum = computed(() => getFmSongAlbum(currentSong.value));
 
-const fmSongs = ref([])
-const playedSongs = ref([]) // 已播放的歌曲历史（用于前后切换浏览）
-const lastLoadedUserId = ref(null)
+const fmSongs = ref([]);
+const playedSongs = ref([]); // 已播放的歌曲历史（用于前后切换浏览）
+const lastLoadedUserId = ref(null);
 // 去重与“近期不重复”控制
-const fmPoolIds = new Set() // 当前候选池中的歌曲ID，避免同一池内重复（仅内存，用于本次池）
-const recentPlayedSet = new Set() // 近期播放过的歌曲集合（窗口集合）
-const recentPlayedQueue = [] // 维护顺序的队列，配合 recentPlayedSet 形成滑动窗口
-const RECENT_WINDOW = 300 // 近期去重窗口大小，避免短期内重复
+const fmPoolIds = new Set(); // 当前候选池中的歌曲ID，避免同一池内重复（仅内存，用于本次池）
+const recentPlayedSet = new Set(); // 近期播放过的歌曲集合（窗口集合）
+const recentPlayedQueue = []; // 维护顺序的队列，配合 recentPlayedSet 形成滑动窗口
+const RECENT_WINDOW = 300; // 近期去重窗口大小，避免短期内重复
 const FM_REFRESH_SOURCE = Object.freeze({
-    PERSONAL_FM: 'personal_fm',
-    FM_MODE_RESCUE: 'fm_mode_rescue',
-    DAILY_RECOMMEND: 'daily_recommend',
-})
+  PERSONAL_FM: "personal_fm",
+  FM_MODE_RESCUE: "fm_mode_rescue",
+  DAILY_RECOMMEND: "daily_recommend",
+});
 // 酷狗文档中的私人漫游模式只有 normal / small / peak，
 // 另外 song_pool_id 可切换 3 组 AI 推荐池。
-const FM_MODE_RESCUE_OPTIONS = Object.freeze({ mode: 'small' })
-const DEFAULT_FM_MODE = 'normal'
-const DEFAULT_SCENE_SUBMODE = '0'
+const FM_MODE_RESCUE_OPTIONS = Object.freeze({ mode: "small" });
+const DEFAULT_FM_MODE = "normal";
+const DEFAULT_SCENE_SUBMODE = "0";
 const FM_MODE_OPTIONS = Object.freeze([
-    { value: 'normal', label: '发现推荐' },
-    { value: 'small', label: '小众模式' },
-    { value: 'peak', label: '30秒高潮' },
-    { value: 'ai_pool', label: 'AI推荐池' },
-])
+  { value: "normal", label: "发现推荐" },
+  { value: "small", label: "小众模式" },
+  { value: "peak", label: "30秒高潮" },
+  { value: "ai_pool", label: "AI推荐池" },
+]);
 const FM_SCENE_SUBMODE_OPTIONS = Object.freeze([
-    { value: '0', label: 'Alpha 相似口味' },
-    { value: '1', label: 'Beta 相似风格' },
-    { value: '2', label: 'Gamma 推荐池' },
-])
-const lastRefreshSource = ref(FM_REFRESH_SOURCE.PERSONAL_FM)
-const selectedFmMode = ref(DEFAULT_FM_MODE)
-const selectedFmSubmode = ref(DEFAULT_SCENE_SUBMODE)
-const modeSwitching = ref(false)
-const modePanelOpen = ref(false)
-const modePanelRef = ref(null)
-const awaitingSceneSubmodePick = ref(false)
+  { value: "0", label: "Alpha 相似口味" },
+  { value: "1", label: "Beta 相似风格" },
+  { value: "2", label: "Gamma 推荐池" },
+]);
+const lastRefreshSource = ref(FM_REFRESH_SOURCE.PERSONAL_FM);
+const selectedFmMode = ref(DEFAULT_FM_MODE);
+const selectedFmSubmode = ref(DEFAULT_SCENE_SUBMODE);
+const modeSwitching = ref(false);
+const modePanelOpen = ref(false);
+const modePanelRef = ref(null);
+const awaitingSceneSubmodePick = ref(false);
 
 // 仅持久化“近期去重队列”（按账号隔离）
 function getRecentQueueKey() {
-    const uid = userStore?.user?.userId || 'guest'
-    return `hm.fm.recentPlayedQueue:${uid}`
+  const uid = userStore?.user?.userId || "guest";
+  return `hm.fm.recentPlayedQueue:${uid}`;
 }
 
 function safeParseArray(raw) {
-    try {
-        const arr = JSON.parse(raw)
-        return Array.isArray(arr) ? arr : []
-    } catch (_) {
-        return []
-    }
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) {
+    return [];
+  }
 }
 
 function normalizeSongId(id) {
-    if (id === null || id === undefined || id === '') return null
-    return String(id)
+  if (id === null || id === undefined || id === "") return null;
+  return String(id);
 }
 
 function getPrimarySongId(song) {
-    if (!song || typeof song != 'object') return null
-    if (song.album_audio_id !== undefined && song.album_audio_id !== null && song.album_audio_id !== '') return song.album_audio_id
-    if (song.mixsongid !== undefined && song.mixsongid !== null && song.mixsongid !== '') return song.mixsongid
-    if (song.mixsong_id !== undefined && song.mixsong_id !== null && song.mixsong_id !== '') return song.mixsong_id
-    if (song.audio_id !== undefined && song.audio_id !== null && song.audio_id !== '') return song.audio_id
-    if (song.songid !== undefined && song.songid !== null && song.songid !== '') return song.songid
-    if (song.id !== undefined && song.id !== null && song.id !== '') return song.id
-    if (song.songId !== undefined && song.songId !== null && song.songId !== '') return song.songId
-    if (song.trackId !== undefined && song.trackId !== null && song.trackId !== '') return song.trackId
-    const nestedSong = song.song
-    if (nestedSong && typeof nestedSong == 'object') {
-        if (nestedSong.id !== undefined && nestedSong.id !== null && nestedSong.id !== '') return nestedSong.id
-        if (nestedSong.songId !== undefined && nestedSong.songId !== null && nestedSong.songId !== '') return nestedSong.songId
-        if (nestedSong.trackId !== undefined && nestedSong.trackId !== null && nestedSong.trackId !== '') return nestedSong.trackId
-    }
-    return null
+  if (!song || typeof song != "object") return null;
+  if (
+    song.album_audio_id !== undefined &&
+    song.album_audio_id !== null &&
+    song.album_audio_id !== ""
+  )
+    return song.album_audio_id;
+  if (
+    song.mixsongid !== undefined &&
+    song.mixsongid !== null &&
+    song.mixsongid !== ""
+  )
+    return song.mixsongid;
+  if (
+    song.mixsong_id !== undefined &&
+    song.mixsong_id !== null &&
+    song.mixsong_id !== ""
+  )
+    return song.mixsong_id;
+  if (
+    song.audio_id !== undefined &&
+    song.audio_id !== null &&
+    song.audio_id !== ""
+  )
+    return song.audio_id;
+  if (song.songid !== undefined && song.songid !== null && song.songid !== "")
+    return song.songid;
+  if (song.id !== undefined && song.id !== null && song.id !== "")
+    return song.id;
+  if (song.songId !== undefined && song.songId !== null && song.songId !== "")
+    return song.songId;
+  if (
+    song.trackId !== undefined &&
+    song.trackId !== null &&
+    song.trackId !== ""
+  )
+    return song.trackId;
+  const nestedSong = song.song;
+  if (nestedSong && typeof nestedSong == "object") {
+    if (
+      nestedSong.id !== undefined &&
+      nestedSong.id !== null &&
+      nestedSong.id !== ""
+    )
+      return nestedSong.id;
+    if (
+      nestedSong.songId !== undefined &&
+      nestedSong.songId !== null &&
+      nestedSong.songId !== ""
+    )
+      return nestedSong.songId;
+    if (
+      nestedSong.trackId !== undefined &&
+      nestedSong.trackId !== null &&
+      nestedSong.trackId !== ""
+    )
+      return nestedSong.trackId;
+  }
+  return null;
 }
 
 function getFmSongArtists(song) {
-    if (!song || typeof song != 'object') return []
-    if (Array.isArray(song.singerinfo) && song.singerinfo.length > 0) return song.singerinfo
-    if (Array.isArray(song.artists) && song.artists.length > 0) return song.artists
-    if (Array.isArray(song.ar) && song.ar.length > 0) return song.ar
-    const nestedSong = song.song
-    if (nestedSong && typeof nestedSong == 'object') {
-        if (Array.isArray(nestedSong.artists) && nestedSong.artists.length > 0) return nestedSong.artists
-        if (Array.isArray(nestedSong.ar) && nestedSong.ar.length > 0) return nestedSong.ar
-    }
-    return []
+  if (!song || typeof song != "object") return [];
+  if (Array.isArray(song.singerinfo) && song.singerinfo.length > 0)
+    return song.singerinfo;
+  if (Array.isArray(song.artists) && song.artists.length > 0)
+    return song.artists;
+  if (Array.isArray(song.ar) && song.ar.length > 0) return song.ar;
+  const nestedSong = song.song;
+  if (nestedSong && typeof nestedSong == "object") {
+    if (Array.isArray(nestedSong.artists) && nestedSong.artists.length > 0)
+      return nestedSong.artists;
+    if (Array.isArray(nestedSong.ar) && nestedSong.ar.length > 0)
+      return nestedSong.ar;
+  }
+  return [];
 }
 
 function hasSongMetaObject(value) {
-    return !!(value && typeof value == 'object' && !Array.isArray(value) && Object.keys(value).length > 0)
+  return !!(
+    value &&
+    typeof value == "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0
+  );
 }
 
 function getFmSongAlbum(song) {
-    if (!song || typeof song != 'object') return null
-    if (hasSongMetaObject(song.albuminfo)) return song.albuminfo
-    if (hasSongMetaObject(song.album)) return song.album
-    if (hasSongMetaObject(song.al)) return song.al
-    const nestedSong = song.song
-    if (nestedSong && typeof nestedSong == 'object') {
-        if (hasSongMetaObject(nestedSong.album)) return nestedSong.album
-        if (hasSongMetaObject(nestedSong.al)) return nestedSong.al
-    }
-    return null
+  if (!song || typeof song != "object") return null;
+  if (hasSongMetaObject(song.albuminfo)) return song.albuminfo;
+  if (hasSongMetaObject(song.album)) return song.album;
+  if (hasSongMetaObject(song.al)) return song.al;
+  const nestedSong = song.song;
+  if (nestedSong && typeof nestedSong == "object") {
+    if (hasSongMetaObject(nestedSong.album)) return nestedSong.album;
+    if (hasSongMetaObject(nestedSong.al)) return nestedSong.al;
+  }
+  return null;
 }
 
 function getFmSongCover(song) {
-    if (!song || typeof song != 'object') return null
-    if (song.album_sizable_cover) return String(song.album_sizable_cover).replace('{size}', '480')
-    if (song.trans_param?.union_cover) return String(song.trans_param.union_cover).replace('{size}', '480')
-    if (song.cover) return String(song.cover).replace('{size}', '480')
-    if (song.coverUrl) return song.coverUrl
-    if (song.al?.picUrl) return song.al.picUrl
-    if (song.album?.picUrl) return song.album.picUrl
-    if (song.blurPicUrl) return song.blurPicUrl
-    if (song.img1v1Url) return song.img1v1Url
-    const nestedSong = song.song
-    if (nestedSong && typeof nestedSong == 'object') {
-        if (nestedSong.coverUrl) return nestedSong.coverUrl
-        if (nestedSong.al?.picUrl) return nestedSong.al.picUrl
-        if (nestedSong.album?.picUrl) return nestedSong.album.picUrl
-        if (nestedSong.blurPicUrl) return nestedSong.blurPicUrl
-        if (nestedSong.img1v1Url) return nestedSong.img1v1Url
-    }
-    return null
+  if (!song || typeof song != "object") return null;
+  if (song.album_sizable_cover)
+    return String(song.album_sizable_cover).replace("{size}", "480");
+  if (song.trans_param?.union_cover)
+    return String(song.trans_param.union_cover).replace("{size}", "480");
+  if (song.cover) return String(song.cover).replace("{size}", "480");
+  if (song.coverUrl) return song.coverUrl;
+  if (song.al?.picUrl) return song.al.picUrl;
+  if (song.album?.picUrl) return song.album.picUrl;
+  if (song.blurPicUrl) return song.blurPicUrl;
+  if (song.img1v1Url) return song.img1v1Url;
+  const nestedSong = song.song;
+  if (nestedSong && typeof nestedSong == "object") {
+    if (nestedSong.coverUrl) return nestedSong.coverUrl;
+    if (nestedSong.al?.picUrl) return nestedSong.al.picUrl;
+    if (nestedSong.album?.picUrl) return nestedSong.album.picUrl;
+    if (nestedSong.blurPicUrl) return nestedSong.blurPicUrl;
+    if (nestedSong.img1v1Url) return nestedSong.img1v1Url;
+  }
+  return null;
 }
 
 function getFmSongArtistsText(song) {
-    return getFmSongArtists(song)
-        .map(artist => artist?.name || '')
-        .filter(Boolean)
-        .join(' / ')
+  return getFmSongArtists(song)
+    .map((artist) => artist?.name || "")
+    .filter(Boolean)
+    .join(" / ");
 }
 
 function getFmSongAlbumName(song) {
-    return song?.album?.name || song?.al?.name || song?.song?.album?.name || song?.song?.al?.name || ''
+  return (
+    song?.album?.name ||
+    song?.al?.name ||
+    song?.song?.album?.name ||
+    song?.song?.al?.name ||
+    ""
+  );
 }
 
 function getArtistId(artist) {
-    if (!artist || typeof artist != 'object') return null
-    if (artist.id !== undefined && artist.id !== null && artist.id !== '') return artist.id
-    if (artist.artistId !== undefined && artist.artistId !== null && artist.artistId !== '') return artist.artistId
-    return null
+  if (!artist || typeof artist != "object") return null;
+  if (artist.id !== undefined && artist.id !== null && artist.id !== "")
+    return artist.id;
+  if (
+    artist.artistId !== undefined &&
+    artist.artistId !== null &&
+    artist.artistId !== ""
+  )
+    return artist.artistId;
+  return null;
 }
 
 function getAlbumId(album) {
-    if (!album || typeof album != 'object') return null
-    if (album.id !== undefined && album.id !== null && album.id !== '') return album.id
-    if (album.albumId !== undefined && album.albumId !== null && album.albumId !== '') return album.albumId
-    return null
+  if (!album || typeof album != "object") return null;
+  if (album.id !== undefined && album.id !== null && album.id !== "")
+    return album.id;
+  if (
+    album.albumId !== undefined &&
+    album.albumId !== null &&
+    album.albumId !== ""
+  )
+    return album.albumId;
+  return null;
 }
 
 function canOpenArtist(artist) {
-    return !!getArtistId(artist)
+  return !!getArtistId(artist);
 }
 
 function canOpenAlbum(album) {
-    return !!getAlbumId(album)
+  return !!getAlbumId(album);
 }
 
 function openArtist(artist) {
-    const artistId = getArtistId(artist)
-    if (!artistId) return
-    playerStore.forbidLastRouter = true
-    router.push('/mymusic/artist/' + artistId)
+  const artistId = getArtistId(artist);
+  if (!artistId) return;
+  playerStore.forbidLastRouter = true;
+  router.push("/mymusic/artist/" + artistId);
 }
 
 function openAlbum(album) {
-    const albumId = getAlbumId(album)
-    if (!albumId) return
-    playerStore.forbidLastRouter = true
-    router.push('/mymusic/album/' + albumId)
+  const albumId = getAlbumId(album);
+  if (!albumId) return;
+  playerStore.forbidLastRouter = true;
+  router.push("/mymusic/album/" + albumId);
 }
 
 function normalizeFmSong(song) {
-    if (!song || typeof song != 'object') return null
-    // 复用全局酷狗歌曲标准化，保证私人漫游与其他歌单字段保持一致。
-    const normalizedSong = normalizePlaylistSong(song)
-    const primaryId = getPrimarySongId(normalizedSong)
-    const normalizedId = normalizeSongId(primaryId)
-    if (!normalizedId) return null
+  if (!song || typeof song != "object") return null;
+  // 复用全局酷狗歌曲标准化，保证私人漫游与其他歌单字段保持一致。
+  const normalizedSong = normalizePlaylistSong(song);
+  const primaryId = getPrimarySongId(normalizedSong);
+  const normalizedId = normalizeSongId(primaryId);
+  if (!normalizedId) return null;
 
-    const artists = getFmSongArtists(normalizedSong).map(artist => ({ ...(artist || {}) }))
-    const rawAlbum = getFmSongAlbum(normalizedSong)
-    const album = rawAlbum && typeof rawAlbum == 'object' ? { ...rawAlbum } : {}
-    const coverUrl = getFmSongCover(normalizedSong)
+  const artists = getFmSongArtists(normalizedSong).map((artist) => ({
+    ...(artist || {}),
+  }));
+  const rawAlbum = getFmSongAlbum(normalizedSong);
+  const album = rawAlbum && typeof rawAlbum == "object" ? { ...rawAlbum } : {};
+  const coverUrl = getFmSongCover(normalizedSong);
 
-    if (coverUrl && !album.picUrl) album.picUrl = coverUrl
+  if (coverUrl && !album.picUrl) album.picUrl = coverUrl;
 
-    const parsedDuration = Number(
-        normalizedSong.dt
-        ?? normalizedSong.duration
-        ?? normalizedSong.timelength
-        ?? (Number(normalizedSong.time_length || 0) > 0 ? Number(normalizedSong.time_length) * 1000 : 0)
-    )
-    const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 0
-    const tns = Array.isArray(normalizedSong.tns) ? [...normalizedSong.tns] : Array.isArray(normalizedSong.song?.tns) ? [...normalizedSong.song.tns] : []
-    const transNames = Array.isArray(normalizedSong.transNames) ? [...normalizedSong.transNames] : Array.isArray(normalizedSong.song?.transNames) ? [...normalizedSong.song.transNames] : []
+  const parsedDuration = Number(
+    normalizedSong.dt ??
+      normalizedSong.duration ??
+      normalizedSong.timelength ??
+      (Number(normalizedSong.time_length || 0) > 0
+        ? Number(normalizedSong.time_length) * 1000
+        : 0),
+  );
+  const duration =
+    Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 0;
+  const tns = Array.isArray(normalizedSong.tns)
+    ? [...normalizedSong.tns]
+    : Array.isArray(normalizedSong.song?.tns)
+      ? [...normalizedSong.song.tns]
+      : [];
+  const transNames = Array.isArray(normalizedSong.transNames)
+    ? [...normalizedSong.transNames]
+    : Array.isArray(normalizedSong.song?.transNames)
+      ? [...normalizedSong.song.transNames]
+      : [];
 
-    return {
-        ...normalizedSong,
-        ...song,
-        id: normalizedId,
-        hash: normalizedSong.hash || song.hash || song.hash_128 || '',
-        songid: song.songid || song.songId || normalizedSong.songid || normalizedSong.songId || normalizedId,
-        mixsongid: song.mixsongid || song.mixsong_id || song.album_audio_id || normalizedSong.mixsongid || normalizedSong.album_audio_id || '',
-        album_audio_id: song.album_audio_id || song.mixsongid || song.mixsong_id || normalizedSong.album_audio_id || normalizedSong.mixsongid || '',
-        name: normalizedSong.name || song.songname || song.name || song.song?.name || '',
-        artists,
-        ar: artists,
-        album,
-        al: album,
-        dt: duration,
-        duration,
-        coverUrl: coverUrl || null,
-        tns,
-        transNames,
-        type: 'fm',
-        source: 'personalfm',
-    }
+  return {
+    ...normalizedSong,
+    ...song,
+    id: normalizedId,
+    hash: normalizedSong.hash || song.hash || song.hash_128 || "",
+    songid:
+      song.songid ||
+      song.songId ||
+      normalizedSong.songid ||
+      normalizedSong.songId ||
+      normalizedId,
+    mixsongid:
+      song.mixsongid ||
+      song.mixsong_id ||
+      song.album_audio_id ||
+      normalizedSong.mixsongid ||
+      normalizedSong.album_audio_id ||
+      "",
+    album_audio_id:
+      song.album_audio_id ||
+      song.mixsongid ||
+      song.mixsong_id ||
+      normalizedSong.album_audio_id ||
+      normalizedSong.mixsongid ||
+      "",
+    name:
+      normalizedSong.name ||
+      song.songname ||
+      song.name ||
+      song.song?.name ||
+      "",
+    artists,
+    ar: artists,
+    album,
+    al: album,
+    dt: duration,
+    duration,
+    coverUrl: coverUrl || null,
+    tns,
+    transNames,
+    type: "fm",
+    source: "personalfm",
+  };
 }
 
 function loadPersistentRecent() {
-    // 清空并加载“近期播放队列”（按账号隔离）
-    recentPlayedQueue.length = 0
-    recentPlayedSet.clear()
-    const recentArr = safeParseArray(localStorage.getItem(getRecentQueueKey()))
-    for (const rawId of recentArr) {
-        const id = normalizeSongId(rawId)
-        if (!id) continue
-        recentPlayedQueue.push(id)
-        recentPlayedSet.add(id)
-    }
+  // 清空并加载“近期播放队列”（按账号隔离）
+  recentPlayedQueue.length = 0;
+  recentPlayedSet.clear();
+  const recentArr = safeParseArray(localStorage.getItem(getRecentQueueKey()));
+  for (const rawId of recentArr) {
+    const id = normalizeSongId(rawId);
+    if (!id) continue;
+    recentPlayedQueue.push(id);
+    recentPlayedSet.add(id);
+  }
 }
 
 function persistRecent() {
-    // 将近期播放队列持久化（用于跨会话恢复“近期不重复”）
-    try {
-        localStorage.setItem(getRecentQueueKey(), JSON.stringify(recentPlayedQueue))
-    } catch (e) {
-        console.warn('Persist recent FM queue failed:', e)
-    }
+  // 将近期播放队列持久化（用于跨会话恢复“近期不重复”）
+  try {
+    localStorage.setItem(
+      getRecentQueueKey(),
+      JSON.stringify(recentPlayedQueue),
+    );
+  } catch (e) {
+    console.warn("Persist recent FM queue failed:", e);
+  }
 }
 
 function rememberRecent(id) {
-    const normalizedId = normalizeSongId(id)
-    if (!normalizedId) return
-    const existingIndex = recentPlayedQueue.indexOf(normalizedId)
-    if (existingIndex !== -1) {
-        recentPlayedQueue.splice(existingIndex, 1)
+  const normalizedId = normalizeSongId(id);
+  if (!normalizedId) return;
+  const existingIndex = recentPlayedQueue.indexOf(normalizedId);
+  if (existingIndex !== -1) {
+    recentPlayedQueue.splice(existingIndex, 1);
+  }
+  recentPlayedQueue.push(normalizedId);
+  recentPlayedSet.add(normalizedId);
+  // 控制窗口大小，超过阈值就移除最早的一首
+  if (recentPlayedQueue.length > RECENT_WINDOW) {
+    const old = recentPlayedQueue.shift();
+    if (old && !recentPlayedQueue.includes(old)) {
+      recentPlayedSet.delete(old);
     }
-    recentPlayedQueue.push(normalizedId)
-    recentPlayedSet.add(normalizedId)
-    // 控制窗口大小，超过阈值就移除最早的一首
-    if (recentPlayedQueue.length > RECENT_WINDOW) {
-        const old = recentPlayedQueue.shift()
-        if (old && !recentPlayedQueue.includes(old)) {
-            recentPlayedSet.delete(old)
-        }
-    }
-    // 持久化近期队列（账号隔离）
-    persistRecent()
+  }
+  // 持久化近期队列（账号隔离）
+  persistRecent();
 }
 
 function addToFmPoolUnique(songs, source = FM_REFRESH_SOURCE.PERSONAL_FM) {
-    if (!Array.isArray(songs) || songs.length === 0) {
-        const emptyStats = {
-            source,
-            input: 0,
-            added: 0,
-            filteredByRecent: 0,
-            filteredByPool: 0,
-            invalid: 0,
-            poolBefore: fmSongs.value.length,
-            poolAfter: fmSongs.value.length,
-        }
-        console.log('[FM Dedup]', emptyStats)
-        return emptyStats
+  if (!Array.isArray(songs) || songs.length === 0) {
+    const emptyStats = {
+      source,
+      input: 0,
+      added: 0,
+      filteredByRecent: 0,
+      filteredByPool: 0,
+      invalid: 0,
+      poolBefore: fmSongs.value.length,
+      poolAfter: fmSongs.value.length,
+    };
+    console.log("[FM Dedup]", emptyStats);
+    return emptyStats;
+  }
+  const before = fmSongs.value.length;
+  const deduped = [];
+  let filteredByRecent = 0;
+  let filteredByPool = 0;
+  let invalid = 0;
+  for (const s of songs) {
+    const normalizedSong = normalizeFmSong(s);
+    const id = normalizeSongId(normalizedSong?.id);
+    if (!id) {
+      invalid++;
+      continue;
     }
-    const before = fmSongs.value.length
-    const deduped = []
-    let filteredByRecent = 0
-    let filteredByPool = 0
-    let invalid = 0
-    for (const s of songs) {
-        const normalizedSong = normalizeFmSong(s)
-        const id = normalizeSongId(normalizedSong?.id)
-        if (!id) {
-            invalid++
-            continue
-        }
-        // 过滤：近期播放过、池中已有 → 不再加入
-        if (recentPlayedSet.has(id)) {
-            filteredByRecent++
-            continue
-        }
-        if (fmPoolIds.has(id)) {
-            filteredByPool++
-            continue
-        }
-        fmPoolIds.add(id)
-        deduped.push(normalizedSong)
+    // 过滤：近期播放过、池中已有 → 不再加入
+    if (recentPlayedSet.has(id)) {
+      filteredByRecent++;
+      continue;
     }
-    if (deduped.length) fmSongs.value.push(...deduped)
-    const stats = {
-        source,
-        input: songs.length,
-        added: deduped.length,
-        filteredByRecent,
-        filteredByPool,
-        invalid,
-        poolBefore: before,
-        poolAfter: fmSongs.value.length,
+    if (fmPoolIds.has(id)) {
+      filteredByPool++;
+      continue;
     }
-    console.log('[FM Dedup]', stats)
-    return stats
+    fmPoolIds.add(id);
+    deduped.push(normalizedSong);
+  }
+  if (deduped.length) fmSongs.value.push(...deduped);
+  const stats = {
+    source,
+    input: songs.length,
+    added: deduped.length,
+    filteredByRecent,
+    filteredByPool,
+    invalid,
+    poolBefore: before,
+    poolAfter: fmSongs.value.length,
+  };
+  console.log("[FM Dedup]", stats);
+  return stats;
 }
 
 function takeNextFromPool() {
-    while (fmSongs.value.length > 0) {
-        const s = fmSongs.value.shift()
-        const id = normalizeSongId(s && s.id)
-        if (id) fmPoolIds.delete(id)
-        // 若近期播放过，则跳过，继续取下一首
-        if (id && recentPlayedSet.has(id)) continue
-        return s || null
-    }
-    return null
+  while (fmSongs.value.length > 0) {
+    const s = fmSongs.value.shift();
+    const id = normalizeSongId(s && s.id);
+    if (id) fmPoolIds.delete(id);
+    // 若近期播放过，则跳过，继续取下一首
+    if (id && recentPlayedSet.has(id)) continue;
+    return s || null;
+  }
+  return null;
 }
 
 function bootstrapFromPoolIfNeeded(source) {
-    if (playedSongs.value.length !== 0 || fmSongs.value.length === 0) return false
-    const firstSong = takeNextFromPool()
-    if (!firstSong) return false
-    playedSongs.value.push(firstSong)
-    rememberRecent(firstSong.id)
-    currentIndex.value = 0
-    console.log(`[FM] Started with first ${source} song:`, firstSong.name)
-    return true
+  if (playedSongs.value.length !== 0 || fmSongs.value.length === 0)
+    return false;
+  const firstSong = takeNextFromPool();
+  if (!firstSong) return false;
+  playedSongs.value.push(firstSong);
+  rememberRecent(firstSong.id);
+  currentIndex.value = 0;
+  console.log(`[FM] Started with first ${source} song:`, firstSong.name);
+  return true;
 }
-const currentIndex = ref(0)
-const loading = ref(false)
-const isPrefetching = ref(false)
-const isPanelIntroActive = ref(false)
-const isPanelOutlineReady = ref(false)
-const coverNavigating = ref(false)
-const coverTransitionDirection = ref('neutral')
-const queuedDirection = ref(null)
-const COVER_TRANSITION_FALLBACK_MS = 2500
-const COVER_RELEASE_RATIO_FALLBACK = 0.45
-const COVER_RELEASE_MIN_MS = 180
-const COVER_RELEASE_BUFFER_MS = 16
-const PANEL_INTRO_DURATION_MS = 1500
-const PANEL_INTRO_BUFFER_MS = 40
-let fmRefreshToken = 0
-let coverReleaseTimer = null
-let panelIntroTimer = null
-let panelIntroFrame = null
-let skipIntroOnNextActivated = true
+const currentIndex = ref(0);
+const loading = ref(false);
+const isPrefetching = ref(false);
+const isPanelIntroActive = ref(false);
+const isPanelOutlineReady = ref(false);
+const coverNavigating = ref(false);
+const coverTransitionDirection = ref("neutral");
+const queuedDirection = ref(null);
+const COVER_TRANSITION_FALLBACK_MS = 2500;
+const COVER_RELEASE_RATIO_FALLBACK = 0.45;
+const COVER_RELEASE_MIN_MS = 180;
+const COVER_RELEASE_BUFFER_MS = 16;
+const PANEL_INTRO_DURATION_MS = 1500;
+const PANEL_INTRO_BUFFER_MS = 40;
+let fmRefreshToken = 0;
+let coverReleaseTimer = null;
+let panelIntroTimer = null;
+let panelIntroFrame = null;
+let skipIntroOnNextActivated = true;
 
 function getCurrentFmUserId() {
-    const userId = userStore?.user?.userId
-    return userId === undefined || userId === null || userId === '' ? null : String(userId)
+  const userId = userStore?.user?.userId;
+  return userId === undefined || userId === null || userId === ""
+    ? null
+    : String(userId);
 }
 
 function isActiveFmRefresh(token, userId) {
-    return token === fmRefreshToken && getCurrentFmUserId() === userId
+  return token === fmRefreshToken && getCurrentFmUserId() === userId;
 }
 
 function resetFmAccountState() {
-    fmRefreshToken += 1
-    fmSongs.value = []
-    playedSongs.value = []
-    fmPoolIds.clear()
-    currentIndex.value = 0
-    loading.value = false
-    isPrefetching.value = false
-    modeSwitching.value = false
-    modePanelOpen.value = false
-    awaitingSceneSubmodePick.value = false
-    lastRefreshSource.value = FM_REFRESH_SOURCE.PERSONAL_FM
-    lastLoadedUserId.value = null
-    clearCoverReleaseTimer()
-    coverNavigating.value = false
-    queuedDirection.value = null
+  fmRefreshToken += 1;
+  fmSongs.value = [];
+  playedSongs.value = [];
+  fmPoolIds.clear();
+  currentIndex.value = 0;
+  loading.value = false;
+  isPrefetching.value = false;
+  modeSwitching.value = false;
+  modePanelOpen.value = false;
+  awaitingSceneSubmodePick.value = false;
+  lastRefreshSource.value = FM_REFRESH_SOURCE.PERSONAL_FM;
+  lastLoadedUserId.value = null;
+  clearCoverReleaseTimer();
+  coverNavigating.value = false;
+  queuedDirection.value = null;
 }
 
 const currentSong = computed(() => {
-    // 先从已播放历史中查找
-    if (currentIndex.value < playedSongs.value.length) {
-        return playedSongs.value[currentIndex.value] || null
-    }
-    return null
-})
+  // 先从已播放历史中查找
+  if (currentIndex.value < playedSongs.value.length) {
+    return playedSongs.value[currentIndex.value] || null;
+  }
+  return null;
+});
 
 const isPlaying = computed(() => {
-    return playing.value && songId.value === currentSong.value?.id
-})
+  return playing.value && songId.value === currentSong.value?.id;
+});
 
 const prevCandidateSong = computed(() => {
-    if (currentIndex.value > 0) {
-        return playedSongs.value[currentIndex.value - 1] || null
-    }
-    return null
-})
+  if (currentIndex.value > 0) {
+    return playedSongs.value[currentIndex.value - 1] || null;
+  }
+  return null;
+});
 
 const nextCandidateSong = computed(() => {
-    const historyCandidate = playedSongs.value[currentIndex.value + 1]
-    if (historyCandidate) return historyCandidate
-    return fmSongs.value[0] || null
-})
+  const historyCandidate = playedSongs.value[currentIndex.value + 1];
+  if (historyCandidate) return historyCandidate;
+  return fmSongs.value[0] || null;
+});
 
 const rightPlaceholderText = computed(() => {
-    return isPrefetching.value ? 'NEXT LOADING' : 'NO NEXT'
-})
+  return isPrefetching.value ? "NEXT LOADING" : "NO NEXT";
+});
 
 const activeFmModeOption = computed(() => {
-    return FM_MODE_OPTIONS.find(mode => mode.value === selectedFmMode.value) || FM_MODE_OPTIONS[0]
-})
+  return (
+    FM_MODE_OPTIONS.find((mode) => mode.value === selectedFmMode.value) ||
+    FM_MODE_OPTIONS[0]
+  );
+});
 
 const activeFmSubmodeOption = computed(() => {
-    return FM_SCENE_SUBMODE_OPTIONS.find(scene => scene.value === selectedFmSubmode.value) || FM_SCENE_SUBMODE_OPTIONS[1]
-})
+  return (
+    FM_SCENE_SUBMODE_OPTIONS.find(
+      (scene) => scene.value === selectedFmSubmode.value,
+    ) || FM_SCENE_SUBMODE_OPTIONS[1]
+  );
+});
 
 const selectedFmModeSummary = computed(() => {
-    if (selectedFmMode.value === 'ai_pool') {
-        return `${activeFmModeOption.value.label} · ${activeFmSubmodeOption.value.label}`
-    }
-    return activeFmModeOption.value.label
-})
+  if (selectedFmMode.value === "ai_pool") {
+    return `${activeFmModeOption.value.label} · ${activeFmSubmodeOption.value.label}`;
+  }
+  return activeFmModeOption.value.label;
+});
 
-const isDefaultFmModeSelected = computed(() => selectedFmMode.value === DEFAULT_FM_MODE)
+const isDefaultFmModeSelected = computed(
+  () => selectedFmMode.value === DEFAULT_FM_MODE,
+);
 
 function buildCurrentFmRequestContext(extraParams = {}) {
-    const current = currentSong.value || {}
-    const playtimeSeconds = Number(time.value || 0)
-    const remainSongcnt = Math.max(0, fmSongs.value.length)
-    const params = {
-        remain_songcnt: remainSongcnt,
-        ...extraParams,
-    }
+  const current = currentSong.value || {};
+  const playtimeSeconds = Number(time.value || 0);
+  const remainSongcnt = Math.max(0, fmSongs.value.length);
+  const params = {
+    remain_songcnt: remainSongcnt,
+    ...extraParams,
+  };
 
-    if (selectedFmMode.value === 'ai_pool') {
-        params.mode = 'normal'
-        params.song_pool_id = selectedFmSubmode.value
-    } else {
-        params.mode = selectedFmMode.value
-    }
+  if (selectedFmMode.value === "ai_pool") {
+    params.mode = "normal";
+    params.song_pool_id = selectedFmSubmode.value;
+  } else {
+    params.mode = selectedFmMode.value;
+  }
 
-    if (current?.hash) params.hash = current.hash
-    if (current?.songid || current?.id) params.songid = current.songid || current.id
-    if (Number.isFinite(playtimeSeconds) && playtimeSeconds >= 0) {
-        // 接口文档要求的是“已播放时间”，播放器状态里保存的是秒。
-        params.playtime = Math.floor(playtimeSeconds)
-    }
+  if (current?.hash) params.hash = current.hash;
+  if (current?.songid || current?.id)
+    params.songid = current.songid || current.id;
+  if (Number.isFinite(playtimeSeconds) && playtimeSeconds >= 0) {
+    // 接口文档要求的是“已播放时间”，播放器状态里保存的是秒。
+    params.playtime = Math.floor(playtimeSeconds);
+  }
 
-    return params
+  return params;
 }
 
 function buildSelectedModeRequest() {
-    if (isDefaultFmModeSelected.value) {
-        return buildCurrentFmRequestContext({ mode: DEFAULT_FM_MODE })
-    }
-    return buildCurrentFmRequestContext()
+  if (isDefaultFmModeSelected.value) {
+    return buildCurrentFmRequestContext({ mode: DEFAULT_FM_MODE });
+  }
+  return buildCurrentFmRequestContext();
 }
 
 function trimFmCandidatesForModeSwitch() {
-    fmSongs.value = []
-    fmPoolIds.clear()
-    if (!playedSongs.value.length) {
-        currentIndex.value = 0
-        return
-    }
-    const keepUntil = Math.max(0, Math.min(currentIndex.value, playedSongs.value.length - 1))
-    playedSongs.value = playedSongs.value.slice(0, keepUntil + 1)
-    currentIndex.value = keepUntil
+  fmSongs.value = [];
+  fmPoolIds.clear();
+  if (!playedSongs.value.length) {
+    currentIndex.value = 0;
+    return;
+  }
+  const keepUntil = Math.max(
+    0,
+    Math.min(currentIndex.value, playedSongs.value.length - 1),
+  );
+  playedSongs.value = playedSongs.value.slice(0, keepUntil + 1);
+  currentIndex.value = keepUntil;
 }
 
 const refreshBySelectedMode = async () => {
-    if (modeSwitching.value) return
-    modeSwitching.value = true
-    try {
-        trimFmCandidatesForModeSwitch()
-        await refreshFM({ silent: !!currentSong.value })
-    } finally {
-        modeSwitching.value = false
-    }
-}
+  if (modeSwitching.value) return;
+  modeSwitching.value = true;
+  try {
+    trimFmCandidatesForModeSwitch();
+    await refreshFM({ silent: !!currentSong.value });
+  } finally {
+    modeSwitching.value = false;
+  }
+};
 
-const changeFmMode = async mode => {
-    if (!mode || modeSwitching.value || loading.value) return
-    if (selectedFmMode.value === mode) return
-    selectedFmMode.value = mode
-    if (mode === 'ai_pool') {
-        // AI 推荐池需要二次选择 Alpha/Beta/Gamma，保持面板展开等待用户继续点选。
-        awaitingSceneSubmodePick.value = true
-        modePanelOpen.value = true
-        return
-    }
-    awaitingSceneSubmodePick.value = false
-    selectedFmSubmode.value = DEFAULT_SCENE_SUBMODE
-    modePanelOpen.value = false
-    await refreshBySelectedMode()
-}
+const changeFmMode = async (mode) => {
+  if (!mode || modeSwitching.value || loading.value) return;
+  if (selectedFmMode.value === mode) return;
+  selectedFmMode.value = mode;
+  if (mode === "ai_pool") {
+    // AI 推荐池需要二次选择 Alpha/Beta/Gamma，保持面板展开等待用户继续点选。
+    awaitingSceneSubmodePick.value = true;
+    modePanelOpen.value = true;
+    return;
+  }
+  awaitingSceneSubmodePick.value = false;
+  selectedFmSubmode.value = DEFAULT_SCENE_SUBMODE;
+  modePanelOpen.value = false;
+  await refreshBySelectedMode();
+};
 
-const changeFmSubmode = async submode => {
-    if (!submode || modeSwitching.value || loading.value) return
-    if (selectedFmMode.value !== 'ai_pool') return
-    if (selectedFmSubmode.value === submode && !awaitingSceneSubmodePick.value) return
-    selectedFmSubmode.value = submode
-    awaitingSceneSubmodePick.value = false
-    modePanelOpen.value = false
-    await refreshBySelectedMode()
-}
+const changeFmSubmode = async (submode) => {
+  if (!submode || modeSwitching.value || loading.value) return;
+  if (selectedFmMode.value !== "ai_pool") return;
+  if (selectedFmSubmode.value === submode && !awaitingSceneSubmodePick.value)
+    return;
+  selectedFmSubmode.value = submode;
+  awaitingSceneSubmodePick.value = false;
+  modePanelOpen.value = false;
+  await refreshBySelectedMode();
+};
 
 const toggleModePanel = () => {
-    if (loading.value || modeSwitching.value) return
-    modePanelOpen.value = !modePanelOpen.value
-}
+  if (loading.value || modeSwitching.value) return;
+  modePanelOpen.value = !modePanelOpen.value;
+};
 
-const handleModePanelClickOutside = event => {
-    if (!modePanelOpen.value) return
-    const host = modePanelRef.value
-    if (!host || host.contains(event.target)) return
-    modePanelOpen.value = false
-}
+const handleModePanelClickOutside = (event) => {
+  if (!modePanelOpen.value) return;
+  const host = modePanelRef.value;
+  if (!host || host.contains(event.target)) return;
+  modePanelOpen.value = false;
+};
 
 const coverTrackItems = computed(() => {
-    const currentId = currentSong.value?.id || 'none'
-    const leftItem = prevCandidateSong.value
-        ? {
-              key: `song-${prevCandidateSong.value.id}`,
-              role: 'left',
-              song: prevCandidateSong.value,
-              isPlaceholder: false,
-              placeholderText: '',
-              clickable: true,
-          }
-        : {
-              key: `placeholder-left-${currentId}`,
-              role: 'left',
-              song: null,
-              isPlaceholder: true,
-              placeholderText: 'NO PREV',
-              clickable: false,
-          }
-
-    const centerItem = {
-        key: `song-${currentSong.value?.id || 'center'}`,
-        role: 'center',
-        song: currentSong.value,
+  const currentId = currentSong.value?.id || "none";
+  const leftItem = prevCandidateSong.value
+    ? {
+        key: `song-${prevCandidateSong.value.id}`,
+        role: "left",
+        song: prevCandidateSong.value,
         isPlaceholder: false,
-        placeholderText: '',
+        placeholderText: "",
         clickable: true,
-    }
+      }
+    : {
+        key: `placeholder-left-${currentId}`,
+        role: "left",
+        song: null,
+        isPlaceholder: true,
+        placeholderText: "NO PREV",
+        clickable: false,
+      };
 
-    const rightItem = nextCandidateSong.value
-        ? {
-              key: `song-${nextCandidateSong.value.id}`,
-              role: 'right',
-              song: nextCandidateSong.value,
-              isPlaceholder: false,
-              placeholderText: '',
-              clickable: true,
-          }
-        : {
-              key: `placeholder-right-${currentId}`,
-              role: 'right',
-              song: null,
-              isPlaceholder: true,
-              placeholderText: rightPlaceholderText.value,
-              clickable: false,
-          }
+  const centerItem = {
+    key: `song-${currentSong.value?.id || "center"}`,
+    role: "center",
+    song: currentSong.value,
+    isPlaceholder: false,
+    placeholderText: "",
+    clickable: true,
+  };
 
-    return [leftItem, centerItem, rightItem]
-})
+  const rightItem = nextCandidateSong.value
+    ? {
+        key: `song-${nextCandidateSong.value.id}`,
+        role: "right",
+        song: nextCandidateSong.value,
+        isPlaceholder: false,
+        placeholderText: "",
+        clickable: true,
+      }
+    : {
+        key: `placeholder-right-${currentId}`,
+        role: "right",
+        song: null,
+        isPlaceholder: true,
+        placeholderText: rightPlaceholderText.value,
+        clickable: false,
+      };
+
+  return [leftItem, centerItem, rightItem];
+});
 
 const coverTransitionName = computed(() => {
-    if (coverTransitionDirection.value === 'next') return 'fm-shift-next'
-    if (coverTransitionDirection.value === 'prev') return 'fm-shift-prev'
-    return 'fm-shift-neutral'
-})
+  if (coverTransitionDirection.value === "next") return "fm-shift-next";
+  if (coverTransitionDirection.value === "prev") return "fm-shift-prev";
+  return "fm-shift-neutral";
+});
 
-const setCoverTransitionDirection = direction => {
-    coverTransitionDirection.value = direction
-}
+const setCoverTransitionDirection = (direction) => {
+  coverTransitionDirection.value = direction;
+};
 
-const parseDurationToMs = rawValue => {
-    if (!rawValue) return NaN
-    const value = rawValue.trim()
-    if (!value) return NaN
-    if (value.endsWith('ms')) return Number.parseFloat(value)
-    if (value.endsWith('s')) return Number.parseFloat(value) * 1000
-    return Number.parseFloat(value)
-}
+const parseDurationToMs = (rawValue) => {
+  if (!rawValue) return NaN;
+  const value = rawValue.trim();
+  if (!value) return NaN;
+  if (value.endsWith("ms")) return Number.parseFloat(value);
+  if (value.endsWith("s")) return Number.parseFloat(value) * 1000;
+  return Number.parseFloat(value);
+};
 
 const getCoverTransitionDurationMs = () => {
-    if (typeof window === 'undefined') return COVER_TRANSITION_FALLBACK_MS
-    const host = document.querySelector('.personal-fm')
-    const durationValue = host ? window.getComputedStyle(host).getPropertyValue('--fm-cover-transition-duration') : ''
-    const durationMs = parseDurationToMs(durationValue)
-    if (!Number.isFinite(durationMs) || durationMs <= 0) {
-        return COVER_TRANSITION_FALLBACK_MS
-    }
-    return durationMs
-}
+  if (typeof window === "undefined") return COVER_TRANSITION_FALLBACK_MS;
+  const host = document.querySelector(".personal-fm");
+  const durationValue = host
+    ? window
+        .getComputedStyle(host)
+        .getPropertyValue("--fm-cover-transition-duration")
+    : "";
+  const durationMs = parseDurationToMs(durationValue);
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return COVER_TRANSITION_FALLBACK_MS;
+  }
+  return durationMs;
+};
 
 const getCoverReleaseDelayMs = () => {
-    const transitionDurationMs = getCoverTransitionDurationMs()
-    if (typeof window === 'undefined') return transitionDurationMs
+  const transitionDurationMs = getCoverTransitionDurationMs();
+  if (typeof window === "undefined") return transitionDurationMs;
 
-    const host = document.querySelector('.personal-fm')
-    const ratioValue = host ? window.getComputedStyle(host).getPropertyValue('--fm-cover-overlap-release-ratio') : ''
-    const ratio = Number.parseFloat((ratioValue || '').trim())
+  const host = document.querySelector(".personal-fm");
+  const ratioValue = host
+    ? window
+        .getComputedStyle(host)
+        .getPropertyValue("--fm-cover-overlap-release-ratio")
+    : "";
+  const ratio = Number.parseFloat((ratioValue || "").trim());
 
-    return Math.max(COVER_RELEASE_MIN_MS, transitionDurationMs)
-}
+  return Math.max(COVER_RELEASE_MIN_MS, transitionDurationMs);
+};
 
-const queueCoverDirection = direction => {
-    queuedDirection.value = direction
-}
+const queueCoverDirection = (direction) => {
+  queuedDirection.value = direction;
+};
 
 const clearCoverReleaseTimer = () => {
-    if (coverReleaseTimer) {
-        clearTimeout(coverReleaseTimer)
-        coverReleaseTimer = null
-    }
-}
+  if (coverReleaseTimer) {
+    clearTimeout(coverReleaseTimer);
+    coverReleaseTimer = null;
+  }
+};
 
 const clearPanelIntroSchedule = () => {
-    if (panelIntroFrame !== null) {
-        cancelAnimationFrame(panelIntroFrame)
-        panelIntroFrame = null
-    }
-    if (panelIntroTimer) {
-        clearTimeout(panelIntroTimer)
-        panelIntroTimer = null
-    }
-}
+  if (panelIntroFrame !== null) {
+    cancelAnimationFrame(panelIntroFrame);
+    panelIntroFrame = null;
+  }
+  if (panelIntroTimer) {
+    clearTimeout(panelIntroTimer);
+    panelIntroTimer = null;
+  }
+};
 
 const startPanelIntro = () => {
-    if (typeof window === 'undefined') return
+  if (typeof window === "undefined") return;
 
-    clearPanelIntroSchedule()
-    isPanelIntroActive.value = false
-    isPanelOutlineReady.value = false
+  clearPanelIntroSchedule();
+  isPanelIntroActive.value = false;
+  isPanelOutlineReady.value = false;
 
-    panelIntroFrame = requestAnimationFrame(() => {
-        panelIntroFrame = null
-        isPanelIntroActive.value = true
-        panelIntroTimer = window.setTimeout(() => {
-            isPanelOutlineReady.value = true
-            isPanelIntroActive.value = false
-            panelIntroTimer = null
-        }, PANEL_INTRO_DURATION_MS + PANEL_INTRO_BUFFER_MS)
-    })
-}
+  panelIntroFrame = requestAnimationFrame(() => {
+    panelIntroFrame = null;
+    isPanelIntroActive.value = true;
+    panelIntroTimer = window.setTimeout(() => {
+      isPanelOutlineReady.value = true;
+      isPanelIntroActive.value = false;
+      panelIntroTimer = null;
+    }, PANEL_INTRO_DURATION_MS + PANEL_INTRO_BUFFER_MS);
+  });
+};
 
 const releaseCoverNavigation = async () => {
-    coverNavigating.value = false
-    setCoverTransitionDirection('neutral')
+  coverNavigating.value = false;
+  setCoverTransitionDirection("neutral");
 
-    if (!queuedDirection.value) return
+  if (!queuedDirection.value) return;
 
-    const nextDirection = queuedDirection.value
-    queuedDirection.value = null
+  const nextDirection = queuedDirection.value;
+  queuedDirection.value = null;
 
-    if (nextDirection === 'next') {
-        await goNext()
-        return
-    }
-    await goPrev()
-}
+  if (nextDirection === "next") {
+    await goNext();
+    return;
+  }
+  await goPrev();
+};
 
 const scheduleCoverRelease = () => {
-    clearCoverReleaseTimer()
+  clearCoverReleaseTimer();
 
-    if (typeof window === 'undefined') {
-        void releaseCoverNavigation()
-        return
-    }
+  if (typeof window === "undefined") {
+    void releaseCoverNavigation();
+    return;
+  }
 
-    const releaseDelay = getCoverReleaseDelayMs() + COVER_RELEASE_BUFFER_MS
-    coverReleaseTimer = window.setTimeout(() => {
-        coverReleaseTimer = null
-        void releaseCoverNavigation()
-    }, releaseDelay)
-}
+  const releaseDelay = getCoverReleaseDelayMs() + COVER_RELEASE_BUFFER_MS;
+  coverReleaseTimer = window.setTimeout(() => {
+    coverReleaseTimer = null;
+    void releaseCoverNavigation();
+  }, releaseDelay);
+};
 
 const togglePlay = async () => {
-    console.log('togglePlay clicked!')
-    console.log('currentSong:', currentSong.value)
+  console.log("togglePlay clicked!");
+  console.log("currentSong:", currentSong.value);
 
-    if (!currentSong.value) {
-        console.log('No current song available')
-        return
+  if (!currentSong.value) {
+    console.log("No current song available");
+    return;
+  }
+
+  // 如果当前歌曲已经在播放，只需要切换播放状态
+  if (songId.value === currentSong.value.id && playerStore.currentMusic) {
+    if (playing.value) {
+      console.log("Pausing current FM song");
+      playerStore.currentMusic.pause();
+    } else {
+      console.log("Resuming current FM song");
+      playerStore.currentMusic.play();
     }
+    return;
+  }
 
-    // 如果当前歌曲已经在播放，只需要切换播放状态
-    if (songId.value === currentSong.value.id && playerStore.currentMusic) {
-        if (playing.value) {
-            console.log('Pausing current FM song')
-            playerStore.currentMusic.pause()
-        } else {
-            console.log('Resuming current FM song')
-            playerStore.currentMusic.play()
+  // 播放新的FM歌曲
+  console.log("Playing new FM song:", currentSong.value.name);
+
+  try {
+    // 获取歌曲URL
+    console.log("Getting music URL for:", currentSong.value.id);
+    const preferredQuality = getPreferredQuality(quality.value);
+    // 传递完整歌曲对象以确保 hash 和 album_audio_id 都可用
+    const trackInfo = await resolveTrackByQualityPreference(
+      currentSong.value,
+      preferredQuality,
+    );
+    console.log("Music URL response:", trackInfo);
+    if (trackInfo && trackInfo.url) {
+      const musicUrl = trackInfo.url;
+      const targetSongId = currentSong.value.id;
+      console.log("Playing music from URL:", musicUrl);
+      const normalizedCurrentSong = normalizeFmSong(currentSong.value);
+      if (!normalizedCurrentSong) {
+        console.error("Invalid current FM song shape:", currentSong.value);
+        return;
+      }
+
+      // 创建一个临时的单曲列表用于FM播放（不影响用户的真实播放列表）
+      const fmSongList = [
+        {
+          ...normalizedCurrentSong,
+          type: "fm",
+        },
+      ];
+
+      // 设置播放器状态
+      playerStore.songId = currentSong.value.id;
+      playerStore.currentIndex = 0;
+      playerStore.songList = fmSongList;
+      playerStore.listInfo = {
+        id: "personalfm",
+        type: "personalfm",
+        name: "私人漫游",
+      };
+      playerStore.lyric = null;
+      playerStore.lyricsObjArr = null;
+      playerStore.currentLyricIndex = -1;
+      setSongLevel(trackInfo.level, trackInfo);
+
+      // 直接播放音乐
+      play(musicUrl, true);
+
+      // 获取歌词
+      try {
+        const lyricResponse = await getLyric(currentSong.value.hash);
+        if (
+          playerStore.songId === targetSongId &&
+          lyricResponse &&
+          lyricResponse.lrc
+        ) {
+          playerStore.lyric = lyricResponse;
         }
-        return
+      } catch (lyricError) {
+        console.warn("Failed to load lyrics:", lyricError);
+      }
+
+      console.log("FM song started playing successfully");
+    } else {
+      console.error("No valid music URL found");
     }
-
-    // 播放新的FM歌曲
-    console.log('Playing new FM song:', currentSong.value.name)
-
-    try {
-        // 获取歌曲URL
-        console.log('Getting music URL for:', currentSong.value.id)
-        const preferredQuality = getPreferredQuality(quality.value)
-        const trackInfo = await resolveTrackByQualityPreference(currentSong.value.id, preferredQuality)
-        console.log('Music URL response:', trackInfo)
-        if (trackInfo && trackInfo.url) {
-            const musicUrl = trackInfo.url
-            const targetSongId = currentSong.value.id
-            console.log('Playing music from URL:', musicUrl)
-            const normalizedCurrentSong = normalizeFmSong(currentSong.value)
-            if (!normalizedCurrentSong) {
-                console.error('Invalid current FM song shape:', currentSong.value)
-                return
-            }
-
-            // 创建一个临时的单曲列表用于FM播放（不影响用户的真实播放列表）
-            const fmSongList = [
-                {
-                    ...normalizedCurrentSong,
-                    type: 'fm',
-                },
-            ]
-
-            // 设置播放器状态
-            playerStore.songId = currentSong.value.id
-            playerStore.currentIndex = 0
-            playerStore.songList = fmSongList
-            playerStore.listInfo = {
-                id: 'personalfm',
-                type: 'personalfm',
-                name: '私人漫游',
-            }
-            playerStore.lyric = null
-            playerStore.lyricsObjArr = null
-            playerStore.currentLyricIndex = -1
-            setSongLevel(trackInfo.level, trackInfo)
-
-            // 直接播放音乐
-            play(musicUrl, true)
-
-            // 获取歌词
-            try {
-                const lyricResponse = await getLyric(currentSong.value.hash)
-                if (playerStore.songId === targetSongId && lyricResponse && lyricResponse.lrc) {
-                    playerStore.lyric = lyricResponse
-                }
-            } catch (lyricError) {
-                console.warn('Failed to load lyrics:', lyricError)
-            }
-
-            console.log('FM song started playing successfully')
-        } else {
-            console.error('No valid music URL found')
-        }
-    } catch (error) {
-        console.error('Error playing FM song:', error)
-    }
-}
+  } catch (error) {
+    console.error("Error playing FM song:", error);
+  }
+};
 
 const nextSong = async () => {
-    // 如果有下一首已播放的歌曲，直接播放
-    if (currentIndex.value < playedSongs.value.length - 1) {
-        currentIndex.value++
-        if (currentSong.value) {
-            console.log('Playing next FM song from history:', currentSong.value.name)
-            await togglePlay()
-        }
-        return
+  // 如果有下一首已播放的歌曲，直接播放
+  if (currentIndex.value < playedSongs.value.length - 1) {
+    currentIndex.value++;
+    if (currentSong.value) {
+      console.log("Playing next FM song from history:", currentSong.value.name);
+      await togglePlay();
     }
+    return;
+  }
 
-    // 如果没有下一首，需要获取新歌曲
+  // 如果没有下一首，需要获取新歌曲
+  if (fmSongs.value.length === 0) {
+    await refreshFM({ silent: true });
+  }
+
+  // 从未播放的歌曲中取下一首
+  let nextSongFromPool = takeNextFromPool();
+  if (nextSongFromPool) {
+    // 添加到播放历史并记录近期去重
+    playedSongs.value.push(nextSongFromPool);
+    rememberRecent(nextSongFromPool.id);
+    currentIndex.value = playedSongs.value.length - 1;
+
+    console.log("Playing new FM song:", nextSongFromPool.name);
+    await togglePlay();
+    // 低水位预取，保持池内始终有歌可播
+    if (fmSongs.value.length < 2) {
+      refreshFM({ silent: true });
+    }
+  } else {
+    console.log("No more FM songs available");
+    // 如果歌曲池为空，尝试再次刷新
     if (fmSongs.value.length === 0) {
-        await refreshFM({ silent: true })
-    }
-
-    // 从未播放的歌曲中取下一首
-    let nextSongFromPool = takeNextFromPool()
-    if (nextSongFromPool) {
-        // 添加到播放历史并记录近期去重
-        playedSongs.value.push(nextSongFromPool)
-        rememberRecent(nextSongFromPool.id)
-        currentIndex.value = playedSongs.value.length - 1
-
-        console.log('Playing new FM song:', nextSongFromPool.name)
-        await togglePlay()
-        // 低水位预取，保持池内始终有歌可播
+      await refreshFM({ silent: true });
+      // 再次尝试获取歌曲
+      nextSongFromPool = takeNextFromPool();
+      if (nextSongFromPool) {
+        playedSongs.value.push(nextSongFromPool);
+        rememberRecent(nextSongFromPool.id);
+        currentIndex.value = playedSongs.value.length - 1;
+        console.log("Playing retry FM song:", nextSongFromPool.name);
+        await togglePlay();
         if (fmSongs.value.length < 2) {
-            refreshFM({ silent: true })
+          refreshFM({ silent: true });
         }
-    } else {
-        console.log('No more FM songs available')
-        // 如果歌曲池为空，尝试再次刷新
-        if (fmSongs.value.length === 0) {
-            await refreshFM({ silent: true })
-            // 再次尝试获取歌曲
-            nextSongFromPool = takeNextFromPool()
-            if (nextSongFromPool) {
-                playedSongs.value.push(nextSongFromPool)
-                rememberRecent(nextSongFromPool.id)
-                currentIndex.value = playedSongs.value.length - 1
-                console.log('Playing retry FM song:', nextSongFromPool.name)
-                await togglePlay()
-                if (fmSongs.value.length < 2) {
-                    refreshFM({ silent: true })
-                }
-            }
-        }
+      }
     }
-}
+  }
+};
 
 const prevSong = async () => {
-    if (currentIndex.value > 0) {
-        currentIndex.value--
-        if (currentSong.value) {
-            console.log('Playing previous FM song:', currentSong.value.name)
-            await togglePlay()
-        }
-    } else {
-        console.log('Already at first song, cannot go to previous')
+  if (currentIndex.value > 0) {
+    currentIndex.value--;
+    if (currentSong.value) {
+      console.log("Playing previous FM song:", currentSong.value.name);
+      await togglePlay();
     }
-}
+  } else {
+    console.log("Already at first song, cannot go to previous");
+  }
+};
 
 const goNext = async () => {
-    if (coverNavigating.value) {
-        queueCoverDirection('next')
-        return
-    }
+  if (coverNavigating.value) {
+    queueCoverDirection("next");
+    return;
+  }
 
-    coverNavigating.value = true
-    clearCoverReleaseTimer()
-    setCoverTransitionDirection('next')
+  coverNavigating.value = true;
+  clearCoverReleaseTimer();
+  setCoverTransitionDirection("next");
 
-    try {
-        await nextSong()
-    } finally {
-        scheduleCoverRelease()
-    }
-}
+  try {
+    await nextSong();
+  } finally {
+    scheduleCoverRelease();
+  }
+};
 
 const goPrev = async () => {
-    if (coverNavigating.value) {
-        queueCoverDirection('prev')
-        return
-    }
-    if (currentIndex.value <= 0) return
+  if (coverNavigating.value) {
+    queueCoverDirection("prev");
+    return;
+  }
+  if (currentIndex.value <= 0) return;
 
-    coverNavigating.value = true
-    clearCoverReleaseTimer()
-    setCoverTransitionDirection('prev')
+  coverNavigating.value = true;
+  clearCoverReleaseTimer();
+  setCoverTransitionDirection("prev");
 
-    try {
-        await prevSong()
-    } finally {
-        scheduleCoverRelease()
-    }
-}
+  try {
+    await prevSong();
+  } finally {
+    scheduleCoverRelease();
+  }
+};
 
-const handleCoverSlotClick = async item => {
-    if (!item || !item.clickable) return
+const handleCoverSlotClick = async (item) => {
+  if (!item || !item.clickable) return;
 
-    if (item.role === 'center') {
-        if (coverNavigating.value) return
-        await togglePlay()
-        return
+  if (item.role === "center") {
+    if (coverNavigating.value) return;
+    await togglePlay();
+    return;
+  }
+  if (item.role === "left") {
+    await goPrev();
+    return;
+  }
+  if (item.role === "right") {
+    if (nextCandidateSong.value) {
+      await goNext();
+    } else {
+      prefetchNextCandidate();
     }
-    if (item.role === 'left') {
-        await goPrev()
-        return
-    }
-    if (item.role === 'right') {
-        if (nextCandidateSong.value) {
-            await goNext()
-        } else {
-            prefetchNextCandidate()
-        }
-    }
-}
+  }
+};
 
 const trashSong = async () => {
-    if (!currentSong.value) return
+  if (!currentSong.value) return;
 
-    try {
-        // 使用文档中的 action=garbage 标记“不喜欢”，并顺手把下一批推荐预热进候选池。
-        const response = await fmTrash(currentSong.value, buildCurrentFmRequestContext({ action: 'garbage' }))
-        const songs = Array.isArray(response?.data) ? response.data : []
-        if (songs.length > 0) {
-            addToFmPoolUnique(songs, FM_REFRESH_SOURCE.PERSONAL_FM)
-        }
-        await goNext()
-    } catch (error) {
-        console.warn('FM trash failed, skipping to next song:', error)
-        await goNext()
+  try {
+    // 使用文档中的 action=garbage 标记“不喜欢”，并顺手把下一批推荐预热进候选池。
+    const response = await fmTrash(
+      currentSong.value,
+      buildCurrentFmRequestContext({ action: "garbage" }),
+    );
+    const songs = Array.isArray(response?.data) ? response.data : [];
+    if (songs.length > 0) {
+      addToFmPoolUnique(songs, FM_REFRESH_SOURCE.PERSONAL_FM);
     }
-}
+    await goNext();
+  } catch (error) {
+    console.warn("FM trash failed, skipping to next song:", error);
+    await goNext();
+  }
+};
 
 // 检查并更新我喜欢的音乐歌单
 const updateFavoritePlaylistIfViewing = async () => {
-    // 检查当前是否在查看"我喜欢的音乐"歌单
-    if (libraryStore.libraryInfo && userStore.favoritePlaylistId && libraryStore.libraryInfo.id == userStore.favoritePlaylistId) {
-        console.log('当前正在查看我喜欢的音乐，正在更新歌单内容...')
+  // 检查当前是否在查看"我喜欢的音乐"歌单
+  if (
+    libraryStore.libraryInfo &&
+    userStore.favoritePlaylistId &&
+    libraryStore.libraryInfo.id == userStore.favoritePlaylistId
+  ) {
+    console.log("当前正在查看我喜欢的音乐，正在更新歌单内容...");
 
-        try {
-            // 重新获取歌单详情
-            await libraryStore.updatePlaylistDetail(userStore.favoritePlaylistId)
-            console.log('我喜欢的音乐歌单已更新')
-        } catch (error) {
-            console.error('更新我喜欢的音乐歌单失败:', error)
-        }
+    try {
+      // 重新获取歌单详情
+      await libraryStore.updatePlaylistDetail(userStore.favoritePlaylistId);
+      console.log("我喜欢的音乐歌单已更新");
+    } catch (error) {
+      console.error("更新我喜欢的音乐歌单失败:", error);
     }
-}
+  }
+};
 
 const likeSong = async () => {
-    if (!currentSong.value) return
-    if (!Array.isArray(likelist.value)) return
+  if (!currentSong.value) return;
+  if (!Array.isArray(likelist.value)) return;
 
-    const actionToken = createLikeActionToken()
+  const actionToken = createLikeActionToken();
 
+  try {
+    // 使用计算属性来判断当前的操作是“喜欢”还是“取消喜欢”
+    const isLiked = !isCurrentSongLiked.value;
+    console.log("PersonalFM开始喜欢操作:", {
+      songId: currentSong.value.id,
+      like: isLiked,
+    });
+
+    // 1) 优先使用官方 /like 接口
     try {
-        // 使用计算属性来判断当前的操作是“喜欢”还是“取消喜欢”
-        const isLiked = !isCurrentSongLiked.value
-        console.log('PersonalFM开始喜欢操作:', { songId: currentSong.value.id, like: isLiked })
-
-        // 1) 优先使用官方 /like 接口
-        try {
-            const result = await queueLikeRequest(actionToken, () => likeMusic(currentSong.value.id, isLiked))
-            if (result?.skipped) return
-            if (result && result.code === 200) {
-                if (!isActiveLikeActionToken(actionToken)) return
-                const fallbackLikelist = applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
-                userStore.updateLikelist(fallbackLikelist)
-                noticeOpen(await getFavoritePlaylistNoticeText(isLiked), 2)
-                await syncLikelistAfterLikeAction({
-                    songId: currentSong.value.id,
-                    like: isLiked,
-                    actionToken,
-                    fallbackLikelist,
-                })
-                if (!isActiveLikeActionToken(actionToken)) return
-                schedulePlaylistCacheInvalidation()
-                return
-            }
-            throw new Error(getLikeActionErrorMessage(result, 'likeMusic 返回异常'))
-        } catch (apiErr) {
-            console.warn('PersonalFM likeMusic 失败，尝试使用歌单 tracks:', apiErr.message)
-        }
-
-        // 2) 降级：使用“我喜欢的音乐”歌单 tracks
-        try {
-            const fallbackResult = await updateFavoritePlaylistTrack(currentSong.value.id, isLiked)
-            if (fallbackResult.success) {
-                if (!isActiveLikeActionToken(actionToken)) return
-                const fallbackLikelist = applyOptimisticLikeState(currentSong.value.id, isLiked, likelist.value)
-                userStore.updateLikelist(fallbackLikelist)
-                noticeOpen(isLiked ? `已添加到${fallbackResult.favoritePlaylist?.name || '我喜欢的音乐'}` : '已取消喜欢', 2)
-                await syncLikelistAfterLikeAction({
-                    songId: currentSong.value.id,
-                    like: isLiked,
-                    actionToken,
-                    fallbackLikelist,
-                })
-                if (!isActiveLikeActionToken(actionToken)) return
-                schedulePlaylistCacheInvalidation()
-                return
-            }
-            throw new Error(fallbackResult.message || '歌单 tracks 返回异常')
-        } catch (playlistError) {
-            console.error('PersonalFM 歌单 tracks 也失败:', playlistError)
-        }
-    } catch (error) {
-        console.error('Failed to like song:', error)
+      const result = await queueLikeRequest(actionToken, () =>
+        likeMusic(currentSong.value.id, isLiked),
+      );
+      if (result?.skipped) return;
+      if (result && result.code === 200) {
+        if (!isActiveLikeActionToken(actionToken)) return;
+        const fallbackLikelist = applyOptimisticLikeState(
+          currentSong.value.id,
+          isLiked,
+          likelist.value,
+        );
+        userStore.updateLikelist(fallbackLikelist);
+        noticeOpen(await getFavoritePlaylistNoticeText(isLiked), 2);
+        await syncLikelistAfterLikeAction({
+          songId: currentSong.value.id,
+          like: isLiked,
+          actionToken,
+          fallbackLikelist,
+        });
+        if (!isActiveLikeActionToken(actionToken)) return;
+        schedulePlaylistCacheInvalidation();
+        return;
+      }
+      throw new Error(getLikeActionErrorMessage(result, "likeMusic 返回异常"));
+    } catch (apiErr) {
+      console.warn(
+        "PersonalFM likeMusic 失败，尝试使用歌单 tracks:",
+        apiErr.message,
+      );
     }
-}
+
+    // 2) 降级：使用“我喜欢的音乐”歌单 tracks
+    try {
+      const fallbackResult = await updateFavoritePlaylistTrack(
+        currentSong.value.id,
+        isLiked,
+      );
+      if (fallbackResult.success) {
+        if (!isActiveLikeActionToken(actionToken)) return;
+        const fallbackLikelist = applyOptimisticLikeState(
+          currentSong.value.id,
+          isLiked,
+          likelist.value,
+        );
+        userStore.updateLikelist(fallbackLikelist);
+        noticeOpen(
+          isLiked
+            ? `已添加到${fallbackResult.favoritePlaylist?.name || "我喜欢的音乐"}`
+            : "已取消喜欢",
+          2,
+        );
+        await syncLikelistAfterLikeAction({
+          songId: currentSong.value.id,
+          like: isLiked,
+          actionToken,
+          fallbackLikelist,
+        });
+        if (!isActiveLikeActionToken(actionToken)) return;
+        schedulePlaylistCacheInvalidation();
+        return;
+      }
+      throw new Error(fallbackResult.message || "歌单 tracks 返回异常");
+    } catch (playlistError) {
+      console.error("PersonalFM 歌单 tracks 也失败:", playlistError);
+    }
+  } catch (error) {
+    console.error("Failed to like song:", error);
+  }
+};
 
 const refreshFM = async ({ silent = false } = {}) => {
-    const requestUserId = getCurrentFmUserId()
-    if (!requestUserId) {
-        resetFmAccountState()
-        return false
-    }
+  const requestUserId = getCurrentFmUserId();
+  if (!requestUserId) {
+    resetFmAccountState();
+    return false;
+  }
 
-    const requestToken = ++fmRefreshToken
-    if (!silent) {
-        loading.value = true
-    }
+  const requestToken = ++fmRefreshToken;
+  if (!silent) {
+    loading.value = true;
+  }
+  try {
+    const selectedModeRequest = buildSelectedModeRequest();
+    const usingDefaultMode = isDefaultFmModeSelected.value;
+    const selectedModeLabel =
+      selectedModeRequest.song_pool_id !== undefined
+        ? `${selectedModeRequest.mode}/pool-${selectedModeRequest.song_pool_id}`
+        : selectedModeRequest.mode;
+    console.log("[FM] Requesting Personal FM data, mode:", selectedModeLabel);
+    let shouldTryModeRescue = false;
+
+    // 1) 主流程：统一走酷狗 /personal/fm，只是参数按当前模式切换。
     try {
-        const selectedModeRequest = buildSelectedModeRequest()
-        const usingDefaultMode = isDefaultFmModeSelected.value
-        const selectedModeLabel = selectedModeRequest.song_pool_id !== undefined
-            ? `${selectedModeRequest.mode}/pool-${selectedModeRequest.song_pool_id}`
-            : selectedModeRequest.mode
-        console.log('[FM] Requesting Personal FM data, mode:', selectedModeLabel)
-        let shouldTryModeRescue = false
+      let songs = [];
+      let primarySource = FM_REFRESH_SOURCE.PERSONAL_FM;
+      const response = usingDefaultMode
+        ? await getPersonalFM(selectedModeRequest)
+        : await getPersonalFMByMode(selectedModeRequest);
+      if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
+      songs = Array.isArray(response?.data) ? response.data : [];
+      if (!usingDefaultMode) primarySource = FM_REFRESH_SOURCE.FM_MODE_RESCUE;
+      console.log(
+        "[FM] personal/fm response size:",
+        songs.length,
+        selectedModeRequest,
+      );
 
-        // 1) 主流程：统一走酷狗 /personal/fm，只是参数按当前模式切换。
-        try {
-            let songs = []
-            let primarySource = FM_REFRESH_SOURCE.PERSONAL_FM
-            const response = usingDefaultMode
-                ? await getPersonalFM(selectedModeRequest)
-                : await getPersonalFMByMode(selectedModeRequest)
-            if (!isActiveFmRefresh(requestToken, requestUserId)) return false
-            songs = Array.isArray(response?.data) ? response.data : []
-            if (!usingDefaultMode) primarySource = FM_REFRESH_SOURCE.FM_MODE_RESCUE
-            console.log('[FM] personal/fm response size:', songs.length, selectedModeRequest)
-
-            if (songs.length > 0) {
-                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
-                const stats = addToFmPoolUnique(songs, primarySource)
-                if (stats.added > 0) {
-                    lastRefreshSource.value = primarySource
-                    lastLoadedUserId.value = requestUserId
-                    bootstrapFromPoolIfNeeded(primarySource)
-                    console.log('[FM] refresh source:', lastRefreshSource.value)
-                    return true
-                }
-                // 仅在“去重后无新增 + 当前无可播下一首”时触发模式救援
-                if (!nextCandidateSong.value && usingDefaultMode) {
-                    shouldTryModeRescue = true
-                    console.log('[FM] personal/fm deduped to empty and no next candidate, try mode rescue')
-                } else if (!nextCandidateSong.value) {
-                    console.log('[FM] selected mode deduped to empty, fallback to daily recommendations')
-                } else {
-                    console.log('[FM] primary source deduped to empty, but next candidate already exists; skip fallback')
-                    return
-                }
-            } else if (!nextCandidateSong.value && usingDefaultMode) {
-                shouldTryModeRescue = true
-                console.log('[FM] personal/fm returned empty list, try mode rescue')
-            } else if (!nextCandidateSong.value) {
-                console.log('[FM] selected mode returned empty list, fallback to daily recommendations')
-            } else {
-                return
-            }
-        } catch (fmError) {
-            console.warn('Primary FM API failed, fallback path starts:', fmError)
-            if (usingDefaultMode) {
-                shouldTryModeRescue = true
-            }
+      if (songs.length > 0) {
+        if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
+        const stats = addToFmPoolUnique(songs, primarySource);
+        if (stats.added > 0) {
+          lastRefreshSource.value = primarySource;
+          lastLoadedUserId.value = requestUserId;
+          bootstrapFromPoolIfNeeded(primarySource);
+          console.log("[FM] refresh source:", lastRefreshSource.value);
+          return true;
         }
-
-        // 2) 救援流程：改走文档支持的小众模式，尽量从同一套私人漫游数据源补歌。
-        if (shouldTryModeRescue) {
-            try {
-                const modeResponse = await getPersonalFMByMode({
-                    ...buildCurrentFmRequestContext(),
-                    ...FM_MODE_RESCUE_OPTIONS,
-                })
-                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
-                const modeSongs = Array.isArray(modeResponse?.data) ? modeResponse.data : []
-                console.log('[FM] fm_mode_rescue response size:', modeSongs.length, FM_MODE_RESCUE_OPTIONS)
-                if (modeSongs.length > 0) {
-                    if (!isActiveFmRefresh(requestToken, requestUserId)) return false
-                    const modeStats = addToFmPoolUnique(modeSongs, FM_REFRESH_SOURCE.FM_MODE_RESCUE)
-                    if (modeStats.added > 0) {
-                        lastRefreshSource.value = FM_REFRESH_SOURCE.FM_MODE_RESCUE
-                        lastLoadedUserId.value = requestUserId
-                        bootstrapFromPoolIfNeeded(FM_REFRESH_SOURCE.FM_MODE_RESCUE)
-                        console.log('[FM] refresh source:', lastRefreshSource.value)
-                        return true
-                    }
-                }
-            } catch (modeError) {
-                console.warn('FM mode rescue failed, trying daily recommendations:', modeError)
-            }
+        // 仅在“去重后无新增 + 当前无可播下一首”时触发模式救援
+        if (!nextCandidateSong.value && usingDefaultMode) {
+          shouldTryModeRescue = true;
+          console.log(
+            "[FM] personal/fm deduped to empty and no next candidate, try mode rescue",
+          );
+        } else if (!nextCandidateSong.value) {
+          console.log(
+            "[FM] selected mode deduped to empty, fallback to daily recommendations",
+          );
+        } else {
+          console.log(
+            "[FM] primary source deduped to empty, but next candidate already exists; skip fallback",
+          );
+          return;
         }
-
-        // 3) 最终回退：每日推荐
-        try {
-            const recResponse = await getRecommendSongs()
-            if (!isActiveFmRefresh(requestToken, requestUserId)) return false
-            console.log('Daily recommendations response:', recResponse)
-
-            if (recResponse && recResponse.data && recResponse.data.dailySongs) {
-                const songs = mapSongsPlayableStatus(recResponse.data.dailySongs)
-                const shuffledSongs = songs.sort(() => Math.random() - 0.5)
-                if (!isActiveFmRefresh(requestToken, requestUserId)) return false
-                const dailyStats = addToFmPoolUnique(shuffledSongs, FM_REFRESH_SOURCE.DAILY_RECOMMEND)
-                if (dailyStats.added > 0) {
-                    lastRefreshSource.value = FM_REFRESH_SOURCE.DAILY_RECOMMEND
-                    lastLoadedUserId.value = requestUserId
-                    bootstrapFromPoolIfNeeded(FM_REFRESH_SOURCE.DAILY_RECOMMEND)
-                    console.log('[FM] refresh source:', lastRefreshSource.value)
-                    return true
-                }
-                console.log('[FM] daily_recommend deduped to empty')
-            }
-        } catch (recError) {
-            console.warn('Daily recommendations also failed:', recError)
-        }
-
-        console.error('All FM data sources failed or yielded no new songs')
-    } catch (error) {
-        console.error('All FM data sources failed:', error)
-    } finally {
-        if (!silent && isActiveFmRefresh(requestToken, requestUserId)) {
-            loading.value = false
-        }
+      } else if (!nextCandidateSong.value && usingDefaultMode) {
+        shouldTryModeRescue = true;
+        console.log("[FM] personal/fm returned empty list, try mode rescue");
+      } else if (!nextCandidateSong.value) {
+        console.log(
+          "[FM] selected mode returned empty list, fallback to daily recommendations",
+        );
+      } else {
+        return;
+      }
+    } catch (fmError) {
+      console.warn("Primary FM API failed, fallback path starts:", fmError);
+      if (usingDefaultMode) {
+        shouldTryModeRescue = true;
+      }
     }
-    return false
-}
+
+    // 2) 救援流程：改走文档支持的小众模式，尽量从同一套私人漫游数据源补歌。
+    if (shouldTryModeRescue) {
+      try {
+        const modeResponse = await getPersonalFMByMode({
+          ...buildCurrentFmRequestContext(),
+          ...FM_MODE_RESCUE_OPTIONS,
+        });
+        if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
+        const modeSongs = Array.isArray(modeResponse?.data)
+          ? modeResponse.data
+          : [];
+        console.log(
+          "[FM] fm_mode_rescue response size:",
+          modeSongs.length,
+          FM_MODE_RESCUE_OPTIONS,
+        );
+        if (modeSongs.length > 0) {
+          if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
+          const modeStats = addToFmPoolUnique(
+            modeSongs,
+            FM_REFRESH_SOURCE.FM_MODE_RESCUE,
+          );
+          if (modeStats.added > 0) {
+            lastRefreshSource.value = FM_REFRESH_SOURCE.FM_MODE_RESCUE;
+            lastLoadedUserId.value = requestUserId;
+            bootstrapFromPoolIfNeeded(FM_REFRESH_SOURCE.FM_MODE_RESCUE);
+            console.log("[FM] refresh source:", lastRefreshSource.value);
+            return true;
+          }
+        }
+      } catch (modeError) {
+        console.warn(
+          "FM mode rescue failed, trying daily recommendations:",
+          modeError,
+        );
+      }
+    }
+
+    // 3) 最终回退：每日推荐
+    try {
+      const recResponse = await getRecommendSongs();
+      if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
+      console.log("Daily recommendations response:", recResponse);
+
+      if (recResponse && recResponse.data && recResponse.data.dailySongs) {
+        const songs = mapSongsPlayableStatus(recResponse.data.dailySongs);
+        const shuffledSongs = songs.sort(() => Math.random() - 0.5);
+        if (!isActiveFmRefresh(requestToken, requestUserId)) return false;
+        const dailyStats = addToFmPoolUnique(
+          shuffledSongs,
+          FM_REFRESH_SOURCE.DAILY_RECOMMEND,
+        );
+        if (dailyStats.added > 0) {
+          lastRefreshSource.value = FM_REFRESH_SOURCE.DAILY_RECOMMEND;
+          lastLoadedUserId.value = requestUserId;
+          bootstrapFromPoolIfNeeded(FM_REFRESH_SOURCE.DAILY_RECOMMEND);
+          console.log("[FM] refresh source:", lastRefreshSource.value);
+          return true;
+        }
+        console.log("[FM] daily_recommend deduped to empty");
+      }
+    } catch (recError) {
+      console.warn("Daily recommendations also failed:", recError);
+    }
+
+    console.error("All FM data sources failed or yielded no new songs");
+  } catch (error) {
+    console.error("All FM data sources failed:", error);
+  } finally {
+    if (!silent && isActiveFmRefresh(requestToken, requestUserId)) {
+      loading.value = false;
+    }
+  }
+  return false;
+};
 
 const prefetchNextCandidate = async () => {
-    if (isPrefetching.value || loading.value || coverNavigating.value) return
-    if (!currentSong.value) return
-    // 历史尾部且右侧无候选时，静默预取下一首
-    if (currentIndex.value < playedSongs.value.length - 1) return
-    if (nextCandidateSong.value) return
+  if (isPrefetching.value || loading.value || coverNavigating.value) return;
+  if (!currentSong.value) return;
+  // 历史尾部且右侧无候选时，静默预取下一首
+  if (currentIndex.value < playedSongs.value.length - 1) return;
+  if (nextCandidateSong.value) return;
 
-    isPrefetching.value = true
-    try {
-        await refreshFM({ silent: true })
-    } finally {
-        isPrefetching.value = false
-    }
-}
+  isPrefetching.value = true;
+  try {
+    await refreshFM({ silent: true });
+  } finally {
+    isPrefetching.value = false;
+  }
+};
 
 onMounted(() => {
-    startPanelIntro()
-    // 恢复持久化的“近期去重队列”（按账号隔离）
-    loadPersistentRecent()
-    // 只有在FM列表为空时才加载新歌
-    if (playedSongs.value.length === 0) {
-        refreshFM()
-    }
+  startPanelIntro();
+  // 恢复持久化的“近期去重队列”（按账号隔离）
+  loadPersistentRecent();
+  // 只有在FM列表为空时才加载新歌
+  if (playedSongs.value.length === 0) {
+    refreshFM();
+  }
 
-    // 监听播放器控制事件
-    window.addEventListener('fmPlayModeResponse', handleFMPlayModeResponse)
-    window.addEventListener('fmPreviousResponse', handleFMPreviousResponse)
-    window.addEventListener('fmNextResponse', handleFMNextResponse)
-    window.addEventListener('fmClearRecent', handleFmClearRecent)
-    window.addEventListener('mousedown', handleModePanelClickOutside)
-    window.addEventListener('touchstart', handleModePanelClickOutside)
-})
+  // 监听播放器控制事件
+  window.addEventListener("fmPlayModeResponse", handleFMPlayModeResponse);
+  window.addEventListener("fmPreviousResponse", handleFMPreviousResponse);
+  window.addEventListener("fmNextResponse", handleFMNextResponse);
+  window.addEventListener("fmClearRecent", handleFmClearRecent);
+  window.addEventListener("mousedown", handleModePanelClickOutside);
+  window.addEventListener("touchstart", handleModePanelClickOutside);
+});
 
 onActivated(() => {
-    if (skipIntroOnNextActivated) {
-        skipIntroOnNextActivated = false
-        return
-    }
-    startPanelIntro()
-    if (getCurrentFmUserId() && lastLoadedUserId.value !== getCurrentFmUserId()) {
-        void refreshFM({ silent: true })
-    }
-})
+  if (skipIntroOnNextActivated) {
+    skipIntroOnNextActivated = false;
+    return;
+  }
+  startPanelIntro();
+  if (getCurrentFmUserId() && lastLoadedUserId.value !== getCurrentFmUserId()) {
+    void refreshFM({ silent: true });
+  }
+});
 
 onDeactivated(() => {
-    clearPanelIntroSchedule()
-    isPanelIntroActive.value = false
-    modePanelOpen.value = false
-})
+  clearPanelIntroSchedule();
+  isPanelIntroActive.value = false;
+  modePanelOpen.value = false;
+});
 
 onUnmounted(() => {
-    // 清理所有事件监听器
-    window.removeEventListener('fmPlayModeResponse', handleFMPlayModeResponse)
-    window.removeEventListener('fmPreviousResponse', handleFMPreviousResponse)
-    window.removeEventListener('fmNextResponse', handleFMNextResponse)
-    window.removeEventListener('fmClearRecent', handleFmClearRecent)
-    window.removeEventListener('mousedown', handleModePanelClickOutside)
-    window.removeEventListener('touchstart', handleModePanelClickOutside)
-    clearCoverReleaseTimer()
-    clearPanelIntroSchedule()
-    isPanelIntroActive.value = false
-    skipIntroOnNextActivated = true
-    queuedDirection.value = null
-})
+  // 清理所有事件监听器
+  window.removeEventListener("fmPlayModeResponse", handleFMPlayModeResponse);
+  window.removeEventListener("fmPreviousResponse", handleFMPreviousResponse);
+  window.removeEventListener("fmNextResponse", handleFMNextResponse);
+  window.removeEventListener("fmClearRecent", handleFmClearRecent);
+  window.removeEventListener("mousedown", handleModePanelClickOutside);
+  window.removeEventListener("touchstart", handleModePanelClickOutside);
+  clearCoverReleaseTimer();
+  clearPanelIntroSchedule();
+  isPanelIntroActive.value = false;
+  skipIntroOnNextActivated = true;
+  queuedDirection.value = null;
+});
 
 // 监听账号切换：按账号隔离“近期去重队列”
 watch(
-    () => userStore?.user?.userId,
-    (nextUserId, previousUserId) => {
-        if (nextUserId === previousUserId) return
-        resetFmAccountState()
-        loadPersistentRecent()
-        if (nextUserId) {
-            void refreshFM({ silent: router.currentRoute.value?.name !== 'personalfm' })
-        }
+  () => userStore?.user?.userId,
+  (nextUserId, previousUserId) => {
+    if (nextUserId === previousUserId) return;
+    resetFmAccountState();
+    loadPersistentRecent();
+    if (nextUserId) {
+      void refreshFM({
+        silent: router.currentRoute.value?.name !== "personalfm",
+      });
     }
-)
+  },
+);
 
 watch(
-    [() => currentSong.value?.id, currentIndex, () => playedSongs.value.length, () => fmSongs.value.length, loading, coverNavigating],
-    () => {
-        prefetchNextCandidate()
-    },
-    { immediate: true }
-)
+  [
+    () => currentSong.value?.id,
+    currentIndex,
+    () => playedSongs.value.length,
+    () => fmSongs.value.length,
+    loading,
+    coverNavigating,
+  ],
+  () => {
+    prefetchNextCandidate();
+  },
+  { immediate: true },
+);
 
 // 处理播放模式响应
-const handleFMPlayModeResponse = async event => {
-    const { action } = event.detail
-    console.log('Received FM play mode response:', action)
+const handleFMPlayModeResponse = async (event) => {
+  const { action } = event.detail;
+  console.log("Received FM play mode response:", action);
 
-    if (action === 'loop') {
-        // 单曲循环模式：重新播放当前歌曲
-        console.log('Loop mode: replaying current song')
-        await togglePlay()
-    } else if (action === 'next') {
-        // FM模式：播放下一首漫游歌曲
-        console.log('FM mode: playing next song')
-        await goNext()
-    }
-}
+  if (action === "loop") {
+    // 单曲循环模式：重新播放当前歌曲
+    console.log("Loop mode: replaying current song");
+    await togglePlay();
+  } else if (action === "next") {
+    // FM模式：播放下一首漫游歌曲
+    console.log("FM mode: playing next song");
+    await goNext();
+  }
+};
 
 // 处理上一首FM歌曲响应
-const handleFMPreviousResponse = async event => {
-    const { action } = event.detail
-    console.log('Received FM previous response:', action)
+const handleFMPreviousResponse = async (event) => {
+  const { action } = event.detail;
+  console.log("Received FM previous response:", action);
 
-    if (action === 'previous') {
-        console.log('Playing previous FM song from player controls')
-        await goPrev()
-    }
-}
+  if (action === "previous") {
+    console.log("Playing previous FM song from player controls");
+    await goPrev();
+  }
+};
 
 // 处理下一首FM歌曲响应
-const handleFMNextResponse = async event => {
-    const { action } = event.detail
-    console.log('Received FM next response:', action)
+const handleFMNextResponse = async (event) => {
+  const { action } = event.detail;
+  console.log("Received FM next response:", action);
 
-    if (action === 'next') {
-        console.log('Playing next FM song from player controls')
-        await goNext()
-    }
-}
+  if (action === "next") {
+    console.log("Playing next FM song from player controls");
+    await goNext();
+  }
+};
 
 // 处理设置页触发的清空漫游缓存事件
 const handleFmClearRecent = () => {
-    console.log('Received fmClearRecent event from Settings, reloading recent queue')
-    loadPersistentRecent()
-}
+  console.log(
+    "Received fmClearRecent event from Settings, reloading recent queue",
+  );
+  loadPersistentRecent();
+};
 </script>
 
 <style scoped lang="scss">
 .personal-fm {
-    --fm-stage-bg: transparent;
-    --fm-panel-bg: rgba(239, 245, 247, 0.16);
-    --fm-panel-border: rgba(0, 0, 0, 0.24);
-    --fm-panel-texture: none;
-    --fm-panel-texture-size: 160px;
-    --fm-panel-overlay: linear-gradient(135deg, transparent 0%, transparent 43%, rgba(0, 0, 0, 0.07) 43%, rgba(0, 0, 0, 0.07) 44%, transparent 44%, transparent 100%);
-    --fm-panel-overlay-opacity: 1;
+  --fm-stage-bg: transparent;
+  --fm-panel-bg: rgba(239, 245, 247, 0.16);
+  --fm-panel-border: rgba(0, 0, 0, 0.24);
+  --fm-panel-texture: none;
+  --fm-panel-texture-size: 160px;
+  --fm-panel-overlay: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 43%,
+    rgba(0, 0, 0, 0.07) 43%,
+    rgba(0, 0, 0, 0.07) 44%,
+    transparent 44%,
+    transparent 100%
+  );
+  --fm-panel-overlay-opacity: 1;
 
-    --fm-text: #111213;
-    --fm-muted: rgba(0, 0, 0, 0.62);
-    --fm-subtle: rgba(0, 0, 0, 0.46);
-    --fm-corner: #111213;
-    --fm-primary-btn-bg: #111213;
-    --fm-primary-btn-text: #ffffff;
-    --fm-primary-btn-border: var(--fm-panel-border);
-    --fm-primary-btn-hover-bg: #24272d;
-    --fm-ghost-btn-bg: rgba(0, 0, 0, 0.06);
-    --fm-ghost-btn-hover-bg: rgba(0, 0, 0, 0.12);
-    --fm-mode-bg: rgba(255, 255, 255, 0.42);
-    --fm-mode-hover-bg: var(--fm-mode-bg);
-    --fm-mode-panel-bg: rgba(255, 255, 255, 0.64);
-    --fm-mode-panel-bg-soft: rgba(255, 255, 255, 0.3);
-    --fm-mode-active-bg: var(--fm-primary-btn-bg);
-    --fm-mode-active-text: var(--fm-primary-btn-text);
-    --fm-mode-active-border: var(--fm-primary-btn-border);
-    --fm-play-overlay-bg: rgba(0, 0, 0, 0.72);
-    --fm-play-overlay-hover-bg: rgba(0, 0, 0, 0.82);
-    --fm-play-overlay-border: rgba(0, 0, 0, 0.24);
-    --fm-play-overlay-icon: #ffffff;
-    --fm-danger: #ff3b30;
-    --fm-danger-bg: rgba(255, 59, 48, 0.12);
-    --fm-spinner-track: rgba(0, 0, 0, 0.14);
-    --fm-slot-bg: rgba(0, 0, 0, 0.05);
-    --fm-slot-hover-border: rgba(0, 0, 0, 0.5);
-    --fm-side-opacity: 0.52;
-    --fm-placeholder-bg: rgba(0, 0, 0, 0.03);
-    --fm-placeholder-text: rgba(0, 0, 0, 0.44);
-    --fm-intro-duration: 1.5s;
-    --fm-intro-line-color: var(--fm-panel-border);
-    --fm-intro-line-width: 1px;
-    --fm-intro-content-offset: 8px;
-    --fm-cover-transition-duration: 1.5s;
-    --fm-cover-transition-ease: cubic-bezier(0.16, 1, 0.3, 1);
-    --fm-cover-ghost-fade-duration: 0.1s;
-    --fm-cover-ghost-fade-delay: calc(var(--fm-cover-transition-duration) - var(--fm-cover-ghost-fade-duration));
-    --fm-cover-placeholder-fade-duration: 0.12s;
-    --fm-cover-overlap-release-ratio: 0.45;
-    --fm-cover-overlap-fade-duration: 0.14s;
-    --fm-cover-overlap-release-delay: calc(var(--fm-cover-transition-duration) * var(--fm-cover-overlap-release-ratio));
-    --fm-cover-z-leaving: 1;
-    --fm-cover-z-side: 2;
-    --fm-cover-z-side-moving: 3;
-    --fm-cover-z-center: 4;
-    --fm-cover-z-prev-new-center-top: calc(var(--fm-cover-z-center) + 2);
-    --fm-cover-z-prev-old-center-mid: calc(var(--fm-cover-z-center) + 1);
-    --fm-cover-z-prev-right-leave-bottom: var(--fm-cover-z-leaving);
+  --fm-text: #111213;
+  --fm-muted: rgba(0, 0, 0, 0.62);
+  --fm-subtle: rgba(0, 0, 0, 0.46);
+  --fm-corner: #111213;
+  --fm-primary-btn-bg: #111213;
+  --fm-primary-btn-text: #ffffff;
+  --fm-primary-btn-border: var(--fm-panel-border);
+  --fm-primary-btn-hover-bg: #24272d;
+  --fm-ghost-btn-bg: rgba(0, 0, 0, 0.06);
+  --fm-ghost-btn-hover-bg: rgba(0, 0, 0, 0.12);
+  --fm-mode-bg: rgba(255, 255, 255, 0.42);
+  --fm-mode-hover-bg: var(--fm-mode-bg);
+  --fm-mode-panel-bg: rgba(255, 255, 255, 0.64);
+  --fm-mode-panel-bg-soft: rgba(255, 255, 255, 0.3);
+  --fm-mode-active-bg: var(--fm-primary-btn-bg);
+  --fm-mode-active-text: var(--fm-primary-btn-text);
+  --fm-mode-active-border: var(--fm-primary-btn-border);
+  --fm-play-overlay-bg: rgba(0, 0, 0, 0.72);
+  --fm-play-overlay-hover-bg: rgba(0, 0, 0, 0.82);
+  --fm-play-overlay-border: rgba(0, 0, 0, 0.24);
+  --fm-play-overlay-icon: #ffffff;
+  --fm-danger: #ff3b30;
+  --fm-danger-bg: rgba(255, 59, 48, 0.12);
+  --fm-spinner-track: rgba(0, 0, 0, 0.14);
+  --fm-slot-bg: rgba(0, 0, 0, 0.05);
+  --fm-slot-hover-border: rgba(0, 0, 0, 0.5);
+  --fm-side-opacity: 0.52;
+  --fm-placeholder-bg: rgba(0, 0, 0, 0.03);
+  --fm-placeholder-text: rgba(0, 0, 0, 0.44);
+  --fm-intro-duration: 1.5s;
+  --fm-intro-line-color: var(--fm-panel-border);
+  --fm-intro-line-width: 1px;
+  --fm-intro-content-offset: 8px;
+  --fm-cover-transition-duration: 1.5s;
+  --fm-cover-transition-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --fm-cover-ghost-fade-duration: 0.1s;
+  --fm-cover-ghost-fade-delay: calc(
+    var(--fm-cover-transition-duration) - var(--fm-cover-ghost-fade-duration)
+  );
+  --fm-cover-placeholder-fade-duration: 0.12s;
+  --fm-cover-overlap-release-ratio: 0.45;
+  --fm-cover-overlap-fade-duration: 0.14s;
+  --fm-cover-overlap-release-delay: calc(
+    var(--fm-cover-transition-duration) * var(--fm-cover-overlap-release-ratio)
+  );
+  --fm-cover-z-leaving: 1;
+  --fm-cover-z-side: 2;
+  --fm-cover-z-side-moving: 3;
+  --fm-cover-z-center: 4;
+  --fm-cover-z-prev-new-center-top: calc(var(--fm-cover-z-center) + 2);
+  --fm-cover-z-prev-old-center-mid: calc(var(--fm-cover-z-center) + 1);
+  --fm-cover-z-prev-right-leave-bottom: var(--fm-cover-z-leaving);
 
-    height: 100%;
-    overflow: auto;
-    padding: 12px 0 8px;
+  height: 100%;
+  overflow: auto;
+  padding: 12px 0 8px;
 
-    &::-webkit-scrollbar {
-        display: none;
-    }
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .fm-stage {
-    height: 100%;
-    min-height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding: 0;
-    background: var(--fm-stage-bg) !important;
+  height: 100%;
+  min-height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0;
+  background: var(--fm-stage-bg) !important;
 }
 
 .fm-panel {
-    width: 100%;
-    max-width: 100%;
-    min-height: max(650px, 100%);
-    padding: 24px 34px;
-    box-sizing: border-box;
-    position: relative;
-    overflow: hidden;
-    background-color: var(--fm-panel-bg);
-    background-image: var(--fm-panel-texture);
-    background-size: var(--fm-panel-texture-size);
-    border: 1px solid transparent;
-    background-clip: padding-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: max(650px, 100%);
+  padding: 24px 34px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--fm-panel-bg);
+  background-image: var(--fm-panel-texture);
+  background-size: var(--fm-panel-texture-size);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 .fm-panel::before {
-    content: '';
-    position: absolute;
-    inset: 1px;
-    pointer-events: none;
-    background-image: var(--fm-panel-overlay);
-    opacity: var(--fm-panel-overlay-opacity);
-    clip-path: inset(0 0 0 0);
+  content: "";
+  position: absolute;
+  inset: 1px;
+  pointer-events: none;
+  background-image: var(--fm-panel-overlay);
+  opacity: var(--fm-panel-overlay-opacity);
+  clip-path: inset(0 0 0 0);
 }
 
 .fm-outline-draw {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 1;
-    z-index: 3;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 1;
+  z-index: 3;
 }
 
 .outline-seg {
-    position: absolute;
-    background: var(--fm-intro-line-color);
-    opacity: 1;
+  position: absolute;
+  background: var(--fm-intro-line-color);
+  opacity: 1;
 }
 
 .outline-seg.top,
 .outline-seg.bottom {
-    left: 0;
-    right: 0;
-    height: var(--fm-intro-line-width);
-    transform: scaleX(0);
+  left: 0;
+  right: 0;
+  height: var(--fm-intro-line-width);
+  transform: scaleX(0);
 }
 
 .outline-seg.top {
-    top: 0;
-    transform-origin: left center;
+  top: 0;
+  transform-origin: left center;
 }
 
 .outline-seg.bottom {
-    bottom: 0;
-    transform-origin: right center;
+  bottom: 0;
+  transform-origin: right center;
 }
 
 .outline-seg.left,
 .outline-seg.right {
-    top: 0;
-    bottom: 0;
-    width: var(--fm-intro-line-width);
-    transform: scaleY(0);
+  top: 0;
+  bottom: 0;
+  width: var(--fm-intro-line-width);
+  transform: scaleY(0);
 }
 
 .outline-seg.left {
-    left: 0;
-    transform-origin: bottom center;
+  left: 0;
+  transform-origin: bottom center;
 }
 
 .outline-seg.right {
-    right: 0;
-    transform-origin: top center;
+  right: 0;
+  transform-origin: top center;
 }
 
 .frame-corner {
-    width: 10px;
-    height: 10px;
-    border: 2px solid var(--fm-corner);
-    position: absolute;
-    z-index: 2;
-    pointer-events: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--fm-corner);
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .fm-panel-intro-active .fm-outline-draw {
-    opacity: 1;
+  opacity: 1;
 }
 
 .fm-panel-intro-active .outline-seg.top,
 .fm-panel-intro-active .outline-seg.bottom {
-    animation: fm-outline-grow-x 0.64s cubic-bezier(0.25, 0.9, 0.3, 1) both;
+  animation: fm-outline-grow-x 0.64s cubic-bezier(0.25, 0.9, 0.3, 1) both;
 }
 
 .fm-panel-intro-active .outline-seg.left,
 .fm-panel-intro-active .outline-seg.right {
-    animation: fm-outline-grow-y 0.64s cubic-bezier(0.25, 0.9, 0.3, 1) both;
+  animation: fm-outline-grow-y 0.64s cubic-bezier(0.25, 0.9, 0.3, 1) both;
 }
 
 .fm-panel-outline-ready .outline-seg.top,
 .fm-panel-outline-ready .outline-seg.bottom,
 .fm-panel-outline-ready .outline-seg.left,
 .fm-panel-outline-ready .outline-seg.right {
-    transform: none;
+  transform: none;
 }
 
 .fm-panel-intro-active::before {
-    opacity: 0;
-    clip-path: inset(0 100% 0 0);
-    animation: fm-overlay-reveal 0.68s cubic-bezier(0.25, 0.9, 0.3, 1) 0.16s both;
+  opacity: 0;
+  clip-path: inset(0 100% 0 0);
+  animation: fm-overlay-reveal 0.68s cubic-bezier(0.25, 0.9, 0.3, 1) 0.16s both;
 }
 
 .fm-panel-intro-active .frame-corner {
-    animation: fm-corner-reveal 0.48s cubic-bezier(0.2, 0.9, 0.2, 1) 0.44s both;
+  animation: fm-corner-reveal 0.48s cubic-bezier(0.2, 0.9, 0.2, 1) 0.44s both;
 }
 
 .fm-panel-intro-active .fm-header,
 .fm-panel-intro-active .fm-content,
 .fm-panel-intro-active .fm-loading,
 .fm-panel-intro-active .fm-empty {
-    animation: fm-content-reveal 0.9s cubic-bezier(0.18, 0.92, 0.28, 1) 0.6s both;
+  animation: fm-content-reveal 0.9s cubic-bezier(0.18, 0.92, 0.28, 1) 0.6s both;
 }
 
 .frame-tl {
-    top: -1px;
-    left: -1px;
-    border-right: none;
-    border-bottom: none;
+  top: -1px;
+  left: -1px;
+  border-right: none;
+  border-bottom: none;
 }
 
 .frame-tr {
-    top: -1px;
-    right: -1px;
-    border-left: none;
-    border-bottom: none;
+  top: -1px;
+  right: -1px;
+  border-left: none;
+  border-bottom: none;
 }
 
 .frame-bl {
-    bottom: -1px;
-    left: -1px;
-    border-right: none;
-    border-top: none;
+  bottom: -1px;
+  left: -1px;
+  border-right: none;
+  border-top: none;
 }
 
 .frame-br {
-    bottom: -1px;
-    right: -1px;
-    border-left: none;
-    border-top: none;
+  bottom: -1px;
+  right: -1px;
+  border-left: none;
+  border-top: none;
 }
 
 .fm-header {
-    margin-bottom: 28px;
-    text-align: center;
-    position: relative;
-    z-index: 1;
+  margin-bottom: 28px;
+  text-align: center;
+  position: relative;
+  z-index: 1;
 
-    h1 {
-        margin: 12px 0 0;
-        font: 30px SourceHanSansCN-Heavy;
-        letter-spacing: 1px;
-        color: var(--fm-text) !important;
-    }
+  h1 {
+    margin: 12px 0 0;
+    font: 30px SourceHanSansCN-Heavy;
+    letter-spacing: 1px;
+    color: var(--fm-text) !important;
+  }
 }
 
 .fm-headline {
-    display: inline-block;
-    padding: 4px 12px;
-    font: 12px Geometos;
-    letter-spacing: 1px;
-    background: var(--fm-primary-btn-bg);
-    color: var(--fm-primary-btn-text) !important;
+  display: inline-block;
+  padding: 4px 12px;
+  font: 12px Geometos;
+  letter-spacing: 1px;
+  background: var(--fm-primary-btn-bg);
+  color: var(--fm-primary-btn-text) !important;
 }
 
 .fm-subtitle {
-    margin: 6px 0 0;
-    font: 14px SourceHanSansCN-Bold;
-    color: var(--fm-muted) !important;
-    display: block;
+  margin: 6px 0 0;
+  font: 14px SourceHanSansCN-Bold;
+  color: var(--fm-muted) !important;
+  display: block;
 }
 
 .fm-mode-floating {
-    position: absolute;
-    top: 18px;
-    right: 22px;
-    z-index: 8;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .fm-mode-trigger {
-    border: 1px solid var(--fm-panel-border);
-    min-height: 30px;
-    min-width: 170px;
-    max-width: 230px;
-    padding: 0 10px;
-    background: var(--fm-mode-bg);
-    color: var(--fm-text) !important;
-    display: inline-flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
-    cursor: pointer;
+  border: 1px solid var(--fm-panel-border);
+  min-height: 30px;
+  min-width: 170px;
+  max-width: 230px;
+  padding: 0 10px;
+  background: var(--fm-mode-bg);
+  color: var(--fm-text) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 8px) 0,
+    100% 8px,
+    100% 100%,
+    8px 100%,
+    0 calc(100% - 8px)
+  );
+  cursor: pointer;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--fm-mode-hover-bg);
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  &:focus,
+  &:focus-visible,
+  &:active {
     outline: none;
     box-shadow: none;
-    appearance: none;
-    -webkit-appearance: none;
-    -webkit-tap-highlight-color: transparent;
-    transition:
-        transform 0.2s ease,
-        background 0.2s ease,
-        border-color 0.2s ease;
-
-    &:hover:not(:disabled) {
-        background: var(--fm-mode-hover-bg);
-        transform: translateY(-1px);
-    }
-
-    &:disabled {
-        opacity: 0.58;
-        cursor: not-allowed;
-        transform: none;
-    }
-
-    &:focus,
-    &:focus-visible,
-    &:active {
-        outline: none;
-        box-shadow: none;
-    }
+  }
 }
 
 .mode-trigger-code {
-    flex: 0 0 auto;
-    font: 10px Geometos;
-    letter-spacing: 0.8px;
-    opacity: 0.8;
+  flex: 0 0 auto;
+  font: 10px Geometos;
+  letter-spacing: 0.8px;
+  opacity: 0.8;
 }
 
 .mode-trigger-value {
-    flex: 1 1 auto;
-    min-width: 0;
-    text-align: left;
-    font: 12px SourceHanSansCN-Bold;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  font: 12px SourceHanSansCN-Bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mode-trigger-arrow {
-    flex: 0 0 auto;
-    transition: transform 0.2s ease;
+  flex: 0 0 auto;
+  transition: transform 0.2s ease;
 }
 
 .fm-mode-floating.open .mode-trigger-arrow {
-    transform: rotate(180deg);
+  transform: rotate(180deg);
 }
 
 .fm-mode-dropdown {
-    margin-top: 8px;
-    width: min(360px, calc(100vw - 72px));
-    padding: 10px;
-    border: 1px solid var(--fm-panel-border);
-    background: linear-gradient(180deg, var(--fm-mode-panel-bg) 0%, var(--fm-mode-panel-bg-soft) 100%);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
+  margin-top: 8px;
+  width: min(360px, calc(100vw - 72px));
+  padding: 10px;
+  border: 1px solid var(--fm-panel-border);
+  background: linear-gradient(
+    180deg,
+    var(--fm-mode-panel-bg) 0%,
+    var(--fm-mode-panel-bg-soft) 100%
+  );
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
 }
 
 .fm-mode-title {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .fm-mode-title-code {
-    font: 10px Geometos;
-    letter-spacing: 0.8px;
-    color: var(--fm-subtle) !important;
+  font: 10px Geometos;
+  letter-spacing: 0.8px;
+  color: var(--fm-subtle) !important;
 }
 
 .fm-mode-title-text {
-    font: 12px SourceHanSansCN-Bold;
-    color: var(--fm-muted) !important;
+  font: 12px SourceHanSansCN-Bold;
+  color: var(--fm-muted) !important;
 }
 
 .fm-mode-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .fm-submode-grid {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px dashed var(--fm-panel-border);
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--fm-panel-border);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .fm-mode-btn,
 .fm-submode-btn {
-    border: 1px solid var(--fm-panel-border);
-    background: var(--fm-mode-bg);
-    color: var(--fm-text) !important;
-    padding: 5px 6px;
-    min-height: 34px;
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 1px;
-    clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
-    transition:
-        transform 0.2s ease,
-        background 0.2s ease,
-        border-color 0.2s ease,
-        color 0.2s ease;
-    cursor: pointer;
-    outline: none;
-    box-shadow: none;
-    appearance: none;
-    -webkit-appearance: none;
-    -webkit-tap-highlight-color: transparent;
+  border: 1px solid var(--fm-panel-border);
+  background: var(--fm-mode-bg);
+  color: var(--fm-text) !important;
+  padding: 5px 6px;
+  min-height: 34px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 7px) 0,
+    100% 7px,
+    100% 100%,
+    7px 100%,
+    0 calc(100% - 7px)
+  );
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+  cursor: pointer;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+
+  .mode-code {
+    font: 9px Bender-Bold;
+    letter-spacing: 0.6px;
+    line-height: 1.1;
+    opacity: 0.82;
+  }
+
+  .mode-label {
+    font: 11px SourceHanSansCN-Bold;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: var(--fm-mode-hover-bg);
+  }
+
+  &.active {
+    background: var(--fm-mode-active-bg);
+    color: var(--fm-mode-active-text) !important;
+    border-color: var(--fm-mode-active-border);
 
     .mode-code {
-        font: 9px Bender-Bold;
-        letter-spacing: 0.6px;
-        line-height: 1.1;
-        opacity: 0.82;
+      opacity: 1;
     }
+  }
 
-    .mode-label {
-        font: 11px SourceHanSansCN-Bold;
-        line-height: 1.15;
-        white-space: nowrap;
-    }
+  &.active:hover:not(:disabled) {
+    transform: none;
+    background: var(--fm-mode-active-bg);
+    color: var(--fm-mode-active-text) !important;
+    border-color: var(--fm-mode-active-border);
+  }
 
-    &:hover:not(:disabled) {
-        transform: translateY(-1px);
-        background: var(--fm-mode-hover-bg);
-    }
+  &:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+    transform: none;
+  }
 
-    &.active {
-        background: var(--fm-mode-active-bg);
-        color: var(--fm-mode-active-text) !important;
-        border-color: var(--fm-mode-active-border);
-
-        .mode-code {
-            opacity: 1;
-        }
-    }
-
-    &.active:hover:not(:disabled) {
-        transform: none;
-        background: var(--fm-mode-active-bg);
-        color: var(--fm-mode-active-text) !important;
-        border-color: var(--fm-mode-active-border);
-    }
-
-    &:disabled {
-        opacity: 0.58;
-        cursor: not-allowed;
-        transform: none;
-    }
-
-    &:focus,
-    &:focus-visible,
-    &:active {
-        outline: none;
-        box-shadow: none;
-    }
+  &:focus,
+  &:focus-visible,
+  &:active {
+    outline: none;
+    box-shadow: none;
+  }
 }
 
 .fm-mode-float-enter-active,
 .fm-mode-float-leave-active {
-    transition:
-        opacity 0.16s ease,
-        transform 0.16s ease;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
 }
 
 .fm-mode-float-enter-from,
 .fm-mode-float-leave-to {
-    opacity: 0;
-    transform: translateY(-4px);
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .fm-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 26px;
-    position: relative;
-    z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  position: relative;
+  z-index: 1;
 }
 
 .fm-main {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
 }
 
 .fm-cover-carousel {
-    width: min(760px, 100%);
-    overflow: hidden;
+  width: min(760px, 100%);
+  overflow: hidden;
 }
 
 .fm-cover-track {
-    min-height: 262px;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 50px;
-    isolation: isolate;
+  min-height: 262px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 50px;
+  isolation: isolate;
 }
 
 .fm-cover-slot {
-    position: relative;
-    width: 168px;
-    height: 168px;
-    padding: 6px;
-    border: 1px solid var(--fm-panel-border);
-    background: var(--fm-slot-bg);
-    transition: border-color 0.2s ease;
-    will-change: transform, opacity;
-    backface-visibility: hidden;
+  position: relative;
+  width: 168px;
+  height: 168px;
+  padding: 6px;
+  border: 1px solid var(--fm-panel-border);
+  background: var(--fm-slot-bg);
+  transition: border-color 0.2s ease;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 
-    img {
-        width: 100%;
-        height: 100%;
-        border-radius: 2px;
-        object-fit: cover;
-        border: 1px solid var(--fm-panel-border);
-        display: block;
-        transform: translateZ(0);
-    }
+  img {
+    width: 100%;
+    height: 100%;
+    border-radius: 2px;
+    object-fit: cover;
+    border: 1px solid var(--fm-panel-border);
+    display: block;
+    transform: translateZ(0);
+  }
 }
 
 .fm-cover-slot.slot-center {
-    width: 246px;
-    height: 246px;
-    padding: 8px;
-    opacity: 1;
-    z-index: var(--fm-cover-z-center);
+  width: 246px;
+  height: 246px;
+  padding: 8px;
+  opacity: 1;
+  z-index: var(--fm-cover-z-center);
 }
 
 .fm-cover-slot.slot-side {
-    opacity: var(--fm-side-opacity);
-    z-index: var(--fm-cover-z-side);
+  opacity: var(--fm-side-opacity);
+  z-index: var(--fm-cover-z-side);
 }
 
 .fm-cover-slot.slot-clickable:hover {
-    cursor: pointer;
-    border-color: var(--fm-slot-hover-border);
+  cursor: pointer;
+  border-color: var(--fm-slot-hover-border);
 }
 
 .fm-cover-slot.slot-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--fm-placeholder-bg);
-    border-style: dashed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fm-placeholder-bg);
+  border-style: dashed;
 }
 
 .slot-placeholder-text {
-    font: 11px Bender-Bold;
-    letter-spacing: 0.8px;
-    color: var(--fm-placeholder-text) !important;
+  font: 11px Bender-Bold;
+  letter-spacing: 0.8px;
+  color: var(--fm-placeholder-text) !important;
 }
 
 .slot-side-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.22) 100%);
-    pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.12) 0%,
+    rgba(0, 0, 0, 0.22) 100%
+  );
+  pointer-events: none;
 }
 
 .fm-play-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 64px;
-    height: 64px;
-    border: 1px solid var(--fm-play-overlay-border);
-    background: var(--fm-play-overlay-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--fm-play-overlay-icon) !important;
-    opacity: 0.86;
-    transition:
-        transform 0.2s ease,
-        opacity 0.2s ease,
-        background 0.2s ease;
-    z-index: 10;
-    pointer-events: none;
-    -webkit-backdrop-filter: blur(6px);
-    backdrop-filter: blur(6px);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--fm-play-overlay-border);
+  background: var(--fm-play-overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--fm-play-overlay-icon) !important;
+  opacity: 0.86;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease,
+    background 0.2s ease;
+  z-index: 10;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 
 .fm-cover-slot.slot-center:hover .fm-play-overlay {
-    opacity: 1;
-    background: var(--fm-play-overlay-hover-bg);
-    transform: translate(-50%, -50%) scale(1.04);
+  opacity: 1;
+  background: var(--fm-play-overlay-hover-bg);
+  transform: translate(-50%, -50%) scale(1.04);
 }
 
 .fm-info {
-    text-align: center;
+  text-align: center;
 
-    .song-name {
-        font: 21px SourceHanSansCN-Bold;
+  .song-name {
+    font: 21px SourceHanSansCN-Bold;
+    color: var(--fm-text) !important;
+    margin: 0 0 8px 0;
+  }
+
+  .artist-name {
+    font: 14px SourceHanSansCN-Bold;
+    color: var(--fm-muted) !important;
+    margin: 0 0 4px 0;
+
+    .artist-link {
+      transition: color 0.2s ease;
+
+      &.clickable {
+        cursor: pointer;
+
+        &:hover {
+          color: var(--fm-text) !important;
+        }
+      }
+    }
+  }
+
+  .album-name {
+    font: 12px SourceHanSansCN-Bold;
+    color: var(--fm-subtle) !important;
+    margin: 0;
+
+    &.clickable {
+      cursor: pointer;
+      transition: color 0.2s ease;
+
+      &:hover {
         color: var(--fm-text) !important;
-        margin: 0 0 8px 0;
+      }
     }
-
-    .artist-name {
-        font: 14px SourceHanSansCN-Bold;
-        color: var(--fm-muted) !important;
-        margin: 0 0 4px 0;
-
-        .artist-link {
-            transition: color 0.2s ease;
-
-            &.clickable {
-                cursor: pointer;
-
-                &:hover {
-                    color: var(--fm-text) !important;
-                }
-            }
-        }
-    }
-
-    .album-name {
-        font: 12px SourceHanSansCN-Bold;
-        color: var(--fm-subtle) !important;
-        margin: 0;
-
-        &.clickable {
-            cursor: pointer;
-            transition: color 0.2s ease;
-
-            &:hover {
-                color: var(--fm-text) !important;
-            }
-        }
-    }
+  }
 }
 
 .fm-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .action-btn {
-    min-width: 64px;
-    height: 36px;
-    border: 1px solid var(--fm-panel-border);
-    background: var(--fm-ghost-btn-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition:
-        transform 0.2s ease,
-        background 0.2s ease,
-        color 0.2s ease,
-        border-color 0.2s ease;
-    color: var(--fm-text) !important;
+  min-width: 64px;
+  height: 36px;
+  border: 1px solid var(--fm-panel-border);
+  background: var(--fm-ghost-btn-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+  color: var(--fm-text) !important;
 
-    svg {
-        width: 18px;
-        height: 18px;
-    }
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:hover {
+    transform: translateY(-1px);
+    background: var(--fm-ghost-btn-hover-bg);
+  }
+
+  &.trash:hover {
+    background: var(--fm-danger-bg);
+    border-color: var(--fm-danger);
+    color: var(--fm-danger) !important;
+  }
+
+  &.like.active {
+    background: var(--fm-danger-bg);
+    border-color: var(--fm-danger);
+    color: var(--fm-danger) !important;
+  }
+
+  &.like:hover {
+    background: var(--fm-danger-bg);
+    border-color: var(--fm-danger);
+    color: var(--fm-danger) !important;
+  }
+
+  &.prev,
+  &.next {
+    background: var(--fm-primary-btn-bg);
+    color: var(--fm-primary-btn-text) !important;
+    border-color: var(--fm-primary-btn-border);
 
     &:hover {
-        transform: translateY(-1px);
-        background: var(--fm-ghost-btn-hover-bg);
+      background: var(--fm-primary-btn-hover-bg);
     }
-
-    &.trash:hover {
-        background: var(--fm-danger-bg);
-        border-color: var(--fm-danger);
-        color: var(--fm-danger) !important;
-    }
-
-    &.like.active {
-        background: var(--fm-danger-bg);
-        border-color: var(--fm-danger);
-        color: var(--fm-danger) !important;
-    }
-
-    &.like:hover {
-        background: var(--fm-danger-bg);
-        border-color: var(--fm-danger);
-        color: var(--fm-danger) !important;
-    }
-
-    &.prev,
-    &.next {
-        background: var(--fm-primary-btn-bg);
-        color: var(--fm-primary-btn-text) !important;
-        border-color: var(--fm-primary-btn-border);
-
-        &:hover {
-            background: var(--fm-primary-btn-hover-bg);
-        }
-    }
+  }
 }
 
 .fm-loading,
 .fm-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 300px;
-    position: relative;
-    z-index: 1;
-    color: var(--fm-muted) !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  position: relative;
+  z-index: 1;
+  color: var(--fm-muted) !important;
 }
 
 .loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid var(--fm-spinner-track);
-    border-top: 3px solid var(--fm-text);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 16px;
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--fm-spinner-track);
+  border-top: 3px solid var(--fm-text);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
 }
 
 .fm-loading p,
 .fm-empty p {
-    color: var(--fm-muted) !important;
+  color: var(--fm-muted) !important;
 }
 
 @keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes fm-outline-grow-x {
-    0% {
-        transform: scaleX(0);
-    }
-    99% {
-        transform: scaleX(1);
-    }
-    100% {
-        transform: none;
-    }
+  0% {
+    transform: scaleX(0);
+  }
+  99% {
+    transform: scaleX(1);
+  }
+  100% {
+    transform: none;
+  }
 }
 
 @keyframes fm-outline-grow-y {
-    0% {
-        transform: scaleY(0);
-    }
-    99% {
-        transform: scaleY(1);
-    }
-    100% {
-        transform: none;
-    }
+  0% {
+    transform: scaleY(0);
+  }
+  99% {
+    transform: scaleY(1);
+  }
+  100% {
+    transform: none;
+  }
 }
 
 @keyframes fm-overlay-reveal {
-    from {
-        opacity: 0;
-        clip-path: inset(0 100% 0 0);
-    }
-    to {
-        opacity: var(--fm-panel-overlay-opacity);
-        clip-path: inset(0 0 0 0);
-    }
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    opacity: var(--fm-panel-overlay-opacity);
+    clip-path: inset(0 0 0 0);
+  }
 }
 
 @keyframes fm-corner-reveal {
-    from {
-        opacity: 0;
-        transform: scale(0.78);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+  from {
+    opacity: 0;
+    transform: scale(0.78);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes fm-content-reveal {
-    from {
-        opacity: 0;
-        transform: translateY(var(--fm-intro-content-offset));
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(var(--fm-intro-content-offset));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes fm-content-reveal-reduced {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .empty-icon {
-    margin-bottom: 16px;
-    color: var(--fm-subtle) !important;
+  margin-bottom: 16px;
+  color: var(--fm-subtle) !important;
 }
 
 .error-hint {
-    font-size: 12px;
-    color: var(--fm-danger) !important;
-    margin: 5px 0;
+  font-size: 12px;
+  color: var(--fm-danger) !important;
+  margin: 5px 0;
 }
 
 .refresh-button {
-    margin-top: 18px;
-    min-width: 112px;
-    height: 34px;
-    padding: 0 14px;
-    border: 1px solid var(--fm-panel-border);
-    background: var(--fm-ghost-btn-bg);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition:
-        transform 0.2s ease,
-        background 0.2s ease;
-    font: 14px SourceHanSansCN-Bold;
-    color: var(--fm-text) !important;
+  margin-top: 18px;
+  min-width: 112px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--fm-panel-border);
+  background: var(--fm-ghost-btn-bg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease;
+  font: 14px SourceHanSansCN-Bold;
+  color: var(--fm-text) !important;
 
-    &:hover {
-        transform: translateY(-1px);
-        background: var(--fm-ghost-btn-hover-bg);
-    }
+  &:hover {
+    transform: translateY(-1px);
+    background: var(--fm-ghost-btn-hover-bg);
+  }
 }
 
 .fm-shift-next-move,
 .fm-shift-prev-move,
 .fm-shift-neutral-move {
-    transition: transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
 }
 
 .fm-cover-slot.slot-side.fm-shift-next-move {
-    transition: transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
-    opacity: 1;
-    z-index: var(--fm-cover-z-side-moving);
-    animation: fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration) linear var(--fm-cover-overlap-release-delay) both;
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
+  opacity: 1;
+  z-index: var(--fm-cover-z-side-moving);
+  animation: fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
+    linear var(--fm-cover-overlap-release-delay) both;
 }
 
 .fm-cover-slot.slot-center.fm-shift-next-move,
 .fm-cover-slot.slot-center.fm-shift-neutral-move {
-    opacity: 1;
-    z-index: var(--fm-cover-z-center);
+  opacity: 1;
+  z-index: var(--fm-cover-z-center);
 }
 
 /* goPrev 三层顺序：新中间 > 旧中间 > right->leave（最低） */
 .fm-cover-slot.slot-side.fm-shift-prev-move {
-    transition: transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
-    opacity: 1;
-    z-index: var(--fm-cover-z-prev-right-leave-bottom);
-    animation: fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration) linear var(--fm-cover-overlap-release-delay) both;
+  transition: transform var(--fm-cover-transition-duration)
+    var(--fm-cover-transition-ease);
+  opacity: 1;
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
+  animation: fm-cover-side-overlap-release var(--fm-cover-overlap-fade-duration)
+    linear var(--fm-cover-overlap-release-delay) both;
 }
 
 .fm-cover-slot.slot-right.fm-shift-prev-move {
-    z-index: var(--fm-cover-z-prev-old-center-mid);
+  z-index: var(--fm-cover-z-prev-old-center-mid);
 }
 
 .fm-cover-slot.slot-center.fm-shift-prev-move {
-    opacity: 1;
-    z-index: var(--fm-cover-z-prev-new-center-top);
+  opacity: 1;
+  z-index: var(--fm-cover-z-prev-new-center-top);
 }
 
 .fm-cover-slot.slot-center.fm-shift-prev-enter-active,
@@ -2329,299 +2696,310 @@ const handleFmClearRecent = () => {
 .fm-cover-slot.slot-left.fm-shift-prev-enter-active,
 .fm-cover-slot.slot-left.fm-shift-prev-enter-from,
 .fm-cover-slot.slot-left.fm-shift-prev-enter-to {
-    z-index: var(--fm-cover-z-prev-right-leave-bottom);
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
 }
 
 .fm-shift-next-enter-active,
 .fm-shift-prev-enter-active,
 .fm-shift-neutral-enter-active {
-    transition:
-        transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-        opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-transition-duration) var(--fm-cover-transition-ease);
 }
 
 .fm-shift-next-leave-active,
 .fm-shift-prev-leave-active,
 .fm-shift-neutral-leave-active {
-    transition:
-        transform var(--fm-cover-transition-duration) var(--fm-cover-transition-ease),
-        opacity var(--fm-cover-ghost-fade-duration) linear var(--fm-cover-ghost-fade-delay);
+  transition:
+    transform var(--fm-cover-transition-duration)
+      var(--fm-cover-transition-ease),
+    opacity var(--fm-cover-ghost-fade-duration) linear
+      var(--fm-cover-ghost-fade-delay);
 }
 
 .fm-cover-slot.slot-placeholder.fm-shift-next-leave-active,
 .fm-cover-slot.slot-placeholder.fm-shift-prev-leave-active,
 .fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-active {
-    transition: opacity var(--fm-cover-placeholder-fade-duration) linear;
+  transition: opacity var(--fm-cover-placeholder-fade-duration) linear;
 }
 
 .fm-cover-slot.fm-shift-next-leave-active,
 .fm-cover-slot.fm-shift-prev-leave-active,
 .fm-cover-slot.fm-shift-neutral-leave-active {
-    position: absolute;
-    pointer-events: none;
-    z-index: var(--fm-cover-z-leaving);
+  position: absolute;
+  pointer-events: none;
+  z-index: var(--fm-cover-z-leaving);
 }
 
 .fm-shift-next-leave-from,
 .fm-shift-prev-leave-from,
 .fm-shift-neutral-leave-from {
-    opacity: 1;
+  opacity: 1;
 }
 
 .fm-cover-slot.slot-right.fm-shift-prev-leave-active,
 .fm-cover-slot.slot-right.fm-shift-prev-leave-from,
 .fm-cover-slot.slot-right.fm-shift-prev-leave-to {
-    z-index: var(--fm-cover-z-prev-right-leave-bottom);
+  z-index: var(--fm-cover-z-prev-right-leave-bottom);
 }
 
 .fm-shift-next-enter-from {
-    opacity: 0;
-    transform: translateX(20px) scale(0.97);
+  opacity: 0;
+  transform: translateX(20px) scale(0.97);
 }
 
 .fm-shift-next-leave-to {
-    opacity: 0;
-    transform: translateX(-20px) scale(0.97);
+  opacity: 0;
+  transform: translateX(-20px) scale(0.97);
 }
 
 .fm-shift-prev-enter-from {
-    opacity: 0;
-    transform: translateX(-20px) scale(0.97);
+  opacity: 0;
+  transform: translateX(-20px) scale(0.97);
 }
 
 .fm-shift-prev-leave-to {
-    opacity: 0;
-    transform: translateX(20px) scale(0.97);
+  opacity: 0;
+  transform: translateX(20px) scale(0.97);
 }
 
 .fm-shift-neutral-enter-from,
 .fm-shift-neutral-leave-to {
-    opacity: 0;
-    transform: scale(0.97);
+  opacity: 0;
+  transform: scale(0.97);
 }
 
 .fm-cover-slot.slot-placeholder.fm-shift-next-leave-to,
 .fm-cover-slot.slot-placeholder.fm-shift-prev-leave-to,
 .fm-cover-slot.slot-placeholder.fm-shift-neutral-leave-to {
-    opacity: 0;
-    transform: none;
+  opacity: 0;
+  transform: none;
 }
 
 @keyframes fm-cover-side-overlap-release {
-    from {
-        opacity: 1;
-    }
-    to {
-        opacity: var(--fm-side-opacity);
-    }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: var(--fm-side-opacity);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .fm-panel-intro-active,
-    .fm-panel-intro-active::before,
-    .fm-panel-intro-active .fm-outline-draw,
-    .fm-panel-intro-active .outline-seg,
-    .fm-panel-intro-active .frame-corner {
-        animation: none !important;
-    }
+  .fm-panel-intro-active,
+  .fm-panel-intro-active::before,
+  .fm-panel-intro-active .fm-outline-draw,
+  .fm-panel-intro-active .outline-seg,
+  .fm-panel-intro-active .frame-corner {
+    animation: none !important;
+  }
 
-    .fm-panel-intro-active::before {
-        opacity: 1 !important;
-        clip-path: inset(0 0 0 0) !important;
-    }
+  .fm-panel-intro-active::before {
+    opacity: 1 !important;
+    clip-path: inset(0 0 0 0) !important;
+  }
 
-    .fm-panel-intro-active .fm-outline-draw {
-        opacity: 1 !important;
-    }
+  .fm-panel-intro-active .fm-outline-draw {
+    opacity: 1 !important;
+  }
 
-    .fm-panel-intro-active .outline-seg,
-    .fm-panel-outline-ready .outline-seg {
-        transform: none !important;
-    }
+  .fm-panel-intro-active .outline-seg,
+  .fm-panel-outline-ready .outline-seg {
+    transform: none !important;
+  }
 
-    .fm-panel-intro-active .fm-header,
-    .fm-panel-intro-active .fm-content,
-    .fm-panel-intro-active .fm-loading,
-    .fm-panel-intro-active .fm-empty {
-        animation: fm-content-reveal-reduced 0.12s linear both;
-    }
+  .fm-panel-intro-active .fm-header,
+  .fm-panel-intro-active .fm-content,
+  .fm-panel-intro-active .fm-loading,
+  .fm-panel-intro-active .fm-empty {
+    animation: fm-content-reveal-reduced 0.12s linear both;
+  }
 }
 
 @media (max-width: 900px) {
-    .personal-fm {
-        padding: 8px 0 10px;
-    }
+  .personal-fm {
+    padding: 8px 0 10px;
+  }
 
-    .fm-stage {
-        padding: 0;
-    }
+  .fm-stage {
+    padding: 0;
+  }
 
-    .fm-panel {
-        width: 100%;
-        max-width: 100%;
-        min-height: 0;
-        padding: 16px 16px;
-    }
+  .fm-panel {
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    padding: 16px 16px;
+  }
 
-    .fm-cover-carousel {
-        width: 100%;
-    }
+  .fm-cover-carousel {
+    width: 100%;
+  }
 
-    .fm-header {
-        margin-bottom: 20px;
+  .fm-header {
+    margin-bottom: 20px;
 
-        h1 {
-            font-size: 24px;
-        }
+    h1 {
+      font-size: 24px;
     }
+  }
 
-    .fm-mode-floating {
-        top: 12px;
-        right: 12px;
-    }
+  .fm-mode-floating {
+    top: 12px;
+    right: 12px;
+  }
 
-    .fm-mode-trigger {
-        min-height: 28px;
-        min-width: 150px;
-        max-width: 176px;
-        padding: 0 8px;
-    }
+  .fm-mode-trigger {
+    min-height: 28px;
+    min-width: 150px;
+    max-width: 176px;
+    padding: 0 8px;
+  }
 
-    .mode-trigger-value {
-        font-size: 11px;
-    }
+  .mode-trigger-value {
+    font-size: 11px;
+  }
 
-    .fm-mode-dropdown {
-        width: min(300px, calc(100vw - 44px));
-        padding: 8px;
-    }
+  .fm-mode-dropdown {
+    width: min(300px, calc(100vw - 44px));
+    padding: 8px;
+  }
 
-    .fm-mode-grid,
-    .fm-submode-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 5px;
-    }
+  .fm-mode-grid,
+  .fm-submode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
 
-    .fm-mode-btn,
-    .fm-submode-btn {
-        min-height: 30px;
-        padding: 4px 5px;
-    }
+  .fm-mode-btn,
+  .fm-submode-btn {
+    min-height: 30px;
+    padding: 4px 5px;
+  }
 
-    .fm-cover-track {
-        min-height: 224px;
-        gap: 12px;
-    }
+  .fm-cover-track {
+    min-height: 224px;
+    gap: 12px;
+  }
 
-    .fm-cover-slot {
-        width: 124px;
-        height: 124px;
-        padding: 5px;
-    }
+  .fm-cover-slot {
+    width: 124px;
+    height: 124px;
+    padding: 5px;
+  }
 
-    .fm-cover-slot.slot-center {
-        width: 212px;
-        height: 212px;
-        padding: 6px;
-    }
+  .fm-cover-slot.slot-center {
+    width: 212px;
+    height: 212px;
+    padding: 6px;
+  }
 
-    .fm-actions {
-        width: 100%;
-        justify-content: center;
-        gap: 8px;
-    }
+  .fm-actions {
+    width: 100%;
+    justify-content: center;
+    gap: 8px;
+  }
 
-    .action-btn {
-        min-width: 58px;
-    }
+  .action-btn {
+    min-width: 58px;
+  }
 }
 </style>
 
 <style lang="scss">
 html.dark .personal-fm,
 .dark .personal-fm {
-    --fm-stage-bg: transparent;
-    --fm-panel-bg: rgba(52, 58, 66, 0.88);
-    --fm-panel-border: rgba(255, 255, 255, 0.22);
-    --fm-panel-texture: none;
-    --fm-panel-overlay: linear-gradient(135deg, transparent 0%, transparent 43%, rgba(255, 255, 255, 0.1) 43%, rgba(255, 255, 255, 0.1) 44%, transparent 44%, transparent 100%);
-    --fm-panel-overlay-opacity: 0.6;
-    --fm-text: #f1f3f5;
-    --fm-muted: rgba(241, 243, 245, 0.78);
-    --fm-subtle: rgba(241, 243, 245, 0.58);
-    --fm-corner: rgba(241, 243, 245, 0.92);
-    --fm-primary-btn-bg: rgba(241, 243, 245, 0.94);
-    --fm-primary-btn-text: #0f1114;
-    --fm-primary-btn-border: rgba(241, 243, 245, 0.58);
-    --fm-primary-btn-hover-bg: #ffffff;
-    --fm-ghost-btn-bg: rgba(255, 255, 255, 0.08);
-    --fm-ghost-btn-hover-bg: rgba(255, 255, 255, 0.14);
-    --fm-mode-bg: rgba(255, 255, 255, 0.08);
-    --fm-mode-hover-bg: rgba(255, 255, 255, 0.14);
-    --fm-mode-panel-bg: rgba(52, 58, 66, 0.9);
-    --fm-mode-panel-bg-soft: rgba(255, 255, 255, 0.08);
-    --fm-mode-active-bg: rgba(241, 243, 245, 0.94);
-    --fm-mode-active-text: #0f1114;
-    --fm-mode-active-border: rgba(241, 243, 245, 0.58);
-    --fm-play-overlay-bg: rgba(0, 0, 0, 0.72);
-    --fm-play-overlay-hover-bg: rgba(0, 0, 0, 0.82);
-    --fm-play-overlay-border: rgba(0, 0, 0, 0.24);
-    --fm-play-overlay-icon: #ffffff;
-    --fm-danger: #ff6b5f;
-    --fm-danger-bg: rgba(255, 107, 95, 0.18);
-    --fm-spinner-track: rgba(255, 255, 255, 0.2);
-    --fm-slot-bg: rgba(255, 255, 255, 0.08);
-    --fm-slot-hover-border: rgba(241, 243, 245, 0.72);
-    --fm-side-opacity: 0.5;
-    --fm-placeholder-bg: rgba(255, 255, 255, 0.05);
-    --fm-placeholder-text: rgba(241, 243, 245, 0.5);
+  --fm-stage-bg: transparent;
+  --fm-panel-bg: rgba(52, 58, 66, 0.88);
+  --fm-panel-border: rgba(255, 255, 255, 0.22);
+  --fm-panel-texture: none;
+  --fm-panel-overlay: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 43%,
+    rgba(255, 255, 255, 0.1) 43%,
+    rgba(255, 255, 255, 0.1) 44%,
+    transparent 44%,
+    transparent 100%
+  );
+  --fm-panel-overlay-opacity: 0.6;
+  --fm-text: #f1f3f5;
+  --fm-muted: rgba(241, 243, 245, 0.78);
+  --fm-subtle: rgba(241, 243, 245, 0.58);
+  --fm-corner: rgba(241, 243, 245, 0.92);
+  --fm-primary-btn-bg: rgba(241, 243, 245, 0.94);
+  --fm-primary-btn-text: #0f1114;
+  --fm-primary-btn-border: rgba(241, 243, 245, 0.58);
+  --fm-primary-btn-hover-bg: #ffffff;
+  --fm-ghost-btn-bg: rgba(255, 255, 255, 0.08);
+  --fm-ghost-btn-hover-bg: rgba(255, 255, 255, 0.14);
+  --fm-mode-bg: rgba(255, 255, 255, 0.08);
+  --fm-mode-hover-bg: rgba(255, 255, 255, 0.14);
+  --fm-mode-panel-bg: rgba(52, 58, 66, 0.9);
+  --fm-mode-panel-bg-soft: rgba(255, 255, 255, 0.08);
+  --fm-mode-active-bg: rgba(241, 243, 245, 0.94);
+  --fm-mode-active-text: #0f1114;
+  --fm-mode-active-border: rgba(241, 243, 245, 0.58);
+  --fm-play-overlay-bg: rgba(0, 0, 0, 0.72);
+  --fm-play-overlay-hover-bg: rgba(0, 0, 0, 0.82);
+  --fm-play-overlay-border: rgba(0, 0, 0, 0.24);
+  --fm-play-overlay-icon: #ffffff;
+  --fm-danger: #ff6b5f;
+  --fm-danger-bg: rgba(255, 107, 95, 0.18);
+  --fm-spinner-track: rgba(255, 255, 255, 0.2);
+  --fm-slot-bg: rgba(255, 255, 255, 0.08);
+  --fm-slot-hover-border: rgba(241, 243, 245, 0.72);
+  --fm-side-opacity: 0.5;
+  --fm-placeholder-bg: rgba(255, 255, 255, 0.05);
+  --fm-placeholder-text: rgba(241, 243, 245, 0.5);
 }
 
 .dark .personal-fm .action-btn.prev,
 .dark .personal-fm .action-btn.next,
 html.dark .personal-fm .action-btn.prev,
 html.dark .personal-fm .action-btn.next {
-    color: var(--fm-primary-btn-text) !important;
-    border-color: var(--fm-primary-btn-border) !important;
+  color: var(--fm-primary-btn-text) !important;
+  border-color: var(--fm-primary-btn-border) !important;
 }
 
 .dark .personal-fm .fm-play-overlay,
 html.dark .personal-fm .fm-play-overlay {
-    color: var(--fm-play-overlay-icon) !important;
-    border-color: var(--fm-play-overlay-border) !important;
+  color: var(--fm-play-overlay-icon) !important;
+  border-color: var(--fm-play-overlay-border) !important;
 }
 
 .dark .personal-fm .action-btn.prev svg,
 .dark .personal-fm .action-btn.next svg,
 html.dark .personal-fm .action-btn.prev svg,
 html.dark .personal-fm .action-btn.next svg {
-    color: var(--fm-primary-btn-text) !important;
+  color: var(--fm-primary-btn-text) !important;
 }
 
 .dark .personal-fm .action-btn.prev svg path,
 .dark .personal-fm .action-btn.next svg path,
 html.dark .personal-fm .action-btn.prev svg path,
 html.dark .personal-fm .action-btn.next svg path {
-    fill: var(--fm-primary-btn-text) !important;
+  fill: var(--fm-primary-btn-text) !important;
 }
 
 .dark .personal-fm .fm-play-overlay svg,
 html.dark .personal-fm .fm-play-overlay svg {
-    color: var(--fm-play-overlay-icon) !important;
+  color: var(--fm-play-overlay-icon) !important;
 }
 
 .dark .personal-fm .fm-play-overlay svg path,
 html.dark .personal-fm .fm-play-overlay svg path {
-    fill: var(--fm-play-overlay-icon) !important;
+  fill: var(--fm-play-overlay-icon) !important;
 }
 
 .dark .personal-fm .fm-mode-btn.active,
 html.dark .personal-fm .fm-mode-btn.active,
 .dark .personal-fm .fm-submode-btn.active,
 html.dark .personal-fm .fm-submode-btn.active {
-    background-color: var(--fm-mode-active-bg) !important;
-    color: var(--fm-mode-active-text) !important;
-    border-color: var(--fm-mode-active-border) !important;
+  background-color: var(--fm-mode-active-bg) !important;
+  color: var(--fm-mode-active-text) !important;
+  border-color: var(--fm-mode-active-border) !important;
 }
 
 .dark .personal-fm .fm-mode-btn.active .mode-code,
@@ -2632,6 +3010,6 @@ html.dark .personal-fm .fm-mode-btn.active .mode-label,
 html.dark .personal-fm .fm-submode-btn.active .mode-code,
 .dark .personal-fm .fm-submode-btn.active .mode-label,
 html.dark .personal-fm .fm-submode-btn.active .mode-label {
-    color: var(--fm-mode-active-text) !important;
+  color: var(--fm-mode-active-text) !important;
 }
 </style>
