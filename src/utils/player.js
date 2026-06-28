@@ -43,8 +43,20 @@ const levelFieldMap = {
     hires: 'hr',
 }
 
+function normalizePlaybackVolume(value) {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return 0
+    if (parsed > 1 && parsed <= 100) return parsed / 100
+    return Math.max(0, Math.min(1, parsed))
+}
+
 watch(volume, (v) => {
-  window.playerApi?.setVolume?.(v)
+  const normalizedVolume = normalizePlaybackVolume(v)
+  if (normalizedVolume !== v) {
+    volume.value = normalizedVolume
+    return
+  }
+  window.playerApi?.setVolume?.(normalizedVolume)
 })
 watch(showSongTranslation, () => {
     updateWindowTitleDock()
@@ -2176,8 +2188,7 @@ export function musicVideoCheck(seek, update) {
 
 
 function setVolumeForPlay(value) {
-  volume.value = Math.max(0, Math.min(1, value))
-  console.log(volume.value)
+  volume.value = normalizePlaybackVolume(value)
   currentMusic.value.volume(volume.value)
 }
 
@@ -2220,12 +2231,12 @@ windowApi.changeMusicPlaymode((event, mode) => {
 windowApi.volumeUp(() => {
     if (volume.value + 0.1 < 1) volume.value += 0.1
     else volume.value = 1
-    currentMusic.value.volume(volume.value)
+    currentMusic.value.volume(normalizePlaybackVolume(volume.value))
 })
 windowApi.volumeDown(() => {
     if (volume.value - 0.1 > 0) volume.value -= 0.1
     else volume.value = 0
-    currentMusic.value.volume(volume.value)
+    currentMusic.value.volume(normalizePlaybackVolume(volume.value))
 })
 windowApi.musicProcessControl((event, mode) => {
     if (mode == 'forward') {

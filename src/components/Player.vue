@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
@@ -98,6 +98,57 @@ const isInFMMode = computed(() => {
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
 const isCurrentSirenSong = computed(() => songList.value?.[currentIndex.value]?.source === 'siren');
 const currentSongDisplayName = computed(() => getSongDisplayName(songList.value?.[currentIndex.value], '加载中...', showSongTranslation.value));
+
+const safeSliderRange = computed(() => {
+    const currentTime = Number(time.value);
+    const currentProgress = Number(progress.value);
+    const normalizedTime = Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0;
+    const normalizedProgress = Number.isFinite(currentProgress) && currentProgress > 0 ? currentProgress : 0;
+    return Math.max(normalizedTime, normalizedProgress);
+});
+
+const safeSliderMax = ref(1);
+
+watch(
+    () => [songId.value, safeSliderRange.value],
+    ([, range], previousValue) => {
+        const nextMax = Math.max(1, Math.ceil(Number(range) || 0));
+        const songChanged = previousValue && previousValue[0] !== songId.value;
+        safeSliderMax.value = songChanged ? nextMax : Math.max(safeSliderMax.value, nextMax);
+    },
+    { immediate: true },
+);
+
+const sliderDuration = computed(() => {
+    const currentTime = Number(time.value);
+    return Number.isFinite(currentTime) && currentTime > 0 ? currentTime : safeSliderMax.value;
+});
+
+const sliderProgress = computed({
+    get: () => {
+        const currentProgress = Number(progress.value);
+        if (!Number.isFinite(currentProgress) || currentProgress <= 0) return 0;
+        return Math.min(currentProgress, safeSliderMax.value);
+    },
+    set: value => {
+        const nextValue = Number(value);
+        progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0;
+    },
+});
+
+function normalizeSliderVolume(value) {
+    const currentVolume = Number(value);
+    if (!Number.isFinite(currentVolume)) return 0;
+    if (currentVolume > 1 && currentVolume <= 100) return currentVolume / 100;
+    return Math.max(0, Math.min(1, currentVolume));
+}
+
+const safeVolume = computed({
+    get: () => normalizeSliderVolume(volume.value),
+    set: value => {
+        volume.value = normalizeSliderVolume(value);
+    },
+});
 
 // 智能判断当前歌曲有哪些类型的歌词
 const hasOriginalLyric = computed(() => {
@@ -216,12 +267,13 @@ const toggleChorus = () => {
                     </div>
                     <div class="process">
                         <vue-slider
+                            :key="'player-progress-' + (songId || currentIndex)"
                             id="widget-progress"
                             class="music-progress"
-                            @click="changeProgress(progress)"
-                            v-model="progress"
+                            @click="changeProgress(sliderProgress)"
+                            v-model="sliderProgress"
                             :min="0"
-                            :max="time"
+                            :max="safeSliderMax"
                             :interval="1"
                             :duration="0.5"
                             tooltip="none"
@@ -319,11 +371,11 @@ const toggleChorus = () => {
 
                 <div class="player-voluem">
                     <div class="voluem">
-                        <vue-slider class="volume-slider" v-model="volume" :min="0" :max="1" :interval="0.01" :duration="0.3" tooltip="none"></vue-slider>
+                        <vue-slider class="volume-slider" v-model="safeVolume" :min="0" :max="1" :interval="0.01" :duration="0.3" tooltip="none"></vue-slider>
                     </div>
                     <div class="voluem-num">
                         <span class="voluem-title">VOLUME</span>
-                        <span class="num">{{ Math.round(volume * 100) }}</span>
+                        <span class="num">{{ Math.round(safeVolume * 100) }}</span>
                     </div>
                 </div>
             </div>

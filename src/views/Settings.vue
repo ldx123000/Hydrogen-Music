@@ -302,18 +302,33 @@ const routerChange = () => {
   router.back();
 };
 
+const openDirectoryPicker = async () => {
+  try {
+    const openDirectory = windowApi?.openDirectory || windowApi?.openFile;
+    if (typeof openDirectory !== "function") {
+      noticeOpen("目录选择器不可用", 2);
+      return null;
+    }
+    return await openDirectory();
+  } catch (error) {
+    console.error("打开目录选择器失败:", error);
+    noticeOpen("打开目录选择器失败", 2);
+    return null;
+  }
+};
+
 const selectFolder = (type) => {
   if (type == "download") {
-    windowApi.openFile().then((path) => {
+    openDirectoryPicker().then((path) => {
       downloadFolder.value = path;
     });
   } else if (type == "local") {
-    windowApi.openFile().then((path) => {
+    openDirectoryPicker().then((path) => {
       if (path && localFolder.value.indexOf(path) == -1)
         localFolder.value.push(path);
     });
   } else if (type == "video") {
-    windowApi.openFile().then((path) => {
+    openDirectoryPicker().then((path) => {
       videoFolder.value = path;
     });
   }
@@ -788,7 +803,7 @@ const clearFmRecent = () => {
             <div class="option" v-if="playerStore.musicVideo">
               <div class="option-name">音乐视频缓存</div>
               <div class="select-download-folder">
-                <div class="selected-folder" :title="downloadFolder">
+                <div class="selected-folder" :title="videoFolder">
                   {{ videoFolder ? videoFolder : "待选择" }}
                 </div>
                 <div class="select-option" @click="selectFolder('video')">

@@ -1,4 +1,5 @@
 <script setup>
+  import { computed, ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import VueSlider from 'vue-slider-component'
   import { songTime2, changeProgress } from '../utils/player';
@@ -8,7 +9,43 @@
   import { resolveImageUrl } from '../utils/imageUtils';
   const router = useRouter()
   const playerStore = usePlayerStore()
-  const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, localBase64Img, progress, time, playerShow, showSongTranslation } = storeToRefs(playerStore)
+  const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, songId, localBase64Img, progress, time, playerShow, showSongTranslation } = storeToRefs(playerStore)
+  const safeSliderRange = computed(() => {
+    const currentTime = Number(time.value)
+    const currentProgress = Number(progress.value)
+    const normalizedTime = Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0
+    const normalizedProgress = Number.isFinite(currentProgress) && currentProgress > 0 ? currentProgress : 0
+    return Math.max(normalizedTime, normalizedProgress)
+  })
+
+  const safeSliderMax = ref(1)
+
+  watch(
+    () => [songId.value, safeSliderRange.value],
+    ([, range], previousValue) => {
+      const nextMax = Math.max(1, Math.ceil(Number(range) || 0))
+      const songChanged = previousValue && previousValue[0] !== songId.value
+      safeSliderMax.value = songChanged ? nextMax : Math.max(safeSliderMax.value, nextMax)
+    },
+    { immediate: true }
+  )
+
+  const sliderDuration = computed(() => {
+    const currentTime = Number(time.value)
+    return Number.isFinite(currentTime) && currentTime > 0 ? currentTime : safeSliderMax.value
+  })
+
+  const sliderProgress = computed({
+    get: () => {
+      const currentProgress = Number(progress.value)
+      if (!Number.isFinite(currentProgress) || currentProgress <= 0) return 0
+      return Math.min(currentProgress, safeSliderMax.value)
+    },
+    set: value => {
+      const nextValue = Number(value)
+      progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0
+    }
+  })
 
   const backHome = () => {
     if(widgetState.value) router.push('/')
@@ -36,8 +73,8 @@
         <div class="music-info">
           <span class="music-name">{{getSongDisplayName(songList[currentIndex], '', showSongTranslation)}}</span>
           <div class="music-time">
-            <vue-slider id='widget-progress' class="music-progress" @click.stop="changeProgress(progress)"  v-model="progress" :min="0" :max="time" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
-            <span class="remaining-time">{{songTime2(time - progress)}}</span>
+            <vue-slider :key="'title-progress-' + (songId || currentIndex)" id='widget-progress' class="music-progress" @click.stop="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" tooltip="none"></vue-slider>
+            <span class="remaining-time">{{songTime2(Math.max(0, sliderDuration - sliderProgress))}}</span>
           </div>
         </div>
       </div>

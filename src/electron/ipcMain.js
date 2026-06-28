@@ -24,6 +24,44 @@ const { getElectronStore } = require("./store");
 const CancelToken = axios.CancelToken;
 let cancel = null;
 
+function normalizeDirectoryPath(value) {
+  if (typeof value !== "string") return null;
+  const trimmedPath = value.trim();
+  if (!trimmedPath) return null;
+
+  try {
+    const stats = fs.statSync(trimmedPath);
+    if (stats.isDirectory()) return trimmedPath;
+    if (stats.isFile()) return path.dirname(trimmedPath);
+  } catch (_) {}
+
+  return trimmedPath.replace(/[\\/]+$/, "");
+}
+
+function normalizeDirectoryList(list) {
+  return Array.from(
+    new Set((Array.isArray(list) ? list : []).map(normalizeDirectoryPath).filter(Boolean)),
+  );
+}
+
+function normalizeStoredSettings(settings = {}, appVersion = "") {
+  const normalized = { ...settings };
+  normalized.music = normalizeMusicSettings(normalized.music || {});
+  normalized.local = {
+    ...(normalized.local || {}),
+    videoFolder: normalizeDirectoryPath(normalized.local?.videoFolder),
+    downloadFolder: normalizeDirectoryPath(normalized.local?.downloadFolder),
+    localFolder: normalizeDirectoryList(normalized.local?.localFolder),
+  };
+  normalized.other = {
+    globalShortcuts: normalized.other?.globalShortcuts !== false,
+    enableUpdate: normalized.other?.enableUpdate !== false,
+    quitApp: normalized.other?.quitApp === "quit" ? "quit" : "minimize",
+  };
+  normalized._appVersion = appVersion || normalized._appVersion;
+  return normalized;
+}
+
 module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   const Store = await getElectronStore();
   const settingsStore = new Store({ name: "settings" });
@@ -68,9 +106,10 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   });
   ipcMain.on("window-close", async () => {
     const settings = await settingsStore.get("settings");
-    if (settings.other.quitApp == "minimize") {
+    const quitAppPreference = settings?.other?.quitApp === "quit" ? "quit" : "minimize";
+    if (quitAppPreference == "minimize") {
       win.hide();
-    } else if (settings.other.quitApp == "quit") {
+    } else if (quitAppPreference == "quit") {
       win.close();
     }
   });
@@ -238,25 +277,16 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   };
 
   ipcMain.on("set-settings", (e, settings) => {
-    const parsedSettings = JSON.parse(settings);
-    if (!parsedSettings.music) parsedSettings.music = {};
-    // 保存时仅做合法值归一化，并清理历史迁移字段。
-    parsedSettings.music = normalizeMusicSettings(parsedSettings.music);
-    // 确保 _appVersion 始终为当前版本
-    parsedSettings._appVersion = app.getVersion();
+    const parsedSettings = normalizeStoredSettings(JSON.parse(settings), app.getVersion());
     settingsStore.set("settings", parsedSettings);
     registerShortcuts(win);
   });
   ipcMain.handle("get-settings", async () => {
     const settings = await settingsStore.get("settings");
     if (settings) {
-      if (!settings.music) settings.music = {};
-      // 读取时仅做归一化（保留旧版本合法音质选择，并清理历史迁移字段）。
-      settings.music = normalizeMusicSettings(settings.music);
-      // 确保版本标记为当前版本
-      settings._appVersion = app.getVersion();
-      settingsStore.set("settings", settings);
-      return settings;
+      const normalizedSettings = normalizeStoredSettings(settings, app.getVersion());
+      settingsStore.set("settings", normalizedSettings);
+      return normalizedSettings;
     } else {
       let initSettings = {
         _appVersion: app.getVersion(),
@@ -327,21 +357,24 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           quitApp: "minimize",
         },
       };
+      initSettings = normalizeStoredSettings(initSettings, app.getVersion());
       settingsStore.set("settings", initSettings);
       registerShortcuts(win);
       return initSettings;
     }
   });
-  ipcMain.handle("dialog:openFile", async () => {
+  const openDirectoryDialog = async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
       properties: ["openDirectory"],
     });
     if (canceled) {
       return null;
     } else {
-      return filePaths[0];
+      return normalizeDirectoryPath(filePaths[0]);
     }
-  });
+  };
+  ipcMain.handle("dialog:openDirectory", openDirectoryDialog);
+  ipcMain.handle("dialog:openFile", openDirectoryDialog);
   ipcMain.on("register-shortcuts", () => {
     registerShortcuts(win, app);
   });

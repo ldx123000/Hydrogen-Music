@@ -1,5 +1,43 @@
 import { defineStore } from "pinia";
 
+function normalizePersistedVolume(value) {
+    const volume = Number(value)
+    if (!Number.isFinite(volume)) return 0.3
+    if (volume > 1 && volume <= 100) return volume / 100
+    return Math.max(0, Math.min(1, volume))
+}
+
+function normalizePlayerStorePayload(key, value) {
+    if (key !== 'playerStore' || typeof value !== 'string' || !value) return value
+
+    try {
+        const parsed = JSON.parse(value)
+        if (!parsed || typeof parsed !== 'object' || parsed.volume === undefined) return value
+
+        const normalizedVolume = normalizePersistedVolume(parsed.volume)
+        if (normalizedVolume === parsed.volume) return value
+
+        return JSON.stringify({
+            ...parsed,
+            volume: normalizedVolume,
+        })
+    } catch (_) {
+        return value
+    }
+}
+
+const persistedPlayerStorage = {
+    getItem(key) {
+        return normalizePlayerStorePayload(key, localStorage.getItem(key))
+    },
+    setItem(key, value) {
+        localStorage.setItem(key, value)
+    },
+    removeItem(key) {
+        localStorage.removeItem(key)
+    },
+}
+
 export const usePlayerStore = defineStore('playerStore', {
     state: () => {
         return {
@@ -51,7 +89,7 @@ export const usePlayerStore = defineStore('playerStore', {
     actions: {
     },
     persist: {
-        storage: localStorage,
+        storage: persistedPlayerStorage,
         pick: ['progress','volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','musicVideo','lyricBlur','showSongTranslation','coverBlur','chorusMode']
     },
 })

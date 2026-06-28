@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require("electron");
+const { pathToFileURL } = require("url");
 
 function windowMin() {
   ipcRenderer.send("window-min");
@@ -184,8 +185,14 @@ function sendPlayerCurrentTrackTime(t) {
 
 function toFileUrl(filePathOrUrl) {
   if (!filePathOrUrl || typeof filePathOrUrl !== "string") return "";
-  if (filePathOrUrl.startsWith("file://")) return filePathOrUrl;
-  const normalized = String(filePathOrUrl).replace(/\\/g, "/");
+  const value = filePathOrUrl.trim();
+  if (!value) return "";
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value)) return value;
+  try {
+    return pathToFileURL(value).toString();
+  } catch (_) {}
+
+  const normalized = value.replace(/\\/g, "/");
   // If it already looks like a URL (http/https/etc.), return as-is
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(normalized)) return normalized;
 
@@ -235,6 +242,7 @@ contextBridge.exposeInMainWorld("windowApi", {
   hidePlayer,
   setSettings,
   getSettings: () => ipcRenderer.invoke("get-settings"),
+  openDirectory: () => ipcRenderer.invoke("dialog:openDirectory"),
   openFile: () => ipcRenderer.invoke("dialog:openFile"),
   clearLocalMusicData,
   registerShortcuts,
