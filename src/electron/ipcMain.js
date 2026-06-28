@@ -45,8 +45,46 @@ function normalizeDirectoryList(list) {
   );
 }
 
+function normalizeSearchAssistLimit(value) {
+  const num = Number.parseInt(value, 10);
+  if (!Number.isFinite(num)) return 8;
+  return Math.max(1, num);
+}
+
+const defaultMusicLevel = "flac";
+const availableMusicLevel = new Set([
+  "standard",
+  "higher",
+  "exhigh",
+  "lossless",
+  "flac",
+  "hires",
+  "jyeffect",
+  "sky",
+  "dolby",
+  "jymaster",
+]);
+
+function normalizeMusicLevel(level) {
+  return availableMusicLevel.has(level) ? level : defaultMusicLevel;
+}
+
+function normalizeMusicSettings(music = {}) {
+  const normalized = { ...music };
+  normalized.searchAssistLimit = normalizeSearchAssistLimit(
+    normalized.searchAssistLimit,
+  );
+  normalized.level = normalizeMusicLevel(normalized.level);
+  normalized.showSongTranslation = normalized.showSongTranslation !== false;
+  normalized.gaplessPlayback = normalized.gaplessPlayback === true;
+  normalized.audioVisualizer = normalized.audioVisualizer === true;
+  // 兼容历史版本：读取后清理旧迁移标记字段。
+  delete normalized.levelMigratedToLosslessV1;
+  return normalized;
+}
+
 function normalizeStoredSettings(settings = {}, appVersion = "") {
-    const normalized = { ...settings };
+  const normalized = { ...settings };
   normalized.music = normalizeMusicSettings(normalized.music || {});
   normalized.local = {
     ...(normalized.local || {}),
@@ -194,41 +232,6 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     }
     return null;
   });
-  const normalizeSearchAssistLimit = (value) => {
-    const num = Number.parseInt(value, 10);
-    if (!Number.isFinite(num)) return 8;
-    return Math.max(1, num);
-  };
-  const defaultMusicLevel = "flac";
-  const availableMusicLevel = new Set([
-    "standard",
-    "higher",
-    "exhigh",
-    "lossless",
-    "flac",
-    "hires",
-    "jyeffect",
-    "sky",
-    "dolby",
-    "jymaster",
-  ]);
-
-  const normalizeMusicLevel = (level) =>
-    availableMusicLevel.has(level) ? level : defaultMusicLevel;
-
-  const normalizeMusicSettings = (music = {}) => {
-    const normalized = { ...music };
-    normalized.searchAssistLimit = normalizeSearchAssistLimit(
-      normalized.searchAssistLimit,
-    );
-    normalized.level = normalizeMusicLevel(normalized.level);
-    normalized.showSongTranslation = normalized.showSongTranslation !== false;
-    normalized.gaplessPlayback = normalized.gaplessPlayback === true;
-    normalized.audioVisualizer = normalized.audioVisualizer === true;
-    // 兼容历史版本：读取后清理旧迁移标记字段。
-    delete normalized.levelMigratedToLosslessV1;
-    return normalized;
-  };
   const normalizeStoredProgress = (progressState) => {
     if (!progressState || typeof progressState !== "object") return null;
 

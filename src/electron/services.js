@@ -1,4 +1,5 @@
 const { spawn } = require("child_process");
+const { app } = require("electron");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
@@ -10,9 +11,31 @@ const API_READY_SETTLE_DELAY_MS = 250;
 
 let kugouApiProcess = null;
 let kugouApiStartupPromise = null;
+let firewallWarmupPromise = null;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getFirewallWarmupMarkerPath() {
+  try {
+    return path.join(app.getPath("userData"), "firewall-warmed.marker");
+  } catch (_) {
+    return null;
+  }
+}
+
+function hasCompletedFirewallWarmup() {
+  const markerPath = getFirewallWarmupMarkerPath();
+  return Boolean(markerPath && fs.existsSync(markerPath));
+}
+
+function markFirewallWarmupCompleted() {
+  const markerPath = getFirewallWarmupMarkerPath();
+  if (!markerPath) return;
+  try {
+    fs.writeFileSync(markerPath, String(Date.now()));
+  } catch (_) {}
 }
 
 function getBackendCandidates() {
@@ -168,6 +191,9 @@ function waitForServerListening(server, timeoutMs = 4000) {
 function wakeWindowsFirewall() {
   // 只对 Windows 有效
   if (process.platform !== "win32") return Promise.resolve();
+  // ponytail: 这里用 userData 标记做“一次性预热”；如果后续改成按版本/签名重试，就把 marker 带上版本或二进制指纹。
+  if (hasCompletedFirewallWarmup()) return Promise.resolve();
+  if (firewallWarmupPromise) return firewallWarmupPromise;
 
   const targets = [
     "http://www.baidu.com",
@@ -177,7 +203,7 @@ function wakeWindowsFirewall() {
 
   console.log("[Firewall] 正在预热防火墙规则，确保网络请求不会被拦截...");
 
-  return Promise.allSettled(
+  firewallWarmupPromise = Promise.allSettled(
     targets.map((target) => {
       return new Promise((resolve) => {
         const req = http.get(target, (res) => {
@@ -191,9 +217,16 @@ function wakeWindowsFirewall() {
         req.on("error", () => resolve());
       });
     }),
-  ).then(() => {
-    console.log("[Firewall] 防火墙预热完成");
-  });
+  )
+    .then(() => {
+      markFirewallWarmupCompleted();
+      console.log("[Firewall] 防火墙预热完成");
+    })
+    .finally(() => {
+      firewallWarmupPromise = null;
+    });
+
+  return firewallWarmupPromise;
 }
 
 function probeServer(url, timeoutMs = 1000) {

@@ -22,6 +22,7 @@ const {
   ipcMain,
   session,
 } = require("electron");
+const net = require("net");
 const path = require("path");
 const { getElectronStore } = require("./src/electron/store");
 // 必须在 app.requestSingleInstanceLock() 之前设置应用名称
@@ -37,6 +38,20 @@ const MAIN_WINDOW_MIN_HEIGHT = 672;
 let loadMainContentRef = null;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
 let manualUpdateCheckInProgress = false;
+let hasDevServer = false;
+
+const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
+  new Promise((resolve) => {
+    const socket = net.connect({ port, host });
+    const settle = (result) => {
+      if (!socket.destroyed) socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(300);
+    socket.once("connect", () => settle(true));
+    socket.once("timeout", () => settle(false));
+    socket.once("error", () => settle(false));
+  });
 //electron单例
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -78,6 +93,8 @@ if (!gotTheLock) {
     process.on("uncaughtException", (err) => {
       console.error("Unhandled exception captured:", err);
     });
+    // ponytail: 启动时只探测一次 dev server；若后续再启动 Vite，需要把这里升级成按次重试或显式开发开关。
+    hasDevServer = await isDevServerReachable();
     // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
     createWindow();
     // 然后启动 API 后端，等待就绪后再加载前端页面内容
@@ -336,7 +353,7 @@ const createWindow = () => {
   loadMainContentRef = () => {
     if (!win || win.isDestroyed()) return;
     // 开发模式下自动打开 DevTools，便于调试启动时的请求
-    if (process.resourcesPath.indexOf(path.join("node_modules")) != -1) {
+    if (hasDevServer) {
       win.webContents.openDevTools({ mode: "detach" });
       win.loadURL("http://localhost:5173/");
       win.webContents.on(
@@ -357,10 +374,19 @@ const createWindow = () => {
     } else {
       win.loadFile(indexHtml);
     }
+    if (mainWindowFallbackTimer) clearTimeout(mainWindowFallbackTimer);
+    mainWindowFallbackTimer = setTimeout(() => {
+      if (!hasShownMainWindow) {
+        console.warn("主窗口未触发 ready-to-show，使用超时兜底显示");
+        showMainWindow();
+        initPostShowFeatures();
+      }
+    }, 2500);
   };
 
   let hasShownMainWindow = false;
   let postShowInitialized = false;
+  let mainWindowFallbackTimer = null;
   const showMainWindow = () => {
     if (!win || win.isDestroyed() || hasShownMainWindow) return;
     hasShownMainWindow = true;
@@ -473,13 +499,6 @@ const createWindow = () => {
       );
     }
   });
-  setTimeout(() => {
-    if (!hasShownMainWindow) {
-      console.warn("主窗口未触发 ready-to-show，使用超时兜底显示");
-      showMainWindow();
-      initPostShowFeatures();
-    }
-  }, 2500);
   winstate.manage(win);
   win.on("close", async (event) => {
     if (forceQuit) {
@@ -603,7 +622,7 @@ const createLyricWindow = () => {
   lyricWindow = lyricWin;
 
   const lyricHtml = path.join(process.env.DIST, "dist/desktop-lyric.html");
-  if (process.resourcesPath.indexOf(path.join("node_modules")) != -1) {
+  if (hasDevServer) {
     lyricWin.loadURL("http://localhost:5173/desktop-lyric.html");
     lyricWin.webContents.on(
       "did-fail-load",
