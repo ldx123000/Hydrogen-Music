@@ -1,4 +1,3 @@
-const { spawn } = require("child_process");
 const { app } = require("electron");
 const fs = require("fs");
 const http = require("http");
@@ -9,7 +8,7 @@ const API_READY_TIMEOUT_MS = 12000;
 const API_READY_POLL_INTERVAL_MS = 150;
 const API_READY_SETTLE_DELAY_MS = 250;
 
-let kugouApiProcess = null;
+let kugouApiServer = null;
 let kugouApiStartupPromise = null;
 
 function delay(ms) {
@@ -70,80 +69,36 @@ function getBackendCandidates() {
   return candidates;
 }
 
-function resolveBackendLaunch() {
+function resolveBackendModule() {
   const candidates = getBackendCandidates();
   for (const backendRoot of candidates) {
-    // 优先使用源码版 (app.js)，开发调试更方便
-    const appScript = path.join(backendRoot, "app.js");
-    if (fs.existsSync(appScript)) {
-      return {
-        command: process.execPath,
-        args: [appScript],
-        cwd: backendRoot,
-        env: {
-          ELECTRON_RUN_AS_NODE: "1",
-        },
-        label: appScript,
-      };
-    }
+    const bundledMain = path.join(backendRoot, "bin", "api_js", "main.js");
+    const sourceMain = path.join(backendRoot, "main.js");
+    const orderedEntries = app.isPackaged
+      ? [bundledMain, sourceMain]
+      : [sourceMain, bundledMain];
 
-    const apiJs = path.join(backendRoot, "bin", "api_js", "app.js");
-    if (fs.existsSync(apiJs)) {
+    for (const entry of orderedEntries) {
+      if (!fs.existsSync(entry)) continue;
       return {
-        command: process.execPath,
-        args: [apiJs],
+        entry,
         cwd: backendRoot,
-        env: {
-          ELECTRON_RUN_AS_NODE: "1",
-        },
-        label: apiJs,
+        label: entry,
       };
-    }
-
-    if (process.platform === "win32") {
-      const winBinary = path.join(backendRoot, "bin", "app_win.exe");
-      if (fs.existsSync(winBinary)) {
-        return {
-          command: winBinary,
-          args: [],
-          cwd: backendRoot,
-          env: {},
-          label: winBinary,
-        };
-      }
     }
   }
 
   return null;
 }
 
-function forwardChildOutput(child) {
-  if (child.stdout) {
-    child.stdout.on("data", (chunk) => {
-      const text = chunk.toString().trim();
-      if (text) console.log("[KuGou API]", text);
-    });
-  }
-
-  if (child.stderr) {
-    child.stderr.on("data", (chunk) => {
-      const text = chunk.toString().trim();
-      if (text) console.error("[KuGou API]", text);
-    });
-  }
-}
-
 function stopKugouMusicApi() {
-  if (!kugouApiProcess) return;
+  if (!kugouApiServer) return;
 
-  const child = kugouApiProcess;
-  kugouApiProcess = null;
+  const server = kugouApiServer;
+  kugouApiServer = null;
 
   try {
-    child.removeAllListeners();
-    if (!child.killed) {
-      child.kill();
-    }
+    server.close();
   } catch (_) {}
 }
 
@@ -319,53 +274,28 @@ async function startKugouMusicApi() {
       }
     } catch (_) {}
 
-    const backendLaunch = resolveBackendLaunch();
-    if (!backendLaunch) {
+    const backendModule = resolveBackendModule();
+    if (!backendModule) {
       const errorMessage = "kugou-api-entry-not-found";
       console.log("KuGou API unavailable:", errorMessage);
       return { ready: false, error: errorMessage };
     }
 
-    console.log("KuGou API launch target:", backendLaunch.label);
-
-    const child = spawn(backendLaunch.command, backendLaunch.args, {
-      cwd: backendLaunch.cwd,
-      env: {
-        ...process.env,
-        ...backendLaunch.env,
-        platform: process.env.platform || "lite",
-        PORT: String(API_PORT),
-        HOST: "127.0.0.1",
-      },
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    kugouApiProcess = child;
-    console.log("KuGou API process started:", child.pid);
-    forwardChildOutput(child);
-
-    child.once("exit", (code, signal) => {
-      if (kugouApiProcess === child) {
-        kugouApiProcess = null;
-      }
-      if (code !== 0 && signal !== "SIGTERM") {
-        console.warn(
-          "KuGou API process exited unexpectedly:",
-          code,
-          signal || "",
-        );
-      }
-    });
-
-    child.once("error", (error) => {
-      if (kugouApiProcess === child) {
-        kugouApiProcess = null;
-      }
-      console.error("KuGou API process failed to start:", error);
-    });
+    console.log("KuGou API module target:", backendModule.label);
 
     try {
+      process.env.platform = process.env.platform || "lite";
+      process.env.PORT = String(API_PORT);
+      process.env.HOST = "127.0.0.1";
+
+      const kugouApi = require(backendModule.entry);
+      if (!kugouApi || typeof kugouApi.startService !== "function") {
+        throw new Error("kugou-api-startService-not-found");
+      }
+
+      const appExt = await kugouApi.startService();
+      kugouApiServer = appExt && appExt.service;
+      await waitForServerListening(kugouApiServer);
       await waitForApiReachable(readyUrl);
       await delay(API_READY_SETTLE_DELAY_MS);
       return { ready: true, started: true };
@@ -383,15 +313,20 @@ async function startKugouMusicApi() {
   return kugouApiStartupPromise;
 }
 
+function getKugouMusicApiServer() {
+  return kugouApiServer;
+}
+
 function getKugouMusicApiProcess() {
-  return kugouApiProcess;
+  return kugouApiServer;
 }
 
 module.exports = {
   startKugouMusicApi,
   stopKugouMusicApi,
   getKugouMusicApiProcess,
-  resolveBackendLaunch,
+  getKugouMusicApiServer,
+  resolveBackendModule,
   hasCompletedWindowsNetworkAccessGuide,
   markWindowsNetworkAccessGuideCompleted,
   waitForApiReachable,

@@ -52,6 +52,11 @@ runEsbuild({
   outfile: path.join(outRoot, 'app.js'),
 });
 
+runEsbuild({
+  entryPoints: [path.join(apiRoot, 'main.js')],
+  outfile: path.join(outRoot, 'main.js'),
+});
+
 buildDirectory(path.join(apiRoot, 'util'), path.join(outRoot, 'util'));
 buildDirectory(path.join(apiRoot, 'module'), path.join(outRoot, 'module'));
 
