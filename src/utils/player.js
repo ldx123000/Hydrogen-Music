@@ -158,6 +158,25 @@ function updateCurrentSongDurationFromHowl() {
   currentSong.dt = durationMs;
 }
 
+function syncCurrentPlaybackDuration(playback = currentMusic.value) {
+  if (!playback || typeof playback.duration !== "function") return 0;
+
+  const duration = Math.floor(playback.duration() || 0);
+  if (Number.isFinite(duration) && duration > 0) {
+    time.value = duration;
+    updateCurrentSongDurationFromHowl();
+    return duration;
+  }
+
+  return 0;
+}
+
+function syncPlaybackStarted() {
+  startProgress();
+  playing.value = true;
+  syncExternalPlaybackState();
+}
+
 function clearChorusPlaybackState({ preservePending = false } = {}) {
   chorusPlaybackToken += 1;
   if (chorusStopTimer) {
@@ -1421,8 +1440,7 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
 
   const applyLoadedState = (playback) => {
     if (currentMusic.value !== playback) return;
-    time.value = Math.floor(playback.duration());
-    updateCurrentSongDurationFromHowl();
+    syncCurrentPlaybackDuration(playback);
     let targetSeek = null;
     const pendingChorusForCurrentSong =
       pendingChorusPlayback &&
@@ -1483,9 +1501,7 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
   const handlePlaybackStart = (playback) => {
     if (currentMusic.value !== playback) return;
     playback.fade(0, volume.value, fadeInMs);
-    startProgress();
-    playing.value = true;
-    syncExternalPlaybackState();
+    syncPlaybackStarted();
     // 切歌/播放开始时统一更新窗口标题与（macOS）Dock 菜单
     updateWindowTitleDock();
     scheduleGaplessPreload();
@@ -1511,7 +1527,7 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
       playback.play?.();
       // 预载播放器调用 play() 后同步标记播放状态，防止事件时序问题导致 playing 为 false。
       // 即使 play() 是异步的（AudioContext suspended），标记后 handlePlaybackStart 会再次设为 true，无副作用。
-      playing.value = true;
+      syncPlaybackStarted();
     }
     return;
   }
@@ -1556,16 +1572,19 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
   // Howl 初始化时若指定了 autoplay，提前标记播放状态，避免 play 事件因微任务时序
   // 被其他逻辑（如 refreshStreamAndResume 递归调用 play）干扰而无法正确设置 playing。
   if (autoplay) {
-    playing.value = true;
+    syncPlaybackStarted();
   }
 }
 
 export function startProgress() {
   stopProgressSampling();
+  syncCurrentPlaybackDuration();
   progress.value = currentMusic.value.seek();
   musicProgress = setInterval(() => {
-    if (currentMusic.value.seek() < time.value) {
-      progress.value = currentMusic.value.seek();
+    const duration = syncCurrentPlaybackDuration();
+    const seek = currentMusic.value.seek();
+    if (duration <= 0 || seek < duration) {
+      progress.value = seek;
       persistPlaybackProgress();
     }
   }, 1000);
@@ -2235,6 +2254,7 @@ export function startMusic() {
       return;
     }
     currentMusic.value.play();
+    syncPlaybackStarted();
   }
   if (lyricShow.value) {
     isLyricDelay.value = false;

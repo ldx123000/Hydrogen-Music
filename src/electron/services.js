@@ -15,27 +15,6 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getWindowsNetworkAccessMarkerPath() {
-  try {
-    return path.join(app.getPath("userData"), "windows-network-access-guided.marker");
-  } catch (_) {
-    return null;
-  }
-}
-
-function hasCompletedWindowsNetworkAccessGuide() {
-  const markerPath = getWindowsNetworkAccessMarkerPath();
-  return Boolean(markerPath && fs.existsSync(markerPath));
-}
-
-function markWindowsNetworkAccessGuideCompleted() {
-  const markerPath = getWindowsNetworkAccessMarkerPath();
-  if (!markerPath) return;
-  try {
-    fs.writeFileSync(markerPath, String(Date.now()));
-  } catch (_) {}
-}
-
 function getBackendCandidates() {
   const candidates = [
     path.join(process.resourcesPath || "", "KuGouMusicApi"),
@@ -327,8 +306,6 @@ module.exports = {
   getKugouMusicApiProcess,
   getKugouMusicApiServer,
   resolveBackendModule,
-  hasCompletedWindowsNetworkAccessGuide,
-  markWindowsNetworkAccessGuideCompleted,
   waitForApiReachable,
   API_PORT,
   delay,

@@ -1,8 +1,6 @@
 const {
   startKugouMusicApi,
   stopKugouMusicApi,
-  hasCompletedWindowsNetworkAccessGuide,
-  markWindowsNetworkAccessGuideCompleted,
 } = require("./src/electron/services");
 // Avoid depending on src/utils in packaged build; compute inline
 const isCreateMpris = process.platform === "linux";
@@ -19,7 +17,6 @@ if (isCreateMpris) {
 const {
   app,
   BrowserWindow,
-  dialog,
   globalShortcut,
   Menu,
   ipcMain,
@@ -42,24 +39,6 @@ let loadMainContentRef = null;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
 let manualUpdateCheckInProgress = false;
 let hasDevServer = false;
-
-async function maybePromptWindowsNetworkAccess() {
-  if (process.platform !== "win32" || !app.isPackaged) return;
-  if (hasCompletedWindowsNetworkAccessGuide()) return;
-
-  console.log("[Firewall] 首次联网前显示网络权限提示");
-  await dialog.showMessageBox({
-    type: "info",
-    buttons: ["继续"],
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
-    title: "Hydrogen Music",
-    message: "即将请求 Windows 网络访问权限",
-    detail:
-      "首次启动时，Windows 可能弹出“Windows Defender 防火墙”提示。\n请选择“允许访问”，否则搜索、播放等联网功能可能无法使用。",
-  });
-}
 
 const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
   new Promise((resolve) => {
@@ -181,8 +160,6 @@ if (!gotTheLock) {
       }
     } catch (_) {}
 
-    await maybePromptWindowsNetworkAccess();
-
     const kugouApiResult = await startKugouMusicApi().catch((err) => {
       console.error("KuGou API probe failed:", err);
       return { ready: false, error: err?.message || "unknown error" };
@@ -195,14 +172,6 @@ if (!gotTheLock) {
           }
         : { ready: true };
     if (payload.ready) {
-      if (
-        process.platform === "win32" &&
-        app.isPackaged &&
-        !hasCompletedWindowsNetworkAccessGuide()
-      ) {
-        // ponytail: 这里在后端真正可用后再记完成；如果用户第一次没放行，下次启动还会继续提示。
-        markWindowsNetworkAccessGuideCompleted();
-      }
       console.log("KuGou API ready");
       if (typeof loadMainContentRef === "function") loadMainContentRef();
     } else {
