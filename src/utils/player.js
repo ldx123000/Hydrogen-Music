@@ -172,7 +172,13 @@ function syncCurrentPlaybackDuration(playback = currentMusic.value) {
   return 0;
 }
 
-function syncPlaybackStarted() {
+function syncPlaybackStarted(playback = currentMusic.value, options = {}) {
+  if (options.restoreVolume === true && playback) {
+    try {
+      if (typeof playback.fade === "function") playback.fade(0, volume.value, 200);
+      else if (typeof playback.volume === "function") playback.volume(volume.value);
+    } catch (_) {}
+  }
   startProgress();
   playing.value = true;
   syncExternalPlaybackState();
@@ -1237,8 +1243,14 @@ export function isVideoClosedByUser(songId) {
   return closedVideoMemory.has(songId);
 }
 
-export function loadLastSong() {
+function loadStoredPlaylist() {
+  // 复用主进程保存的上次播放列表，避免再读一份渲染端缓存。
+  return windowApi.getLastPlaylist();
+}
+
+export function loadLastSong(options = {}) {
   if (loadLast) {
+    const autoPlay = options.autoPlay === true;
     return loadStoredPlaylist().then((list) => {
       if (list) {
         songList.value = list.songList;
@@ -1268,7 +1280,7 @@ export function loadLastSong() {
         syncWindowsTaskbarPlaybackState();
 
         if (restoredSong.type == "local") {
-          getSongUrl(restoredSong.id, restoreIndex, false, true);
+          getSongUrl(restoredSong.id, restoreIndex, autoPlay, true);
           return;
         }
 
@@ -1285,7 +1297,7 @@ export function loadLastSong() {
           return;
         }
 
-        getSongUrl(restoredSong.id, restoreIndex, false, false);
+        getSongUrl(restoredSong.id, restoreIndex, autoPlay, false);
         if (musicVideo.value) loadMusicVideo(restoredSong.id);
       }
     });
@@ -1472,7 +1484,7 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
         playback.duration() || normalizedSeek,
       );
       loadLast = false;
-    } else if (loadLast && !autoplay) {
+    } else if (loadLast) {
       targetSeek = Math.min(progress.value || 0, playback.duration() || 0);
       loadLast = false;
     }
@@ -1523,7 +1535,6 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
     stopProgressSampling();
     playing.value = false;
     syncExternalPlaybackState();
-    playback.fade(volume.value, 0, 200);
   };
 
   if (preloadedPlayer) {
@@ -2266,7 +2277,7 @@ export function startMusic() {
       return;
     }
     currentMusic.value.play();
-    syncPlaybackStarted();
+    syncPlaybackStarted(currentMusic.value, { restoreVolume: true });
   }
   if (lyricShow.value) {
     isLyricDelay.value = false;
@@ -2298,10 +2309,13 @@ export function startMusic() {
 }
 export function pauseMusic() {
   stopProgressSampling();
-  if (playing.value) {
-    currentMusic.value.fade(volume.value, 0, 200);
-    currentMusic.value.once("fade", () => {
-      currentMusic.value.pause();
+  const playback = currentMusic.value;
+  if (playing.value && playback) {
+    playback.fade(volume.value, 0, 200);
+    playback.once("fade", () => {
+      if (currentMusic.value !== playback) return;
+      playback.pause();
+      playback.volume?.(volume.value);
       playing.value = false;
       persistPlaybackProgress();
     });

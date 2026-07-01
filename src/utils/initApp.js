@@ -128,7 +128,10 @@ export const init = async () => {
   } catch (error) {
     console.error("用户信息加载失败:", error);
   } finally {
-    loadLastSong();
+    const settings = await windowApi.getSettings().catch(() => null);
+    loadLastSong({
+      autoPlay: settings?.music?.autoPlayOnStartup === true,
+    });
   }
 };
 

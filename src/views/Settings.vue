@@ -103,6 +103,7 @@ const tlyricSize = ref(13);
 const rlyricSize = ref(12);
 const lyricInterlude = ref(13);
 const searchAssistLimit = ref(8);
+const autoPlayOnStartup = ref(false);
 const globalShortcuts = ref(false);
 const appUpdateEnabled = ref(true);
 const quitApp = ref("minimize");
@@ -205,6 +206,7 @@ onActivated(() => {
       settings.music.searchAssistLimit,
     );
     coverSize.value = settings.music.coverSize ?? 400;
+    autoPlayOnStartup.value = settings?.music?.autoPlayOnStartup === true;
     playerStore.showSongTranslation =
       settings?.music?.showSongTranslation !== false;
     playerStore.gaplessPlayback = settings?.music?.gaplessPlayback === true;
@@ -292,6 +294,8 @@ const setAppSettings = () => {
       coverSize: coverSize.value,
       gaplessPlayback: playerStore.gaplessPlayback,
       audioVisualizer: playerStore.audioVisualizer,
+      // 启动恢复上次歌单时是否直接开始播放。
+      autoPlayOnStartup: autoPlayOnStartup.value,
     },
     local: {
       videoFolder: videoFolder.value,
@@ -849,6 +853,25 @@ const clearFmRecent = () => {
                       class="toggle-on"
                       v-show="playerStore.audioVisualizer"
                     ></div>
+                  </Transition>
+                </div>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name">启动后立刻开始播放音乐</div>
+              <div class="option-operation">
+                <div
+                  class="toggle"
+                  @click="autoPlayOnStartup = !autoPlayOnStartup"
+                >
+                  <div
+                    class="toggle-off"
+                    :class="{ 'toggle-on-in': autoPlayOnStartup }"
+                  >
+                    {{ autoPlayOnStartup ? "已开启" : "已关闭" }}
+                  </div>
+                  <Transition name="toggle">
+                    <div class="toggle-on" v-show="autoPlayOnStartup"></div>
                   </Transition>
                 </div>
               </div>

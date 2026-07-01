@@ -39,6 +39,7 @@
         lyricInterlude: 4,
         searchAssistLimit: 8,
         showSongTranslation: true,
+        autoPlayOnStartup: false,
         coverSize: 400,
       },
       local: {
