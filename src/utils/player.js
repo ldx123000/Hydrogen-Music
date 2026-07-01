@@ -175,8 +175,10 @@ function syncCurrentPlaybackDuration(playback = currentMusic.value) {
 function syncPlaybackStarted(playback = currentMusic.value, options = {}) {
   if (options.restoreVolume === true && playback) {
     try {
-      if (typeof playback.fade === "function") playback.fade(0, volume.value, 200);
-      else if (typeof playback.volume === "function") playback.volume(volume.value);
+      if (typeof playback.fade === "function")
+        playback.fade(0, volume.value, 200);
+      else if (typeof playback.volume === "function")
+        playback.volume(volume.value);
     } catch (_) {}
   }
   startProgress();
@@ -849,6 +851,13 @@ export async function playCurrentSongChorus(options = {}) {
     if (showNotice) noticeOpen("当前没有可播放的歌曲", 2);
     return false;
   }
+  const targetSongId = currentSong.id;
+  const isStillCurrentSong = () => {
+    const activeSong = songList.value?.[currentIndex.value];
+    if (String(activeSong?.id || "") !== String(targetSongId || ""))
+      return false;
+    return !songId.value || String(songId.value) === String(targetSongId || "");
+  };
 
   if (
     currentSong.type === "local" ||
@@ -884,6 +893,7 @@ export async function playCurrentSongChorus(options = {}) {
     if (showNotice) noticeOpen("当前歌曲暂无可用副歌片段", 2);
     return false;
   }
+  if (!isStillCurrentSong()) return false;
 
   activateChorusPlayback(segment, currentSong);
   if (showNotice) noticeOpen("正在播放副歌", 2);

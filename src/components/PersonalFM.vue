@@ -1,5 +1,8 @@
 <template>
-  <div class="personal-fm">
+  <div
+    class="personal-fm"
+    :class="{ 'fm-cover-interrupting': coverInterrupting }"
+  >
     <div class="fm-stage">
       <div
         class="fm-panel"
@@ -296,8 +299,11 @@ import {
   getLikeActionErrorMessage,
   isActiveLikeActionToken,
   play,
+  playCurrentSongChorus,
+  pauseMusic,
   queueLikeRequest,
   setSongLevel,
+  startMusic,
   syncLikelistAfterLikeAction,
   updateFavoritePlaylistTrack,
 } from "../utils/player";
@@ -311,7 +317,7 @@ const router = useRouter();
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
 const libraryStore = useLibraryStore();
-const { songId, playing, quality, showSongTranslation, time } =
+const { songId, playing, quality, showSongTranslation, time, chorusMode } =
   storeToRefs(playerStore);
 const { likelist } = storeToRefs(userStore);
 
@@ -782,12 +788,15 @@ const isPrefetching = ref(false);
 const isPanelIntroActive = ref(false);
 const isPanelOutlineReady = ref(false);
 const coverNavigating = ref(false);
+const coverInterrupting = ref(false);
 const coverTransitionDirection = ref("neutral");
-const queuedDirection = ref(null);
+const queuedDirections = ref([]);
 const COVER_TRANSITION_FALLBACK_MS = 2500;
 const COVER_RELEASE_RATIO_FALLBACK = 0.45;
 const COVER_RELEASE_MIN_MS = 180;
 const COVER_RELEASE_BUFFER_MS = 16;
+const COVER_INTERRUPT_RELEASE_MS = 180;
+const MAX_QUEUED_COVER_DIRECTIONS = 6;
 const PANEL_INTRO_DURATION_MS = 1500;
 const PANEL_INTRO_BUFFER_MS = 40;
 let fmRefreshToken = 0;
@@ -822,7 +831,8 @@ function resetFmAccountState() {
   lastLoadedUserId.value = null;
   clearCoverReleaseTimer();
   coverNavigating.value = false;
-  queuedDirection.value = null;
+  coverInterrupting.value = false;
+  queuedDirections.value = [];
 }
 
 const currentSong = computed(() => {
@@ -834,8 +844,14 @@ const currentSong = computed(() => {
 });
 
 const isPlaying = computed(() => {
-  return playing.value && songId.value === currentSong.value?.id;
+  return (
+    playing.value && isSameSongId(songId.value, currentSong.value?.id)
+  );
 });
+
+function isSameSongId(left, right) {
+  return String(left || "") === String(right || "");
+}
 
 const prevCandidateSong = computed(() => {
   if (currentIndex.value > 0) {
@@ -1075,11 +1091,34 @@ const getCoverReleaseDelayMs = () => {
     : "";
   const ratio = Number.parseFloat((ratioValue || "").trim());
 
-  return Math.max(COVER_RELEASE_MIN_MS, transitionDurationMs);
+  const releaseRatio =
+    Number.isFinite(ratio) && ratio > 0 && ratio < 1
+      ? ratio
+      : COVER_RELEASE_RATIO_FALLBACK;
+
+  return Math.max(COVER_RELEASE_MIN_MS, transitionDurationMs * releaseRatio);
 };
 
 const queueCoverDirection = (direction) => {
-  queuedDirection.value = direction;
+  queuedDirections.value = [
+    ...queuedDirections.value,
+    direction,
+  ].slice(-MAX_QUEUED_COVER_DIRECTIONS);
+};
+
+const interruptCoverNavigation = () => {
+  if (typeof window === "undefined") {
+    void releaseCoverNavigation();
+    return;
+  }
+  if (coverInterrupting.value && coverReleaseTimer) return;
+
+  coverInterrupting.value = true;
+  clearCoverReleaseTimer();
+  coverReleaseTimer = window.setTimeout(() => {
+    coverReleaseTimer = null;
+    void releaseCoverNavigation();
+  }, COVER_INTERRUPT_RELEASE_MS);
 };
 
 const clearCoverReleaseTimer = () => {
@@ -1120,12 +1159,13 @@ const startPanelIntro = () => {
 
 const releaseCoverNavigation = async () => {
   coverNavigating.value = false;
+  coverInterrupting.value = false;
   setCoverTransitionDirection("neutral");
 
-  if (!queuedDirection.value) return;
+  const [nextDirection, ...restDirections] = queuedDirections.value;
+  queuedDirections.value = restDirections;
 
-  const nextDirection = queuedDirection.value;
-  queuedDirection.value = null;
+  if (!nextDirection) return;
 
   if (nextDirection === "next") {
     await goNext();
@@ -1159,13 +1199,16 @@ const togglePlay = async () => {
   }
 
   // 如果当前歌曲已经在播放，只需要切换播放状态
-  if (songId.value === currentSong.value.id && playerStore.currentMusic) {
+  if (
+    isSameSongId(songId.value, currentSong.value.id) &&
+    playerStore.currentMusic
+  ) {
     if (playing.value) {
       console.log("Pausing current FM song");
-      playerStore.currentMusic.pause();
+      pauseMusic();
     } else {
       console.log("Resuming current FM song");
-      playerStore.currentMusic.play();
+      startMusic();
     }
     return;
   }
@@ -1217,6 +1260,23 @@ const togglePlay = async () => {
 
       // 直接播放音乐
       play(musicUrl, true);
+      if (chorusMode.value) {
+        const startChorusPlayback = () => {
+          if (
+            !chorusMode.value ||
+            !isSameSongId(playerStore.songId, targetSongId)
+          )
+            return;
+          void playCurrentSongChorus({
+            showNotice: false,
+            suppressUnsupportedNotice: true,
+          });
+        };
+        const playback = playerStore.currentMusic;
+        if (playback?.state?.() === "loaded")
+          setTimeout(startChorusPlayback, 0);
+        else playback?.once?.("load", startChorusPlayback);
+      }
 
       // 获取歌词
       try {
@@ -1307,10 +1367,12 @@ const prevSong = async () => {
 const goNext = async () => {
   if (coverNavigating.value) {
     queueCoverDirection("next");
+    interruptCoverNavigation();
     return;
   }
 
   coverNavigating.value = true;
+  coverInterrupting.value = false;
   clearCoverReleaseTimer();
   setCoverTransitionDirection("next");
 
@@ -1324,11 +1386,13 @@ const goNext = async () => {
 const goPrev = async () => {
   if (coverNavigating.value) {
     queueCoverDirection("prev");
+    interruptCoverNavigation();
     return;
   }
   if (currentIndex.value <= 0) return;
 
   coverNavigating.value = true;
+  coverInterrupting.value = false;
   clearCoverReleaseTimer();
   setCoverTransitionDirection("prev");
 
@@ -1704,7 +1768,8 @@ onUnmounted(() => {
   clearPanelIntroSchedule();
   isPanelIntroActive.value = false;
   skipIntroOnNextActivated = true;
-  queuedDirection.value = null;
+  coverInterrupting.value = false;
+  queuedDirections.value = [];
 });
 
 // 监听账号切换：按账号隔离“近期去重队列”
@@ -1862,6 +1927,12 @@ const handleFmClearRecent = () => {
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+.personal-fm.fm-cover-interrupting {
+  --fm-cover-transition-duration: 0.18s;
+  --fm-cover-transition-ease: cubic-bezier(0.22, 0.78, 0.28, 1);
+  --fm-cover-ghost-fade-duration: 0.08s;
 }
 
 .fm-stage {

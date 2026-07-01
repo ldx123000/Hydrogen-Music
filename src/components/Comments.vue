@@ -51,6 +51,7 @@ const FLOOR_REPLY_LIMIT = 5
 const COMMENTS_PREFETCH_PX = 200
 const commentsContainerRef = ref(null)
 const scrollCheckRafId = ref(null)
+const isCommentsVisible = computed(() => !playerStore.widgetState)
 const commentTargetKey = computed(() => {
     if (isDj.value) {
         return programId.value ? `dj:${programId.value}` : ''
@@ -68,6 +69,7 @@ const resetCommentsScroll = () => {
 const getDistanceToBottom = () => {
     const container = commentsContainerRef.value
     if (!container) return Number.POSITIVE_INFINITY
+    if (!isCommentsVisible.value || container.clientHeight <= 0) return Number.POSITIVE_INFINITY
     return container.scrollHeight - (container.scrollTop + container.clientHeight)
 }
 
@@ -355,6 +357,7 @@ const fetchComments = async (reset = false) => {
 
     const requestTargetKey = commentTargetKey.value
     if (!requestTargetKey) return
+    if (!isCommentsVisible.value) return
 
     loading.value = true
     let fetchSucceeded = false
@@ -638,6 +641,15 @@ watch(
     },
     { immediate: true }
 )
+
+watch(isCommentsVisible, visible => {
+    if (!visible) {
+        clearScrollCheckRaf()
+        return
+    }
+
+    fetchComments(true)
+})
 
 onMounted(() => {
     nextTick(() => {
