@@ -4,3 +4,16 @@ html, body{
 *{
     box-sizing: border-box;
 }
+.delayed-tooltip {
+    position: fixed;
+    z-index: 99999;
+    max-width: 160px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    background: rgba(20, 20, 20, 0.88);
+    color: #fff;
+    font: 12px/1.4 sans-serif;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}

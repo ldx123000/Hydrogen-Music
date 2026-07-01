@@ -8,9 +8,11 @@ import OverflowMarquee from './base/OverflowMarquee.vue';
 import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, toggleChorusMode } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
+import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
 import { getSongDisplayName } from '../utils/songName';
+import { vDelayedTooltip } from '../utils/delayedTooltip';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -60,6 +62,7 @@ const commentCountFontSize = computed(() => {
 
 const router = useRouter();
 const localStore = useLocalStore();
+const otherStore = useOtherStore();
 const playerStore = usePlayerStore();
 const {
     playing,
@@ -96,8 +99,9 @@ const isInFMMode = computed(() => {
 
 // 是否为电台(DJ)模式
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
-const isCurrentSirenSong = computed(() => songList.value?.[currentIndex.value]?.source === 'siren');
-const currentSongDisplayName = computed(() => getSongDisplayName(songList.value?.[currentIndex.value], '加载中...', showSongTranslation.value));
+const currentSong = computed(() => songList.value?.[currentIndex.value] || null);
+const isCurrentSirenSong = computed(() => currentSong.value?.source === 'siren');
+const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '加载中...', showSongTranslation.value));
 
 const safeSliderRange = computed(() => {
     const currentTime = Number(time.value);
@@ -167,10 +171,9 @@ const hasRomaLyric = computed(() => {
 });
 
 const download = () => {
-    const currentSong = songList.value?.[currentIndex.value];
-    if (currentSong?.type != 'local') {
+    if (currentSong.value?.type != 'local') {
         let list = [];
-        list.push(currentSong);
+        list.push(currentSong.value);
         localStore.updateDownloadList(list);
     }
 };
@@ -205,6 +208,13 @@ const backToVideo = () => {
 const toggleChorus = () => {
     // 这里只切换全局副歌模式，具体的区间播放和后续切歌接管都交给 player 工具层。
     void toggleChorusMode();
+};
+
+const addToPlaylist = () => {
+    if (currentSong.value && currentSong.value.type !== 'local' && !isDjMode.value && !isCurrentSirenSong.value) {
+        otherStore.selectedItem = currentSong.value;
+        otherStore.addPlaylistShow = true;
+    }
 };
 
 </script>
@@ -282,7 +292,7 @@ const toggleChorus = () => {
                 </div>
 
                 <div class="control">
-                    <svg @click="playLast()" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
+                    <svg @click="playLast()" v-delayed-tooltip="'上一首'" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
                         <defs><rect id="path_0" x="0" y="0" width="200" height="200" /></defs>
                         <g opacity="1" transform="translate(0 0)  rotate(0 100 100)">
                             <mask id="bg-mask-0" fill="white"><use xlink:href="#path_0" /></mask>
@@ -300,6 +310,7 @@ const toggleChorus = () => {
                     <svg
                         v-show="playing"
                         @click="pauseMusic()"
+                        v-delayed-tooltip="'暂停'"
                         xmlns="http://www.w3.org/2000/svg"
                         xmlns:xlink="http://www.w3.org/1999/xlink"
                         width="200"
@@ -331,6 +342,7 @@ const toggleChorus = () => {
                     <svg
                         v-show="!playing"
                         @click="startMusic()"
+                        v-delayed-tooltip="'播放'"
                         xmlns="http://www.w3.org/2000/svg"
                         xmlns:xlink="http://www.w3.org/1999/xlink"
                         width="200"
@@ -352,7 +364,7 @@ const toggleChorus = () => {
                             </g>
                         </g>
                     </svg>
-                    <svg @click="playNext()" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
+                    <svg @click="playNext()" v-delayed-tooltip="'下一首'" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
                         <defs><rect id="path_0" x="0" y="0" width="200" height="200" /></defs>
                         <g opacity="1" transform="translate(0 0)  rotate(0 100 100)">
                             <mask id="bg-mask-0" fill="white"><use xlink:href="#path_0" /></mask>
@@ -385,6 +397,7 @@ const toggleChorus = () => {
                     t="1673355036226"
                     v-if="musicVideo"
                     @click="toAddMusicVideo()"
+                    v-delayed-tooltip="'添加视频'"
                     class="icon"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -404,6 +417,7 @@ const toggleChorus = () => {
                     t="1673182533775"
                     v-show="hasRomaLyric && lyricType.indexOf('roma') != -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.splice(lyricType.indexOf('roma'), 1)"
+                    v-delayed-tooltip="'隐藏罗马音'"
                     class="icon lyric-toggle active"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -422,6 +436,7 @@ const toggleChorus = () => {
                     t="1673182533775"
                     v-show="hasRomaLyric && lyricType.indexOf('roma') == -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.push('roma')"
+                    v-delayed-tooltip="'显示罗马音'"
                     class="icon lyric-toggle inactive"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -441,6 +456,7 @@ const toggleChorus = () => {
                     t="1673182625534"
                     v-show="hasTransLyric && lyricType.indexOf('trans') != -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.splice(lyricType.indexOf('trans'), 1)"
+                    v-delayed-tooltip="'隐藏翻译'"
                     class="icon lyric-toggle active"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -459,6 +475,7 @@ const toggleChorus = () => {
                     t="1673182625534"
                     v-show="hasTransLyric && lyricType.indexOf('trans') == -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.push('trans')"
+                    v-delayed-tooltip="'显示翻译'"
                     class="icon lyric-toggle inactive"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -478,6 +495,7 @@ const toggleChorus = () => {
                     t="1673182198291"
                     v-show="hasOriginalLyric && lyricType.indexOf('original') != -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.splice(lyricType.indexOf('original'), 1)"
+                    v-delayed-tooltip="'隐藏原文歌词'"
                     class="icon lyric-toggle active"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -506,6 +524,7 @@ const toggleChorus = () => {
                     t="1673182198291"
                     v-show="hasOriginalLyric && lyricType.indexOf('original') == -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.push('original')"
+                    v-delayed-tooltip="'显示原文歌词'"
                     class="icon lyric-toggle inactive"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -536,6 +555,7 @@ const toggleChorus = () => {
                     v-if="songList?.[currentIndex]?.type !== 'local'"
                     t="1669445939818"
                     @click="download()"
+                    v-delayed-tooltip="'下载'"
                     class="icon"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -546,10 +566,27 @@ const toggleChorus = () => {
                 >
                     <path d="M545.472 32v837.504L947.2 467.712l44.544 46.144-478.08 478.144L32.128 510.4l44.48-44.544 405.248 403.712V32h63.616z" p-id="5312"></path>
                 </svg>
+                <svg
+                    v-if="!isDjMode && currentSong && currentSong.type !== 'local' && !isCurrentSirenSong"
+                    @click="addToPlaylist()"
+                    v-delayed-tooltip="'添加歌单'"
+                    class="icon"
+                    viewBox="0 0 1024 1024"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="200"
+                    height="200"
+                >
+                    <path
+                        d="M512 85.333333c235.648 0 426.666667 191.018667 426.666667 426.666667s-191.018667 426.666667-426.666667 426.666667S85.333333 747.648 85.333333 512 276.352 85.333333 512 85.333333z m0 85.333334a341.333333 341.333333 0 1 0 0 682.666666 341.333333 341.333333 0 0 0 0-682.666666z m0 128a42.666667 42.666667 0 0 1 42.666667 42.666666v128H682.666667a42.666667 42.666667 0 0 1 0 85.333334H554.666667v128a42.666667 42.666667 0 0 1-85.333334 0V554.666667H341.333333a42.666667 42.666667 0 0 1 0-85.333334h128V341.333333a42.666667 42.666667 0 0 1 42.666667-42.666666z"
+                        fill="#000000"
+                    ></path>
+                </svg>
                 <!-- 只听副歌：沿用旧版唱片位按钮位置 -->
                 <svg
-                    v-if="!isDjMode && songList?.[currentIndex]?.type !== 'local' && !isCurrentSirenSong"
+                    v-if="!isDjMode && currentSong?.type !== 'local' && !isCurrentSirenSong"
                     @click="toggleChorus()"
+                    v-delayed-tooltip="'只听副歌'"
                     :class="['icon', 'chorus-toggle', { active: chorusMode }]"
                     viewBox="0 0 1024 1024"
                     version="1.1"
@@ -573,6 +610,7 @@ const toggleChorus = () => {
                 <svg
                     t="1670376314067"
                     @click="changePlayMode()"
+                    v-delayed-tooltip="'顺序播放'"
                     v-show="playMode == 0"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -592,6 +630,7 @@ const toggleChorus = () => {
                 <svg
                     t="1668787163705"
                     @click="changePlayMode()"
+                    v-delayed-tooltip="'列表循环'"
                     v-show="playMode == 1"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -610,6 +649,7 @@ const toggleChorus = () => {
                 <svg
                     t="1668787191526"
                     @click="changePlayMode()"
+                    v-delayed-tooltip="'单曲循环'"
                     v-show="playMode == 2"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -629,6 +669,7 @@ const toggleChorus = () => {
                 <svg
                     t="1668787213634"
                     @click="changePlayMode()"
+                    v-delayed-tooltip="'随机播放'"
                     v-show="playMode == 3"
                     class="icon"
                     viewBox="0 0 1024 1024"
@@ -648,6 +689,7 @@ const toggleChorus = () => {
                 <svg
                     v-if="songList?.[currentIndex]?.type !== 'local' && !isCurrentSirenSong"
                     @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
+                    v-delayed-tooltip="props.rightPanelMode === 0 ? '查看评论' : '查看歌词'"
                     :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
                     class="icon comment-icon"
                     viewBox="0 0 24 24"
@@ -667,6 +709,7 @@ const toggleChorus = () => {
                 <!-- 桌面歌词控制按钮 -->
                 <svg
                     @click="toggleDesktopLyric"
+                    v-delayed-tooltip="isDesktopLyricOpen ? '关闭桌面歌词' : '打开桌面歌词'"
                     :class="{ active: isDesktopLyricOpen }"
                     class="icon desktop-lyric-btn"
                     viewBox="0 0 1024 1024"

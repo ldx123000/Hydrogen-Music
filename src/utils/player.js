@@ -79,6 +79,7 @@ let disposeGaplessTransitionTicker = null;
 let gaplessTransitionInProgress = false;
 const GAPLESS_EARLY_START_SECONDS = 0.85;
 const GAPLESS_CROSSFADE_MS = 700;
+const SEEK_END_GUARD_SECONDS = 0.25;
 const levelFieldMap = {
   standard: "l",
   higher: "m",
@@ -510,6 +511,17 @@ function clampPlaybackProgress(value, duration = time.value) {
   if (!Number.isFinite(seek) || seek <= 0) return 0;
   if (safeDuration <= 0) return seek;
   return Math.max(0, Math.min(seek, safeDuration));
+}
+
+function clampSeekTarget(value, duration = time.value) {
+  const seek = Number(value);
+  if (!Number.isFinite(seek) || seek <= 0) return 0;
+
+  const safeDuration = normalizePlaybackDuration(duration);
+  if (safeDuration <= 0) return seek;
+
+  const lastPlayableSecond = Math.max(0, safeDuration - SEEK_END_GUARD_SECONDS);
+  return Math.min(seek, lastPlayableSecond);
 }
 
 function fadeOutPreviousPlayback(previousPlayback, nextPlayback) {
@@ -2397,24 +2409,31 @@ const clearLycAnimation = () => {
   }, 600);
 };
 export function changeProgress(toTime) {
+  if (!currentMusic.value || typeof currentMusic.value.seek !== "function")
+    return;
+
   clearChorusPlaybackState();
   clearChorusPrefetchData();
   if (!widgetState.value && lyricShow.value && lyricEle.value)
     clearLycAnimation();
+
+  const duration = syncCurrentPlaybackDuration();
+  if (duration <= 0) return;
+
+  const targetTime = clampSeekTarget(toTime, duration || time.value);
+
   if (videoIsPlaying.value) {
-    musicVideoCheck(toTime, true);
+    musicVideoCheck(targetTime, true);
   }
   // 先更新进度与歌词索引，再执行实际 seek，确保 UI 与索引同步
-  if (typeof toTime === "number" && Number.isFinite(toTime)) {
-    progress.value = toTime;
-    syncLyricIndexForSeek(toTime);
-  }
-  currentMusic.value.seek(toTime);
+  progress.value = targetTime;
+  syncLyricIndexForSeek(targetTime);
+  currentMusic.value.seek(targetTime);
   // 静态策略下，仅在显式 seek 时通知一次系统进度
   try {
     window.dispatchEvent(
       new CustomEvent("mediaSession:seeked", {
-        detail: { duration: Math.floor(time.value || 0), toTime },
+        detail: { duration: Math.floor(time.value || 0), toTime: targetTime },
       }),
     );
   } catch (_) {}
