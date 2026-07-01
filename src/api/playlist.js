@@ -104,18 +104,20 @@ function normalizeRecommendedPlaylist(item = {}) {
  * @param {number} num 
  */
 export function getRecommendedSongList(num) {
+    const limit = Number(num) || 0
     return request({
         url: '/top/playlist',
         method: 'get',
         params: {
             category_id: 0,
-            pagesize: num
+            pagesize: limit || num
         }
     }).then(result => {
         const rawList = result?.data?.special_list || result?.special_list || result?.data?.list || result?.list || []
+        const resultList = Array.isArray(rawList) ? rawList.map(item => normalizeRecommendedPlaylist(item)) : []
         return {
             ...result,
-            result: Array.isArray(rawList) ? rawList.map(item => normalizeRecommendedPlaylist(item)) : [],
+            result: limit > 0 ? resultList.slice(0, limit) : resultList,
         }
     })
 }

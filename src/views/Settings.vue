@@ -294,7 +294,7 @@ const setAppSettings = () => {
       coverSize: coverSize.value,
       gaplessPlayback: playerStore.gaplessPlayback,
       audioVisualizer: playerStore.audioVisualizer,
-      // 启动恢复上次歌单时是否直接开始播放。
+      // 启动恢复上次歌单后是否自动播放。
       autoPlayOnStartup: autoPlayOnStartup.value,
     },
     local: {
@@ -858,7 +858,7 @@ const clearFmRecent = () => {
               </div>
             </div>
             <div class="option">
-              <div class="option-name">启动后立刻开始播放音乐</div>
+              <div class="option-name">启动后自动播放音乐</div>
               <div class="option-operation">
                 <div
                   class="toggle"

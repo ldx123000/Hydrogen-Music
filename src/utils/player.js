@@ -1248,6 +1248,11 @@ function loadStoredPlaylist() {
   return windowApi.getLastPlaylist();
 }
 
+function startRestoredMusicAfterWidgetEnter() {
+  // 启动自动播放等底部播放器入场动画结束后再开声，避免 UI 还没弹出就开始播放。
+  setTimeout(() => startMusic(), 650);
+}
+
 export function loadLastSong(options = {}) {
   if (loadLast) {
     const autoPlay = options.autoPlay === true;
@@ -1280,7 +1285,9 @@ export function loadLastSong(options = {}) {
         syncWindowsTaskbarPlaybackState();
 
         if (restoredSong.type == "local") {
-          getSongUrl(restoredSong.id, restoreIndex, autoPlay, true);
+          getSongUrl(restoredSong.id, restoreIndex, false, true).then(() => {
+            if (autoPlay) startRestoredMusicAfterWidgetEnter();
+          });
           return;
         }
 
@@ -1297,7 +1304,9 @@ export function loadLastSong(options = {}) {
           return;
         }
 
-        getSongUrl(restoredSong.id, restoreIndex, autoPlay, false);
+        getSongUrl(restoredSong.id, restoreIndex, false, false).then(() => {
+          if (autoPlay) startRestoredMusicAfterWidgetEnter();
+        });
         if (musicVideo.value) loadMusicVideo(restoredSong.id);
       }
     });
