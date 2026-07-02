@@ -317,7 +317,7 @@ const router = useRouter();
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
 const libraryStore = useLibraryStore();
-const { songId, playing, quality, showSongTranslation, time, chorusMode } =
+const { songId, playing, progress, quality, showSongTranslation, time, chorusMode } =
   storeToRefs(playerStore);
 const { likelist } = storeToRefs(userStore);
 
@@ -1235,6 +1235,11 @@ const togglePlay = async () => {
         console.error("Invalid current FM song shape:", currentSong.value);
         return;
       }
+      const durationSeconds = Math.floor(
+        Number(
+          normalizedCurrentSong.dt || normalizedCurrentSong.duration || 0,
+        ) / 1000,
+      );
 
       // 创建一个临时的单曲列表用于FM播放（不影响用户的真实播放列表）
       const fmSongList = [
@@ -1257,6 +1262,8 @@ const togglePlay = async () => {
       playerStore.lyricsObjArr = null;
       playerStore.currentLyricIndex = -1;
       setSongLevel(trackInfo.level, trackInfo);
+      progress.value = 0;
+      time.value = Number.isFinite(durationSeconds) ? durationSeconds : 0;
 
       // 直接播放音乐
       play(musicUrl, true);

@@ -1567,7 +1567,7 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
     return;
   }
 
-  const playback = new Howl({
+  const playback = markRaw(new Howl({
     src: url,
     autoplay: autoplay,
     html5: true,
@@ -1598,7 +1598,7 @@ export function play(url, autoplay, resumeSeek = null, preloadedPlayer = null) {
       console.warn("加载音频失败，尝试刷新播放地址", err);
       refreshStreamAndResume("loaderror", err);
     },
-  });
+  }));
   currentMusic.value = playback;
   playback.once("load", () => applyLoadedState(playback));
   playback.on("play", () => handlePlaybackStart(playback));
@@ -2464,7 +2464,19 @@ export function changeProgress(toTime) {
     clearLycAnimation();
 
   const duration = syncCurrentPlaybackDuration();
-  if (duration <= 0) return;
+  if (duration <= 0) {
+    const fallbackDuration = normalizePlaybackDuration(time.value);
+    if (fallbackDuration <= 0) return;
+
+    const pendingPlayback = currentMusic.value;
+    const targetTime = clampSeekTarget(toTime, fallbackDuration);
+    progress.value = targetTime;
+    pendingPlayback.once?.("load", () => {
+      if (currentMusic.value !== pendingPlayback) return;
+      changeProgress(targetTime);
+    });
+    return;
+  }
 
   const targetTime = clampSeekTarget(toTime, duration || time.value);
 
