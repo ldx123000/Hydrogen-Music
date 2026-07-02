@@ -13,6 +13,8 @@ function checkSongPlayable(song, _privilege) {
     playable: true,
     reason: ''
   }
+  if (song?.type === 'local' && song?.url) return status
+
   if (song?.privilege?.pl > 0)
     return status
 

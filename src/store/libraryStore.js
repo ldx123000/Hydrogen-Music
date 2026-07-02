@@ -352,8 +352,9 @@ export const useLibraryStore = defineStore('libraryStore', {
             const isRankPlaylist = routeQuerySource == 'rank' || seededPlaylist?.source == 'rank'
             const routeCollectionId = String(routeQuery?.globalCollectionId || routeQuery?.collectionId || routeQuery?.gid || routeQuery?.collection_id || '')
             const inferredCollectionId = /^collection_\d+_\d+_\d+_\d+$/.test(playlistId) ? playlistId : ''
+            const resolvedListId = playlist?.list_create_listid || playlist?.listid || ''
             const resolvedCollectionId = playlist?.global_collection_id || routeCollectionId || inferredCollectionId || ''
-            const resolvedPlaylistId = resolvedCollectionId || playlistId
+            const resolvedPlaylistId = resolvedListId || resolvedCollectionId || playlistId
             const token = `${resolvedPlaylistId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             this.playlistHydrationToken = token
             this.playlistHydrationPromise = null
@@ -412,7 +413,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 // 酷狗公开/推荐歌单要使用 global_collection_id 拉取完整曲目；listid 只适合用户自建/收藏歌单。
                 const trackParams = {
                     id: resolvedPlaylistId,
-                    gid: resolvedCollectionId || null,
+                    gid: resolvedListId ? null : resolvedCollectionId || null,
                     limit: PLAYLIST_PAGE_SIZE,
                     offset: 0,
                 }
@@ -467,7 +468,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                     status: 'loading',
                 })
 
-                const hydrationTask = this.hydratePlaylistRemaining(resolvedPlaylistId, totalTracks, token, loadedTracks, resolvedCollectionId || null)
+                const hydrationTask = this.hydratePlaylistRemaining(resolvedPlaylistId, totalTracks, token, loadedTracks, resolvedListId ? null : resolvedCollectionId || null)
                     .then(remainingSongs => {
                         if (this.playlistHydrationToken != token) return
                         if (Array.isArray(remainingSongs) && remainingSongs.length > 0) {

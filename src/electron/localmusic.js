@@ -1,7 +1,40 @@
 const { ipcMain }= require('electron')
+const crypto = require('crypto')
 const scanLocalMusicTree = require('./dirTree')
 const { getElectronStore } = require('./store')
 
+function hashFile(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('md5')
+        const stream = require('fs').createReadStream(filePath)
+        stream.on('error', reject)
+        stream.on('data', chunk => hash.update(chunk))
+        stream.on('end', () => resolve(hash.digest('hex').toUpperCase()))
+    })
+}
+
+function getLocalHashTracks(localStore) {
+    const tracks = localStore.get('localHashTracks')
+    return tracks && typeof tracks === 'object' ? tracks : {}
+}
+
+function normalizeLocalHashTrack(hash, song = {}) {
+    const fileUrl = song?.common?.fileUrl || song?.url || song?.dirPath || ''
+    if (!hash || !fileUrl) return null
+
+    return {
+        hash,
+        id: song?.id || hash,
+        name: song?.name || song?.common?.title || song?.common?.localTitle || '',
+        url: fileUrl,
+        dirPath: fileUrl,
+        common: {
+            ...(song?.common || {}),
+            fileUrl,
+        },
+        format: song?.format || {},
+    }
+}
 
 module.exports = async function LocalFiles(win, app) {
     const Store = await getElectronStore()
@@ -70,5 +103,22 @@ module.exports = async function LocalFiles(win, app) {
         }  else if(type == 'local') {
             localStore.set('localFiles.local', null)
         }
+    })
+    ipcMain.handle('local-music:file-hash', async (e, filePath) => {
+        if (!filePath) return ''
+        return hashFile(filePath)
+    })
+    ipcMain.handle('local-music:remember-hash-track', (e, params = {}) => {
+        const hash = String(params?.hash || '').trim().toUpperCase()
+        const track = normalizeLocalHashTrack(hash, params?.song)
+        if (!track) return false
+
+        const tracks = getLocalHashTracks(localStore)
+        tracks[hash] = track
+        localStore.set('localHashTracks', tracks)
+        return true
+    })
+    ipcMain.handle('local-music:get-hash-tracks', () => {
+        return getLocalHashTracks(localStore)
     })
 }

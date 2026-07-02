@@ -80,6 +80,10 @@ export const useOtherStore = defineStore('otherStore', {
             {
                 id: 10,
                 name: '打开本地文件夹'
+            },
+            {
+                id: 4,
+                name: '添加到歌单'
             }
           ],
           tree5: [

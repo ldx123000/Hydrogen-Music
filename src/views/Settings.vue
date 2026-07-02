@@ -209,7 +209,6 @@ onActivated(() => {
     autoPlayOnStartup.value = settings?.music?.autoPlayOnStartup === true;
     playerStore.showSongTranslation =
       settings?.music?.showSongTranslation !== false;
-    playerStore.gaplessPlayback = settings?.music?.gaplessPlayback === true;
     playerStore.audioVisualizer = settings?.music?.audioVisualizer === true;
     videoFolder.value = settings.local.videoFolder;
     downloadFolder.value = settings.local.downloadFolder;
@@ -292,7 +291,6 @@ const setAppSettings = () => {
       searchAssistLimit: normalizeSearchAssistLimit(searchAssistLimit.value),
       showSongTranslation: playerStore.showSongTranslation,
       coverSize: coverSize.value,
-      gaplessPlayback: playerStore.gaplessPlayback,
       audioVisualizer: playerStore.audioVisualizer,
       // 启动恢复上次歌单后是否自动播放。
       autoPlayOnStartup: autoPlayOnStartup.value,
@@ -812,30 +810,6 @@ const clearFmRecent = () => {
                   v-model="coverSize"
                   :options="coverSizeOptions"
                 ></Selector>
-              </div>
-            </div>
-            <div class="option">
-              <div class="option-name">歌曲无缝衔接</div>
-              <div class="option-operation">
-                <div
-                  class="toggle"
-                  @click="
-                    playerStore.gaplessPlayback = !playerStore.gaplessPlayback
-                  "
-                >
-                  <div
-                    class="toggle-off"
-                    :class="{ 'toggle-on-in': playerStore.gaplessPlayback }"
-                  >
-                    {{ playerStore.gaplessPlayback ? "已开启" : "已关闭" }}
-                  </div>
-                  <Transition name="toggle">
-                    <div
-                      class="toggle-on"
-                      v-show="playerStore.gaplessPlayback"
-                    ></div>
-                  </Transition>
-                </div>
               </div>
             </div>
             <div class="option">

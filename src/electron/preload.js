@@ -228,6 +228,12 @@ contextBridge.exposeInMainWorld("windowApi", {
   scanLocalMusic,
   localMusicFiles,
   localMusicCount,
+  getLocalMusicFileHash: (filePath) =>
+    ipcRenderer.invoke("local-music:file-hash", filePath),
+  rememberLocalMusicHashTrack: (hash, song) =>
+    ipcRenderer.invoke("local-music:remember-hash-track", { hash, song }),
+  getLocalMusicHashTracks: () =>
+    ipcRenderer.invoke("local-music:get-hash-tracks"),
   getLocalMusicImage: (filePath) =>
     ipcRenderer.invoke("get-image-base64", filePath),
   toFileUrl,

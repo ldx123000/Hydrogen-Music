@@ -76,11 +76,11 @@ function normalizeMusicSettings(music = {}) {
   );
   normalized.level = normalizeMusicLevel(normalized.level);
   normalized.showSongTranslation = normalized.showSongTranslation !== false;
-  normalized.gaplessPlayback = normalized.gaplessPlayback === true;
   normalized.audioVisualizer = normalized.audioVisualizer === true;
   normalized.autoPlayOnStartup = normalized.autoPlayOnStartup === true;
   // 兼容历史版本：读取后清理旧迁移标记字段。
   delete normalized.levelMigratedToLosslessV1;
+  delete normalized.gaplessPlayback;
   return normalized;
 }
 
@@ -307,7 +307,6 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
           lyricInterlude: 13,
           searchAssistLimit: 8,
           showSongTranslation: true,
-          gaplessPlayback: false,
           audioVisualizer: false,
           autoPlayOnStartup: false,
           coverSize: 400,

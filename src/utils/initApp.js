@@ -19,7 +19,6 @@ const {
   searchAssistLimit,
   showSongTranslation,
   coverSize,
-  gaplessPlayback,
   audioVisualizer,
 } = storeToRefs(playerStore);
 const localStore = useLocalStore();
@@ -40,7 +39,6 @@ export const initSettings = () => {
       ? Math.max(1, rawSearchAssistLimit)
       : 8;
     showSongTranslation.value = settings?.music?.showSongTranslation !== false;
-    gaplessPlayback.value = settings?.music?.gaplessPlayback === true;
     audioVisualizer.value = settings?.music?.audioVisualizer === true;
     coverSize.value = settings?.music?.coverSize ?? 400;
     applyCustomFontStyle(settings?.other?.customFont || "");

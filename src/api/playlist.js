@@ -69,9 +69,61 @@ export function normalizePlaylistSong(song = {}) {
   }
 }
 
-export function normalizePlaylistSongs(songs) {
-  // 过滤掉版权受限/已屏蔽的歌曲（shield=1 表示无版权不可用）
-  return Array.isArray(songs) ? songs.filter(s => s.shield !== 1).map(normalizePlaylistSong) : []
+export function normalizePlaylistSongs(songs, { filterShield = true } = {}) {
+  const sourceSongs = Array.isArray(songs) ? songs : []
+  const visibleSongs = filterShield ? sourceSongs.filter(song => song?.shield !== 1) : sourceSongs
+  return visibleSongs.map(normalizePlaylistSong)
+}
+
+function getWindowApi() {
+    return typeof windowApi == 'undefined' ? null : windowApi
+}
+
+async function getLocalHashTrackMap() {
+    const api = getWindowApi()
+    if (!api?.getLocalMusicHashTracks) return {}
+    const tracks = await api.getLocalMusicHashTracks().catch(() => ({}))
+    return tracks && typeof tracks == 'object' ? tracks : {}
+}
+
+function mergeLocalHashTrack(song = {}, localTrack = null) {
+    if (!localTrack?.url) return song
+
+    const localName = localTrack?.common?.title || localTrack?.common?.localTitle || localTrack?.name || song?.name
+    const localArtists = Array.isArray(localTrack?.common?.artists)
+        ? localTrack.common.artists.map(name => ({ id: 'local', name }))
+        : song?.ar || []
+
+    return {
+        ...song,
+        id: song?.id || localTrack.id || song?.hash,
+        name: localName,
+        ar: localArtists,
+        artists: localArtists,
+        url: localTrack.url,
+        type: 'local',
+        source: 'local-playlist',
+        playable: true,
+        reason: '',
+        noCopyrightRcmd: null,
+        shield: 0,
+        common: localTrack.common || {},
+        format: localTrack.format || {},
+        localName: localTrack?.common?.localTitle || localTrack?.name || localName,
+    }
+}
+
+async function applyLocalHashTrackFallback(songs = []) {
+    // ponytail: only hashes recorded while adding local tracks are whitelisted; upgrade path is a background local-library hash index.
+    const localTrackMap = await getLocalHashTrackMap()
+    if (!Object.keys(localTrackMap).length) return songs.filter(song => song?.shield !== 1)
+
+    return songs
+        .map(song => {
+            const hash = normalizePlaylistTrackHash(song).toUpperCase()
+            return hash && localTrackMap[hash] ? mergeLocalHashTrack(song, localTrackMap[hash]) : song
+        })
+        .filter(song => song?.type === 'local' || song?.shield !== 1)
 }
 
 function normalizeRecommendedPlaylist(item = {}) {
@@ -221,7 +273,7 @@ async function fetchPlaylistPageByListId(id, page, pagesize, rest) {
         method: 'get',
         params: { listid: id, page, pagesize, ...rest },
     })
-    return normalizePlaylistSongs(result?.data?.info || result?.info || [])
+    return applyLocalHashTrackFallback(normalizePlaylistSongs(result?.data?.info || result?.info || [], { filterShield: false }))
 }
 
 async function fetchPlaylistPageByCollectionId(id, page, pagesize, rest) {
@@ -232,7 +284,7 @@ async function fetchPlaylistPageByCollectionId(id, page, pagesize, rest) {
     })
     return {
         raw: result,
-        songs: normalizePlaylistSongs(result?.songs || result?.data?.songs || result?.data?.info || result?.info || []),
+        songs: await applyLocalHashTrackFallback(normalizePlaylistSongs(result?.songs || result?.data?.songs || result?.data?.info || result?.info || [], { filterShield: false })),
         privileges: Array.isArray(result?.privileges) ? result.privileges : [],
     }
 }
@@ -406,11 +458,56 @@ export function collectPlaylist(params) {
  * @returns 
  */
 function normalizePlaylistTrackName(track = {}) {
-    return String(track?.name || track?.songname || track?.filename || '').replace(/[|,]/g, ' ').trim()
+    const filePath = getLocalTrackFilePath(track)
+    const fallbackLocalName = filePath ? filePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') : ''
+    return String(track?.name || track?.songname || track?.filename || track?.common?.title || track?.common?.localTitle || track?.localName || fallbackLocalName || '').replace(/[|,]/g, ' ').trim()
 }
 
 function normalizePlaylistTrackHash(track = {}) {
     return String(track?.hash || track?.FileHash || track?.file_hash || track?.deprecated?.hash || track?.audio_info?.hash_128 || track?.audio_info?.hash_320 || '').trim()
+}
+
+function getLocalTrackFilePath(track = {}) {
+    return track?.common?.fileUrl || track?.url || track?.dirPath || ''
+}
+
+function isLocalTrack(track = {}) {
+    return track?.type == 'local' || !!track?.common?.fileUrl
+}
+
+function toRememberedLocalTrack(track = {}) {
+    const fileUrl = getLocalTrackFilePath(track)
+    return {
+        id: track?.id || track?.hash || fileUrl,
+        name: normalizePlaylistTrackName(track),
+        url: fileUrl,
+        dirPath: fileUrl,
+        common: {
+            title: track?.common?.title || track?.name || '',
+            localTitle: track?.common?.localTitle || track?.localName || track?.name || '',
+            artists: Array.isArray(track?.common?.artists) ? [...track.common.artists] : [],
+            album: track?.common?.album || '',
+            fileUrl,
+        },
+        format: {
+            duration: track?.format?.duration || track?.dt || track?.duration || 0,
+        },
+    }
+}
+
+async function resolvePlaylistTrackHash(track = {}) {
+    const hash = normalizePlaylistTrackHash(track)
+    if (hash) return hash
+
+    const filePath = getLocalTrackFilePath(track)
+    const api = getWindowApi()
+    if (!filePath || !api?.getLocalMusicFileHash) return ''
+
+    const generatedHash = await api.getLocalMusicFileHash(filePath).catch(() => '')
+    if (generatedHash && api?.rememberLocalMusicHashTrack) {
+        await api.rememberLocalMusicHashTrack(generatedHash, toRememberedLocalTrack(track)).catch(() => false)
+    }
+    return generatedHash
 }
 
 function unwrapPlaylistTrack(track) {
@@ -419,17 +516,19 @@ function unwrapPlaylistTrack(track) {
 }
 
 function normalizePlaylistTrackAlbumId(track = {}) {
+    if (isLocalTrack(track)) return 0
     return track?.al?.id || track?.album_id || track?.albumid || track?.albumId || track?.album?.id || 0
 }
 
 function normalizePlaylistTrackMixsongId(track = {}) {
+    if (isLocalTrack(track)) return 0
     return track?.album_audio_id || track?.mixsongid || track?.mixsong_id || track?.id || 0
 }
 
-function buildPlaylistTrackAddEntry(track = {}) {
+async function buildPlaylistTrackAddEntry(track = {}) {
     track = unwrapPlaylistTrack(track) || {}
     const name = normalizePlaylistTrackName(track)
-    const hash = normalizePlaylistTrackHash(track)
+    const hash = await resolvePlaylistTrackHash(track)
     const albumId = normalizePlaylistTrackAlbumId(track)
     const mixsongId = normalizePlaylistTrackMixsongId(track)
     if (!name || !hash) return ''
@@ -446,27 +545,26 @@ export function updatePlaylist(params) {
 
     if (operation == 'add') {
         const tracks = Array.isArray(params?.tracks) ? params.tracks : [params?.trackDetail || params?.selectedItem || params?.tracks]
-        const data = tracks
-          .map(track => {
+        return Promise.all(tracks.map(track => {
             const normalizedTrack = unwrapPlaylistTrack(track)
             if (normalizedTrack && typeof normalizedTrack == 'object') return buildPlaylistTrackAddEntry(normalizedTrack)
             return ''
-          })
-          .filter(Boolean)
-          .join(',')
+          })).then(entries => {
+            const data = entries.filter(Boolean).join(',')
 
-        if (!data) {
-            return Promise.resolve({ status: 0, error: 'missing playlist track payload' })
-        }
+            if (!data) {
+                return { status: 0, error: 'missing playlist track payload' }
+            }
 
-        return request({
-          url: '/playlist/tracks/add',
-          method: 'post',
-          params: {
-            listid,
-            data,
-          },
-        });
+            return request({
+              url: '/playlist/tracks/add',
+              method: 'post',
+              params: {
+                listid,
+                data,
+              },
+            });
+        })
     }
 
     if (operation == 'del') {
