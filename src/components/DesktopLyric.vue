@@ -49,7 +49,7 @@
                 </div>
             </div>
 
-            <!-- 主歌词显示区（保留染色进度条效果） -->
+            <!-- 主歌词显示区 -->
             <div class="main-lyric-section">
                 <div class="lyric-container">
                     <div class="lyric-prefix">></div>
@@ -57,6 +57,7 @@
                         class="current-lyric"
                         ref="lyricElementRef"
                         :data-lyric="currentLyricText"
+                        :class="{ 'line-scan-active': lineScanActive }"
                         :style="{
                             fontSize: lyricFontSize + 'px',
                             opacity: currentLyricOpacity,
@@ -115,7 +116,9 @@
             <div class="menu-content">
                 <!-- 自动选择选项 -->
                 <div class="menu-item" @click="selectLyricType('auto')">
-                    <div class="item-icon">{{ selectedLyricType === 'auto' ? '🔘' : '⚪' }}</div>
+                    <div class="item-icon" aria-hidden="true">
+                        <span class="selection-mark" :class="{ selected: selectedLyricType === 'auto' }"></span>
+                    </div>
                     <span class="item-text">
                         <span class="text-zh">自动选择</span>
                         <span class="text-en">AUTO SELECT</span>
@@ -125,7 +128,9 @@
 
                 <!-- 原歌词选项 -->
                 <div class="menu-item" v-if="hasLyricType('original')" @click="selectLyricType('original')">
-                    <div class="item-icon">{{ selectedLyricType === 'original' ? '🔘' : '⚪' }}</div>
+                    <div class="item-icon" aria-hidden="true">
+                        <span class="selection-mark" :class="{ selected: selectedLyricType === 'original' }"></span>
+                    </div>
                     <span class="item-text">
                         <span class="text-zh">原文</span>
                         <span class="text-en">ORIGINAL</span>
@@ -135,7 +140,9 @@
 
                 <!-- 翻译歌词选项 -->
                 <div class="menu-item" v-if="hasLyricType('trans')" @click="selectLyricType('trans')">
-                    <div class="item-icon">{{ selectedLyricType === 'trans' ? '🔘' : '⚪' }}</div>
+                    <div class="item-icon" aria-hidden="true">
+                        <span class="selection-mark" :class="{ selected: selectedLyricType === 'trans' }"></span>
+                    </div>
                     <span class="item-text">
                         <span class="text-zh">翻译</span>
                         <span class="text-en">TRANSLATION</span>
@@ -145,7 +152,9 @@
 
                 <!-- 罗马音选项 -->
                 <div class="menu-item" v-if="hasLyricType('roma')" @click="selectLyricType('roma')">
-                    <div class="item-icon">{{ selectedLyricType === 'roma' ? '🔘' : '⚪' }}</div>
+                    <div class="item-icon" aria-hidden="true">
+                        <span class="selection-mark" :class="{ selected: selectedLyricType === 'roma' }"></span>
+                    </div>
                     <span class="item-text">
                         <span class="text-zh">罗马音</span>
                         <span class="text-en">ROMANIZATION</span>
@@ -158,7 +167,18 @@
                 </div>
 
                 <div class="menu-item" @click="toggleLock">
-                    <div class="item-icon">🔒</div>
+                    <div class="item-icon" aria-hidden="true">
+                        <svg v-if="locked" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M4.5 7V5.4C4.5 3.6 5.7 2.4 7.5 2.4C8.9 2.4 10 3.2 10.4 4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
+                            <path d="M3.5 7H12.5V13H3.5V7Z" stroke="currentColor" stroke-width="1.4"/>
+                            <path d="M8 9.2V11" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
+                        </svg>
+                        <svg v-else viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M4.5 7V5.4C4.5 3.6 5.7 2.4 7.5 2.4H8.5C10.3 2.4 11.5 3.6 11.5 5.4V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
+                            <path d="M3.5 7H12.5V13H3.5V7Z" stroke="currentColor" stroke-width="1.4"/>
+                            <path d="M8 9.2V11" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
+                        </svg>
+                    </div>
                     <span class="item-text">
                         <span class="text-zh">{{ zhLockText }}</span>
                         <span class="text-en">{{ enLockText }}</span>
@@ -169,7 +189,7 @@
                 <div class="menu-item" @click="adjustFontSize(2)">
                     <div class="item-icon" aria-hidden="true">
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M3 6h6M6 3v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <path d="M3 6h6M6 3v6" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
                         </svg>
                     </div>
                     <span class="item-text">
@@ -182,7 +202,7 @@
                 <div class="menu-item" @click="adjustFontSize(-2)">
                     <div class="item-icon" aria-hidden="true">
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M3 6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <path d="M3 6h6" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
                         </svg>
                     </div>
                     <span class="item-text">
@@ -197,7 +217,11 @@
                 </div>
 
                 <div class="menu-item danger" @click="closeLyric">
-                    <div class="item-icon">✕</div>
+                    <div class="item-icon" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/>
+                        </svg>
+                    </div>
                     <span class="item-text">
                         <span class="text-zh">关闭歌词</span>
                         <span class="text-en">CLOSE LYRIC</span>
@@ -220,11 +244,24 @@ const currentSong = ref(null);
 const lyricsArray = ref([]);
 const currentLyricIndex = ref(-1);
 const progress = ref(0);
+const songDuration = ref(0);
 const playing = ref(false);
 const locked = ref(false);
 const lyricFontSize = ref(22);
 const coverBackdrop = ref({ urls: [], isSiren: false });
 const coverBackdropCandidateIndex = ref(0);
+const lineScanActive = ref(false);
+const MIN_LINE_SCAN_DURATION_SEC = 0.8;
+const MAX_LINE_SCAN_DURATION_SEC = 4.8;
+const SCAN_COMPLETE_HOLD_SEC = 0.18;
+const CLOCK_SMALL_DRIFT_SEC = 0.025;
+const CLOCK_SNAP_THRESHOLD_SEC = 0.45;
+const CLOCK_CORRECTION_FACTOR = 0.18;
+const SEEK_SETTLE_GRACE_MS = 700;
+const SEEK_SETTLE_ACCEPT_RANGE_SEC = 0.75;
+const SEEK_SETTLE_BACKWARD_TOLERANCE_SEC = 0.08;
+const SEEK_SETTLE_FORWARD_TOLERANCE_SEC = 0.25;
+const LOCAL_LINE_ADVANCE_EPSILON_SEC = 0.02;
 
 // 桌面歌词显示类型配置 - 单选模式
 const selectedLyricType = ref('auto'); // 'auto' | 'original' | 'trans' | 'roma'
@@ -255,8 +292,6 @@ const handleCoverBackdropError = () => {
     );
 };
 
-// 同步扫描动画控制
-const scanAnimationRef = ref(null);
 const lyricElementRef = ref(null);
 const nextLyricElementRef = ref(null);
 // 动态两行扩展：当前歌词盒子目标高度（px）
@@ -267,6 +302,12 @@ let lyricResizeObserver = null;
 let removeLyricUpdateListener = null;
 let removeGlobalContextMenuGuard = null;
 let rafAdjust = 0;
+let scanRaf = 0;
+let playbackClockProgressSec = 0;
+let playbackClockUpdatedAtMs = 0;
+let seekSettlingUntilMs = 0;
+let seekSettlingTargetSec = 0;
+let lastSeekSerial = 0;
 let baselineWindowWidth = 0;
 let baselineWindowHeightOneLine = 0; // 以“单行歌词高度”为基准的窗口外部高度
 let lastAppliedHeight = 0;
@@ -274,6 +315,12 @@ let lastAppliedHeight = 0;
 const lineHeightPx = () => Math.round(lyricFontSize.value * 1.4);
 const singleLineBoxHeight = () => Math.max(60, 24 + lineHeightPx()); // 12px 顶/底 padding 合计 24
 const doubleLineBoxHeight = () => 24 + lineHeightPx() * 2;
+
+const normalizeDurationSeconds = value => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return parsed > 1000 ? parsed / 1000 : parsed;
+};
 
 // 隐藏测量元素：用于计算自然高度（不受当前height影响）
 let measureEl = null;
@@ -547,75 +594,6 @@ const onDragEnd = () => {
     resetDragInteractionState({ restoreConstraints: true });
 };
 
-// 启动同步扫描动画
-const startScanAnimation = () => {
-    if (scanAnimationRef.value) {
-        cancelAnimationFrame(scanAnimationRef.value);
-    }
-
-    let startTime = null;
-    const duration = 10000; // 10秒一个循环
-
-    const animate = currentTime => {
-        if (!startTime) startTime = currentTime;
-        const elapsed = currentTime - startTime;
-        const cycleProgress = (elapsed % duration) / duration; // 0-1之间的循环进度
-
-        // 计算黑色进度条的位置
-        let scanProgress;
-        let textClipProgress;
-
-        if (cycleProgress <= 0.05) {
-            // 初始阶段 (0%-5%)
-            scanProgress = -100;
-            textClipProgress = 0;
-        } else if (cycleProgress <= 0.35) {
-            // 扫描进入阶段 (5%-35%)
-            const phase = (cycleProgress - 0.05) / 0.3; // 0-1
-            scanProgress = -100 + phase * 100; // -100% 到 0%
-            // 文字变化稍微延迟，考虑padding
-            const textPhase = Math.max(0, (phase - 0.025) / 0.975); // 延迟8%开始
-            textClipProgress = textPhase * 100;
-        } else if (cycleProgress <= 0.65) {
-            // 停顿阶段 (35%-65%)
-            scanProgress = 0;
-            textClipProgress = 100;
-        } else if (cycleProgress <= 0.9) {
-            // 清除退出阶段 (65%-90%)
-            const phase = (cycleProgress - 0.65) / 0.25; // 0-1
-            scanProgress = phase * 100; // 0% 到 100%
-            // 文字清除稍微延迟，让黑色条清除到文字位置时文字才开始变黑
-            const textPhase = Math.max(0, (phase - 0.025) / 0.975); // 延迟6%开始，稍微快一点
-            textClipProgress = 100 - textPhase * 100; // 从100%变到0%
-        } else {
-            // 最后阶段 (90%-100%)
-            scanProgress = 100;
-            textClipProgress = 0;
-        }
-
-        // 应用CSS变量
-        if (lyricElementRef.value) {
-            lyricElementRef.value.style.setProperty('--scan-progress', `${scanProgress}%`);
-
-            // 根据不同阶段设置不同的clip-path方向
-            if (cycleProgress <= 0.65) {
-                // 扫描和停顿阶段：从左向右显示白色文字
-                lyricElementRef.value.style.setProperty('--text-clip', `polygon(0% 0%, ${textClipProgress}% 0%, ${textClipProgress}% 100%, 0% 100%)`);
-            } else {
-                // 清除阶段：从左向右隐藏白色文字（让黑色文字从左向右显示）
-                // textClipProgress从100%变到0%，所以白色文字从右边开始消失
-                // 我们需要让白色文字从左边开始消失，所以使用(100-textClipProgress)作为右边界
-                const leftBoundary = 100 - textClipProgress;
-                lyricElementRef.value.style.setProperty('--text-clip', `polygon(${leftBoundary}% 0%, 100% 0%, 100% 100%, ${leftBoundary}% 100%)`);
-            }
-        }
-
-        scanAnimationRef.value = requestAnimationFrame(animate);
-    };
-
-    scanAnimationRef.value = requestAnimationFrame(animate);
-};
-
 // 右键菜单相关
 const contextMenuVisible = ref(false);
 const contextMenuX = ref(0);
@@ -667,6 +645,248 @@ const formatLyricText = (lyricObj) => {
     }
 };
 
+const getLyricLineTime = index => {
+    const time = Number(lyricsArray.value?.[index]?.time);
+    return Number.isFinite(time) ? time : null;
+};
+
+const findNextTimedLineTime = index => {
+    const startTime = getLyricLineTime(index);
+    if (startTime === null) return null;
+
+    for (let i = index + 1; i < lyricsArray.value.length; i++) {
+        const nextTime = getLyricLineTime(i);
+        if (nextTime !== null && nextTime > startTime) return nextTime;
+    }
+
+    return null;
+};
+
+const getFinalLineFallbackEndTime = (startTime, estimatedDuration) => {
+    const duration = normalizeDurationSeconds(songDuration.value);
+    if (duration > startTime + MIN_LINE_SCAN_DURATION_SEC) return duration;
+
+    const fallbackDuration = clamp(
+        Math.max(estimatedDuration, MIN_LINE_SCAN_DURATION_SEC),
+        MIN_LINE_SCAN_DURATION_SEC,
+        MAX_LINE_SCAN_DURATION_SEC
+    );
+    return startTime + fallbackDuration;
+};
+
+const findLyricIndexAtVisualProgress = visualProgress => {
+    if (!Array.isArray(lyricsArray.value) || !lyricsArray.value.length) return -1;
+
+    const targetProgress = Number(visualProgress) + LOCAL_LINE_ADVANCE_EPSILON_SEC;
+    if (!Number.isFinite(targetProgress)) return -1;
+
+    let left = 0;
+    let right = lyricsArray.value.length - 1;
+    let answer = -1;
+
+    while (left <= right) {
+        const middle = (left + right) >> 1;
+        const middleTime = getLyricLineTime(middle);
+        if (middleTime !== null && middleTime <= targetProgress) {
+            answer = middle;
+            left = middle + 1;
+        } else {
+            right = middle - 1;
+        }
+    }
+
+    if (answer < 0) return 0;
+    return Math.min(answer, lyricsArray.value.length - 1);
+};
+
+const advanceLyricIndexForVisualProgress = visualProgress => {
+    const visualIndex = findLyricIndexAtVisualProgress(visualProgress);
+    if (visualIndex <= currentLyricIndex.value) return false;
+
+    currentLyricIndex.value = visualIndex;
+    return true;
+};
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const countMatches = (text, pattern) => {
+    const matches = text.match(pattern);
+    return matches ? matches.length : 0;
+};
+
+const estimateLyricVocalDurationSec = text => {
+    const normalizedText = String(text || '').trim();
+    if (!normalizedText) return 0;
+
+    const cjkCount = countMatches(normalizedText, /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/g);
+    const latinWords = countMatches(normalizedText, /[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g);
+    const punctuationCount = countMatches(normalizedText, /[，。！？、,.!?;；:：]/g);
+    const denseTextLength = normalizedText.replace(/\s+/g, '').length;
+    const latinChars = (normalizedText.match(/[A-Za-z0-9]/g) || []).length;
+    const otherUnits = Math.max(0, denseTextLength - cjkCount - latinChars - punctuationCount);
+
+    return 0.18 + cjkCount * 0.16 + latinWords * 0.28 + otherUnits * 0.14 + punctuationCount * 0.12;
+};
+
+const getLineScanTiming = () => {
+    const index = currentLyricIndex.value;
+    if (!Array.isArray(lyricsArray.value) || index < 0 || index >= lyricsArray.value.length) return null;
+
+    const currentText = String(currentLyricText.value || '').trim();
+    if (!currentText || currentText === '♪') return null;
+
+    const startTime = getLyricLineTime(index);
+    if (startTime === null) return null;
+
+    const estimatedDuration = estimateLyricVocalDurationSec(currentText);
+    const nextTimedLineTime = findNextTimedLineTime(index);
+    const endTime = nextTimedLineTime === null
+        ? getFinalLineFallbackEndTime(startTime, estimatedDuration)
+        : nextTimedLineTime;
+
+    const rawDuration = endTime - startTime;
+    if (!Number.isFinite(rawDuration) || rawDuration < MIN_LINE_SCAN_DURATION_SEC) return null;
+
+    const maxDuration = Math.max(MIN_LINE_SCAN_DURATION_SEC, Math.min(rawDuration * 0.92, MAX_LINE_SCAN_DURATION_SEC));
+    const scanDuration = clamp(
+        Math.max(estimatedDuration, rawDuration * 0.55),
+        MIN_LINE_SCAN_DURATION_SEC,
+        maxDuration
+    );
+
+    return {
+        startTime,
+        endTime,
+        scanDuration,
+    };
+};
+
+const getVisualPlaybackProgress = (now = performance.now()) => {
+    if (!playing.value) return playbackClockProgressSec;
+    return playbackClockProgressSec + Math.max(0, now - playbackClockUpdatedAtMs) / 1000;
+};
+
+const markSeekSettling = (targetProgress, now = performance.now()) => {
+    const normalizedProgress = Number(targetProgress);
+    if (!Number.isFinite(normalizedProgress)) return;
+
+    seekSettlingTargetSec = normalizedProgress;
+    seekSettlingUntilMs = now + SEEK_SETTLE_GRACE_MS;
+};
+
+const isSeekSettlingProgressStale = (normalizedProgress, now) => {
+    if (now > seekSettlingUntilMs) return false;
+    if (playing.value) {
+        const visualProgress = getVisualPlaybackProgress(now);
+        if (normalizedProgress < visualProgress - SEEK_SETTLE_BACKWARD_TOLERANCE_SEC) return true;
+        if (normalizedProgress > visualProgress + SEEK_SETTLE_FORWARD_TOLERANCE_SEC) return true;
+    }
+    return Math.abs(normalizedProgress - seekSettlingTargetSec) > SEEK_SETTLE_ACCEPT_RANGE_SEC;
+};
+
+const isBackwardProgressPayload = (normalizedProgress, now = performance.now()) => {
+    if (!playing.value) return false;
+    return normalizedProgress < getVisualPlaybackProgress(now) - SEEK_SETTLE_BACKWARD_TOLERANCE_SEC;
+};
+
+const shouldIgnoreLyricProgressPayload = (data, options = {}) => {
+    if (options.isSeekSync) return false;
+
+    const normalizedProgress = Number(data?.progress);
+    if (!Number.isFinite(normalizedProgress)) return true;
+
+    const incomingIndex = Number(data?.currentIndex);
+    const normalizedIncomingIndex = Number.isInteger(incomingIndex) ? incomingIndex : -1;
+    const now = performance.now();
+    const isSettlingStale = isSeekSettlingProgressStale(normalizedProgress, now);
+    if (isSettlingStale) return true;
+
+    return normalizedIncomingIndex < currentLyricIndex.value && isBackwardProgressPayload(normalizedProgress, now);
+};
+
+const syncPlaybackClock = (nextProgress, options = {}) => {
+    const normalizedProgress = Number(nextProgress);
+    if (!Number.isFinite(normalizedProgress)) return;
+
+    const now = performance.now();
+    if (!playing.value || options.snap || playbackClockUpdatedAtMs <= 0) {
+        playbackClockProgressSec = normalizedProgress;
+        playbackClockUpdatedAtMs = now;
+        return;
+    }
+
+    const visualProgress = getVisualPlaybackProgress(now);
+    if (isSeekSettlingProgressStale(normalizedProgress, now)) {
+        playbackClockProgressSec = visualProgress;
+        playbackClockUpdatedAtMs = now;
+        return;
+    }
+
+    const drift = normalizedProgress - visualProgress;
+    if (drift < -SEEK_SETTLE_BACKWARD_TOLERANCE_SEC) {
+        playbackClockProgressSec = visualProgress;
+        playbackClockUpdatedAtMs = now;
+        return;
+    }
+
+    if (Math.abs(drift) >= CLOCK_SNAP_THRESHOLD_SEC) {
+        playbackClockProgressSec = normalizedProgress;
+    } else if (Math.abs(drift) > CLOCK_SMALL_DRIFT_SEC) {
+        playbackClockProgressSec = visualProgress + drift * CLOCK_CORRECTION_FACTOR;
+    } else {
+        playbackClockProgressSec = visualProgress;
+    }
+    playbackClockUpdatedAtMs = now;
+};
+
+const applyLineScanStyle = percent => {
+    const el = lyricElementRef.value;
+    if (!el) return;
+    el.style.setProperty('--scan-progress', `${Math.round(percent * 100) / 100}%`);
+};
+
+const renderLineScan = (visualProgress = getVisualPlaybackProgress()) => {
+    const timing = getLineScanTiming();
+    if (!timing) {
+        lineScanActive.value = false;
+        applyLineScanStyle(0);
+        return false;
+    }
+
+    const { startTime, endTime, scanDuration } = timing;
+    if (visualProgress < startTime - 0.05 || visualProgress > endTime + SCAN_COMPLETE_HOLD_SEC) {
+        lineScanActive.value = false;
+        applyLineScanStyle(0);
+        return false;
+    }
+
+    const ratio = clamp((visualProgress - startTime) / scanDuration, 0, 1);
+    lineScanActive.value = true;
+    applyLineScanStyle(ratio * 100);
+    return true;
+};
+
+const stopLineScanRaf = () => {
+    if (!scanRaf) return;
+    cancelAnimationFrame(scanRaf);
+    scanRaf = 0;
+};
+
+const tickLineScan = () => {
+    scanRaf = 0;
+    const visualProgress = getVisualPlaybackProgress();
+    advanceLyricIndexForVisualProgress(visualProgress);
+    renderLineScan(visualProgress);
+    if (playing.value) {
+        scanRaf = requestAnimationFrame(tickLineScan);
+    }
+};
+
+const startLineScanRaf = () => {
+    if (scanRaf || !playing.value) return;
+    scanRaf = requestAnimationFrame(tickLineScan);
+};
+
 const currentLyricOpacity = computed(() => {
     return playing.value ? 1 : 0.6;
 });
@@ -688,6 +908,7 @@ watchEffect(() => {
     // 依赖当前与下一句歌词、字号
     const _ = currentLyricText.value + '|' + (nextLyricText.value || '') + '|' + lyricFontSize.value;
     scheduleAdjustLyricLayout();
+    renderLineScan();
 });
 
 // 辅助函数
@@ -712,12 +933,39 @@ const handleLyricUpdate = (event, data) => {
             currentSong.value = data.song;
             lyricsArray.value = data.lyrics || [];
             currentLyricIndex.value = -1;
+            songDuration.value = normalizeDurationSeconds(data.duration || data.song?.duration);
             applyCoverBackdrop(data.coverBackdrop);
+            syncPlaybackClock(progress.value, { snap: true });
+            renderLineScan();
         } else if (data.type === 'lyric-progress') {
+            const previousLyricIndex = currentLyricIndex.value;
+            const incomingSeekSerial = Number(data.seekSerial);
+            const hasNewSeekSerial = Number.isInteger(incomingSeekSerial) && incomingSeekSerial !== lastSeekSerial;
+            const isSeekSync = data.syncReason === 'seek' || hasNewSeekSerial;
+            if (hasNewSeekSerial) lastSeekSerial = incomingSeekSerial;
+            if (isSeekSync) markSeekSettling(data.progress);
+            if (shouldIgnoreLyricProgressPayload(data, { isSeekSync })) return;
             currentLyricIndex.value = data.currentIndex;
             progress.value = data.progress;
+            songDuration.value = normalizeDurationSeconds(data.duration || songDuration.value);
+            syncPlaybackClock(data.progress, { snap: isSeekSync || previousLyricIndex !== data.currentIndex });
+            const visualProgress = getVisualPlaybackProgress();
+            advanceLyricIndexForVisualProgress(visualProgress);
+            renderLineScan(visualProgress);
+            startLineScanRaf();
         } else if (data.type === 'play-state') {
-            playing.value = data.playing;
+            const nextPlaying = data.playing;
+            if (!nextPlaying) {
+                syncPlaybackClock(getVisualPlaybackProgress(), { snap: true });
+                playing.value = nextPlaying;
+                renderLineScan(playbackClockProgressSec);
+                stopLineScanRaf();
+            } else {
+                playing.value = nextPlaying;
+                syncPlaybackClock(progress.value, { snap: true });
+                renderLineScan();
+                startLineScanRaf();
+            }
         } else if (data.type === 'settings-change') {
             applyCustomFontStyle(data.customFont, data.customFontLabel);
         }
@@ -855,9 +1103,6 @@ onMounted(() => {
         document.removeEventListener('contextmenu', handleGlobalContextMenu);
     };
 
-    // 启动同步扫描动画
-    startScanAnimation();
-
     // 监听当前歌词盒子尺寸变化，实时自适应 1-2 行
     try {
         if (window.ResizeObserver) {
@@ -881,16 +1126,12 @@ onUnmounted(() => {
     document.removeEventListener('mousedown', handleGlobalLeftMouseDown, true);
     window.removeEventListener('blur', handleWindowBlur);
     resetDragInteractionState({ restoreConstraints: true });
+    stopLineScanRaf();
     if (rafAdjust) {
         cancelAnimationFrame(rafAdjust);
         rafAdjust = 0;
     }
     removeMeasureEl();
-
-    // 清理动画
-    if (scanAnimationRef.value) {
-        cancelAnimationFrame(scanAnimationRef.value);
-    }
 
     if (lyricResizeObserver) {
         try { lyricResizeObserver.disconnect(); } catch (_) {}
@@ -1239,51 +1480,38 @@ onUnmounted(() => {
             overflow: hidden;
             -webkit-app-region: no-drag;
             transition: height 0.22s cubic-bezier(0.3, 0, 0.12, 1);
-
-            // 使用JavaScript控制的同步进度条扫描效果（去除默认灰色底框）
             background: transparent !important;
-            position: relative;
-            overflow: hidden;
-
-            // 进度条层（随主题反转）
-            &::after {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                /* Use theme variable so: light=black bar, dark=white bar */
-                background: var(--lyric-hilight-bg);
-                transform: translateX(var(--scan-progress, -100%));
-                transition: none;
-                z-index: 1;
-            }
-
             padding: 12px 16px;
             border-radius: 0; // 直角设计
             color: var(--lyric-scan-outside-text) !important;
+            --scan-progress: 0%;
 
-            // 白色文字遮罩层 - 使用JavaScript控制实现完美同步
-            &::before {
+            &.line-scan-active::after {
+                content: '';
+                position: absolute;
+                inset: 0;
+                z-index: 1;
+                pointer-events: none;
+                background: var(--lyric-hilight-bg);
+                transform: translate3d(calc(-100% + var(--scan-progress, 0%)), 0, 0);
+                will-change: transform;
+            }
+
+            &.line-scan-active::before {
                 content: attr(data-lyric);
                 position: absolute;
-                top: 12px;
-                left: 16px;
-                right: 16px;
-                bottom: 12px;
+                inset: 0;
+                z-index: 2;
+                pointer-events: none;
+                box-sizing: border-box;
+                padding: 12px 16px;
                 color: var(--lyric-scan-inside-text) !important;
-                font-weight: bold;
                 line-height: 1.4;
+                font-weight: bold;
                 word-wrap: break-word;
                 overflow-wrap: break-word;
-                pointer-events: none;
-                z-index: 2;
-                text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-
-                // 使用JavaScript控制的遮罩，与进度条完全同步
-                clip-path: var(--text-clip, polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%));
-                transition: none;
+                clip-path: inset(0 calc(100% - var(--scan-progress, 0%)) 0 0);
+                will-change: clip-path;
             }
         }
     }
@@ -1536,6 +1764,7 @@ onUnmounted(() => {
         .item-icon {
             font-size: 12px;
             width: 16px;
+            height: 16px;
             text-align: center;
             transition: all 0.2s ease;
             flex-shrink: 0; // 防止图标被压缩
@@ -1545,6 +1774,21 @@ onUnmounted(() => {
             justify-content: center;
 
             svg { width: 12px; height: 12px; display: block; }
+
+            .selection-mark {
+                width: 9px;
+                height: 9px;
+                border: 1.5px solid currentColor;
+                box-sizing: border-box;
+                display: block;
+                transform: rotate(45deg);
+                transition: background-color 0.16s ease, box-shadow 0.16s ease;
+
+                &.selected {
+                    background: currentColor;
+                    box-shadow: inset 0 0 0 2px var(--panel);
+                }
+            }
         }
 
         .item-text {
@@ -1722,7 +1966,20 @@ onUnmounted(() => {
 .dark .arknights-desktop-lyric .arknights-context-menu::-webkit-scrollbar-track { background: transparent !important; }
 .dark .arknights-desktop-lyric .arknights-context-menu::-webkit-scrollbar-thumb { background: transparent !important; }
 .dark .arknights-desktop-lyric .arknights-context-menu:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.35) !important; }
-.dark .arknights-desktop-lyric .arknights-context-menu .menu-item.danger:hover { color: #ff453a !important; }
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item.danger:hover {
+  background: rgba(255, 69, 58, 0.22) !important;
+  color: #ff453a !important;
+}
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item.danger:hover .item-text,
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item.danger:hover .item-icon {
+  color: #ff453a !important;
+}
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item.danger:hover .item-indicator {
+  background: #ff453a !important;
+}
+.dark .arknights-desktop-lyric .arknights-context-menu .menu-item.danger:hover .item-icon {
+  filter: drop-shadow(0 0 5px rgba(255, 69, 58, 0.55)) !important;
+}
 
 /* macOS: 全窗口原生拖拽（覆盖内部 no-drag），保留菜单可交互 */
 .arknights-desktop-lyric.native-drag,

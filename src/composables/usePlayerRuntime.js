@@ -14,7 +14,11 @@ let stopLyricTicker = null;
 let unwatchSongSignature = null;
 let unwatchLyric = null;
 let unwatchPlaying = null;
+let removeSeekDragStartListener = null;
+let removePlaybackSeekedListener = null;
+let lyricSeekSettleTimer = null;
 let initialized = false;
+const LYRIC_SEEK_SETTLE_MS = 700;
 
 const playerStore = usePlayerStore(pinia);
 const {
@@ -45,6 +49,13 @@ function stopLyricIndexSync() {
     if (!stopLyricTicker) return;
     stopLyricTicker();
     stopLyricTicker = null;
+}
+
+function clearLyricSeekSettleTimer() {
+    if (!lyricSeekSettleTimer) return;
+
+    clearTimeout(lyricSeekSettleTimer);
+    lyricSeekSettleTimer = null;
 }
 
 function applyCurrentLyricIndex(index) {
@@ -81,7 +92,7 @@ export function syncLyricIndexForSeek(seekSeconds) {
     return nextIndex;
 }
 
-function startLyricIndexSync() {
+function startLyricIndexSync(options = {}) {
     stopLyricIndexSync();
     if (!playing.value) return;
 
@@ -90,8 +101,24 @@ function startLyricIndexSync() {
     }, {
         id: 'lyric-runtime',
         interval: PLAYBACK_TICK_FAST_INTERVAL_MS,
-        immediate: true,
+        immediate: options.immediate !== false,
     });
+}
+
+function settleLyricIndexAfterSeek(seekSeconds) {
+    const normalizedSeek = Number(seekSeconds);
+
+    clearLyricSeekSettleTimer();
+    stopLyricIndexSync();
+
+    if (Number.isFinite(normalizedSeek)) {
+        syncLyricIndexForSeek(normalizedSeek);
+    }
+
+    lyricSeekSettleTimer = setTimeout(() => {
+        lyricSeekSettleTimer = null;
+        startLyricIndexSync({ immediate: false });
+    }, LYRIC_SEEK_SETTLE_MS);
 }
 
 export function initLyricRuntime() {
@@ -124,13 +151,30 @@ export function initLyricRuntime() {
                 return;
             }
 
+            clearLyricSeekSettleTimer();
             stopLyricIndexSync();
         },
         { immediate: true }
     );
+
+    if (typeof window !== 'undefined') {
+        const handleSeekDragStart = () => {
+            clearLyricSeekSettleTimer();
+            stopLyricIndexSync();
+        };
+        const handlePlaybackSeeked = event => {
+            settleLyricIndexAfterSeek(event?.detail?.toTime);
+        };
+
+        window.addEventListener('playback:seek-drag-start', handleSeekDragStart);
+        window.addEventListener('mediaSession:seeked', handlePlaybackSeeked);
+        removeSeekDragStartListener = () => window.removeEventListener('playback:seek-drag-start', handleSeekDragStart);
+        removePlaybackSeekedListener = () => window.removeEventListener('mediaSession:seeked', handlePlaybackSeeked);
+    }
 }
 
 export function destroyLyricRuntime() {
+    clearLyricSeekSettleTimer();
     stopLyricIndexSync();
 
     if (unwatchSongSignature) {
@@ -145,6 +189,10 @@ export function destroyLyricRuntime() {
         unwatchPlaying();
         unwatchPlaying = null;
     }
+    removeSeekDragStartListener?.();
+    removeSeekDragStartListener = null;
+    removePlaybackSeekedListener?.();
+    removePlaybackSeekedListener = null;
 
     initialized = false;
 }

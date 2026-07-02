@@ -346,7 +346,7 @@ main {
                     z-index: 2001; /* Above dragBar/globalWidget (999) */
                     -webkit-app-region: no-drag; /* Ensure clicks not captured by drag regions */
                     &-active {
-                        height: 96px;
+                        height: auto;
                         padding: 12px 0;
                     }
                     .option {
@@ -418,7 +418,7 @@ main {
         padding: 0;
     }
     100% {
-        height: 96px;
+        height: 84px;
         padding: 12px 0;
     }
 }

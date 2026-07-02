@@ -10,6 +10,8 @@ import { getIndexedSong } from './songList';
 let stopLyricProgressTicker = null;
 let songChangeTimer = null;
 let progressTimer = null;
+let seekSerial = 0;
+let progressDragActive = false;
 let bridgeInitialized = false;
 
 const lastPayloadByType = new Map();
@@ -22,6 +24,8 @@ let unwatchProgress = null;
 let unwatchCurrentLyricIndex = null;
 let removeLyricDataRequestListener = null;
 let removeDesktopLyricClosedListener = null;
+let removePlaybackSeekedListener = null;
+let removeSeekDragStartListener = null;
 
 const playerStore = usePlayerStore(pinia);
 const {
@@ -36,8 +40,22 @@ const {
     showSongTranslation,
     songId,
     songList,
+    time,
     videoIsPlaying,
 } = storeToRefs(playerStore);
+
+function normalizeDurationSeconds(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return parsed > 1000 ? parsed / 1000 : parsed;
+}
+
+function getCurrentDurationSeconds(song = getIndexedSong(songList.value, currentIndex.value)) {
+    const playerDuration = normalizeDurationSeconds(time.value);
+    if (playerDuration > 0) return playerDuration;
+
+    return normalizeDurationSeconds(song?.dt || song?.duration);
+}
 
 function buildCoverBackdropPayload(song) {
     const shouldShowBackdrop = !!(song && coverBlur.value && !videoIsPlaying.value);
@@ -107,6 +125,7 @@ function pushPayload(payload, { force = false } = {}) {
 
 function buildSongChangePayload() {
     const currentSong = getIndexedSong(songList.value, currentIndex.value);
+    const duration = getCurrentDurationSeconds(currentSong);
 
     return {
         type: 'song-change',
@@ -117,8 +136,10 @@ function buildSongChangePayload() {
                       ? currentSong.ar.map(artist => ({ name: String(artist?.name || '未知艺术家') }))
                       : [{ name: '未知艺术家' }],
                   type: String(currentSong.type || 'online'),
+                  duration,
               }
             : null,
+        duration,
         lyrics: Array.isArray(lyricsObjArr.value)
             ? lyricsObjArr.value.map(row => ({
                   lyric: String(row?.lyric || ''),
@@ -138,15 +159,22 @@ function buildPlayStatePayload() {
     };
 }
 
-function buildLyricProgressPayload() {
+function buildLyricProgressPayload(options = {}) {
     const currentProgress = Number(progress.value || 0);
+    const duration = getCurrentDurationSeconds();
 
-    return {
+    const payload = {
         type: 'lyric-progress',
         currentIndex: Number.isInteger(currentLyricIndex.value) ? currentLyricIndex.value : -1,
         progress: currentProgress,
         currentTime: currentProgress,
+        duration,
     };
+
+    if (options.syncReason) payload.syncReason = options.syncReason;
+    if (Number.isInteger(options.seekSerial)) payload.seekSerial = options.seekSerial;
+
+    return payload;
 }
 
 function sendCurrentLyricData(options = {}) {
@@ -161,7 +189,18 @@ function sendPlayState(options = {}) {
 
 function sendLyricProgress(options = {}) {
     if (!isDesktopLyricOpen.value || !window.electronAPI) return;
-    pushPayload(buildLyricProgressPayload(), options);
+    if (progressDragActive && options.syncReason !== 'seek') return;
+    pushPayload(buildLyricProgressPayload(options), options);
+}
+
+function sendSeekProgress() {
+    progressDragActive = false;
+    seekSerial += 1;
+    sendLyricProgress({
+        force: true,
+        syncReason: 'seek',
+        seekSerial,
+    });
 }
 
 function scheduleSongChangePush(delayMs = 0, options = {}) {
@@ -230,6 +269,21 @@ export const initDesktopLyric = () => {
         });
     }
 
+    if (typeof window !== 'undefined') {
+        const handlePlaybackSeeked = () => {
+            sendSeekProgress();
+        };
+        const handleSeekDragStart = () => {
+            progressDragActive = true;
+            clearProgressTimer();
+        };
+
+        window.addEventListener('mediaSession:seeked', handlePlaybackSeeked);
+        window.addEventListener('playback:seek-drag-start', handleSeekDragStart);
+        removePlaybackSeekedListener = () => window.removeEventListener('mediaSession:seeked', handlePlaybackSeeked);
+        removeSeekDragStartListener = () => window.removeEventListener('playback:seek-drag-start', handleSeekDragStart);
+    }
+
     unwatchPlaying = watch(
         () => playing.value,
         isPlaying => {
@@ -284,6 +338,7 @@ export const initDesktopLyric = () => {
         () => progress.value,
         (nextProgress, previousProgress) => {
             if (!isDesktopLyricOpen.value) return;
+            if (progressDragActive) return;
             if (!playing.value) {
                 scheduleProgressPush(0, { force: true });
                 return;
@@ -333,7 +388,12 @@ export const destroyDesktopLyric = () => {
     removeLyricDataRequestListener = null;
     removeDesktopLyricClosedListener?.();
     removeDesktopLyricClosedListener = null;
+    removePlaybackSeekedListener?.();
+    removePlaybackSeekedListener = null;
+    removeSeekDragStartListener?.();
+    removeSeekDragStartListener = null;
 
     lastPayloadByType.clear();
+    progressDragActive = false;
     bridgeInitialized = false;
 };

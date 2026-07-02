@@ -1834,14 +1834,15 @@ export function play(url, autoplay, resumeSeek = null, options = {}) {
     activatePlaybackHowl(nextHowl, { autoplay, resumeSeek, instantStart: false })
 }
 
-export function startProgress() {
+export function startProgress(options = {}) {
     stopProgressSampling()
     const currentHowl = getCurrentHowl()
     if (!currentHowl || typeof currentHowl.seek !== 'function') return
 
+    const immediate = options.immediate !== false
     const durationLimit = normalizePlaybackDuration(time.value || getStablePlaybackDuration(currentHowl, getCurrentSong()))
     if (durationLimit > 0) time.value = durationLimit
-    progress.value = clampPlaybackProgress(currentHowl.seek(), durationLimit)
+    if (immediate) progress.value = clampPlaybackProgress(currentHowl.seek(), durationLimit)
     disposeProgressTicker = subscribePlaybackTick(snapshot => {
         const sampledDuration = normalizePlaybackDuration(snapshot.duration)
         const stableDuration = getStablePlaybackDuration(currentHowl, getCurrentSong())
@@ -1852,7 +1853,7 @@ export function startProgress() {
     }, {
         id: 'player-progress',
         interval: PLAYBACK_TICK_FAST_INTERVAL_MS,
-        immediate: true,
+        immediate,
     })
     startGaplessTransitionMonitor()
 }
@@ -2521,11 +2522,14 @@ export function changeProgress(toTime) {
 }
 //控制拖拽进度条
 export function changeProgressByDragStart() {
+    try {
+        window.dispatchEvent(new CustomEvent('playback:seek-drag-start'))
+    } catch (_) {}
     stopProgressSampling()
 }
 export function changeProgressByDragEnd(toTime) {
     changeProgress(toTime)
-    if (playing.value) startProgress()
+    if (playing.value) startProgress({ immediate: false })
 }
 // ------------
 export function changePlayMode() {

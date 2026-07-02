@@ -479,10 +479,15 @@ body {
   color: var(--text) !important;
 }
 
+.dark .player .control svg,
+.dark .music-widget .music-control svg {
+  color: var(--text) !important;
+}
+
 .dark .player .control svg path,
 .dark .music-widget .music-control svg path {
-  stroke: var(--text) !important;
-  fill: var(--text) !important;
+  stroke: currentColor !important;
+  fill: none !important;
 }
 
 .dark .player .song-control .icon:not(.comment-icon) path {
@@ -1553,12 +1558,6 @@ body {
 
 .dark .vue-slider-process {
   background-color: var(--text) !important;
-}
-
-/* Desktop lyric: make scan-inside black text plain in dark mode */
-.dark .arknights-desktop-lyric .main-lyric-section .current-lyric::before {
-  font-weight: 400 !important;
-  text-shadow: none !important;
 }
 
 /* SVG icons that use hardcoded black fills/strokes */
