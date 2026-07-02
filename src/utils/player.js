@@ -2874,7 +2874,7 @@ export async function syncLikelistAfterLikeAction({
   if (!isActiveLikeActionToken(actionToken)) return cloneLikelist(nextLikelist);
 
   userStore.updateLikelist(nextLikelist);
-  if (refreshFavoritePlaylist) await updateFavoritePlaylistIfViewing();
+  if (refreshFavoritePlaylist) updateFavoritePlaylistIfViewing(songId, like);
   return nextLikelist;
 }
 
@@ -2992,23 +2992,14 @@ export async function likeSong(like) {
   }
 }
 
-async function updateFavoritePlaylistIfViewing() {
-  // 检查当前是否在查看"我喜欢的音乐"歌单
-  if (
-    libraryStore.libraryInfo &&
-    userStore.favoritePlaylistId &&
-    libraryStore.libraryInfo.id == userStore.favoritePlaylistId
-  ) {
-    console.log("当前正在查看我喜欢的音乐，正在更新歌单内容...");
-
-    try {
-      // 重新获取歌单详情
-      await libraryStore.updatePlaylistDetail(userStore.favoritePlaylistId);
-      console.log("我喜欢的音乐歌单已更新");
-    } catch (error) {
-      console.error("更新我喜欢的音乐歌单失败:", error);
-    }
-  }
+function updateFavoritePlaylistIfViewing(targetSongId, like) {
+  if (!userStore.favoritePlaylistId) return;
+  const currentSong = resolveSongForPlaylistTrackOperation(targetSongId);
+  libraryStore.applyPlaylistTrackChange({
+    playlist: { id: userStore.favoritePlaylistId },
+    op: like ? "add" : "del",
+    song: currentSong || { id: targetSongId },
+  });
 }
 
 export function addToNext(nextSong, autoplay) {

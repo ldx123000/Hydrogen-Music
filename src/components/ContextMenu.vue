@@ -2,7 +2,7 @@
   import { ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import { createPlaylist, updatePlaylist, deletePlaylist } from '../api/playlist'
-  import { addToNext, addToNextLocal } from '../utils/player'
+  import { addToNext, addToNextLocal, localMusicHandle } from '../utils/player'
   import { dialogOpen, noticeOpen } from '../utils/dialog';
   import { useLibraryStore } from '../store/libraryStore';
   import { useLocalStore } from '../store/localStore';
@@ -20,7 +20,7 @@
   const otherStore = useOtherStore()
   const playerStore = usePlayerStore()
   const userStore = useUserStore()
-  const { librarySongs, listType1, listType2 } = storeToRefs(libraryStore)
+  const { listType1, listType2 } = storeToRefs(libraryStore)
 
   const isPrivacy = ref(false)
   const createActive = ref(false)
@@ -50,6 +50,7 @@
   const normalizePlaylistTarget = playlistTarget => {
     if (playlistTarget && typeof playlistTarget == 'object') {
       return {
+        ...playlistTarget,
         id: playlistTarget.id,
         name: getPlaylistDisplayName(playlistTarget),
       }
@@ -60,6 +61,21 @@
       id: playlistTarget,
       name: matchedPlaylist ? getPlaylistDisplayName(matchedPlaylist) : '歌单',
     }
+  }
+
+  const toLibrarySong = song => {
+    if (song?.type == 'local' || song?.dirPath || song?.common?.fileUrl) {
+      const localSong = localMusicHandle([song], true)
+      return {
+        ...song,
+        ...localSong,
+        source: 'local-playlist',
+        playable: true,
+        dt: Number(song?.dt || song?.duration || song?.format?.duration * 1000 || 0) || 0,
+        duration: Number(song?.duration || song?.dt || song?.format?.duration * 1000 || 0) || 0,
+      }
+    }
+    return song
   }
 
   // 确保在打开“添加到歌单”弹窗时，已加载用户歌单列表
@@ -150,7 +166,6 @@
     const playlistListId = otherStore.selectedPlaylist?.list_create_listid || otherStore.selectedPlaylist?.listid || otherStore.selectedPlaylist?.id
     const targetTrack = otherStore.selectedItem
     const targetFileId = targetTrack?.fileid || targetTrack?.file_id || targetTrack?.audio_id || targetTrack?.id
-    const targetTrackId = String(targetTrack?.id || '')
 
     if (!playlistListId || !targetFileId) {
       noticeOpen('当前歌曲或歌单信息不完整，暂时无法删除', 2)
@@ -171,30 +186,15 @@
       const isSuccess = isPlaylistUpdateSuccess(result)
       
       if(isSuccess) {
-        // 先本地移除，保证删除成功后界面立刻更新。
-        const songIndex = (librarySongs.value || []).findIndex((song) => {
-          const songId = String(song?.id || '')
-          const songFileId = String(song?.fileid || song?.file_id || song?.audio_id || '')
-          return (targetTrackId && songId === targetTrackId) || (songFileId && songFileId === String(targetFileId))
+        libraryStore.applyPlaylistTrackChange({
+          playlist: otherStore.selectedPlaylist,
+          op: 'del',
+          song: targetTrack,
         })
-        if (songIndex !== -1) {
-          librarySongs.value.splice(songIndex, 1)
-        }
-
-        if (libraryStore.libraryInfo) {
-          const currentTrackCount = Number(libraryStore.libraryInfo.trackCount ?? libraryStore.libraryInfo.size ?? 0)
-          if (Number.isFinite(currentTrackCount) && currentTrackCount > 0) {
-            if (libraryStore.libraryInfo.trackCount !== undefined) libraryStore.libraryInfo.trackCount = currentTrackCount - 1
-            if (libraryStore.libraryInfo.size !== undefined) libraryStore.libraryInfo.size = currentTrackCount - 1
-          }
-        }
         
         // 检查是否从"我喜欢的音乐"歌单删除，如果是则同步更新喜欢列表
         await updateLikelistIfFromFavorite()
-        
-        // 如果当前正在查看该歌单，实时更新歌单内容
-        await updateCurrentPlaylistIfViewing()
-        
+
         updatePlaylistCache()
         const isFavoritePlaylist = userStore.favoritePlaylistId && otherStore.selectedPlaylist.id == userStore.favoritePlaylistId
         noticeOpen(isFavoritePlaylist ? '已取消喜欢' : '删除成功', 2)
@@ -221,24 +221,6 @@
       }
     } catch (e) {
       console.error('点击myPlaylist失败，忽略:', e)
-    }
-  }
-
-  // 检查并更新当前查看的歌单
-  const updateCurrentPlaylistIfViewing = async () => {
-    // 检查当前是否在查看被删除歌曲的歌单
-    if (libraryStore.libraryInfo && otherStore.selectedPlaylist && 
-        libraryStore.libraryInfo.id == otherStore.selectedPlaylist.id) {
-        
-        console.log('当前正在查看被删除歌曲的歌单，正在更新歌单内容...')
-        
-        try {
-            // 重新获取歌单详情
-            await libraryStore.updatePlaylistDetail(otherStore.selectedPlaylist.id)
-            console.log('歌单已更新')
-        } catch (error) {
-            console.error('更新歌单失败:', error)
-        }
     }
   }
 
@@ -396,6 +378,11 @@
       }
       updatePlaylist(params).then(result => {
         if(isPlaylistUpdateSuccess(result)) {
+          libraryStore.applyPlaylistTrackChange({
+            playlist,
+            op: 'add',
+            song: toLibrarySong(selectedSong),
+          })
           updatePlaylistCache()
           noticeOpen(`已添加到${playlist.name}`, 2)
         }else {

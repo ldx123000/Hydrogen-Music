@@ -109,11 +109,14 @@ export function normalizePlaylistItem(item) {
     const isMine = currentUserId && item.list_create_userid !== undefined
         ? String(item.list_create_userid) === String(currentUserId) ? 1 : 0
         : item.is_mine
+    const collectionId = item.list_create_gid || item.global_collection_id || null
+    const listId = item.list_create_listid || item.listid
+    const id = Number(isMine) === 1 || !collectionId ? listId : collectionId
     return {
         ...item,
-        id: item.list_create_listid || item.listid,
-        list_create_listid: item.list_create_listid || item.listid,
-        global_collection_id: item.list_create_gid || item.global_collection_id || null,
+        id,
+        list_create_listid: listId,
+        global_collection_id: collectionId,
         name: item.name,
         coverImgUrl: item.pic || '',
         picUrl: item.pic || '',

@@ -38,6 +38,23 @@ const createArtistPaginationState = () => ({
 
 const getSearchEntryKey = (entry, fallbackKey = '0') => String(entry?.id ?? fallbackKey)
 const getListMergeKey = (item, fallbackKey) => String(item?.id ?? item?.hash ?? item?.album_audio_id ?? fallbackKey)
+const getPlaylistIdentitySet = playlist => {
+    const ids = [
+        playlist?.id,
+        playlist?.listid,
+        playlist?.list_create_listid,
+        playlist?.global_collection_id,
+        playlist?.list_create_gid,
+    ]
+    return new Set(ids.filter(id => id !== undefined && id !== null && id !== '').map(id => String(id)))
+}
+const isSamePlaylist = (left, right) => {
+    const leftIds = getPlaylistIdentitySet(left)
+    const rightIds = getPlaylistIdentitySet(right)
+    if (leftIds.size == 0 || rightIds.size == 0) return false
+    return [...leftIds].some(id => rightIds.has(id))
+}
+const getSongIdentity = song => String(song?.id || song?.fileid || song?.file_id || song?.audio_id || song?.hash || song?.url || song?.dirPath || song?.common?.fileUrl || '')
 const mergeUniqueEntries = (currentList = [], incomingList = [], fallbackPrefix = 'item') => {
     const merged = Array.isArray(currentList) ? [...currentList] : []
     const seen = new Set(merged.map((item, index) => getListMergeKey(item, `${fallbackPrefix}-current-${index}`)))
@@ -211,6 +228,76 @@ export const useLibraryStore = defineStore('libraryStore', {
                 mvs: nextMvsIndex,
             }
         },
+        bumpPlaylistTrackCount(playlist, delta) {
+            if (!playlist || !delta) return
+            const currentTrackCount = Number(playlist.trackCount ?? playlist.size ?? playlist.count ?? playlist.songcount)
+            if (!Number.isFinite(currentTrackCount)) return
+            const nextTrackCount = Math.max(0, currentTrackCount + delta)
+            if (playlist.trackCount !== undefined) playlist.trackCount = nextTrackCount
+            if (playlist.size !== undefined) playlist.size = nextTrackCount
+            if (playlist.count !== undefined) playlist.count = nextTrackCount
+            if (playlist.songcount !== undefined) playlist.songcount = nextTrackCount
+        },
+        bumpKnownPlaylistTrackCounts(playlist, delta) {
+            if (!playlist || !delta) return
+            const lists = [this.playlistUserCreated, this.playlistUserSub, this.libraryList]
+            const updated = new Set()
+            lists.forEach(list => {
+                if (!Array.isArray(list)) return
+                list.forEach(item => {
+                    if (item === this.libraryInfo) return
+                    if (!isSamePlaylist(item, playlist) || updated.has(item)) return
+                    updated.add(item)
+                    this.bumpPlaylistTrackCount(item, delta)
+                })
+            })
+        },
+        applyPlaylistTrackChange({ playlist, op, song } = {}) {
+            const operation = String(op || '').toLowerCase()
+            const delta = operation == 'add' ? 1 : operation == 'del' || operation == 'remove' ? -1 : 0
+            if (!playlist || !delta) return false
+
+            let changedCurrentSongs = false
+            const isCurrentPlaylist = this.libraryInfo && isSamePlaylist(this.libraryInfo, playlist)
+            if (isCurrentPlaylist) {
+                const currentSongs = Array.isArray(this.librarySongs) ? this.librarySongs : []
+                const songKey = getSongIdentity(song)
+
+                if (delta > 0 && song && typeof song == 'object') {
+                    if (!songKey || !currentSongs.some(item => getSongIdentity(item) == songKey)) {
+                        currentSongs.push(song)
+                        this.librarySongs = currentSongs
+                        changedCurrentSongs = true
+                    }
+                }
+
+                if (delta < 0) {
+                    const songIndex = currentSongs.findIndex(item => {
+                        if (songKey && getSongIdentity(item) == songKey) return true
+                        return ['id', 'fileid', 'file_id', 'audio_id'].some(key => song?.[key] && String(item?.[key] || '') == String(song[key]))
+                    })
+                    if (songIndex !== -1) {
+                        currentSongs.splice(songIndex, 1)
+                        this.librarySongs = currentSongs
+                        changedCurrentSongs = true
+                    }
+                }
+
+                if (changedCurrentSongs) {
+                    this.indexLibrarySongs(currentSongs)
+                    this.bumpPlaylistTrackCount(this.libraryInfo, delta)
+                    const hydrationTotal = Number(this.playlistHydration?.total)
+                    this.playlistHydration = createPlaylistHydrationState({
+                        ...(this.playlistHydration || {}),
+                        total: Number.isFinite(hydrationTotal) && hydrationTotal > 0 ? Math.max(0, hydrationTotal + delta) : currentSongs.length,
+                        loaded: currentSongs.length,
+                    })
+                }
+            }
+
+            if (!isCurrentPlaylist || changedCurrentSongs) this.bumpKnownPlaylistTrackCounts(playlist, delta)
+            return changedCurrentSongs
+        },
         getSongSearchText(song, fallbackKey = '0') {
             return this.searchIndexById?.songs?.[getSearchEntryKey(song, fallbackKey)] || buildCloudSongSearchText(song)
         },
@@ -352,8 +439,10 @@ export const useLibraryStore = defineStore('libraryStore', {
             const isRankPlaylist = routeQuerySource == 'rank' || seededPlaylist?.source == 'rank'
             const routeCollectionId = String(routeQuery?.globalCollectionId || routeQuery?.collectionId || routeQuery?.gid || routeQuery?.collection_id || '')
             const inferredCollectionId = /^collection_\d+_\d+_\d+_\d+$/.test(playlistId) ? playlistId : ''
-            const resolvedListId = playlist?.list_create_listid || playlist?.listid || ''
             const resolvedCollectionId = playlist?.global_collection_id || routeCollectionId || inferredCollectionId || ''
+            const resolvedListId = Number(playlist?.is_mine) === 1 || !resolvedCollectionId
+                ? playlist?.list_create_listid || playlist?.listid || ''
+                : ''
             const resolvedPlaylistId = resolvedListId || resolvedCollectionId || playlistId
             const token = `${resolvedPlaylistId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
             this.playlistHydrationToken = token
@@ -410,7 +499,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                     return
                 }
 
-                // 酷狗公开/推荐歌单要使用 global_collection_id 拉取完整曲目；listid 只适合用户自建/收藏歌单。
+                // 酷狗公开/推荐/收藏歌单要使用 global_collection_id；listid 只适合用户自建歌单。
                 const trackParams = {
                     id: resolvedPlaylistId,
                     gid: resolvedListId ? null : resolvedCollectionId || null,
