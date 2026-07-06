@@ -4,6 +4,7 @@ const timeTagSingle = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1
 const lrcMetadataTagLine = /^\s*\[(?:ar|ti|al|by|id|hash|sign|qq|total|offset|re|ve|au|length|language|lang)\s*:[^\]]*\]\s*$/i;
 const lyricCreditLine = /^(?:作词|作曲|编曲|词|曲|制作人|监制|混音|母带|录音|和声|人声编辑|吉他|贝斯|鼓|弦乐|program(?:ming)?|producer|arranger|composer|lyricist|lyrics?|written by|music|vocal|mix(?:ed)?(?: by)?|master(?:ed)?(?: by)?)\s*[:：]/i;
 const regTimeTagGlobal = /\[(\d{1,3})\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,2})(?:\s*[:：\.\uFF0E\u3002,，;；\/\-_\s]\s*(\d{1,3}))?\]/g;
+const maxVisibleLyricLineChars = 50;
 
 function parseTimeTag(tag) {
     const match = typeof tag === 'string' ? tag.match(timeTagSingle) : null;
@@ -29,6 +30,22 @@ function isCreditLyricLine(text) {
     if (lrcMetadataTagLine.test(normalized)) return true;
 
     return lyricCreditLine.test(normalized);
+}
+
+function getLyricCharCount(text) {
+    return Array.from(String(text || '').trim()).length;
+}
+
+function isVisibleLyricRow(row) {
+    if (!row || typeof row !== 'object') return false;
+
+    return ['lyric', 'tlyric', 'rlyric'].every(field => getLyricCharCount(row[field]) <= maxVisibleLyricLineChars);
+}
+
+function hideLongLyricRows(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    return rows.filter(isVisibleLyricRow);
 }
 
 function normalizePreludeCredits(rows) {
@@ -281,6 +298,13 @@ function resolveSupplementalLine(lines, targetTime, orderIndex, referenceLength,
         return timedMatch.line;
     }
 
+    const firstLineTime = Number(lines?.[0]?.time);
+    const lastLineTime = Number(lines?.[lines.length - 1]?.time);
+    const fallbackWindow = Math.max(Number(matchWindow) || 0, 0.75);
+    // ponytail: only use order fallback inside the extra track's time range; widen this if providers ship heavily offset translations.
+    if (Number.isFinite(firstLineTime) && targetTime < firstLineTime - fallbackWindow) return null;
+    if (Number.isFinite(lastLineTime) && targetTime > lastLineTime + fallbackWindow) return null;
+
     const orderedMatch = findOrderedFallbackMatch(lines, orderIndex, referenceLength, usedIndexes);
     if (orderedMatch) {
         if (usedIndexes) usedIndexes.add(orderedMatch.index);
@@ -391,24 +415,24 @@ export function buildLyricsTimeline(lyricPayload, { songDurationSec = 0, isLocal
     const hasTimeTag = timeTagSingle.test(originalLyricText);
 
     if (!hasTimeTag) {
-        return buildPureTextTimeline(originalLyricText, normalizedDuration);
+        return hideLongLyricRows(buildPureTextTimeline(originalLyricText, normalizedDuration));
     }
 
     if (isLocal) {
-        return buildLocalMultiTrackTimeline(
+        return hideLongLyricRows(buildLocalMultiTrackTimeline(
             originalLyricText,
             translatedLyricText,
             romanizedLyricText,
             normalizedDuration
-        );
+        ));
     }
 
-    return buildOnlineTimeline(
+    return hideLongLyricRows(buildOnlineTimeline(
         originalLyricText,
         translatedLyricText,
         romanizedLyricText,
         normalizedDuration
-    );
+    ));
 }
 
 export function findLyricIndexAtTime(lyrics, seekSeconds, biasSec = 0.2) {

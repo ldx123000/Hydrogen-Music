@@ -55,6 +55,7 @@ let lyricRevealToken = 0;
 const LYRIC_FONT_READY_TIMEOUT_MS = 900;
 const LYRIC_LAYOUT_STABLE_SAMPLE_TARGET = 2;
 const LYRIC_LAYOUT_STABLE_MAX_ATTEMPTS = 8;
+const LYRIC_MANUAL_SCROLL_RESUME_MS = 2000;
 
 // 切回歌词时抑制首帧闪烁（先隐藏，定位完成后再显示）
 const suppressLyricFlash = ref(true);
@@ -325,6 +326,8 @@ const setMaxHeight = change => {
 };
 
 const setDefaultStyle = async () => {
+    clearLyricAutoResumeTimer();
+    isLyricActive.value = true;
     lyricAreaReady.value = false;
     lycCurrentIndex.value = currentLyricIndex.value >= 0 ? currentLyricIndex.value : -1;
     interludeAnimation.value = false;
@@ -676,9 +679,11 @@ watch(
             interludeFastClose.value = true;
         }
         lycCurrentIndex.value = newIndex;
-        // 等待DOM稳定后，统一调用同步函数，确保 scroll-area 高度与偏移一并更新
+        // 等待DOM稳定后，手动滚动暂停期间只更新高亮，不抢回滚动位置
         await nextTick();
-        syncLyricPosition();
+        if (isLyricActive.value) {
+            syncLyricPosition();
+        }
         // 短暂延时后恢复正常过渡（供后续可能的间奏展开使用）
         if (interludeFastClose.value) {
             setTimeout(() => { interludeFastClose.value = false; }, 120);
@@ -689,7 +694,15 @@ watch(
     { immediate: true, flush: 'post' }
 ); // 添加 immediate 选项确保立即执行
 
-const changeProgressLyc = (time, index) => {
+function clearLyricAutoResumeTimer() {
+    if (!pauseActiveTimer.value) return;
+    clearTimeout(pauseActiveTimer.value);
+    pauseActiveTimer.value = null;
+}
+
+const changeProgressLyc = async (time, index) => {
+    clearLyricAutoResumeTimer();
+    isLyricActive.value = true;
     if (lyricScrollArea.value) {
         lyricScrollArea.value.style.height = initMax + 'Px';
     }
@@ -706,6 +719,8 @@ const changeProgressLyc = (time, index) => {
     }
     progress.value = time;
     changeProgress(time);
+    await nextTick();
+    syncLyricPosition();
 };
 
 // 同步当前歌词位置的函数
@@ -736,31 +751,35 @@ watch(
         if (typeof oldVal !== 'number') return;
         if (Math.abs(newVal - oldVal) <= 1.2) return;
 
-        if (pauseActiveTimer.value) {
-            clearTimeout(pauseActiveTimer.value);
-            pauseActiveTimer.value = null;
-        }
-
+        clearLyricAutoResumeTimer();
         isLyricActive.value = true;
         syncLyricPosition();
     }
 );
 
+const handleLyricWheel = e => {
+    if (!lyricScrollArea.value) return;
+    const wheelDeltaY = typeof e.wheelDeltaY === 'number' ? e.wheelDeltaY : -Number(e.deltaY || 0);
+    if (!Number.isFinite(wheelDeltaY) || wheelDeltaY === 0) return;
+
+    isLyricActive.value = false;
+    heightVal.value += wheelDeltaY < 0 ? wheelDeltaY + 76 : wheelDeltaY - 76;
+
+    if (heightVal.value < minHeightVal.value) heightVal.value = minHeightVal.value;
+    if (heightVal.value > maxHeightVal.value) heightVal.value = maxHeightVal.value;
+
+    lyricScrollArea.value.style.height = heightVal.value + 'Px';
+
+    clearLyricAutoResumeTimer();
+    pauseActiveTimer.value = setTimeout(() => {
+        pauseActiveTimer.value = null;
+        isLyricActive.value = true;
+        syncLyricPosition();
+    }, LYRIC_MANUAL_SCROLL_RESUME_MS);
+};
+
 onMounted(() => {
-    lyricScroll.value.addEventListener('wheel', e => {
-        isLyricActive.value = false;
-        heightVal.value += e.wheelDeltaY < 0 ? e.wheelDeltaY + 76 : e.wheelDeltaY - 76;
-
-        if (heightVal.value < minHeightVal.value) heightVal.value = minHeightVal.value;
-        if (heightVal.value > maxHeightVal.value) heightVal.value = maxHeightVal.value;
-
-        lyricScrollArea.value.style.height = heightVal.value + 'Px';
-
-        clearTimeout(pauseActiveTimer.value);
-        pauseActiveTimer.value = setTimeout(() => {
-            syncLyricPosition();
-        }, 3000);
-    });
+    lyricScroll.value.addEventListener('wheel', handleLyricWheel);
 
     if (showLyricArea.value) {
         void prepareLyricReveal();
@@ -778,7 +797,9 @@ onMounted(() => {
 onUnmounted(() => {
     invalidateLyricReveal();
     clearInterludeTimers();
+    clearLyricAutoResumeTimer();
     if (interludeProgressInterval) { clearInterval(interludeProgressInterval); interludeProgressInterval = null; }
+    if (lyricScroll.value) lyricScroll.value.removeEventListener('wheel', handleLyricWheel);
     if (lyricResizeObserver) {
         lyricResizeObserver.disconnect();
         lyricResizeObserver = null;
@@ -962,10 +983,10 @@ watch([playing, lyricShow], ([p, show]) => {
         </Transition>
 
         <span class="song-quality" v-if="currentSong && currentSong.type == 'local'">
-            {{ currentSong.sampleRate }}KHz/{{ currentSong.bitsPerSample }}Bits/{{ currentSong.bitrate }}Kpbs
+            {{ currentSong.sampleRate }}KHz/{{ currentSong.bitsPerSample }}Bits/{{ currentSong.bitrate }}kbps
         </span>
         <span class="song-quality" v-if="currentSong && currentSong.level && currentSong.level.sr && currentSong.level.br">
-            {{ currentSong.level.sr / 1000 }}KHz/{{ Math.round(currentSong.level.br / 1000) }}Kpbs/{{ (currentSong.actualLevel || currentSong.quality || '').toUpperCase() }}
+            {{ currentSong.level.sr / 1000 }}KHz/{{ currentSong.level.bitsPerSample || 16 }}Bits/{{ Math.round(currentSong.level.br / 1000) }}kbps/{{ (currentSong.actualLevel || currentSong.quality || '').toUpperCase() }}
         </span>
         <div class="border border1"></div>
         <div class="border border2"></div>

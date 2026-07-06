@@ -1,5 +1,6 @@
 import { get, getById, getWithPagination, operationRequest } from "./base";
 import { buildIdWithTimestamp, buildOperationParams, buildPaginationParams } from "./params";
+import { normalizeKugouKrcLyric } from "../utils/kugouLyric";
 
 /**
  * 获取推荐新音乐
@@ -116,6 +117,15 @@ function extractPlayableUrl(value) {
     return ''
 }
 
+function extractStreamMeta(body = {}) {
+    return {
+        sr: body?.sr || body?.sampleRate || body?.sample_rate,
+        br: body?.br || body?.bitrate || body?.bitRate,
+        bitsPerSample: body?.bitsPerSample || body?.bitDepth || body?.bit_depth || body?.bits_per_sample,
+        size: body?.size || body?.fileSize || body?.filesize,
+    }
+}
+
 function isHashLike(value) {
     return typeof value === 'string' && /^[A-Fa-f0-9]{32}$/.test(value.trim())
 }
@@ -145,7 +155,7 @@ export async function getMusicUrl(input, quality = 'flac', requestParams = {}) {
     const body = raw?.body || raw?.data || raw || {}
     const url = extractPlayableUrl(body)
     const type = body?.extName || body?.ext || 'mp3'
-    return { data: [{ url: url || null, level: quality, type }] }
+    return { data: [{ url: url || null, level: quality, type, ...extractStreamMeta(body) }] }
 }
 
 /**
@@ -160,7 +170,7 @@ export async function getMusicUrlNew(input, quality = 'flac', requestParams = {}
     const body = raw?.body || raw?.data || raw || {}
     const url = extractPlayableUrl(body)
     const type = body?.extName || body?.ext || 'mp3'
-    return { data: [{ url: url || null, level: quality, type }] }
+    return { data: [{ url: url || null, level: quality, type, ...extractStreamMeta(body) }] }
 }
 
 function resolveSongHash(input) {
@@ -180,6 +190,58 @@ function resolveSongHash(input) {
     }
 
     return String(input || '').trim()
+}
+
+function normalizeLyricDuration(value) {
+    const duration = Number(value)
+    if (!Number.isFinite(duration) || duration <= 0) return 0
+    return Math.floor(duration > 1000 ? duration / 1000 : duration)
+}
+
+function normalizeLyricCandidates(response) {
+    const candidates = Array.isArray(response?.candidates)
+        ? response.candidates
+        : Array.isArray(response?.body?.candidates)
+            ? response.body.candidates
+            : Array.isArray(response?.data?.candidates)
+                ? response.data.candidates
+                : []
+
+    return candidates.filter(item => item && item.id && item.accesskey)
+}
+
+function buildLyricKeywords(song = {}) {
+    const songName = song?.songname || song?.name || song?.filename || ''
+    const artists = Array.isArray(song?.ar)
+        ? song.ar
+        : Array.isArray(song?.artists)
+            ? song.artists
+            : Array.isArray(song?.authors)
+                ? song.authors
+                : []
+    const artistNames = artists
+        .map(item => item?.name || item?.author_name || '')
+        .filter(Boolean)
+        .join(' ')
+    return [songName, artistNames].filter(Boolean).join(' ').trim()
+}
+
+function buildLyricSearchParams(input, options = {}) {
+    const source = input && typeof input === 'object' ? input : null
+    const params = { ...options }
+    const hash = source ? resolveSongHash(source) : String(input || '').trim()
+
+    if (hash) params.hash = hash
+    if (source) {
+        const albumAudioId = source.album_audio_id || source.mixsongid || source.mixsong_id || source.audio_id || ''
+        const duration = normalizeLyricDuration(source.dt || source.duration || source.timelength || options.duration)
+        const keywords = options.keywords || buildLyricKeywords(source)
+        if (albumAudioId) params.album_audio_id = albumAudioId
+        if (duration) params.duration = duration
+        if (keywords) params.keywords = keywords
+    }
+
+    return params
 }
 
 /**
@@ -203,16 +265,33 @@ export function likeMusic(id, like = true) {
 }
 
 /**
- * 获取音乐歌词
- * @param {string|number} id - 音乐ID
+ * 搜索当前歌曲的可用歌词候选
+ * @param {object|string|number} input - 歌曲对象或歌曲 hash
  */
-export async function getLyric(hash) {
-    const searchRes = await get('/search/lyric', { hash });
-    const info = searchRes?.candidates?.[0];
+export async function searchLyricCandidates(input, options = {}) {
+    const params = buildLyricSearchParams(input, { ...options, man: options.man || 'yes' })
+    const searchRes = await get('/search/lyric', params)
+    return normalizeLyricCandidates(searchRes)
+}
+
+export async function getLyricByCandidate(info) {
     if (!info) return { lrc: { lyric: '' } };
-    const lyric = await get('/lyric', { id: info.id, accesskey: info.accesskey, fmt: 'lrc', decode: true });
-    const lyricText = lyric?.decodeContent || lyric?.lrc?.lyric || '';
-    return { lrc: { lyric: lyricText } };
+    const lyric = await get('/lyric', { id: info.id, accesskey: info.accesskey, fmt: 'krc', decode: true });
+    const lyricText = lyric?.decodeContent || lyric?.body?.decodeContent || lyric?.lrc?.lyric || '';
+    const { originalLyricText, translatedLyricText } = normalizeKugouKrcLyric(lyricText);
+    return {
+        lrc: { lyric: originalLyricText || lyricText },
+        ...(translatedLyricText ? { tlyric: { lyric: translatedLyricText } } : {}),
+    };
+}
+
+/**
+ * 获取音乐歌词
+ * @param {object|string|number} input - 歌曲对象或歌曲 hash
+ */
+export async function getLyric(input) {
+    const candidates = await searchLyricCandidates(input, { man: 'no' });
+    return getLyricByCandidate(candidates[0]);
 }
 
 /**
