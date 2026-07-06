@@ -41,20 +41,61 @@ function flattenLyricContent(value) {
     return typeof value === 'string' ? value : '';
 }
 
-function getKrcLanguageLines(krcText) {
+function normalizeLanguageSection(section) {
+    if (!Array.isArray(section?.lyricContent)) return [];
+    return section.lyricContent.map(line => flattenLyricContent(line).trim());
+}
+
+function hasCjkText(lines) {
+    return lines.some(line => /[\u3400-\u9FFF\uF900-\uFAFF]/.test(line));
+}
+
+function getKrcLanguageTracks(krcText) {
     const encoded = String(krcText || '').match(languageTag)?.[1];
-    if (!encoded) return [];
+    if (!encoded) return { romanizedLines: [], translatedLines: [] };
 
     try {
         const payload = JSON.parse(decodeBase64Utf8(encoded));
-        const content = Array.isArray(payload?.content) ? payload.content : [];
-        // ponytail: Kugou currently puts the translation in the first lyricContent block; if multiple tracks appear, choose by language/type here.
-        const section = content.find(item => Array.isArray(item?.lyricContent));
-        if (!section) return [];
+        const tracks = (Array.isArray(payload?.content) ? payload.content : [])
+            .filter(item => Array.isArray(item?.lyricContent))
+            .map((item, index) => {
+                const type = Number(item?.type);
+                return {
+                    index,
+                    type: Number.isFinite(type) ? type : null,
+                    lines: normalizeLanguageSection(item),
+                };
+            });
+        if (!tracks.length) return { romanizedLines: [], translatedLines: [] };
 
-        return section.lyricContent.map(line => flattenLyricContent(line).trim());
+        const typedRomanizedTrack = tracks.find(track => track.type === 0) || null;
+        const typedTranslatedTrack = tracks.find(track => track.type === 1) || null;
+        // ponytail: Kugou multi-language blocks are normally romanization first, translation second; type wins when present.
+        let romanizedTrack = typedRomanizedTrack || null;
+        let translatedTrack = typedTranslatedTrack || null;
+
+        if (!romanizedTrack && tracks.length > 1) {
+            romanizedTrack = tracks.find(track => track !== translatedTrack && !hasCjkText(track.lines))
+                || tracks.find(track => track !== translatedTrack)
+                || null;
+        }
+
+        if (!translatedTrack) {
+            translatedTrack = tracks.find(track => track !== romanizedTrack && hasCjkText(track.lines))
+                || (tracks.length > 1 ? tracks.find(track => track !== romanizedTrack) : null)
+                || (tracks[0] !== romanizedTrack ? tracks[0] : null);
+        }
+
+        if (!romanizedTrack && tracks.length > 1) {
+            romanizedTrack = tracks.find(track => track !== translatedTrack) || null;
+        }
+
+        return {
+            romanizedLines: romanizedTrack?.lines || [],
+            translatedLines: translatedTrack?.lines || [],
+        };
     } catch (_) {
-        return [];
+        return { romanizedLines: [], translatedLines: [] };
     }
 }
 
@@ -75,7 +116,7 @@ function parseKrcRows(krcText) {
 
 export function normalizeKugouKrcLyric(krcText) {
     const rows = parseKrcRows(krcText);
-    if (!rows.length) return { originalLyricText: String(krcText || ''), translatedLyricText: '' };
+    if (!rows.length) return { originalLyricText: String(krcText || ''), translatedLyricText: '', romanizedLyricText: '' };
 
     const metadataLines = String(krcText || '')
         .split(regNewLine)
@@ -83,10 +124,16 @@ export function normalizeKugouKrcLyric(krcText) {
     const originalLines = rows
         .filter(row => row.text)
         .map(row => `${formatLrcTime(row.time)}${row.text}`);
-    const languageLines = getKrcLanguageLines(krcText);
+    const { romanizedLines, translatedLines: languageLines } = getKrcLanguageTracks(krcText);
     const translatedLines = rows
         .map((row, index) => {
             const text = languageLines[index];
+            return text ? `${formatLrcTime(row.time)}${text}` : '';
+        })
+        .filter(Boolean);
+    const romanizedLrcLines = rows
+        .map((row, index) => {
+            const text = romanizedLines[index];
             return text ? `${formatLrcTime(row.time)}${text}` : '';
         })
         .filter(Boolean);
@@ -94,5 +141,6 @@ export function normalizeKugouKrcLyric(krcText) {
     return {
         originalLyricText: [...metadataLines, ...originalLines].join('\n'),
         translatedLyricText: translatedLines.join('\n'),
+        romanizedLyricText: romanizedLrcLines.join('\n'),
     };
 }

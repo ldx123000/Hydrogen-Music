@@ -278,10 +278,11 @@ export async function getLyricByCandidate(info) {
     if (!info) return { lrc: { lyric: '' } };
     const lyric = await get('/lyric', { id: info.id, accesskey: info.accesskey, fmt: 'krc', decode: true });
     const lyricText = lyric?.decodeContent || lyric?.body?.decodeContent || lyric?.lrc?.lyric || '';
-    const { originalLyricText, translatedLyricText } = normalizeKugouKrcLyric(lyricText);
+    const { originalLyricText, translatedLyricText, romanizedLyricText } = normalizeKugouKrcLyric(lyricText);
     return {
         lrc: { lyric: originalLyricText || lyricText },
         ...(translatedLyricText ? { tlyric: { lyric: translatedLyricText } } : {}),
+        ...(romanizedLyricText ? { romalrc: { lyric: romanizedLyricText } } : {}),
     };
 }
 

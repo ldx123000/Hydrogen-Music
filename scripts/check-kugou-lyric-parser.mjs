@@ -3,11 +3,18 @@ import { normalizeKugouKrcLyric } from '../src/utils/kugouLyric.js';
 import { buildLyricsTimeline } from '../src/utils/lyricCore.js';
 
 const language = Buffer.from(JSON.stringify({
-    content: [{
-        lyricContent: [[''], ['你好'], ['世界']],
-        type: 1,
-        language: 0,
-    }],
+    content: [
+        {
+            lyricContent: [[''], ['he ro'], ['ra su to']],
+            type: 0,
+            language: 0,
+        },
+        {
+            lyricContent: [[''], ['你好'], ['世界']],
+            type: 1,
+            language: 0,
+        },
+    ],
     contentV2: [],
     version: 1,
 })).toString('base64');
@@ -25,12 +32,18 @@ assert.match(result.originalLyricText, /\[00:02\.34\]Hello world/);
 assert.match(result.originalLyricText, /\[01:01\.00\]Last/);
 assert.match(result.translatedLyricText, /\[00:02\.34\]你好/);
 assert.match(result.translatedLyricText, /\[01:01\.00\]世界/);
+assert.match(result.romanizedLyricText, /\[00:02\.34\]he ro/);
+assert.match(result.romanizedLyricText, /\[01:01\.00\]ra su to/);
 
 const timeline = buildLyricsTimeline({
     lrc: { lyric: result.originalLyricText },
     tlyric: { lyric: result.translatedLyricText },
+    romalrc: { lyric: result.romanizedLyricText },
 });
 
-assert.equal(timeline.find(row => row.tlyric)?.lyric, 'Hello world');
+const firstSupplementalRow = timeline.find(row => row.tlyric || row.rlyric);
+assert.equal(firstSupplementalRow?.lyric, 'Hello world');
+assert.equal(firstSupplementalRow?.tlyric, '你好');
+assert.equal(firstSupplementalRow?.rlyric, 'he ro');
 
 console.log('kugou lyric parser ok');
