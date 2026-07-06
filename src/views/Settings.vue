@@ -14,7 +14,12 @@ import { setTheme, getSavedTheme } from "@/utils/theme";
 import { confirmAccountLogout } from "@/utils/accountSession";
 import { getDailyVipClaimText } from "@/utils/dailyVipClaim";
 import { applyCustomFontStyle } from "@/utils/setFont";
-import { buildFontOptions, loadSystemFontOptions, resolveSystemFontLabel, resolveSystemFontValue } from "@/utils/fontResolver";
+import {
+  buildFontOptions,
+  loadSystemFontOptions,
+  resolveSystemFontLabel,
+  resolveSystemFontValue,
+} from "@/utils/fontResolver";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -591,7 +596,7 @@ const userLogout = () => {
 };
 const confirmLogout = () => {
   confirmAccountLogout(router);
-}
+};
 const save = () => {
   selectedShortcut.value = null;
   setCustomFont();
@@ -1286,7 +1291,7 @@ const clearFmRecent = () => {
         <div class="app-icon">
           <img src="../assets/icon/icon.ico" alt="" />
         </div>
-        <div class="version">V0.5.9</div>
+        <div class="version">V0.6.2</div>
         <div class="update-check">
           <button class="check-update-btn" @click="checkForUpdates">
             检查更新
