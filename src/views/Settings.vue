@@ -634,6 +634,78 @@ const closeUpdateDialog = () => {
   showUpdateDialog.value = false;
 };
 
+// ponytail: only known rebuildable localStorage caches live here; add new cache keys/prefixes when a feature persists more cache data.
+const CACHE_LOCAL_STORAGE_KEYS = [
+  "hydrogen-music-search-history",
+  "siren_song_durations",
+];
+const CACHE_LOCAL_STORAGE_PREFIXES = ["hm.fm.recentPlayedQueue:"];
+
+const isCacheLocalStorageKey = (key) =>
+  CACHE_LOCAL_STORAGE_KEYS.includes(key) ||
+  CACHE_LOCAL_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
+
+const clearRendererCacheData = async () => {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && isCacheLocalStorageKey(key)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch (_) {}
+
+  try {
+    sessionStorage.clear();
+  } catch (_) {}
+
+  try {
+    if (window.caches) {
+      const cacheNames = await window.caches.keys();
+      await Promise.all(cacheNames.map((name) => window.caches.delete(name)));
+    }
+  } catch (_) {}
+
+  window.dispatchEvent(
+    new CustomEvent("fmClearRecent", {
+      detail: { userId: userStore?.user?.userId || "guest" },
+    }),
+  );
+  window.dispatchEvent(new CustomEvent("cacheDataCleared"));
+};
+
+const clearAllCacheData = async (flag) => {
+  if (!flag) return;
+
+  try {
+    const result = await windowApi.clearAllCacheData();
+    if (!result?.success) {
+      noticeOpen("清除缓存失败", 2);
+      return;
+    }
+
+    await clearRendererCacheData();
+    const deletedVideoCount = Number(result.deletedMusicVideoFiles || 0);
+    noticeOpen(
+      deletedVideoCount > 0
+        ? `缓存已清除，已删除 ${deletedVideoCount} 个视频缓存文件`
+        : "缓存已清除",
+      3,
+    );
+  } catch (error) {
+    console.error("清除缓存失败:", error);
+    noticeOpen("清除缓存失败", 2);
+  }
+};
+
+const confirmClearAllCacheData = () => {
+  dialogOpen(
+    "确认清除缓存",
+    "将清除搜索历史、本地扫描缓存、播放恢复、音乐视频缓存等可重建数据，确定继续吗？",
+    clearAllCacheData,
+  );
+};
+
 // 清空当前账号的“私人漫游”近期去重队列
 const getFmRecentKey = () => {
   const uid = userStore?.user?.userId || "guest";
@@ -1171,6 +1243,12 @@ const clearFmRecent = () => {
               <div class="option-name">清空漫游缓存</div>
               <div class="option-operation">
                 <div class="button" @click="clearFmRecent">清空</div>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name">清除所有缓存数据</div>
+              <div class="option-operation">
+                <div class="button" @click="confirmClearAllCacheData">清除</div>
               </div>
             </div>
             <div class="option">

@@ -631,7 +631,7 @@ async function hydrateGaplessStartedSongAssets(
   }
 
   setSongLevel(entry?.level, entry?.trackInfo);
-  getLyric(targetSong.hash).then((songLiric) => {
+  getLyric(targetSong).then((songLiric) => {
     if (songId.value !== targetSongId) return;
     lyric.value = songLiric;
     restorePlayerLyricAfterSongChange();
@@ -2104,7 +2104,7 @@ export async function getSongUrl(
     if (!isCurrentRequest()) return;
     play(directPreloadedEntry.url, autoplay, null, directPreloadedEntry.player);
     setSongLevel(directPreloadedEntry.level, directPreloadedEntry.trackInfo);
-    getLyric(targetSong.hash).then((songLiric) => {
+    getLyric(targetSong).then((songLiric) => {
       if (songId.value !== targetSongId) return;
       lyric.value = songLiric;
       restorePlayerLyricAfterSongChange();
@@ -2241,7 +2241,7 @@ export async function getSongUrl(
       if (preloadedEntry?.player) setTimeout(startChorusPlayback, 0);
       else currentMusic.value?.once?.("load", startChorusPlayback);
     }
-    getLyric(targetSong.hash).then((songLiric) => {
+    getLyric(targetSong).then((songLiric) => {
       if (songId.value !== targetSongId) return;
       lyric.value = songLiric;
       restorePlayerLyricAfterSongChange();
@@ -2288,7 +2288,7 @@ export async function getSongUrl(
           }
         },
       );
-      getLyric(targetSong.hash).then((songLiric) => {
+      getLyric(targetSong).then((songLiric) => {
         if (songId.value !== targetSongId) return;
         lyric.value = songLiric;
         restorePlayerLyricAfterSongChange();

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { noticeOpen } from '../utils/dialog'
 import { usePlayerStore } from '../store/playerStore'
@@ -516,7 +516,12 @@ watch(currentList, list => {
     if (activeAssistIndex.value >= list.length) resetAssistActiveIndex()
 })
 
+onMounted(() => {
+    window.addEventListener('cacheDataCleared', clearSearchHistory)
+})
+
 onUnmounted(() => {
+    window.removeEventListener('cacheDataCleared', clearSearchHistory)
     clearDebounceTimer()
     clearHoverPendingState()
 })

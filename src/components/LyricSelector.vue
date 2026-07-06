@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { getLyricByCandidate, searchLyricCandidates } from '../api/song'
+import { getLyricByCandidate, getRememberedLyricCandidate, rememberLyricCandidate, searchLyricCandidates } from '../api/song'
 import { usePlayerStore } from '../store/playerStore'
 import { noticeOpen } from '../utils/dialog'
 import { getSongDisplayName } from '../utils/songName'
@@ -15,6 +15,9 @@ const activeIndex = ref(-1)
 const loadingSearch = ref(false)
 const loadingLyric = ref(false)
 const errorText = ref('')
+const editingPage = ref(false)
+const pageInput = ref('')
+const pageInputRef = ref(null)
 const lyricCache = new Map()
 let searchSerial = 0
 let lyricSerial = 0
@@ -54,6 +57,9 @@ const pageText = computed(() => {
     return `${activeIndex.value + 1}/${candidates.value.length}`
 })
 
+const canUsePager = computed(() => !loadingSearch.value && !loadingLyric.value && candidates.value.length > 0 && activeIndex.value >= 0)
+const pageInputWidth = computed(() => `${String(candidates.value.length || 1).length + 0.6}ch`)
+
 const candidateTitle = computed(() => {
     const item = activeCandidate.value || {}
     return item.song || item.songname || item.filename || getSongDisplayName(currentSong.value, 'LYRIC', showSongTranslation.value)
@@ -79,7 +85,7 @@ function getCandidateCacheKey(item) {
     return item ? `${item.id}:${item.accesskey}` : ''
 }
 
-async function applyCandidate(index) {
+async function applyCandidate(index, { remember = true } = {}) {
     const item = candidates.value[index]
     if (!item || loadingLyric.value) return
 
@@ -88,6 +94,7 @@ async function applyCandidate(index) {
     if (cachedLyric) {
         playerStore.lyric = cachedLyric
         activeIndex.value = index
+        if (remember) rememberLyricCandidate(currentSong.value, item)
         lyricShow.value = true
         return
     }
@@ -102,6 +109,7 @@ async function applyCandidate(index) {
         lyricCache.set(cacheKey, lyric)
         playerStore.lyric = lyric
         activeIndex.value = index
+        if (remember) rememberLyricCandidate(currentSong.value, item)
         lyricShow.value = true
     } catch (error) {
         if (serial !== lyricSerial) return
@@ -119,6 +127,7 @@ async function fetchCandidates() {
     candidates.value = []
     activeIndex.value = -1
     errorText.value = ''
+    editingPage.value = false
     lyricCache.clear()
 
     if (!canSearchLyrics.value) {
@@ -137,7 +146,9 @@ async function fetchCandidates() {
             errorText.value = '暂无可用歌词'
             return
         }
-        await applyCandidate(0)
+        const rememberedCandidate = getRememberedLyricCandidate(currentSong.value, result)
+        const rememberedIndex = rememberedCandidate ? result.indexOf(rememberedCandidate) : -1
+        await applyCandidate(rememberedIndex >= 0 ? rememberedIndex : 0, { remember: false })
     } catch (error) {
         if (serial !== searchSerial) return
         console.error('搜索歌词候选失败:', error)
@@ -149,13 +160,44 @@ async function fetchCandidates() {
 }
 
 function showPrevious() {
-    if (activeIndex.value <= 0) return
-    void applyCandidate(activeIndex.value - 1)
+    if (!canUsePager.value || candidates.value.length <= 1) return
+    void applyCandidate(activeIndex.value <= 0 ? candidates.value.length - 1 : activeIndex.value - 1)
 }
 
 function showNext() {
-    if (activeIndex.value < 0 || activeIndex.value >= candidates.value.length - 1) return
-    void applyCandidate(activeIndex.value + 1)
+    if (!canUsePager.value || candidates.value.length <= 1) return
+    void applyCandidate(activeIndex.value >= candidates.value.length - 1 ? 0 : activeIndex.value + 1)
+}
+
+function editPage() {
+    if (!canUsePager.value) return
+    pageInput.value = String(activeIndex.value + 1)
+    editingPage.value = true
+    void nextTick(() => pageInputRef.value?.select())
+}
+
+function normalizePageInput(value) {
+    const digits = String(value || '').replace(/\D/g, '')
+    if (!digits) return ''
+    return String(Math.min(Number(digits), candidates.value.length))
+}
+
+function updatePageInput(event) {
+    pageInput.value = normalizePageInput(event.target.value)
+}
+
+function commitPageInput() {
+    if (!editingPage.value) return
+    editingPage.value = false
+    const page = Number(pageInput.value)
+    if (!Number.isFinite(page) || !canUsePager.value) return
+    const nextPage = Math.min(Math.max(Math.trunc(page), 1), candidates.value.length)
+    if (nextPage !== activeIndex.value + 1) void applyCandidate(nextPage - 1)
+}
+
+function cancelPageInput() {
+    editingPage.value = false
+    pageInput.value = ''
 }
 
 watch(searchTargetKey, fetchCandidates, { immediate: true })
@@ -174,13 +216,33 @@ onUnmounted(() => {
                 <span class="candidate-subtitle" v-if="candidateSubtitle">{{ candidateSubtitle }}</span>
             </div>
             <div class="pager">
-                <button type="button" class="pager-button" :disabled="loadingSearch || loadingLyric || activeIndex <= 0" @click="showPrevious" aria-label="上一条歌词">
+                <button type="button" class="pager-button" :disabled="!canUsePager || candidates.length <= 1" @click="showPrevious" aria-label="上一条歌词">
                     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path d="M15.5 5 8.5 12l7 7" />
                     </svg>
                 </button>
-                <span class="pager-count">{{ loadingSearch ? '...' : pageText }}</span>
-                <button type="button" class="pager-button" :disabled="loadingSearch || loadingLyric || activeIndex < 0 || activeIndex >= candidates.length - 1" @click="showNext" aria-label="下一条歌词">
+                <span v-if="editingPage" class="pager-edit">
+                    <input
+                        ref="pageInputRef"
+                        :value="pageInput"
+                        class="pager-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        :style="{ width: pageInputWidth }"
+                        :maxlength="String(candidates.length).length"
+                        :aria-label="`跳转到歌词第几页，最大 ${candidates.length} 页`"
+                        @input="updatePageInput"
+                        @blur="commitPageInput"
+                        @keydown.enter.prevent="commitPageInput"
+                        @keydown.esc.prevent="cancelPageInput"
+                    />
+                    <span class="pager-total">/{{ candidates.length }}</span>
+                </span>
+                <button v-else type="button" class="pager-count" :disabled="!canUsePager" @click="editPage" aria-label="输入歌词页码">
+                    {{ loadingSearch ? '...' : pageText }}
+                </button>
+                <button type="button" class="pager-button" :disabled="!canUsePager || candidates.length <= 1" @click="showNext" aria-label="下一条歌词">
                     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                         <path d="m8.5 5 7 7-7 7" />
                     </svg>
@@ -297,12 +359,60 @@ onUnmounted(() => {
     }
 }
 
-.pager-count {
+.pager-count,
+.pager-edit {
+    height: 28px;
     min-width: 42px;
+    border: none;
+    padding: 0 5px;
+    box-sizing: border-box;
+    background: transparent;
     color: rgba(0, 0, 0, 0.78);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font: 11px Bender-Bold;
     letter-spacing: 0;
     text-align: center;
+}
+
+.pager-count {
+    cursor: text;
+    transition: 0.2s;
+
+    &:hover:not(:disabled) {
+        background: rgba(0, 0, 0, 0.08);
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+}
+
+.pager-input {
+    width: 2.6ch;
+    min-width: 1ch;
+    height: 20px;
+    border: none;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.4);
+    color: rgba(0, 0, 0, 0.78);
+    font: inherit;
+    letter-spacing: 0;
+    text-align: right;
+    outline: none;
+
+    &:focus {
+        background: rgba(255, 255, 255, 0.58);
+        box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.48);
+    }
+}
+
+.pager-total {
+    color: rgba(0, 0, 0, 0.68);
+    font: inherit;
+    letter-spacing: 0;
 }
 
 .selector-lyric {

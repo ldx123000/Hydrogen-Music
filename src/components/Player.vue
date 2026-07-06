@@ -698,7 +698,7 @@ const addToPlaylist = () => {
                 <svg
                     v-if="canSelectLyrics"
                     @click="toggleLyricSelectorPanel"
-                    v-delayed-tooltip="props.rightPanelMode === 2 ? '查看歌词' : '选择歌词'"
+                    v-delayed-tooltip="props.rightPanelMode === 2 ? '保存歌词' : '选择歌词'"
                     :class="{ 'lyric-select-icon-active': props.rightPanelMode === 2, 'lyric-select-icon-inactive': props.rightPanelMode !== 2 }"
                     class="icon lyric-select-icon"
                     viewBox="0 0 24 24"

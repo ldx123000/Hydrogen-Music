@@ -530,6 +530,10 @@ export const useLibraryStore = defineStore('libraryStore', {
                     description: mergedPlaylist?.description || mergedPlaylist?.intro || mergedPlaylist?.briefDesc || '',
                     creator: mergedPlaylist?.creator || { nickname: mergedPlaylist?.list_create_username || mergedPlaylist?.username || '' },
                 }
+                const isCollectedPlaylist = Number(fallbackPlaylist?.is_mine) === 0 || (
+                    Array.isArray(this.playlistUserSub) && this.playlistUserSub.some(item => isSamePlaylist(item, fallbackPlaylist))
+                )
+                if (isCollectedPlaylist) firstBatchSongs.reverse()
 
                 const totalTracks = Number(fallbackPlaylist?.trackIds?.length || fallbackPlaylist?.trackCount || firstBatchSongs.length || 0)
                 const loadedTracks = Math.min(firstBatchSongs.length, totalTracks)

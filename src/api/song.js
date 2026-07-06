@@ -1,6 +1,7 @@
 import { get, getById, getWithPagination, operationRequest } from "./base";
 import { buildIdWithTimestamp, buildOperationParams, buildPaginationParams } from "./params";
 import { normalizeKugouKrcLyric } from "../utils/kugouLyric";
+import { findRememberedLyricCandidate, rememberLyricCandidate as saveRememberedLyricCandidate } from "../utils/lyricPreference";
 
 /**
  * 获取推荐新音乐
@@ -274,6 +275,14 @@ export async function searchLyricCandidates(input, options = {}) {
     return normalizeLyricCandidates(searchRes)
 }
 
+export function getRememberedLyricCandidate(input, candidates, options = {}) {
+    return findRememberedLyricCandidate(buildLyricSearchParams(input, options), candidates)
+}
+
+export function rememberLyricCandidate(input, candidate, options = {}) {
+    return saveRememberedLyricCandidate(buildLyricSearchParams(input, options), candidate)
+}
+
 export async function getLyricByCandidate(info) {
     if (!info) return { lrc: { lyric: '' } };
     const lyric = await get('/lyric', { id: info.id, accesskey: info.accesskey, fmt: 'krc', decode: true });
@@ -292,7 +301,7 @@ export async function getLyricByCandidate(info) {
  */
 export async function getLyric(input) {
     const candidates = await searchLyricCandidates(input, { man: 'no' });
-    return getLyricByCandidate(candidates[0]);
+    return getLyricByCandidate(getRememberedLyricCandidate(input, candidates) || candidates[0]);
 }
 
 /**
