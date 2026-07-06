@@ -94,7 +94,7 @@ if (!gotTheLock) {
       console.error("Unhandled exception captured:", err);
     });
     // ponytail: 启动时只探测一次 dev server；若后续再启动 Vite，需要把这里升级成按次重试或显式开发开关。
-    hasDevServer = await isDevServerReachable();
+    hasDevServer = !app.isPackaged && (await isDevServerReachable());
     // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
     createWindow();
     // 然后启动 API 后端，等待就绪后再加载前端页面内容
