@@ -91,13 +91,13 @@
     }
   })
 
-  watch(() => volume.value, () => {
-    const normalizedVolume = normalizeSliderVolume(volume.value)
-    if (normalizedVolume !== volume.value) {
+  watch(() => [volume.value, currentMusic.value], ([nextVolume, playback]) => {
+    const normalizedVolume = normalizeSliderVolume(nextVolume)
+    if (normalizedVolume !== nextVolume) {
       volume.value = normalizedVolume
       return
     }
-    currentMusic.value.volume(normalizedVolume)
+    playback?.volume?.(normalizedVolume)
   }, { immediate: true })
 
   const checkArtist = (artistId) => {

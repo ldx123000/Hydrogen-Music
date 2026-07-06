@@ -102,6 +102,15 @@ const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
 const currentSong = computed(() => songList.value?.[currentIndex.value] || null);
 const isCurrentSirenSong = computed(() => currentSong.value?.source === 'siren');
 const currentSongDisplayName = computed(() => getSongDisplayName(currentSong.value, '加载中...', showSongTranslation.value));
+const canSelectLyrics = computed(() => !!currentSong.value && currentSong.value.type !== 'local' && !isCurrentSirenSong.value && !isDjMode.value);
+
+const toggleCommentPanel = () => {
+    switchRightPanel(props.rightPanelMode === 1 ? 0 : 1);
+};
+
+const toggleLyricSelectorPanel = () => {
+    switchRightPanel(props.rightPanelMode === 2 ? 0 : 2);
+};
 
 const safeSliderRange = computed(() => {
     const currentTime = Number(time.value);
@@ -685,12 +694,32 @@ const addToPlaylist = () => {
                     ></path>
                 </svg>
 
+                <!-- 歌词候选选择按钮 -->
+                <svg
+                    v-if="canSelectLyrics"
+                    @click="toggleLyricSelectorPanel"
+                    v-delayed-tooltip="props.rightPanelMode === 2 ? '保存歌词' : '选择歌词'"
+                    :class="{ 'lyric-select-icon-active': props.rightPanelMode === 2, 'lyric-select-icon-inactive': props.rightPanelMode !== 2 }"
+                    class="icon lyric-select-icon"
+                    viewBox="0 0 24 24"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="32"
+                    height="32"
+                >
+                    <path class="lyric-select-page" d="M6 3.8h8.5l3.5 3.7v12.7H6z" />
+                    <path class="lyric-select-fold" d="M14.5 3.8v3.7H18" />
+                    <line class="lyric-select-line" x1="8.6" y1="10.5" x2="15.5" y2="10.5" />
+                    <line class="lyric-select-line" x1="8.6" y1="13.5" x2="14.2" y2="13.5" />
+                    <path class="lyric-select-note" d="M16.6 11.4v4.8a1.6 1.6 0 1 1-.7-1.3V9.5l2.4-.7" />
+                </svg>
+
                 <!-- 歌词/评论切换按钮：本地歌曲隐藏评论按钮 -->
                 <svg
                     v-if="songList?.[currentIndex]?.type !== 'local' && !isCurrentSirenSong"
-                    @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
-                    v-delayed-tooltip="props.rightPanelMode === 0 ? '查看评论' : '查看歌词'"
-                    :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
+                    @click="toggleCommentPanel"
+                    v-delayed-tooltip="props.rightPanelMode === 1 ? '查看歌词' : '查看评论'"
+                    :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode !== 1 }"
                     class="icon comment-icon"
                     viewBox="0 0 24 24"
                     version="1.1"
@@ -1142,6 +1171,43 @@ const addToPlaylist = () => {
     .border4 {
         bottom: $boderPosition;
         left: $boderPosition;
+    }
+
+    // 歌词候选图标样式
+    .lyric-select-icon {
+        cursor: pointer;
+        transition: all 0.3s ease;
+        color: rgba(0, 0, 0, 0.6);
+        overflow: visible;
+        width: 3.16vh !important;
+        height: 3.16vh !important;
+        margin-bottom: -0.5vh;
+
+        .lyric-select-page,
+        .lyric-select-fold,
+        .lyric-select-line,
+        .lyric-select-note {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.45;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            vector-effect: non-scaling-stroke;
+        }
+
+        &.lyric-select-icon-inactive {
+            color: #8a8a8a;
+            opacity: 0.62;
+        }
+
+        &.lyric-select-icon-active {
+            color: #000000;
+            opacity: 1;
+        }
+
+        &:hover {
+            transform: scale(1.05);
+        }
     }
 
     // 评论图标样式

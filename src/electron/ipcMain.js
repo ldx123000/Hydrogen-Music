@@ -5,6 +5,7 @@ const {
   globalShortcut,
   Menu,
   clipboard,
+  session,
 } = require("electron");
 const axios = require("axios");
 const fs = require("fs");
@@ -110,6 +111,7 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
   const lastPlaylistStore = new Store({ name: "lastPlaylist" });
   const lastPlaybackProgressStore = new Store({ name: "lastPlaybackProgress" });
   const musicVideoStore = new Store({ name: "musicVideo" });
+  const localMusicStore = new Store({ name: "localMusic" });
 
   // 全局存储桌面歌词窗口引用
   let globalLyricWindow = null;
@@ -413,12 +415,83 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
     if (lastPlaylist) return mergeStoredPlaybackProgress(lastPlaylist);
     else return null;
   });
+
+  const deleteMusicVideoCacheFiles = async () => {
+    const settings = await settingsStore.get("settings");
+    const folderPath = normalizeDirectoryPath(settings?.local?.videoFolder);
+    if (!folderPath) return 0;
+
+    const rootPath = path.resolve(folderPath);
+    const musicVideo = await musicVideoStore.get("musicVideo");
+    if (!Array.isArray(musicVideo)) return 0;
+
+    let deleted = 0;
+    for (const item of musicVideo) {
+      const itemPath = typeof item?.path === "string" ? item.path : "";
+      if (!itemPath) continue;
+
+      const filePath = path.resolve(itemPath);
+      if (filePath !== rootPath && !filePath.startsWith(rootPath + path.sep)) {
+        continue;
+      }
+
+      try {
+        const stats = fs.statSync(filePath);
+        if (!stats.isFile()) continue;
+        fs.unlinkSync(filePath);
+        deleted += 1;
+      } catch (_) {}
+    }
+
+    return deleted;
+  };
+
+  const clearCacheStores = async ({ deleteVideoFiles = false } = {}) => {
+    const deletedMusicVideoFiles = deleteVideoFiles
+      ? await deleteMusicVideoCacheFiles()
+      : 0;
+
+    await Promise.all([
+      lastPlaylistStore.clear(),
+      lastPlaybackProgressStore.clear(),
+      musicVideoStore.clear(),
+      localMusicStore.clear(),
+    ]);
+
+    return { deletedMusicVideoFiles };
+  };
+
+  ipcMain.handle("clear-all-cache-data", async () => {
+    try {
+      const result = await clearCacheStores({ deleteVideoFiles: true });
+
+      if (session.defaultSession) {
+        await session.defaultSession.clearCache();
+        await session.defaultSession.clearStorageData({
+          storages: [
+            "filesystem",
+            "indexdb",
+            "shadercache",
+            "websql",
+            "serviceworkers",
+            "cachestorage",
+          ],
+        });
+      }
+
+      console.log("[cache] 已清除所有可重建缓存数据");
+      return { success: true, ...result };
+    } catch (err) {
+      console.error("[cache] 清除缓存失败:", err);
+      return { success: false, error: err.message };
+    }
+  });
+
   // 重置所有持久化数据（用于修复旧版本数据残留问题）
   ipcMain.handle("reset-all-data", async () => {
     try {
       await settingsStore.clear();
-      await lastPlaylistStore.clear();
-      await musicVideoStore.clear();
+      await clearCacheStores();
       console.log("[reset] 已清除所有 electron-store 持久化数据");
       // 通知渲染进程也清理 localStorage
       if (win && !win.isDestroyed()) {

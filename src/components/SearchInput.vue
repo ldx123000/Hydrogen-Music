@@ -1,14 +1,16 @@
 <script setup>
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { noticeOpen } from '../utils/dialog'
 import { usePlayerStore } from '../store/playerStore'
 import { searchHotDetail, searchSuggest } from '../api/other'
+import { getSongDisplayName } from '../utils/songName'
 
 const DEFAULT_ASSIST_LIMIT = 8
 const MIN_ASSIST_LIMIT = 1
 const SUGGEST_DEBOUNCE_MS = 220
 const ASSIST_HOVER_ACTIVATE_DELAY_MS = 140
+const SEARCH_HISTORY_KEY = 'hydrogen-music-search-history'
 
 const playerStore = usePlayerStore()
 const router = useRouter()
@@ -20,6 +22,7 @@ const searchShow = ref(false)
 const assistVisible = ref(false)
 const hotList = ref([])
 const suggestList = ref([])
+const searchHistory = ref(readSearchHistory())
 const activeAssistIndex = ref(-1)
 const isComposing = ref(false)
 const suppressMouseHover = ref(false)
@@ -37,14 +40,81 @@ function normalizeAssistLimit(value) {
     return Math.max(MIN_ASSIST_LIMIT, num)
 }
 
+function readSearchHistory() {
+    try {
+        const value = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]')
+        if (!Array.isArray(value)) return []
+
+        const keywordSet = new Set()
+        const history = []
+        for (let i = 0; i < value.length; i++) {
+            const keyword = JTrim(value[i])
+            const normalized = normalizeSuggestKey(keyword)
+            if (!normalized || keywordSet.has(normalized)) continue
+            keywordSet.add(normalized)
+            history.push(keyword)
+        }
+        return history.slice(0, DEFAULT_ASSIST_LIMIT)
+    } catch (_) {
+        return []
+    }
+}
+
+function writeSearchHistory(list) {
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(list))
+}
+
 const assistLimit = computed(() => normalizeAssistLimit(playerStore.searchAssistLimit))
 const isSuggestMode = computed(() => JTrim(searchKeyword.value) !== '')
-const currentList = computed(() => {
-    const list = isSuggestMode.value ? suggestList.value : hotList.value
-    return list.slice(0, assistLimit.value)
+const currentSong = computed(() => playerStore.songList?.[playerStore.currentIndex] || null)
+const currentPlayingKeyword = computed(() => JTrim(getSongDisplayName(currentSong.value, '', playerStore.showSongTranslation)))
+const historyList = computed(() => {
+    const currentKey = normalizeSuggestKey(currentPlayingKeyword.value)
+    const limit = currentPlayingKeyword.value ? Math.max(0, assistLimit.value - 1) : assistLimit.value
+
+    return searchHistory.value
+        .filter(keyword => normalizeSuggestKey(keyword) !== currentKey)
+        .slice(0, limit)
+        .map(keyword => ({ keyword, source: 'history' }))
 })
-const currentTitle = computed(() => (isSuggestMode.value ? 'SUGGESTIONS' : 'HOT SEARCH'))
-const currentEmptyText = computed(() => (isSuggestMode.value ? 'NO SUGGESTION' : 'NO HOT SEARCH'))
+const guessList = computed(() => {
+    const usedKeywordSet = new Set(historyList.value.map(item => normalizeSuggestKey(item.keyword)))
+    const limit = Math.max(0, assistLimit.value - historyList.value.length)
+
+    if (limit === 0) return []
+
+    const list = []
+    const currentKeyword = currentPlayingKeyword.value
+    if (currentKeyword) {
+        usedKeywordSet.add(normalizeSuggestKey(currentKeyword))
+        list.push({ keyword: currentKeyword, source: 'current' })
+    }
+
+    return [
+        ...list,
+        ...hotList.value.filter(item => !usedKeywordSet.has(normalizeSuggestKey(item?.keyword))),
+    ]
+        .slice(0, limit)
+        .map(item => ({ ...item, source: 'guess' }))
+})
+const currentList = computed(() => {
+    if (isSuggestMode.value) return suggestList.value.slice(0, assistLimit.value)
+    return [...historyList.value, ...guessList.value]
+})
+const assistSections = computed(() => {
+    if (isSuggestMode.value) return [{ title: '', start: 0, items: currentList.value }]
+
+    const sections = []
+    let start = 0
+    if (historyList.value.length > 0) {
+        sections.push({ title: '搜索记录', start, items: historyList.value })
+        start += historyList.value.length
+    }
+    if (guessList.value.length > 0) sections.push({ title: '猜你想搜', start, items: guessList.value })
+    return sections
+})
+const currentTitle = computed(() => (isSuggestMode.value ? 'SUGGESTIONS' : 'SEARCH ASSIST'))
+const currentEmptyText = computed(() => (isSuggestMode.value ? 'NO SUGGESTION' : 'NO SEARCH ASSIST'))
 const currentLoading = computed(() => (isSuggestMode.value ? loadingSuggest.value : loadingHot.value))
 
 function clearDebounceTimer() {
@@ -151,6 +221,24 @@ function parseHotListItems(data) {
             content: item?.content || item?.reason || '',
         }))
         .filter(item => item.keyword)
+}
+
+function rememberSearchKeyword(keyword) {
+    const value = JTrim(keyword)
+    const normalized = normalizeSuggestKey(value)
+    if (!normalized) return
+
+    searchHistory.value = [
+        value,
+        ...searchHistory.value.filter(item => normalizeSuggestKey(item) !== normalized),
+    ].slice(0, assistLimit.value)
+    writeSearchHistory(searchHistory.value)
+}
+
+function clearSearchHistory() {
+    searchHistory.value = []
+    writeSearchHistory(searchHistory.value)
+    resetAssistActiveIndex()
 }
 
 async function setActiveAssistIndex(index, align = 'nearest') {
@@ -382,6 +470,7 @@ const searchInfo = (keyword = searchKeyword.value, byAssist = false) => {
     const value = JTrim(keyword)
     if (value != '') {
         searchKeyword.value = value
+        rememberSearchKeyword(value)
         router.push({ name: 'search', query: { keywords: value } }).catch(() => {})
 
         if (byAssist && searchInput.value) searchInput.value.blur()
@@ -406,6 +495,10 @@ function displayIndex(index) {
     return String(index + 1).padStart(2, '0')
 }
 
+function getAssistItemIndex(section, index) {
+    return section.start + index
+}
+
 watch(isSuggestMode, () => {
     resetAssistActiveIndex()
 })
@@ -423,7 +516,12 @@ watch(currentList, list => {
     if (activeAssistIndex.value >= list.length) resetAssistActiveIndex()
 })
 
+onMounted(() => {
+    window.addEventListener('cacheDataCleared', clearSearchHistory)
+})
+
 onUnmounted(() => {
+    window.removeEventListener('cacheDataCleared', clearSearchHistory)
     clearDebounceTimer()
     clearHoverPendingState()
 })
@@ -468,25 +566,37 @@ onUnmounted(() => {
                         <span class="assist-title">{{ currentTitle }}</span>
                         <span class="assist-count" v-if="currentList.length > 0">[{{ currentList.length }}]</span>
                         <div class="assist-line"></div>
+                        <button
+                            class="assist-clear"
+                            v-if="!isSuggestMode && searchHistory.length > 0"
+                            type="button"
+                            @mousedown.prevent
+                            @click="clearSearchHistory"
+                        >
+                            CLEAR
+                        </button>
                     </div>
 
                     <div class="assist-body" :class="{ 'assist-body-keyboard': suppressMouseHover }" ref="assistBodyRef" @mousemove="handleAssistMouseMove">
-                        <div class="assist-status" v-if="currentLoading">LOADING...</div>
+                        <div class="assist-status" v-if="currentLoading && currentList.length === 0">LOADING...</div>
                         <div class="assist-status" v-else-if="currentList.length === 0">{{ currentEmptyText }}</div>
                         <template v-else>
-                            <div
-                                class="assist-item"
-                                :class="{ 'assist-item-active': index === activeAssistIndex }"
-                                v-for="(item, index) in currentList"
-                                :key="item.keyword + '-' + index"
-                                :data-index="index"
-                                @mouseenter="handleAssistItemMouseEnter(index)"
-                                @mousedown.prevent
-                                @click="clickAssistItem(item)"
-                            >
-                                <span class="assist-index">{{ displayIndex(index) }}</span>
-                                <span class="assist-word">{{ item.keyword }}</span>
-                            </div>
+                            <template v-for="section in assistSections" :key="section.title || 'suggest'">
+                                <div class="assist-section-title" v-if="section.title">{{ section.title }}</div>
+                                <div
+                                    class="assist-item"
+                                    :class="{ 'assist-item-active': getAssistItemIndex(section, index) === activeAssistIndex }"
+                                    v-for="(item, index) in section.items"
+                                    :key="item.source + '-' + item.keyword + '-' + index"
+                                    :data-index="getAssistItemIndex(section, index)"
+                                    @mouseenter="handleAssistItemMouseEnter(getAssistItemIndex(section, index))"
+                                    @mousedown.prevent
+                                    @click="clickAssistItem(item)"
+                                >
+                                    <span class="assist-index">{{ displayIndex(getAssistItemIndex(section, index)) }}</span>
+                                    <span class="assist-word">{{ item.keyword }}</span>
+                                </div>
+                            </template>
                         </template>
                     </div>
                 </div>
@@ -592,6 +702,7 @@ $boderPosition: -1px;
         --assist-hover-fill: rgba(52, 73, 80, 0.72);
         --assist-hover-text: rgba(244, 248, 250, 0.96);
         --assist-status: rgba(45, 64, 71, 0.66);
+        --assist-section-bg: rgba(255, 255, 255, 0.18);
         --assist-shadow: 0 12px 24px rgba(43, 61, 68, 0.14);
 
         width: 260px;
@@ -668,6 +779,23 @@ $boderPosition: -1px;
                 flex: 1;
                 background: linear-gradient(90deg, var(--assist-line), transparent);
             }
+            .assist-clear {
+                padding: 0;
+                border: none;
+                background: none;
+                color: var(--assist-muted);
+                font:
+                    10px Bender-Bold,
+                    monospace;
+                line-height: 1;
+                letter-spacing: 1px;
+                cursor: pointer;
+                transition: color 0.2s ease;
+
+                &:hover {
+                    color: var(--assist-title);
+                }
+            }
         }
 
         .assist-body {
@@ -693,6 +821,17 @@ $boderPosition: -1px;
                     monospace;
                 letter-spacing: 1px;
                 color: var(--assist-status);
+            }
+
+            .assist-section-title {
+                height: 25px;
+                display: flex;
+                align-items: center;
+                padding: 0 12px;
+                background: var(--assist-section-bg);
+                border-bottom: 1px solid var(--assist-item-divider);
+                font: 11px SourceHanSansCN-Bold;
+                color: var(--assist-muted);
             }
 
             .assist-item {
@@ -786,6 +925,7 @@ $boderPosition: -1px;
     --assist-hover-fill: rgba(255, 255, 255, 0.7);
     --assist-hover-text: #0f1114;
     --assist-status: var(--muted-text);
+    --assist-section-bg: rgba(255, 255, 255, 0.05);
     --assist-shadow: var(--shadow);
 
     background: var(--assist-bg) !important;

@@ -86,6 +86,10 @@ const levelFieldMap = {
   exhigh: "h",
   lossless: "sq",
   hires: "hr",
+  128: "l",
+  320: "m",
+  flac: "sq",
+  high: "hr",
 };
 
 function normalizePlaybackVolume(value) {
@@ -627,7 +631,7 @@ async function hydrateGaplessStartedSongAssets(
   }
 
   setSongLevel(entry?.level, entry?.trackInfo);
-  getLyric(targetSong.hash).then((songLiric) => {
+  getLyric(targetSong).then((songLiric) => {
     if (songId.value !== targetSongId) return;
     lyric.value = songLiric;
     restorePlayerLyricAfterSongChange();
@@ -1934,14 +1938,28 @@ export function addSong(id, index, autoplay, isLocal) {
 }
 
 function buildLevelInfoFromStream(streamInfo = {}) {
-  const sr = Number(streamInfo?.sr);
-  const br = Number(streamInfo?.br);
+  const sr = Number(
+    streamInfo?.sr || streamInfo?.sampleRate || streamInfo?.sample_rate,
+  );
+  const br = Number(
+    streamInfo?.br || streamInfo?.bitrate || streamInfo?.bitRate,
+  );
   if (!Number.isFinite(sr) || sr <= 0 || !Number.isFinite(br) || br <= 0)
     return null;
   const size = Number(streamInfo?.size);
+  const bitsPerSample = Number(
+    streamInfo?.bitsPerSample ||
+      streamInfo?.bitDepth ||
+      streamInfo?.bit_depth ||
+      streamInfo?.bits_per_sample,
+  );
   return {
     sr,
-    br,
+    br: br < 1000 ? br * 1000 : br,
+    bitsPerSample:
+      Number.isFinite(bitsPerSample) && bitsPerSample > 0
+        ? bitsPerSample
+        : 16,
     size: Number.isFinite(size) && size > 0 ? size : 0,
   };
 }
@@ -1955,8 +1973,18 @@ export function setSongLevel(level, streamInfo = null) {
   const levelField = levelFieldMap[normalizedLevel];
   const mappedLevelInfo = levelField ? currentSong[levelField] : null;
   const streamLevelInfo = buildLevelInfoFromStream(streamInfo || {});
+  const songLevelInfo = buildLevelInfoFromStream({
+    // ponytail: 酷狗列表只稳定给码率/文件大小，采样率默认按常见 44.1kHz；若后端返回 sr 会由 streamInfo 覆盖。
+    sr: 44100,
+    br:
+      currentSong[`bitrate_${normalizedLevel}`] ||
+      (normalizedLevel === "128" ? currentSong.bitrate : 0),
+    size:
+      currentSong[`filesize_${normalizedLevel}`] ||
+      (normalizedLevel === "128" ? currentSong.filesize : 0),
+  });
 
-  currentSong.level = mappedLevelInfo || streamLevelInfo || null;
+  currentSong.level = mappedLevelInfo || streamLevelInfo || songLevelInfo || null;
   currentSong.actualLevel = normalizedLevel;
   // 保持旧字段兼容：quality 表示当前曲目实际返回档位，而非用户偏好。
   currentSong.quality = normalizedLevel;
@@ -2076,7 +2104,7 @@ export async function getSongUrl(
     if (!isCurrentRequest()) return;
     play(directPreloadedEntry.url, autoplay, null, directPreloadedEntry.player);
     setSongLevel(directPreloadedEntry.level, directPreloadedEntry.trackInfo);
-    getLyric(targetSong.hash).then((songLiric) => {
+    getLyric(targetSong).then((songLiric) => {
       if (songId.value !== targetSongId) return;
       lyric.value = songLiric;
       restorePlayerLyricAfterSongChange();
@@ -2213,7 +2241,7 @@ export async function getSongUrl(
       if (preloadedEntry?.player) setTimeout(startChorusPlayback, 0);
       else currentMusic.value?.once?.("load", startChorusPlayback);
     }
-    getLyric(targetSong.hash).then((songLiric) => {
+    getLyric(targetSong).then((songLiric) => {
       if (songId.value !== targetSongId) return;
       lyric.value = songLiric;
       restorePlayerLyricAfterSongChange();
@@ -2260,7 +2288,7 @@ export async function getSongUrl(
           }
         },
       );
-      getLyric(targetSong.hash).then((songLiric) => {
+      getLyric(targetSong).then((songLiric) => {
         if (songId.value !== targetSongId) return;
         lyric.value = songLiric;
         restorePlayerLyricAfterSongChange();

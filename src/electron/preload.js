@@ -282,6 +282,7 @@ contextBridge.exposeInMainWorld("windowApi", {
   setWindowTile,
   updatePlaylistStatus,
   updateDockMenu,
+  clearAllCacheData: () => ipcRenderer.invoke("clear-all-cache-data"),
   // 数据重置（修复旧版本数据残留问题）
   resetAllData: () => ipcRenderer.invoke("reset-all-data"),
   onResetLocalStorage: (callback) => {

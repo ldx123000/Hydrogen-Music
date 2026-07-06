@@ -1,6 +1,7 @@
 <script setup>
 import Player from '../components/Player.vue';
 import Lyric from '../components/Lyric.vue';
+import LyricSelector from '../components/LyricSelector.vue';
 import ProgramIntro from '../components/ProgramIntro.vue';
 import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
@@ -12,14 +13,14 @@ import { getDjProgramComments } from '../api/dj';
 import { resolveImageUrl } from '../utils/imageUtils';
 const playerStore = usePlayerStore();
 
-// 右侧内容切换状态 (0: 歌词, 1: 评论)
+// 右侧内容切换状态 (0: 歌词, 1: 评论, 2: 歌词候选)
 const rightPanelMode = ref(0);
 const lyricKey = ref(0);
 
 // 监听面板模式变化，当切换到歌词时刷新歌词组件
 watch(rightPanelMode, (newMode, oldMode) => {
-    if (newMode === 0 && oldMode === 1) {
-        // 从评论区切换到歌词时，强制刷新歌词组件
+    if (newMode === 0 && oldMode !== 0) {
+        // 从其它右侧面板切回歌词时，强制刷新歌词组件
         lyricKey.value++;
         
         // 确保 lyricShow 状态正确，具体定位交给歌词运行时和组件挂载流程处理
@@ -147,8 +148,12 @@ const commentPanelKey = computed(() => {
     return `comments-song-${sid}-${idx}`;
 });
 
-watch(currentTrack, (song) => {
+watch([currentTrack, isDj], ([song, djMode]) => {
     try {
+        if ((djMode || (song && (song.type === 'local' || song.source === 'siren'))) && rightPanelMode.value === 2) {
+            rightPanelMode.value = 0;
+            return;
+        }
         if (song && (song.type === 'local' || song.source === 'siren') && rightPanelMode.value === 1) {
             rightPanelMode.value = 0;
         }
@@ -183,6 +188,7 @@ watch(currentTrack, (song) => {
                 <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
                 <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
                 <Comments class="comments-container" v-else-if="rightPanelMode === 1" :key="commentPanelKey" @total-change="handleCommentTotalChange"></Comments>
+                <LyricSelector class="lyric-selector-container" v-else-if="rightPanelMode === 2" :key="`lyric-selector-${commentPanelKey}`"></LyricSelector>
             </Transition>
         </div>
 
@@ -302,7 +308,8 @@ watch(currentTrack, (song) => {
         position: relative;
         z-index: 1;
         .lyric-container,
-        .comments-container {
+        .comments-container,
+        .lyric-selector-container {
             width: 100%;
             height: 100%;
         }

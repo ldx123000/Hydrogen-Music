@@ -124,6 +124,7 @@
     getBiliVideo: noopResolve(null),
 
     // ── 数据重置 ──
+    clearAllCacheData: noopResolve({ success: false, error: "Not in Electron" }),
     resetAllData: noopResolve({ success: false, error: "Not in Electron" }),
     onResetLocalStorage: noop,
   };
