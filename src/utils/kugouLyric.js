@@ -1,7 +1,8 @@
 const regNewLine = /\r?\n/;
 const krcTimeLine = /^\[(\d+),(\d+)\](.*)$/;
 const languageTag = /^\[language:([^\]]+)\]\s*$/m;
-const wordTimeTag = /<[^>]*>/g;
+const wordTimeTag = /<-?\d+(?:\s*,\s*-?\d+)+\s*>/g;
+const lyricCreditLine = /^(?:作词|作曲|编曲|词|曲|制作人|监制|混音|母带|录音|和声|人声编辑|吉他|贝斯|鼓|弦乐|program(?:ming)?|producer|arranger|composer|lyricist|lyrics?|written by|music|vocal|mix(?:ed)?(?: by)?|master(?:ed)?(?: by)?)\s*[:：]/i;
 
 function decodeBase64Utf8(value) {
     const text = String(value || '').trim();
@@ -44,6 +45,44 @@ function flattenLyricContent(value) {
 function normalizeLanguageSection(section) {
     if (!Array.isArray(section?.lyricContent)) return [];
     return section.lyricContent.map(line => flattenLyricContent(line).trim());
+}
+
+function isLikelyKrcPreludeLine(row, index) {
+    const text = String(row?.text || '').trim();
+    if (!text) return true;
+    if (lyricCreditLine.test(text)) return true;
+
+    const time = Number(row?.time);
+    return index === 0 && Number.isFinite(time) && time < 2000 && /\s-\s|[（(].+[）)]/.test(text);
+}
+
+function getCompactStartIndex(rows, lineCount) {
+    const textRows = rows.filter(row => row.text);
+    const missingCount = textRows.length - lineCount;
+    if (missingCount <= 0) return 0;
+
+    let start = 0;
+    while (start < missingCount && isLikelyKrcPreludeLine(textRows[start], start)) start += 1;
+    return start === missingCount ? start : 0;
+}
+
+function buildLanguageLrcLines(rows, languageLines) {
+    if (!Array.isArray(languageLines) || !languageLines.length) return [];
+
+    const textRows = rows.filter(row => row.text);
+    const compactLines = languageLines.filter(Boolean);
+    const useDirectIndex = languageLines.length >= rows.length;
+    const compactStart = useDirectIndex ? 0 : getCompactStartIndex(rows, compactLines.length);
+    let compactIndex = 0;
+
+    return textRows
+        .map((row, textRowIndex) => {
+            const text = useDirectIndex
+                ? languageLines[row.index]
+                : (textRowIndex >= compactStart ? compactLines[compactIndex++] : '');
+            return text ? `${formatLrcTime(row.time)}${text}` : '';
+        })
+        .filter(Boolean);
 }
 
 function hasCjkText(lines) {
@@ -100,18 +139,19 @@ function getKrcLanguageTracks(krcText) {
 }
 
 function parseKrcRows(krcText) {
-    return String(krcText || '')
-        .split(regNewLine)
-        .map(line => {
-            const match = line.match(krcTimeLine);
-            if (!match) return null;
+    const rows = [];
+    for (const line of String(krcText || '').split(regNewLine)) {
+        const match = line.match(krcTimeLine);
+        if (!match) continue;
 
-            return {
-                time: Number(match[1]) || 0,
-                text: normalizeKrcText(match[3]),
-            };
-        })
-        .filter(Boolean);
+        rows.push({
+            index: rows.length,
+            time: Number(match[1]) || 0,
+            text: normalizeKrcText(match[3]),
+        });
+    }
+
+    return rows;
 }
 
 export function normalizeKugouKrcLyric(krcText) {
@@ -125,18 +165,8 @@ export function normalizeKugouKrcLyric(krcText) {
         .filter(row => row.text)
         .map(row => `${formatLrcTime(row.time)}${row.text}`);
     const { romanizedLines, translatedLines: languageLines } = getKrcLanguageTracks(krcText);
-    const translatedLines = rows
-        .map((row, index) => {
-            const text = languageLines[index];
-            return text ? `${formatLrcTime(row.time)}${text}` : '';
-        })
-        .filter(Boolean);
-    const romanizedLrcLines = rows
-        .map((row, index) => {
-            const text = romanizedLines[index];
-            return text ? `${formatLrcTime(row.time)}${text}` : '';
-        })
-        .filter(Boolean);
+    const translatedLines = buildLanguageLrcLines(rows, languageLines);
+    const romanizedLrcLines = buildLanguageLrcLines(rows, romanizedLines);
 
     return {
         originalLyricText: [...metadataLines, ...originalLines].join('\n'),
