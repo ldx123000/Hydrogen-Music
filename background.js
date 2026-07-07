@@ -54,7 +54,7 @@ const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
     socket.once("error", () => settle(false));
   });
 
-const createSplashWindow = () => {
+const createSplashWindow = async () => {
   if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
 
   const win = new BrowserWindow({
@@ -76,15 +76,17 @@ const createSplashWindow = () => {
   });
 
   splashWindow = win;
-  win.once("ready-to-show", () => {
-    if (!win.isDestroyed()) win.show();
-  });
   win.on("closed", () => {
     if (splashWindow === win) splashWindow = null;
   });
-  win
-    .loadFile(path.join(__dirname, "splash.html"))
-    .catch((error) => console.error("Splash load failed:", error));
+
+  try {
+    await win.loadFile(path.join(__dirname, "splash.html"));
+  } catch (error) {
+    console.error("Splash load failed:", error);
+  }
+
+  if (!win.isDestroyed()) win.show();
 
   return win;
 };
@@ -144,7 +146,7 @@ if (!gotTheLock) {
     process.on("uncaughtException", (err) => {
       console.error("Unhandled exception captured:", err);
     });
-    createSplashWindow();
+    await createSplashWindow();
     // ponytail: 启动时只探测一次 dev server；若后续再启动 Vite，需要把这里升级成按次重试或显式开发开关。
     hasDevServer = !app.isPackaged && (await isDevServerReachable());
     // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
