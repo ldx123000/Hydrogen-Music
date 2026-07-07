@@ -51,6 +51,17 @@ const bracketTimeline = buildLyricsTimeline({
 });
 assert.equal(bracketTimeline[0]?.lyric, 'Keep [all] lyric text');
 
+const kanaMetadataTimeline = buildLyricsTimeline({
+    lrc: { lyric: '[kana:11111なつ(924,598)]\n[00:01.00]Actual lyric' },
+});
+assert.equal(kanaMetadataTimeline.some(row => String(row.lyric || '').startsWith('[kana:')), false);
+assert.equal(kanaMetadataTimeline[0]?.lyric, 'Actual lyric');
+
+const pureTextKanaMetadataTimeline = buildLyricsTimeline({
+    lrc: { lyric: '[kana:11111なつ(924,598)]\nPlain lyric' },
+});
+assert.equal(pureTextKanaMetadataTimeline[0]?.lyric, 'Plain lyric');
+
 const longRomanizedLanguage = Buffer.from(JSON.stringify({
     content: [
         {
