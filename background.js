@@ -34,6 +34,7 @@ let lyricWindow = null;
 let forceQuit = false;
 const MAIN_WINDOW_MIN_WIDTH = 1080;
 const MAIN_WINDOW_MIN_HEIGHT = 672;
+let splashWindow = null;
 // 由 createWindow() 内部赋值，供 app.whenReady() 在 API 就绪后调用
 let loadMainContentRef = null;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
@@ -52,6 +53,56 @@ const isDevServerReachable = (port = 5173, host = "127.0.0.1") =>
     socket.once("timeout", () => settle(false));
     socket.once("error", () => settle(false));
   });
+
+const createSplashWindow = () => {
+  if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
+
+  const win = new BrowserWindow({
+    width: 360,
+    height: 240,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    frame: false,
+    show: false,
+    center: true,
+    skipTaskbar: true,
+    backgroundColor: "#f7f9fc",
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  splashWindow = win;
+  win.once("ready-to-show", () => {
+    if (!win.isDestroyed()) win.show();
+  });
+  win.on("closed", () => {
+    if (splashWindow === win) splashWindow = null;
+  });
+  win
+    .loadFile(path.join(__dirname, "splash.html"))
+    .catch((error) => console.error("Splash load failed:", error));
+
+  return win;
+};
+
+const setSplashStatus = (status) => {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  splashWindow.webContents
+    .executeJavaScript(
+      `window.setSplashStatus && window.setSplashStatus(${JSON.stringify(status)})`,
+    )
+    .catch(() => {});
+};
+
+const closeSplashWindow = () => {
+  const win = splashWindow;
+  splashWindow = null;
+  if (win && !win.isDestroyed()) win.close();
+};
 //electron单例
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -93,6 +144,7 @@ if (!gotTheLock) {
     process.on("uncaughtException", (err) => {
       console.error("Unhandled exception captured:", err);
     });
+    createSplashWindow();
     // ponytail: 启动时只探测一次 dev server；若后续再启动 Vite，需要把这里升级成按次重试或显式开发开关。
     hasDevServer = !app.isPackaged && (await isDevServerReachable());
     // 先创建窗口结构（窗口初始为隐藏），让用户能尽快看到界面
@@ -173,9 +225,11 @@ if (!gotTheLock) {
         : { ready: true };
     if (payload.ready) {
       console.log("KuGou API ready");
+      setSplashStatus("正在加载播放器...");
       if (typeof loadMainContentRef === "function") loadMainContentRef();
     } else {
       console.warn("KuGou API not ready:", payload.error || "unknown error");
+      setSplashStatus("正在加载播放器...");
       // 即使 API 启动失败，也要加载前端内容让用户能操作（部分功能可能受限）
       if (typeof loadMainContentRef === "function") loadMainContentRef();
       // 将详细的 API 错误信息发送到渲染进程，便于诊断
@@ -391,6 +445,7 @@ const createWindow = () => {
     if (!win || win.isDestroyed() || hasShownMainWindow) return;
     hasShownMainWindow = true;
     win.show();
+    closeSplashWindow();
     // 微调 macOS 交通灯位置以匹配自定义布局高度
     try {
       if (isMac && typeof win.setTrafficLightPosition === "function") {
