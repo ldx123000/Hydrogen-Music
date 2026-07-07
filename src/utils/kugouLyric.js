@@ -66,9 +66,10 @@ function getCompactStartIndex(rows, lineCount) {
     return start === missingCount ? start : 0;
 }
 
-function buildLanguageLrcLines(rows, languageLines) {
+function buildLanguageLrcLines(rows, languageLines, options = {}) {
     if (!Array.isArray(languageLines) || !languageLines.length) return [];
 
+    const compactRowFilter = typeof options.compactRowFilter === 'function' ? options.compactRowFilter : null;
     const textRows = rows.filter(row => row.text);
     const compactLines = languageLines.filter(Boolean);
     const useDirectIndex = languageLines.length >= rows.length;
@@ -77,6 +78,12 @@ function buildLanguageLrcLines(rows, languageLines) {
 
     return textRows
         .map((row, textRowIndex) => {
+            if (!useDirectIndex && compactRowFilter && (
+                isLikelyKrcPreludeLine(row, textRowIndex) || !compactRowFilter(row)
+            )) {
+                return '';
+            }
+
             const text = useDirectIndex
                 ? languageLines[row.index]
                 : (textRowIndex >= compactStart ? compactLines[compactIndex++] : '');
@@ -87,6 +94,26 @@ function buildLanguageLrcLines(rows, languageLines) {
 
 function hasCjkText(lines) {
     return lines.some(line => /[\u3400-\u9FFF\uF900-\uFAFF]/.test(line));
+}
+
+function isRomanizableLyricLine(row) {
+    const text = String(row?.text || '');
+    // ponytail: compact romanized tracks only consume CJK/kana/hangul lines; add script ranges here if Kugou romanizes more scripts.
+    return /[\u3040-\u30FF\u3400-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]/.test(text);
+}
+
+function shouldUseRomanizableCompactRows(rows, languageLines) {
+    const compactLineCount = Array.isArray(languageLines) ? languageLines.filter(Boolean).length : 0;
+    if (!compactLineCount || languageLines.length >= rows.length) return false;
+
+    const contentRows = rows
+        .filter(row => row.text)
+        .filter((row, index) => !isLikelyKrcPreludeLine(row, index));
+    const romanizableCount = contentRows.filter(isRomanizableLyricLine).length;
+
+    return romanizableCount > 0
+        && romanizableCount < contentRows.length
+        && compactLineCount <= romanizableCount;
 }
 
 function getKrcLanguageTracks(krcText) {
@@ -165,8 +192,12 @@ export function normalizeKugouKrcLyric(krcText) {
         .filter(row => row.text)
         .map(row => `${formatLrcTime(row.time)}${row.text}`);
     const { romanizedLines, translatedLines: languageLines } = getKrcLanguageTracks(krcText);
-    const translatedLines = buildLanguageLrcLines(rows, languageLines);
-    const romanizedLrcLines = buildLanguageLrcLines(rows, romanizedLines);
+    const translatedLines = buildLanguageLrcLines(rows, languageLines, {
+        compactRowFilter: shouldUseRomanizableCompactRows(rows, languageLines) ? isRomanizableLyricLine : null,
+    });
+    const romanizedLrcLines = buildLanguageLrcLines(rows, romanizedLines, {
+        compactRowFilter: isRomanizableLyricLine,
+    });
 
     return {
         originalLyricText: [...metadataLines, ...originalLines].join('\n'),

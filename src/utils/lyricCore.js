@@ -31,6 +31,11 @@ function isCreditLyricLine(text) {
     return lyricCreditLine.test(normalized);
 }
 
+function isRomanizableLyricText(text) {
+    // ponytail: romaji/pinyin tracks only fall back by order for CJK/kana/hangul originals; add script ranges if providers expand.
+    return /[\u3040-\u30FF\u3400-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]/.test(String(text || ''));
+}
+
 function normalizePreludeCredits(rows) {
     if (!Array.isArray(rows) || rows.length === 0) return [];
 
@@ -274,12 +279,14 @@ function findOrderedFallbackMatch(lines, orderIndex, referenceLength, usedIndexe
     };
 }
 
-function resolveSupplementalLine(lines, targetTime, orderIndex, referenceLength, usedIndexes, matchWindow) {
+function resolveSupplementalLine(lines, targetTime, orderIndex, referenceLength, usedIndexes, matchWindow, allowOrderedFallback = true) {
     const timedMatch = findNearestLineMatch(lines, targetTime, matchWindow, usedIndexes);
     if (timedMatch) {
         if (usedIndexes) usedIndexes.add(timedMatch.index);
         return timedMatch.line;
     }
+
+    if (!allowOrderedFallback) return null;
 
     const firstLineTime = Number(lines?.[0]?.time);
     const lastLineTime = Number(lines?.[lines.length - 1]?.time);
@@ -313,32 +320,45 @@ function buildOnlineTimeline(originalLyricText, translatedLyricText, romanizedLy
     const translatedUsedIndexes = new Set();
     const romanizedUsedIndexes = new Set();
     const matchableOriginalCount = originalLines.filter(item => !isCreditLyricLine(item.text)).length;
+    const romanizableOriginalCount = originalLines.filter(item => !isCreditLyricLine(item.text) && isRomanizableLyricText(item.text)).length;
+    const translationPrefersRomanizableRows = romanizableOriginalCount > 0
+        && romanizableOriginalCount < matchableOriginalCount
+        && translatedContentLines.length <= romanizableOriginalCount;
     let matchableOriginalIndex = 0;
+    let translatableOriginalIndex = 0;
+    let romanizableOriginalIndex = 0;
 
     for (let index = 0; index < originalLines.length; index++) {
         const item = originalLines[index];
         const row = { lyric: item.text, tlyric: '', rlyric: '', time: item.time };
         if (!isCreditLyricLine(item.text)) {
             const matchWindow = getAdaptiveMatchWindow(originalLines, index);
+            const isRomanizable = isRomanizableLyricText(item.text);
+            const useRomanizableTranslationOrder = translationPrefersRomanizableRows && isRomanizable;
             const translated = resolveSupplementalLine(
                 translatedContentLines,
                 item.time,
-                matchableOriginalIndex,
-                matchableOriginalCount,
+                translationPrefersRomanizableRows ? translatableOriginalIndex : matchableOriginalIndex,
+                translationPrefersRomanizableRows ? romanizableOriginalCount : matchableOriginalCount,
                 translatedUsedIndexes,
-                matchWindow
+                matchWindow,
+                !translationPrefersRomanizableRows || useRomanizableTranslationOrder
             );
             if (translated && translated.text) row.tlyric = translated.text;
+            if (useRomanizableTranslationOrder) translatableOriginalIndex += 1;
 
-            const romanized = resolveSupplementalLine(
-                romanizedContentLines,
-                item.time,
-                matchableOriginalIndex,
-                matchableOriginalCount,
-                romanizedUsedIndexes,
-                matchWindow
-            );
-            if (romanized && romanized.text) row.rlyric = romanized.text;
+            if (isRomanizable) {
+                const romanized = resolveSupplementalLine(
+                    romanizedContentLines,
+                    item.time,
+                    romanizableOriginalIndex,
+                    romanizableOriginalCount,
+                    romanizedUsedIndexes,
+                    matchWindow
+                );
+                if (romanized && romanized.text) row.rlyric = romanized.text;
+                romanizableOriginalIndex += 1;
+            }
 
             matchableOriginalIndex += 1;
         }
