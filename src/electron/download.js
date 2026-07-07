@@ -460,7 +460,7 @@ function buildSynchronisedLyricsFrames(lyricPayload) {
         if (!raw) continue
         const tags = Array.from(raw.matchAll(timeTag))
         if (!tags || tags.length === 0) continue
-        const lyricText = raw.split(']').pop().trim()
+        const lyricText = raw.replace(timeTag, '').trim()
         if (!lyricText) continue
         for (const m of tags) {
           const mm = parseInt(m[1] || '0', 10)
