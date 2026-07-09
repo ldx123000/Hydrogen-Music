@@ -10,7 +10,7 @@ import { noticeOpen } from "./dialog";
 const libraryStore = useLibraryStore(pinia)
 
 const request = axios.create({
-    baseURL: 'http://localhost:36530',
+    baseURL: 'http://127.0.0.1:36530',
     withCredentials: true,
     timeout: 20000,
 });
