@@ -2,13 +2,14 @@ const { app } = require("electron");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const { Worker } = require("worker_threads");
 
 const API_PORT = 36530;
 const API_READY_TIMEOUT_MS = 12000;
 const API_READY_POLL_INTERVAL_MS = 150;
 const API_READY_SETTLE_DELAY_MS = 250;
 
-let kugouApiServer = null;
+let kugouApiWorker = null;
 let kugouApiStartupPromise = null;
 
 function delay(ms) {
@@ -71,44 +72,19 @@ function resolveBackendModule() {
 }
 
 function stopKugouMusicApi() {
-  if (!kugouApiServer) return;
+  if (!kugouApiWorker) return;
 
-  const server = kugouApiServer;
-  kugouApiServer = null;
+  const worker = kugouApiWorker;
+  kugouApiWorker = null;
 
   try {
-    server.close();
+    worker.postMessage({ type: "stop" });
   } catch (_) {}
-}
 
-function waitForServerListening(server, timeoutMs = 4000) {
-  if (!server || server.listening) return Promise.resolve();
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("kugou-api-listen-timeout"));
-    }, timeoutMs);
-
-    const cleanup = () => {
-      clearTimeout(timer);
-      server.off("listening", onListening);
-      server.off("error", onError);
-    };
-
-    const onListening = () => {
-      cleanup();
-      resolve();
-    };
-
-    const onError = (error) => {
-      cleanup();
-      reject(error);
-    };
-
-    server.once("listening", onListening);
-    server.once("error", onError);
-  });
+  const timer = setTimeout(() => {
+    worker.terminate().catch(() => {});
+  }, 1000);
+  if (typeof timer.unref === "function") timer.unref();
 }
 
 function probeServer(url, timeoutMs = 1000) {
@@ -195,6 +171,73 @@ async function waitForApiReachable(
   throw lastError || new Error("kugou-api-unreachable");
 }
 
+function startKugouApiWorker(backendModule) {
+  const worker = new Worker(path.join(__dirname, "kugouApiWorker.js"), {
+    workerData: {
+      entry: backendModule.entry,
+      port: API_PORT,
+      host: "127.0.0.1",
+      platform: process.env.platform || "lite",
+    },
+  });
+
+  kugouApiWorker = worker;
+
+  worker.on("message", (message) => {
+    if (!message || typeof message !== "object") return;
+    if (message.type === "log") console.log("[KuGou API]", message.text);
+    if (message.type === "warn") console.warn("[KuGou API]", message.text);
+    if (message.type === "error") {
+      console.error("[KuGou API worker]", message.error || "unknown error");
+    }
+  });
+
+  worker.once("exit", (code) => {
+    if (kugouApiWorker === worker) kugouApiWorker = null;
+    if (code !== 0) {
+      console.warn("KuGou API worker exited unexpectedly:", code);
+    }
+  });
+
+  worker.once("error", (error) => {
+    if (kugouApiWorker === worker) kugouApiWorker = null;
+    console.error("KuGou API worker failed:", error);
+  });
+
+  return worker;
+}
+
+function watchWorkerFailure(worker) {
+  let cleanup = () => {};
+  const promise = new Promise((_, reject) => {
+    const fail = (error) => {
+      cleanup();
+      reject(error);
+    };
+    cleanup = () => {
+      worker.off("message", onMessage);
+      worker.off("error", onError);
+      worker.off("exit", onExit);
+    };
+    const onMessage = (message) => {
+      if (!message || message.type !== "error") return;
+      fail(new Error(message.error || "kugou-api-worker-error"));
+    };
+    const onError = (error) => {
+      fail(error);
+    };
+    const onExit = (code) => {
+      fail(new Error(`kugou-api-worker-exit-${code}`));
+    };
+
+    worker.on("message", onMessage);
+    worker.once("error", onError);
+    worker.once("exit", onExit);
+  });
+
+  return { promise, cleanup };
+}
+
 async function startKugouMusicApi() {
   if (kugouApiStartupPromise) {
     return kugouApiStartupPromise;
@@ -263,19 +306,18 @@ async function startKugouMusicApi() {
     console.log("KuGou API module target:", backendModule.label);
 
     try {
-      process.env.platform = process.env.platform || "lite";
-      process.env.PORT = String(API_PORT);
-      process.env.HOST = "127.0.0.1";
-
-      const kugouApi = require(backendModule.entry);
-      if (!kugouApi || typeof kugouApi.startService !== "function") {
-        throw new Error("kugou-api-startService-not-found");
+      // ponytail: keep the backend in-process for firewall behavior; if backend CPU
+      // work grows, upgrade this worker to utilityProcess.
+      const worker = startKugouApiWorker(backendModule);
+      const workerFailure = watchWorkerFailure(worker);
+      try {
+        await Promise.race([
+          waitForApiReachable(readyUrl),
+          workerFailure.promise,
+        ]);
+      } finally {
+        workerFailure.cleanup();
       }
-
-      const appExt = await kugouApi.startService();
-      kugouApiServer = appExt && appExt.service;
-      await waitForServerListening(kugouApiServer);
-      await waitForApiReachable(readyUrl);
       await delay(API_READY_SETTLE_DELAY_MS);
       return { ready: true, started: true };
     } catch (error) {
@@ -293,11 +335,11 @@ async function startKugouMusicApi() {
 }
 
 function getKugouMusicApiServer() {
-  return kugouApiServer;
+  return kugouApiWorker;
 }
 
 function getKugouMusicApiProcess() {
-  return kugouApiServer;
+  return kugouApiWorker;
 }
 
 module.exports = {
