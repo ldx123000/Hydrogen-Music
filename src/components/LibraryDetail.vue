@@ -718,13 +718,13 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                     <div class="library-search-empty" v-if="showSongSearchEmpty">
                         <span class="empty-title">{{ songSearchEmptyTitle }}</span>
                     </div>
-                    <LibraryAlbumList v-else :albumlist="visibleArtistAlbums" class="library-content3"></LibraryAlbumList>
+                    <LibraryAlbumList v-else id="libraryScroll" :albumlist="visibleArtistAlbums" class="library-content3"></LibraryAlbumList>
                 </template>
                 <template v-else-if="artistPageType == 2">
                     <div class="library-search-empty" v-if="showSongSearchEmpty">
                         <span class="empty-title">{{ songSearchEmptyTitle }}</span>
                     </div>
-                    <LibraryMVList v-else :mvlist="visibleArtistMVs" class="library-content3"></LibraryMVList>
+                    <LibraryMVList v-else id="libraryScroll" :mvlist="visibleArtistMVs" class="library-content3"></LibraryMVList>
                 </template>
             </div>
         </div>
@@ -1132,10 +1132,17 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
         flex: 1;
         min-height: 0;
     }
-    .library-content,
-    .library-content3 {
+    .library-content {
         height: 100%;
         overflow: hidden;
+    }
+    .library-content3 {
+        height: 100%;
+        min-height: 0;
+        overflow: auto;
+        &::-webkit-scrollbar {
+            display: none;
+        }
     }
     .library-search-empty {
         height: 100%;
