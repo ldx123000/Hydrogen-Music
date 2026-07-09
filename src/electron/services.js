@@ -8,6 +8,7 @@ const API_PORT = 36530;
 const API_READY_TIMEOUT_MS = 12000;
 const API_READY_POLL_INTERVAL_MS = 150;
 const API_READY_SETTLE_DELAY_MS = 250;
+const API_WORKER_READY_TIMEOUT_MS = 45000;
 
 let kugouApiWorker = null;
 let kugouApiStartupPromise = null;
@@ -207,35 +208,42 @@ function startKugouApiWorker(backendModule) {
   return worker;
 }
 
-function watchWorkerFailure(worker) {
-  let cleanup = () => {};
-  const promise = new Promise((_, reject) => {
-    const fail = (error) => {
+function waitForWorkerReady(worker, timeoutMs = API_WORKER_READY_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    let cleanup = () => {};
+    const timer = setTimeout(() => {
       cleanup();
-      reject(error);
-    };
+      reject(new Error("kugou-api-worker-ready-timeout"));
+    }, timeoutMs);
     cleanup = () => {
+      clearTimeout(timer);
       worker.off("message", onMessage);
       worker.off("error", onError);
       worker.off("exit", onExit);
     };
     const onMessage = (message) => {
-      if (!message || message.type !== "error") return;
-      fail(new Error(message.error || "kugou-api-worker-error"));
+      if (!message || typeof message !== "object") return;
+      if (message.type === "ready") {
+        cleanup();
+        resolve();
+      } else if (message.type === "error") {
+        cleanup();
+        reject(new Error(message.error || "kugou-api-worker-error"));
+      }
     };
     const onError = (error) => {
-      fail(error);
+      cleanup();
+      reject(error);
     };
     const onExit = (code) => {
-      fail(new Error(`kugou-api-worker-exit-${code}`));
+      cleanup();
+      reject(new Error(`kugou-api-worker-exit-${code}`));
     };
 
     worker.on("message", onMessage);
     worker.once("error", onError);
     worker.once("exit", onExit);
   });
-
-  return { promise, cleanup };
 }
 
 async function startKugouMusicApi() {
@@ -309,15 +317,8 @@ async function startKugouMusicApi() {
       // ponytail: keep the backend in-process for firewall behavior; if backend CPU
       // work grows, upgrade this worker to utilityProcess.
       const worker = startKugouApiWorker(backendModule);
-      const workerFailure = watchWorkerFailure(worker);
-      try {
-        await Promise.race([
-          waitForApiReachable(readyUrl),
-          workerFailure.promise,
-        ]);
-      } finally {
-        workerFailure.cleanup();
-      }
+      await waitForWorkerReady(worker);
+      await waitForApiReachable(readyUrl);
       await delay(API_READY_SETTLE_DELAY_MS);
       return { ready: true, started: true };
     } catch (error) {
@@ -355,4 +356,5 @@ module.exports = {
   API_READY_TIMEOUT_MS,
   API_READY_POLL_INTERVAL_MS,
   API_READY_SETTLE_DELAY_MS,
+  API_WORKER_READY_TIMEOUT_MS,
 };
