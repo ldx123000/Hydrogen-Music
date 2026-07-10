@@ -2,7 +2,7 @@ const regNewLine = /\r?\n/;
 const krcTimeLine = /^\[(\d+),(\d+)\](.*)$/;
 const languageTag = /^\[language:([^\]]+)\]\s*$/m;
 const wordTimeTag = /<-?\d+(?:\s*,\s*-?\d+)+\s*>/g;
-const lyricCreditLine = /^(?:作词|作曲|编曲|词|曲|制作人|监制|混音|母带|录音|和声|人声编辑|吉他|贝斯|鼓|弦乐|program(?:ming)?|producer|arranger|composer|lyricist|lyrics?|written by|music|vocal|mix(?:ed)?(?: by)?|master(?:ed)?(?: by)?)\s*[:：]/i;
+const lyricCreditLine = /^(?:作词|作曲|编曲|词|曲|制作人|监制|混音|母带|录音|和声|人声编辑|吉他|贝斯|鼓|弦乐|program(?:ming)?|producer|produced|arranger|arranged|composer|composed|lyricist|lyrics?|written|music|vocal|mix(?:ed)?|master(?:ed)?)\s*(?:by\s*)?[:：]/i;
 
 function decodeBase64Utf8(value) {
     const text = String(value || '').trim();
