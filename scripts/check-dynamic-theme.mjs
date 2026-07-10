@@ -27,6 +27,24 @@ const paletteDistance = Math.abs(mixedPalette.hue - mixedPalette.secondaryHue);
 assert.ok(Math.min(paletteDistance, 360 - paletteDistance) >= 35);
 assert.ok(Math.abs(mixedPalette.primaryX - mixedPalette.secondaryX) >= 20);
 
+const visualCoverPixels = [
+  ...Array.from({ length: 80 }, () => [234, 117, 157, 255]).flat(),
+  ...Array.from({ length: 80 }, () => [120, 183, 235, 255]).flat(),
+  ...Array.from({ length: 8 }, () => [250, 220, 20, 255]).flat(),
+  ...Array.from({ length: 8 }, () => [142, 44, 190, 255]).flat(),
+];
+const visualCoverPalette = getDynamicPalette({
+  data: new Uint8ClampedArray(visualCoverPixels),
+  width: 22,
+  height: 8,
+});
+const isPinkOrBlue = (hue) => [207, 343].some((expected) => {
+  const distance = Math.abs(hue - expected);
+  return Math.min(distance, 360 - distance) <= 24;
+});
+assert.ok(isPinkOrBlue(visualCoverPalette.hue));
+assert.ok(isPinkOrBlue(visualCoverPalette.secondaryHue));
+
 assert.deepEqual(getThemePaletteFromColor("#ff0000"), {
   hue: 0,
   saturation: 85,

@@ -134,9 +134,8 @@ export function getDynamicPalette(imageData) {
     if (saturation < 0.12) continue;
 
     const exposure = Math.min(lightness, 1 - lightness) * 2;
-    const weight = saturation * (0.25 + exposure);
-    if (weight <= 0) continue;
-    chromaticCoverage += saturation;
+    const weight = 0.2 + saturation * 0.45 + exposure * 0.35;
+    chromaticCoverage += 1;
 
     const key = `${Math.floor(hue / 24)}:${Math.floor(lightness * 4)}`;
     const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, x: 0, y: 0, weight: 0 };
@@ -169,10 +168,13 @@ export function getDynamicPalette(imageData) {
   const primary = colors[0];
   const secondary = colors
     .slice(1)
-    .filter((color) => hueDistance(primary.hue, color.hue) >= 35)
+    .filter((color) => (
+      hueDistance(primary.hue, color.hue) >= 35
+      && color.weight >= primary.weight * 0.12
+    ))
     .sort((first, second) => {
-      const firstScore = first.weight * (0.4 + hueDistance(primary.hue, first.hue) / 180);
-      const secondScore = second.weight * (0.4 + hueDistance(primary.hue, second.hue) / 180);
+      const firstScore = first.weight * (0.85 + hueDistance(primary.hue, first.hue) / 720);
+      const secondScore = second.weight * (0.85 + hueDistance(primary.hue, second.hue) / 720);
       return secondScore - firstScore;
     })[0];
 

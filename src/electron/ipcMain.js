@@ -156,9 +156,9 @@ function getCoverThemePalette(data, width, height) {
     else hue = (r - g) / chroma + 4;
     hue = (hue * 60 + 360) % 360;
 
-    const weight = saturation * (0.25 + Math.min(lightness, 1 - lightness) * 2);
-    if (weight <= 0) continue;
-    chromaticCoverage += saturation;
+    const exposure = Math.min(lightness, 1 - lightness) * 2;
+    const weight = 0.2 + saturation * 0.45 + exposure * 0.35;
+    chromaticCoverage += 1;
 
     const key = `${Math.floor(hue / 24)}:${Math.floor(lightness * 4)}`;
     const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, x: 0, y: 0, weight: 0 };
@@ -203,10 +203,13 @@ function getCoverThemePalette(data, width, height) {
   const distance = (first, second) => Math.min(Math.abs(first - second), 360 - Math.abs(first - second));
   const secondary = colors
     .slice(1)
-    .filter((color) => distance(primary.hue, color.hue) >= 35)
+    .filter((color) => (
+      distance(primary.hue, color.hue) >= 35
+      && color.weight >= primary.weight * 0.12
+    ))
     .sort((first, second) => {
-      const firstScore = first.weight * (0.4 + distance(primary.hue, first.hue) / 180);
-      const secondScore = second.weight * (0.4 + distance(primary.hue, second.hue) / 180);
+      const firstScore = first.weight * (0.85 + distance(primary.hue, first.hue) / 720);
+      const secondScore = second.weight * (0.85 + distance(primary.hue, second.hue) / 720);
       return secondScore - firstScore;
     })[0];
 
