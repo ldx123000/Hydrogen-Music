@@ -155,4 +155,33 @@ const compactTimeline = buildLyricsTimeline({
 assert.equal(compactTimeline.find(row => row.lyric === 'Hello')?.tlyric, '你好');
 assert.equal(compactTimeline.find(row => row.lyric === 'World')?.tlyric, '世界');
 
+const englishCreditLanguage = Buffer.from(JSON.stringify({
+    content: [
+        {
+            lyricContent: [['我抱着一线希望'], ['听懂了你的言意']],
+            type: 1,
+            language: 0,
+        },
+    ],
+    version: 1,
+})).toString('base64');
+
+const englishCreditResult = normalizeKugouKrcLyric([
+    `[language:${englishCreditLanguage}]`,
+    '[0,400]<0,400,0>Timbaland / OneRepublic - Apologize',
+    '[500,400]<0,400,0>Lyrics by: Ryan Tedder',
+    '[1000,400]<0,400,0>Composed by: Ryan Tedder',
+    '[1500,400]<0,400,0>Arranged by: OneRepublic',
+    '[2000,400]<0,400,0>Produced by: Greg Wells',
+    "[2500,500]<0,500,0>I'm holding on your rope",
+    "[3500,500]<0,500,0>And I'm hearing what you say",
+].join('\n'));
+const englishCreditTimeline = buildLyricsTimeline({
+    lrc: { lyric: englishCreditResult.originalLyricText },
+    tlyric: { lyric: englishCreditResult.translatedLyricText },
+});
+assert.equal(englishCreditTimeline.find(row => row.lyric === 'Lyrics by: Ryan Tedder')?.tlyric, '');
+assert.equal(englishCreditTimeline.find(row => row.lyric === "I'm holding on your rope")?.tlyric, '我抱着一线希望');
+assert.equal(englishCreditTimeline.find(row => row.lyric === "And I'm hearing what you say")?.tlyric, '听懂了你的言意');
+
 console.log('kugou lyric parser ok');
