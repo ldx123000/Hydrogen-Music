@@ -141,12 +141,12 @@ export const useLibraryStore = defineStore('libraryStore', {
         updateUserPlaylist(playlist) {
             if (playlist.length > 0 && playlist[0].is_mine !== undefined) {
                 this.playlistUserCreated = sortCreatedPlaylistsBySort(playlist.filter(p => p.is_mine === 1))
-                this.playlistUserSub = playlist.filter(p => p.is_mine === 0)
+                this.playlistUserSub = playlist.filter(p => p.is_mine === 0).reverse()
             } else {
                 this.playlistUserCreated = sortCreatedPlaylistsBySort(
                     playlist.splice(0, this.playlistCount?.createdPlaylistCount ?? playlist.length)
                 )
-                this.playlistUserSub = playlist.splice(0, this.playlistCount?.subPlaylistCount ?? playlist.length)
+                this.playlistUserSub = playlist.splice(0, this.playlistCount?.subPlaylistCount ?? playlist.length).reverse()
             }
         },
         resetPlaylistHydration() {

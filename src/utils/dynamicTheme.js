@@ -1,11 +1,14 @@
 const THEME_CLASS = "dynamic-theme";
+const THEME_SATURATION_SCALE = 85;
 const THEME_VARIABLES = [
   "--ambient-hue",
   "--ambient-saturation",
   "--ambient-hue-secondary",
   "--ambient-saturation-secondary",
+  "--ambient-secondary-strength",
   "--ambient-hue-tertiary",
   "--ambient-saturation-tertiary",
+  "--ambient-tertiary-strength",
   "--ambient-primary-x",
   "--ambient-primary-y",
   "--ambient-secondary-x",
@@ -33,7 +36,7 @@ export function rgbToHsl(red, green, blue) {
   const lightness = (max + min) / 2;
   const chroma = max - min;
 
-  if (chroma === 0) return { hue: 0, saturation: 0, lightness };
+  if (chroma === 0) return { hue: 0, saturation: 0, lightness, chroma };
 
   let hue;
   if (max === r) hue = ((g - b) / chroma) % 6;
@@ -44,6 +47,7 @@ export function rgbToHsl(red, green, blue) {
     hue: (hue * 60 + 360) % 360,
     saturation: chroma / (1 - Math.abs(2 * lightness - 1)),
     lightness,
+    chroma,
   };
 }
 
@@ -52,7 +56,7 @@ function createThemeColor(red, green, blue) {
   if (saturation < 0.12) return { hue: 210, saturation: 0 };
   return {
     hue: Math.round(hue),
-    saturation: clamp(Math.round(saturation * 85), 28, 85),
+    saturation: Math.round(saturation * THEME_SATURATION_SCALE),
   };
 }
 
@@ -116,10 +120,12 @@ function createSpatialPalette(primary, secondary, tertiary) {
   return {
     hue: primary.hue,
     saturation: primary.saturation,
-    secondaryHue: secondary?.hue ?? (primary.hue + 48) % 360,
+    secondaryHue: secondary?.hue ?? primary.hue,
     secondarySaturation: secondary?.saturation ?? primary.saturation,
-    tertiaryHue: tertiary?.hue ?? secondary?.hue ?? primary.hue,
-    tertiarySaturation: tertiary?.saturation ?? secondary?.saturation ?? primary.saturation,
+    secondaryStrength: secondary ? clamp(secondary.weight / primary.weight, 0, 1) : 0,
+    tertiaryHue: tertiary?.hue ?? primary.hue,
+    tertiarySaturation: tertiary?.saturation ?? primary.saturation,
+    tertiaryStrength: tertiary ? clamp(tertiary.weight / primary.weight, 0, 1) : 0,
     primaryX,
     primaryY,
     secondaryX,
@@ -144,12 +150,13 @@ export function getDynamicPalette(imageData) {
     if (data[index + 3] < 192) continue;
     pixelCount += 1;
 
-    const { hue, saturation, lightness } = rgbToHsl(
+    const { hue, saturation, lightness, chroma } = rgbToHsl(
       data[index],
       data[index + 1],
       data[index + 2],
     );
-    if (saturation < 0.12) continue;
+    // ponytail: absolute chroma filters near-black/white channel noise; use OKLCH if perceptual matching is needed.
+    if (saturation < 0.12 || chroma < 0.08) continue;
 
     const exposure = Math.min(lightness, 1 - lightness) * 2;
     const weight = 0.2 + saturation * 0.45 + exposure * 0.35;
@@ -239,6 +246,27 @@ export function getThemePaletteFromColor(color) {
   };
 }
 
+function hslToHex(hue, saturation, lightness = 0.5) {
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const sector = ((hue % 360) + 360) % 360 / 60;
+  const x = chroma * (1 - Math.abs(sector % 2 - 1));
+  const [red, green, blue] = sector < 1 ? [chroma, x, 0]
+    : sector < 2 ? [x, chroma, 0]
+      : sector < 3 ? [0, chroma, x]
+        : sector < 4 ? [0, x, chroma]
+          : sector < 5 ? [x, 0, chroma]
+            : [chroma, 0, x];
+  const toHex = (channel) => Math.round((channel + lightness - chroma / 2) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
+}
+
+export function getThemeColorFromPalette({ hue, saturation } = {}) {
+  if (!Number.isFinite(hue) || !Number.isFinite(saturation)) return null;
+  return hslToHex(hue, clamp(saturation / THEME_SATURATION_SCALE, 0, 1));
+}
+
 function loadImage(source) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -269,13 +297,20 @@ async function extractDynamicPalette(source) {
   return getDynamicPalette(context.getImageData(0, 0, canvas.width, canvas.height));
 }
 
+export async function getDynamicThemeColor(source) {
+  if (!source) return null;
+  return getThemeColorFromPalette(await extractDynamicPalette(source));
+}
+
 function applyPalette({
   hue,
   saturation,
   secondaryHue,
   secondarySaturation,
+  secondaryStrength = 1,
   tertiaryHue,
   tertiarySaturation,
+  tertiaryStrength = 1,
   primaryX = 12,
   primaryY = 8,
   secondaryX = 92,
@@ -297,12 +332,14 @@ function applyPalette({
     String(getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-hue-secondary")), nextSecondaryHue)),
   );
   root.style.setProperty("--ambient-saturation-secondary", `${secondarySaturation ?? saturation}%`);
+  root.style.setProperty("--ambient-secondary-strength", String(secondaryStrength));
   const nextTertiaryHue = tertiaryHue ?? secondaryHue ?? hue;
   root.style.setProperty(
     "--ambient-hue-tertiary",
     String(getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-hue-tertiary")), nextTertiaryHue)),
   );
   root.style.setProperty("--ambient-saturation-tertiary", `${tertiarySaturation ?? secondarySaturation ?? saturation}%`);
+  root.style.setProperty("--ambient-tertiary-strength", String(tertiaryStrength));
   root.style.setProperty("--ambient-primary-x", `${primaryX}%`);
   root.style.setProperty("--ambient-primary-y", `${primaryY}%`);
   root.style.setProperty("--ambient-secondary-x", `${secondaryX}%`);

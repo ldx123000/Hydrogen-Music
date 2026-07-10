@@ -11,6 +11,8 @@ import Selector from "../components/Selector.vue";
 import FontSelector from "../components/FontSelector.vue";
 import UpdateDialog from "../components/UpdateDialog.vue";
 import { setTheme, getSavedTheme } from "@/utils/theme";
+import { getDynamicThemeColor } from "@/utils/dynamicTheme";
+import { resolveImageUrl } from "@/utils/imageUtils";
 import { confirmAccountLogout } from "@/utils/accountSession";
 import { getDailyVipClaimText } from "@/utils/dailyVipClaim";
 import { applyCustomFontStyle } from "@/utils/setFont";
@@ -135,6 +137,15 @@ const customThemeColor = computed({
     playerStore.customThemeColor = color;
   },
 });
+const currentCoverUrl = computed(() => {
+  const song = playerStore.songList?.[playerStore.currentIndex];
+  if (!song) return "";
+  if (song.type === "local") return playerStore.localBase64Img || "";
+
+  const url = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url;
+  return url ? resolveImageUrl(url) : "";
+});
+const lockingCurrentSongColor = ref(false);
 const customFont = ref("");
 const customFontLabel = ref("");
 const systemFonts = ref([]);
@@ -607,6 +618,28 @@ const openDynamicTheme = (flag) => {
 const clearCustomThemeColor = () => {
   playerStore.customThemeColor = "";
 };
+const lockCurrentSongColor = async () => {
+  const coverUrl = currentCoverUrl.value;
+  if (!coverUrl) {
+    noticeOpen("当前没有可取色的歌曲封面", 2);
+    return;
+  }
+
+  lockingCurrentSongColor.value = true;
+  try {
+    const color = await getDynamicThemeColor(coverUrl);
+    if (coverUrl !== currentCoverUrl.value) return;
+    if (!color) throw new Error("主题颜色不可用");
+
+    playerStore.dynamicTheme = false;
+    playerStore.customThemeColor = color;
+    noticeOpen("已固定当前歌曲颜色", 2);
+  } catch (_) {
+    noticeOpen("当前歌曲颜色获取失败", 2);
+  } finally {
+    lockingCurrentSongColor.value = false;
+  }
+};
 const setAudioVisualizer = () => {
   if (!playerStore.audioVisualizer)
     dialogOpen("确定开启", PERFORMANCE_CONFIRM_MESSAGE, openAudioVisualizer);
@@ -886,10 +919,17 @@ const clearFmRecent = () => {
                   <input
                     v-model="customThemeColor"
                     type="color"
-                    aria-label="选择全局颜色"
-                    title="选择全局颜色"
+                    aria-label="自定义全局颜色"
+                    title="自定义全局颜色"
                   />
-                  <span>{{ playerStore.customThemeColor || "选择颜色" }}</span>
+                  <button
+                    class="theme-color-lock"
+                    type="button"
+                    :disabled="lockingCurrentSongColor"
+                    @click="lockCurrentSongColor"
+                  >
+                    {{ lockingCurrentSongColor ? "正在固定" : "当前歌曲颜色" }}
+                  </button>
                   <div class="theme-color-reset" @click="clearCustomThemeColor">
                     恢复默认
                   </div>
@@ -1650,19 +1690,33 @@ const clearFmRecent = () => {
               height: 34px;
               display: flex;
               align-items: center;
-              gap: 8px;
+              justify-content: center;
+              gap: 12px;
               background-color: rgba(255, 255, 255, 0.35);
               font: 13px SourceHanSansCN-Bold;
               .theme-color-reset {
-                margin-left: auto;
                 padding: 0 8px;
                 cursor: pointer;
                 &:hover {
                   opacity: 0.7;
                 }
               }
+              .theme-color-lock {
+                border: none;
+                background: transparent;
+                font: inherit;
+                cursor: pointer;
+                white-space: nowrap;
+                &:hover:not(:disabled) {
+                  opacity: 0.7;
+                }
+                &:disabled {
+                  cursor: wait;
+                  opacity: 0.5;
+                }
+              }
               input[type="color"] {
-                margin: 0 0 0 7px;
+                margin: 0;
                 padding: 0;
                 width: 24px;
                 height: 24px;
