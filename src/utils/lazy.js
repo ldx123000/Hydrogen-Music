@@ -8,6 +8,11 @@ export default {
                 observer.unobserve(el)
             }
         })
+        el.__lazyImageObserver = observer
         observer.observe(el)
+    },
+    unmounted(el) {
+        el.__lazyImageObserver?.disconnect()
+        delete el.__lazyImageObserver
     }
 }
