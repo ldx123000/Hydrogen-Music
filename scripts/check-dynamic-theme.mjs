@@ -3,17 +3,46 @@ import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("../src/utils/dynamicTheme.js", import.meta.url), "utf8");
 const moduleUrl = `data:text/javascript,${encodeURIComponent(source)}`;
-const { getClosestHue, getDynamicPalette, getThemePaletteFromColor, rgbToHsl } = await import(moduleUrl);
+const { getClosestHue, getDynamicPalette, getThemeColorFromPalette, getThemePaletteFromColor, rgbToHsl } = await import(moduleUrl);
 
 assert.equal(Math.round(rgbToHsl(255, 0, 0).hue), 0);
 assert.equal(Math.round(rgbToHsl(0, 255, 0).hue), 120);
 assert.equal(getClosestHue(350, 10), 370);
 assert.equal(getClosestHue(10, 350), -10);
 
+const lockedColor = getThemeColorFromPalette({ hue: 211, saturation: 24 });
+const lockedColorPalette = getThemePaletteFromColor(lockedColor);
+assert.ok(Math.abs(lockedColorPalette.hue - 211) <= 1);
+assert.equal(lockedColorPalette.saturation, 24);
+assert.equal(getThemeColorFromPalette(), null);
+
 const redPixels = Array.from({ length: 64 }, () => [220, 35, 45, 255]).flat();
 const redPalette = getDynamicPalette({ data: new Uint8ClampedArray(redPixels) });
 assert.ok(redPalette.hue <= 12 || redPalette.hue >= 348, `expected a red hue, got ${redPalette.hue}`);
 assert.ok(redPalette.saturation >= 20);
+
+const paleCyanPixels = Array.from({ length: 64 }, () => [140, 159, 168, 255]).flat();
+const paleCyanPalette = getDynamicPalette({ data: new Uint8ClampedArray(paleCyanPixels) });
+assert.ok(paleCyanPalette.saturation < 28);
+assert.equal(paleCyanPalette.secondaryHue, paleCyanPalette.hue);
+assert.equal(paleCyanPalette.secondarySaturation, paleCyanPalette.saturation);
+
+const darkCoverPixels = [
+  ...Array.from({ length: 60 }, () => [8, 3, 2, 255]).flat(),
+  ...Array.from({ length: 16 }, () => [70, 110, 175, 255]).flat(),
+  ...Array.from({ length: 4 }, () => [230, 30, 45, 255]).flat(),
+];
+const darkCoverPalette = getDynamicPalette({
+  data: new Uint8ClampedArray(darkCoverPixels),
+  width: 20,
+  height: 4,
+});
+assert.ok(darkCoverPalette.hue >= 200 && darkCoverPalette.hue <= 230);
+assert.ok(darkCoverPalette.secondaryHue <= 15 || darkCoverPalette.secondaryHue >= 345);
+assert.ok(darkCoverPalette.secondaryStrength < 0.4);
+assert.equal(darkCoverPalette.tertiaryHue, darkCoverPalette.hue);
+assert.equal(darkCoverPalette.tertiarySaturation, darkCoverPalette.saturation);
+assert.equal(darkCoverPalette.tertiaryStrength, 0);
 
 const mixedPixels = Array.from({ length: 96 }, (_, index) => (
   index % 12 < 6 ? [220, 35, 45, 255] : [35, 70, 220, 255]

@@ -128,7 +128,7 @@ function getThemePaletteFromRgb(red, green, blue) {
   if (saturation < 0.12) return { hue: 210, saturation: 0 };
   return {
     hue: Math.round((hue * 60 + 360) % 360),
-    saturation: Math.min(Math.max(Math.round(saturation * 85), 28), 85),
+    saturation: Math.round(saturation * 85),
   };
 }
 
@@ -149,7 +149,8 @@ function getCoverThemePalette(data, width, height) {
     if (chroma === 0) continue;
     const lightness = (max + min) / 2;
     const saturation = chroma / (1 - Math.abs(2 * lightness - 1));
-    if (saturation < 0.12) continue;
+    // ponytail: absolute chroma filters near-black/white channel noise; use OKLCH if perceptual matching is needed.
+    if (saturation < 0.12 || chroma < 0.08) continue;
     let hue;
     if (max === r) hue = ((g - b) / chroma) % 6;
     else if (max === g) hue = (b - r) / chroma + 2;
@@ -245,10 +246,12 @@ function getCoverThemePalette(data, width, height) {
 
   return {
     ...primary,
-    secondaryHue: secondary?.hue ?? (primary.hue + 48) % 360,
+    secondaryHue: secondary?.hue ?? primary.hue,
     secondarySaturation: secondary?.saturation ?? primary.saturation,
-    tertiaryHue: tertiary?.hue ?? secondary?.hue ?? primary.hue,
-    tertiarySaturation: tertiary?.saturation ?? secondary?.saturation ?? primary.saturation,
+    secondaryStrength: secondary ? Math.min(secondary.weight / primary.weight, 1) : 0,
+    tertiaryHue: tertiary?.hue ?? primary.hue,
+    tertiarySaturation: tertiary?.saturation ?? primary.saturation,
+    tertiaryStrength: tertiary ? Math.min(tertiary.weight / primary.weight, 1) : 0,
     primaryX,
     primaryY,
     secondaryX,

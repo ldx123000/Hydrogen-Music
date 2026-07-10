@@ -514,7 +514,7 @@ const syncCollectedPlaylistState = ({ collectedId = null, remove = false } = {})
         || String(item.global_collection_id || '') === collectionId
     ));
     if (alreadyExists) return;
-    playlistUserSub.value.unshift(buildCollectedPlaylistEntry(collectedId));
+    playlistUserSub.value.push(buildCollectedPlaylistEntry(collectedId));
 };
 
 const togglePlaylistCollect = async () => {
