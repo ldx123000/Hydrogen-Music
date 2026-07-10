@@ -117,7 +117,7 @@ function getThemePaletteFromRgb(red, green, blue) {
   const min = Math.min(r, g, b);
   const chroma = max - min;
   const lightness = (max + min) / 2;
-  if (chroma === 0) return { hue: 210, saturation: 28 };
+  if (chroma === 0) return { hue: 210, saturation: 0 };
 
   let hue;
   if (max === r) hue = ((g - b) / chroma) % 6;
@@ -125,6 +125,7 @@ function getThemePaletteFromRgb(red, green, blue) {
   else hue = (r - g) / chroma + 4;
 
   const saturation = chroma / (1 - Math.abs(2 * lightness - 1));
+  if (saturation < 0.12) return { hue: 210, saturation: 0 };
   return {
     hue: Math.round((hue * 60 + 360) % 360),
     saturation: Math.min(Math.max(Math.round(saturation * 85), 28), 85),
@@ -133,8 +134,11 @@ function getThemePaletteFromRgb(red, green, blue) {
 
 function getCoverThemePalette(data) {
   const colorBuckets = new Map();
+  let pixelCount = 0;
+  let chromaticCoverage = 0;
   for (let index = 0; index < data.length; index += 16) {
     if (data[index + 3] < 192) continue;
+    pixelCount += 1;
 
     const r = data[index] / 255;
     const g = data[index + 1] / 255;
@@ -143,9 +147,9 @@ function getCoverThemePalette(data) {
     const min = Math.min(r, g, b);
     const chroma = max - min;
     if (chroma === 0) continue;
-
     const lightness = (max + min) / 2;
     const saturation = chroma / (1 - Math.abs(2 * lightness - 1));
+    if (saturation < 0.12) continue;
     let hue;
     if (max === r) hue = ((g - b) / chroma) % 6;
     else if (max === g) hue = (b - r) / chroma + 2;
@@ -154,6 +158,7 @@ function getCoverThemePalette(data) {
 
     const weight = saturation * (0.25 + Math.min(lightness, 1 - lightness) * 2);
     if (weight <= 0) continue;
+    chromaticCoverage += saturation;
 
     const key = `${Math.floor(hue / 24)}:${Math.floor(lightness * 4)}`;
     const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, weight: 0 };
@@ -174,7 +179,10 @@ function getCoverThemePalette(data) {
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
-  const primary = colors[0] || { hue: 210, saturation: 28 };
+  if (!colors.length || chromaticCoverage < pixelCount * 0.15) {
+    return { hue: 210, saturation: 0, secondaryHue: 210, secondarySaturation: 0 };
+  }
+  const primary = colors[0];
   const distance = (first, second) => Math.min(Math.abs(first - second), 360 - Math.abs(first - second));
   const secondary = colors
     .slice(1)

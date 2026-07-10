@@ -62,7 +62,7 @@ html.dynamic-theme .music-player {
   background-image:
     radial-gradient(90% 100% at 12% 8%, hsl(var(--ambient-hue) var(--ambient-saturation) 53% / 0.74), transparent 68%),
     radial-gradient(85% 90% at 92% 96%, hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 58% / 0.56), transparent 70%),
-    linear-gradient(160deg, hsl(var(--ambient-hue) 58% 92%), hsl(var(--ambient-hue-secondary) 48% 80%)) !important;
+    linear-gradient(160deg, hsl(var(--ambient-hue) var(--ambient-saturation) 92%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 80%)) !important;
   background-blend-mode: normal !important;
   transition: none !important;
 }
@@ -95,7 +95,7 @@ html.dark.dynamic-theme .music-player {
   background-image:
     radial-gradient(90% 100% at 12% 8%, hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.58), transparent 68%),
     radial-gradient(85% 90% at 92% 96%, hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 36% / 0.42), transparent 70%),
-    linear-gradient(160deg, hsl(var(--ambient-hue) 42% 22%), hsl(var(--ambient-hue-secondary) 28% 11%)) !important;
+    linear-gradient(160deg, hsl(var(--ambient-hue) var(--ambient-saturation) 22%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 11%)) !important;
   background-blend-mode: normal !important;
 }
 

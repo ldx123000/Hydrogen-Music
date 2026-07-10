@@ -40,7 +40,7 @@ export function rgbToHsl(red, green, blue) {
 
 function createThemeColor(red, green, blue) {
   const { hue, saturation } = rgbToHsl(red, green, blue);
-  if (saturation === 0) return { hue: 210, saturation: 28 };
+  if (saturation < 0.12) return { hue: 210, saturation: 0 };
   return {
     hue: Math.round(hue),
     saturation: clamp(Math.round(saturation * 85), 28, 85),
@@ -61,23 +61,38 @@ function getFallbackPalette() {
   };
 }
 
+function getNeutralPalette() {
+  return {
+    hue: 210,
+    saturation: 0,
+    secondaryHue: 210,
+    secondarySaturation: 0,
+  };
+}
+
 export function getDynamicPalette(imageData) {
   const data = imageData?.data;
   if (!data?.length) return getFallbackPalette();
 
   const colorBuckets = new Map();
+  let pixelCount = 0;
+  let chromaticCoverage = 0;
 
   for (let index = 0; index < data.length; index += 16) {
     if (data[index + 3] < 192) continue;
+    pixelCount += 1;
 
     const { hue, saturation, lightness } = rgbToHsl(
       data[index],
       data[index + 1],
       data[index + 2],
     );
+    if (saturation < 0.12) continue;
+
     const exposure = Math.min(lightness, 1 - lightness) * 2;
     const weight = saturation * (0.25 + exposure);
     if (weight <= 0) continue;
+    chromaticCoverage += saturation;
 
     const key = `${Math.floor(hue / 24)}:${Math.floor(lightness * 4)}`;
     const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, weight: 0 };
@@ -98,7 +113,7 @@ export function getDynamicPalette(imageData) {
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
-  if (!colors.length) return getFallbackPalette();
+  if (!colors.length || chromaticCoverage < pixelCount * 0.15) return getNeutralPalette();
 
   const primary = colors[0];
   const secondary = colors

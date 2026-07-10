@@ -29,7 +29,21 @@ assert.deepEqual(getThemePaletteFromColor("#ff0000"), {
   secondaryHue: 48,
   secondarySaturation: 85,
 });
+assert.deepEqual(getThemePaletteFromColor("#404040"), {
+  hue: 210,
+  saturation: 0,
+  secondaryHue: 258,
+  secondarySaturation: 0,
+});
 assert.equal(getThemePaletteFromColor("not-a-color"), null);
+
+const grayPixels = Array.from({ length: 64 }, () => [40, 40, 40, 255]).flat();
+assert.deepEqual(getDynamicPalette({ data: new Uint8ClampedArray(grayPixels) }), {
+  hue: 210,
+  saturation: 0,
+  secondaryHue: 210,
+  secondarySaturation: 0,
+});
 
 assert.deepEqual(getDynamicPalette({ data: new Uint8ClampedArray(0) }), {
   hue: 210,
