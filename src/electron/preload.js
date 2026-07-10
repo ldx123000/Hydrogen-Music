@@ -236,6 +236,7 @@ contextBridge.exposeInMainWorld("windowApi", {
     ipcRenderer.invoke("local-music:get-hash-tracks"),
   getLocalMusicImage: (filePath) =>
     ipcRenderer.invoke("get-image-base64", filePath),
+  getCoverPalette: (imageUrl) => ipcRenderer.invoke("cover-palette", imageUrl),
   toFileUrl,
   playOrPauseMusic,
   playOrPauseMusicCheck,

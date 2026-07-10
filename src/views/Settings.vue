@@ -128,6 +128,13 @@ const themeOptions = ref([
   { label: "浅色", value: "light" },
   { label: "深色", value: "dark" },
 ]);
+const customThemeColor = computed({
+  get: () => playerStore.customThemeColor || "#6b9fb4",
+  set: (color) => {
+    playerStore.dynamicTheme = false;
+    playerStore.customThemeColor = color;
+  },
+});
 const customFont = ref("");
 const customFontLabel = ref("");
 const systemFonts = ref([]);
@@ -583,6 +590,23 @@ const setCoverBlur = () => {
 const openCoverBlur = (flag) => {
   if (flag) playerStore.coverBlur = !playerStore.coverBlur;
 };
+const setDynamicTheme = () => {
+  if (!playerStore.dynamicTheme)
+    dialogOpen(
+      "确定开启",
+      "开启后全局背景会根据当前播放歌曲的封面颜色动态变化，确定开启吗？",
+      openDynamicTheme,
+    );
+  else openDynamicTheme(true);
+};
+const openDynamicTheme = (flag) => {
+  if (!flag) return;
+  playerStore.dynamicTheme = !playerStore.dynamicTheme;
+  if (playerStore.dynamicTheme) playerStore.customThemeColor = "";
+};
+const clearCustomThemeColor = () => {
+  playerStore.customThemeColor = "";
+};
 const setAudioVisualizer = () => {
   if (!playerStore.audioVisualizer)
     dialogOpen("确定开启", PERFORMANCE_CONFIRM_MESSAGE, openAudioVisualizer);
@@ -836,6 +860,39 @@ const clearFmRecent = () => {
                   <Transition name="toggle">
                     <div class="toggle-on" v-show="playerStore.coverBlur"></div>
                   </Transition>
+                </div>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name">开启全局动态取色</div>
+              <div class="option-operation">
+                <div class="toggle" @click="setDynamicTheme()">
+                  <div
+                    class="toggle-off"
+                    :class="{ 'toggle-on-in': playerStore.dynamicTheme }"
+                  >
+                    {{ playerStore.dynamicTheme ? "已开启" : "已关闭" }}
+                  </div>
+                  <Transition name="toggle">
+                    <div class="toggle-on" v-show="playerStore.dynamicTheme"></div>
+                  </Transition>
+                </div>
+              </div>
+            </div>
+            <div class="option">
+              <div class="option-name">自定义全局颜色</div>
+              <div class="option-operation">
+                <div class="theme-color-control">
+                  <input
+                    v-model="customThemeColor"
+                    type="color"
+                    aria-label="选择全局颜色"
+                    title="选择全局颜色"
+                  />
+                  <span>{{ playerStore.customThemeColor || "选择颜色" }}</span>
+                  <div class="theme-color-reset" @click="clearCustomThemeColor">
+                    恢复默认
+                  </div>
                 </div>
               </div>
             </div>
@@ -1586,6 +1643,33 @@ const clearFmRecent = () => {
                 cursor: pointer;
                 opacity: 0.8;
                 box-shadow: 0 0 0 1px black;
+              }
+            }
+            .theme-color-control {
+              width: 200px;
+              height: 34px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              background-color: rgba(255, 255, 255, 0.35);
+              font: 13px SourceHanSansCN-Bold;
+              .theme-color-reset {
+                margin-left: auto;
+                padding: 0 8px;
+                cursor: pointer;
+                &:hover {
+                  opacity: 0.7;
+                }
+              }
+              input[type="color"] {
+                margin: 0 0 0 7px;
+                padding: 0;
+                width: 24px;
+                height: 24px;
+                border: none;
+                border-radius: 50%;
+                background: transparent;
+                appearance: auto;
               }
             }
             .select-download-folder {

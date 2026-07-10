@@ -1,14 +1,13 @@
 import { usePlayerStore } from '../store/playerStore'
 import defaultCoverUrl from '../assets/img/default-cover.svg'
 
-const playerStore = usePlayerStore()
 let imageFallbackInstalled = false
 
 export const resolveImageUrl = (url) => {
     // 空地址直接回退到默认封面，避免页面出现裂图或空白占位。
     if (!url) return defaultCoverUrl
     if (url.startsWith('data:') || url.startsWith('blob:')) return url
-    const size = playerStore.coverSize ?? 400
+    const size = usePlayerStore().coverSize ?? 400
     return url
         .replace('http://', 'https://')
         .replace(/\{size\}/g, size)

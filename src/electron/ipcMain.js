@@ -20,6 +20,10 @@ try {
 } catch (_) {
   ffmpegPath = null;
 }
+let sharp = null;
+try {
+  sharp = require("sharp");
+} catch (_) {}
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require("./shortcuts");
 const { getElectronStore } = require("./store");
@@ -103,6 +107,89 @@ function normalizeStoredSettings(settings = {}, appVersion = "") {
   };
   normalized._appVersion = appVersion || normalized._appVersion;
   return normalized;
+}
+
+function getThemePaletteFromRgb(red, green, blue) {
+  const r = red / 255;
+  const g = green / 255;
+  const b = blue / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const chroma = max - min;
+  const lightness = (max + min) / 2;
+  if (chroma === 0) return { hue: 210, saturation: 28 };
+
+  let hue;
+  if (max === r) hue = ((g - b) / chroma) % 6;
+  else if (max === g) hue = (b - r) / chroma + 2;
+  else hue = (r - g) / chroma + 4;
+
+  const saturation = chroma / (1 - Math.abs(2 * lightness - 1));
+  return {
+    hue: Math.round((hue * 60 + 360) % 360),
+    saturation: Math.min(Math.max(Math.round(saturation * 85), 28), 85),
+  };
+}
+
+function getCoverThemePalette(data) {
+  const colorBuckets = new Map();
+  for (let index = 0; index < data.length; index += 16) {
+    if (data[index + 3] < 192) continue;
+
+    const r = data[index] / 255;
+    const g = data[index + 1] / 255;
+    const b = data[index + 2] / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const chroma = max - min;
+    if (chroma === 0) continue;
+
+    const lightness = (max + min) / 2;
+    const saturation = chroma / (1 - Math.abs(2 * lightness - 1));
+    let hue;
+    if (max === r) hue = ((g - b) / chroma) % 6;
+    else if (max === g) hue = (b - r) / chroma + 2;
+    else hue = (r - g) / chroma + 4;
+    hue = (hue * 60 + 360) % 360;
+
+    const weight = saturation * (0.25 + Math.min(lightness, 1 - lightness) * 2);
+    if (weight <= 0) continue;
+
+    const key = `${Math.floor(hue / 24)}:${Math.floor(lightness * 4)}`;
+    const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, weight: 0 };
+    bucket.red += data[index] * weight;
+    bucket.green += data[index + 1] * weight;
+    bucket.blue += data[index + 2] * weight;
+    bucket.weight += weight;
+    colorBuckets.set(key, bucket);
+  }
+
+  const colors = Array.from(colorBuckets.values())
+    .map((bucket) => ({
+      ...getThemePaletteFromRgb(
+        bucket.red / bucket.weight,
+        bucket.green / bucket.weight,
+        bucket.blue / bucket.weight,
+      ),
+      weight: bucket.weight,
+    }))
+    .sort((first, second) => second.weight - first.weight);
+  const primary = colors[0] || { hue: 210, saturation: 28 };
+  const distance = (first, second) => Math.min(Math.abs(first - second), 360 - Math.abs(first - second));
+  const secondary = colors
+    .slice(1)
+    .filter((color) => distance(primary.hue, color.hue) >= 35)
+    .sort((first, second) => {
+      const firstScore = first.weight * (0.4 + distance(primary.hue, first.hue) / 180);
+      const secondScore = second.weight * (0.4 + distance(primary.hue, second.hue) / 180);
+      return secondScore - firstScore;
+    })[0];
+
+  return {
+    ...primary,
+    secondaryHue: secondary?.hue ?? (primary.hue + 48) % 360,
+    secondarySaturation: secondary?.saturation ?? primary.saturation,
+  };
 }
 
 module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
@@ -234,6 +321,26 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
       // ignore
     }
     return null;
+  });
+  ipcMain.handle("cover-palette", async (_event, imageUrl) => {
+    if (!sharp || typeof imageUrl !== "string" || !/^https?:\/\//i.test(imageUrl)) return null;
+
+    try {
+      const response = await axios.get(imageUrl, {
+        responseType: "arraybuffer",
+        timeout: 8000,
+        maxContentLength: 5 * 1024 * 1024,
+        headers: { Referer: "https://www.kugou.com/" },
+      });
+      const { data } = await sharp(response.data)
+        .resize(64, 64, { fit: "cover" })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      return getCoverThemePalette(data);
+    } catch (_) {
+      return null;
+    }
   });
   const normalizeStoredProgress = (progressState) => {
     if (!progressState || typeof progressState !== "object") return null;

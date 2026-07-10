@@ -1,5 +1,29 @@
 /* Global theme variables and minimal dark-mode overrides */
 
+@property --ambient-hue {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 210;
+}
+
+@property --ambient-saturation {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 28%;
+}
+
+@property --ambient-hue-secondary {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 252;
+}
+
+@property --ambient-saturation-secondary {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 36%;
+}
+
 :root {
   --bg: #f4f6f8;
   --text: #111213;
@@ -17,10 +41,30 @@
   --cover-backdrop-overlay: rgba(255, 255, 255, 0.3);
 }
 
+html {
+  transition:
+    --ambient-hue 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-saturation 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-hue-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-saturation-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 html,
 body {
   background: var(--bg);
   color: var(--text);
+}
+
+/* The cover's palette only colors page backdrops; controls keep the normal theme contrast. */
+html.dynamic-theme .mainWindow,
+html.dynamic-theme .music-player {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 86%) !important;
+  background-image:
+    radial-gradient(90% 100% at 12% 8%, hsl(var(--ambient-hue) var(--ambient-saturation) 53% / 0.74), transparent 68%),
+    radial-gradient(85% 90% at 92% 96%, hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 58% / 0.56), transparent 70%),
+    linear-gradient(160deg, hsl(var(--ambient-hue) 58% 92%), hsl(var(--ambient-hue-secondary) 48% 80%)) !important;
+  background-blend-mode: normal !important;
+  transition: none !important;
 }
 
 /* Dark theme toggled by `.dark` on <html> */
@@ -43,6 +87,16 @@ body {
   --btn-minimize: #ffffff;
   --btn-maximize: #ffffff;
   --btn-close: #ffffff;
+}
+
+html.dark.dynamic-theme .mainWindow,
+html.dark.dynamic-theme .music-player {
+  background-color: hsl(var(--ambient-hue) 38% 13%) !important;
+  background-image:
+    radial-gradient(90% 100% at 12% 8%, hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.58), transparent 68%),
+    radial-gradient(85% 90% at 92% 96%, hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 36% / 0.42), transparent 70%),
+    linear-gradient(160deg, hsl(var(--ambient-hue) 42% 22%), hsl(var(--ambient-hue-secondary) 28% 11%)) !important;
+  background-blend-mode: normal !important;
 }
 
 /* Keep it simple: default everything to readable text on dark */

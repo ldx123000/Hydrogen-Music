@@ -65,6 +65,7 @@
     openFile: noopResolve(""),
     toFileUrl: (path) => path || "",
     getLocalMusicImage: noopResolve(""),
+    getCoverPalette: noopResolve(null),
     getLocalMusicLyric: noopResolve(""),
 
     // ── 歌单 ──

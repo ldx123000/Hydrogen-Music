@@ -1,5 +1,5 @@
 <script setup>
-import { computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue';
 import Home from './views/Home.vue';
 import Title from './components/Title.vue';
 import SearchInput from './components/SearchInput.vue';
@@ -13,6 +13,8 @@ import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
 import { useUserStore } from './store/userStore';
 import { useSirenStore } from './store/sirenStore';
+import { applyCustomTheme, applyDynamicTheme, clearDynamicTheme } from './utils/dynamicTheme';
+import { resolveImageUrl } from './utils/imageUtils';
 
 const MusicPlayer = defineAsyncComponent(() => import('./views/MusicPlayer.vue'));
 const VideoPlayer = defineAsyncComponent(() => import('./components/VideoPlayer.vue'));
@@ -28,6 +30,20 @@ const sirenStore = useSirenStore();
 const visualizerActive = computed(() => {
     return playerStore.audioVisualizer && playerStore.playerShow && !playerStore.widgetState && !!playerStore.currentMusic;
 });
+const currentCoverUrl = computed(() => {
+    const song = playerStore.songList?.[playerStore.currentIndex];
+    if (!song) return '';
+    if (song.type === 'local') return playerStore.localBase64Img || '';
+
+    const url = song.coverUrl || song.al?.picUrl || song.blurPicUrl || song.img1v1Url;
+    return url ? resolveImageUrl(url) : '';
+});
+
+watch([() => playerStore.dynamicTheme, () => playerStore.customThemeColor, currentCoverUrl], ([enabled, customColor, coverUrl]) => {
+    if (customColor) applyCustomTheme(customColor);
+    else if (enabled && coverUrl) applyDynamicTheme(coverUrl);
+    else clearDynamicTheme();
+}, { immediate: true });
 
 onMounted(() => {
     initLyricRuntime();
@@ -45,6 +61,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    clearDynamicTheme();
     destroyDesktopLyric();
     destroyLyricRuntime();
 });
