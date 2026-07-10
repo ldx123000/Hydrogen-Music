@@ -102,6 +102,29 @@ html.dynamic-theme .music-player {
   transition: none !important;
 }
 
+html.dynamic-theme .musicWidget {
+  box-shadow: 0 12px 28px hsl(var(--ambient-hue) var(--ambient-saturation) 36% / 0.28) !important;
+}
+
+html.dynamic-theme .music-widget,
+html.dynamic-theme .title-container .title-player {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 88% / 0.88) !important;
+  background-image:
+    radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 58% / 0.46), transparent 72%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 93% / 0.9), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 82% / 0.88)) !important;
+  background-blend-mode: normal !important;
+  box-shadow: 0 8px 20px hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 38% / 0.18) !important;
+  transition: none !important;
+}
+
+html.dynamic-theme .music-widget .music-progress {
+  background-color: hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 62% / 0.35) !important;
+}
+
+html.dynamic-theme .music-widget .widget-back {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 42%) !important;
+}
+
 /* Dark theme toggled by `.dark` on <html> */
 .dark {
   color-scheme: dark;
@@ -132,6 +155,14 @@ html.dark.dynamic-theme .music-player {
     radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 36% / 0.42), transparent 70%),
     linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 22%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 11%)) !important;
   background-blend-mode: normal !important;
+}
+
+html.dark.dynamic-theme .music-widget,
+html.dark.dynamic-theme .title-container .title-player {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 19% / 0.9) !important;
+  background-image:
+    radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.42), transparent 72%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 24% / 0.92), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 14% / 0.92)) !important;
 }
 
 /* Keep it simple: default everything to readable text on dark */
