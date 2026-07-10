@@ -192,10 +192,14 @@ function getCoverThemePalette(data, width, height) {
       saturation: 0,
       secondaryHue: 210,
       secondarySaturation: 0,
+      tertiaryHue: 210,
+      tertiarySaturation: 0,
       primaryX: 12,
       primaryY: 8,
       secondaryX: 92,
       secondaryY: 96,
+      tertiaryX: 52,
+      tertiaryY: 54,
       gradientAngle: 160,
     };
   }
@@ -212,12 +216,27 @@ function getCoverThemePalette(data, width, height) {
       const secondScore = second.weight * (0.85 + distance(primary.hue, second.hue) / 720);
       return secondScore - firstScore;
     })[0];
+  const tertiary = colors
+    .filter((color) => (
+      color !== primary
+      && color !== secondary
+      && color.weight >= primary.weight * 0.08
+      && distance(primary.hue, color.hue) >= 30
+      && (!secondary || distance(secondary.hue, color.hue) >= 30)
+    ))
+    .sort((first, second) => {
+      const firstScore = first.weight * (0.8 + distance(primary.hue, first.hue) / 900);
+      const secondScore = second.weight * (0.8 + distance(primary.hue, second.hue) / 900);
+      return secondScore - firstScore;
+    })[0];
 
   const toBackgroundPosition = (value) => Math.min(Math.max(Math.round(8 + value * 84), 8), 92);
   const primaryX = toBackgroundPosition(primary.x);
   const primaryY = toBackgroundPosition(primary.y);
   const secondaryX = secondary ? toBackgroundPosition(secondary.x) : 100 - primaryX;
   const secondaryY = secondary ? toBackgroundPosition(secondary.y) : 100 - primaryY;
+  const tertiaryX = tertiary ? toBackgroundPosition(tertiary.x) : 50;
+  const tertiaryY = tertiary ? toBackgroundPosition(tertiary.y) : 50;
   const deltaX = secondaryX - primaryX;
   const deltaY = secondaryY - primaryY;
   const gradientAngle = Math.abs(deltaX) < 4 && Math.abs(deltaY) < 4
@@ -228,10 +247,14 @@ function getCoverThemePalette(data, width, height) {
     ...primary,
     secondaryHue: secondary?.hue ?? (primary.hue + 48) % 360,
     secondarySaturation: secondary?.saturation ?? primary.saturation,
+    tertiaryHue: tertiary?.hue ?? secondary?.hue ?? primary.hue,
+    tertiarySaturation: tertiary?.saturation ?? secondary?.saturation ?? primary.saturation,
     primaryX,
     primaryY,
     secondaryX,
     secondaryY,
+    tertiaryX,
+    tertiaryY,
     gradientAngle,
   };
 }

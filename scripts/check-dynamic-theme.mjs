@@ -44,16 +44,21 @@ const isPinkOrBlue = (hue) => [207, 343].some((expected) => {
 });
 assert.ok(isPinkOrBlue(visualCoverPalette.hue));
 assert.ok(isPinkOrBlue(visualCoverPalette.secondaryHue));
+assert.ok(Number.isFinite(visualCoverPalette.tertiaryHue));
 
 assert.deepEqual(getThemePaletteFromColor("#ff0000"), {
   hue: 0,
   saturation: 85,
   secondaryHue: 48,
   secondarySaturation: 85,
+  tertiaryHue: 0,
+  tertiarySaturation: 85,
   primaryX: 18,
   primaryY: 12,
   secondaryX: 82,
   secondaryY: 88,
+  tertiaryX: 50,
+  tertiaryY: 50,
   gradientAngle: 155,
 });
 assert.deepEqual(getThemePaletteFromColor("#404040"), {
@@ -61,10 +66,14 @@ assert.deepEqual(getThemePaletteFromColor("#404040"), {
   saturation: 0,
   secondaryHue: 258,
   secondarySaturation: 0,
+  tertiaryHue: 210,
+  tertiarySaturation: 0,
   primaryX: 18,
   primaryY: 12,
   secondaryX: 82,
   secondaryY: 88,
+  tertiaryX: 50,
+  tertiaryY: 50,
   gradientAngle: 155,
 });
 assert.equal(getThemePaletteFromColor("not-a-color"), null);
@@ -75,10 +84,14 @@ assert.deepEqual(getDynamicPalette({ data: new Uint8ClampedArray(grayPixels) }),
   saturation: 0,
   secondaryHue: 210,
   secondarySaturation: 0,
+  tertiaryHue: 210,
+  tertiarySaturation: 0,
   primaryX: 12,
   primaryY: 8,
   secondaryX: 92,
   secondaryY: 96,
+  tertiaryX: 52,
+  tertiaryY: 54,
   gradientAngle: 160,
 });
 
@@ -87,10 +100,14 @@ assert.deepEqual(getDynamicPalette({ data: new Uint8ClampedArray(0) }), {
   saturation: 28,
   secondaryHue: 252,
   secondarySaturation: 36,
+  tertiaryHue: 210,
+  tertiarySaturation: 28,
   primaryX: 12,
   primaryY: 8,
   secondaryX: 92,
   secondaryY: 96,
+  tertiaryX: 52,
+  tertiaryY: 54,
   gradientAngle: 160,
 });
 console.log("dynamic-theme checks passed");

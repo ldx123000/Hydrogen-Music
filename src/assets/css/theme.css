@@ -24,6 +24,18 @@
   initial-value: 36%;
 }
 
+@property --ambient-hue-tertiary {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 210;
+}
+
+@property --ambient-saturation-tertiary {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 28%;
+}
+
 @property --ambient-primary-x {
   syntax: "<percentage>";
   inherits: true;
@@ -46,6 +58,18 @@
   syntax: "<percentage>";
   inherits: true;
   initial-value: 96%;
+}
+
+@property --ambient-tertiary-x {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 52%;
+}
+
+@property --ambient-tertiary-y {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 54%;
 }
 
 @property --ambient-gradient-angle {
@@ -77,10 +101,14 @@ html {
     --ambient-saturation 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-hue-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-saturation-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-hue-tertiary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-saturation-tertiary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-primary-x 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-primary-y 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-secondary-x 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-secondary-y 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-tertiary-x 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-tertiary-y 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-gradient-angle 0.85s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -97,6 +125,7 @@ html.dynamic-theme .music-player {
   background-image:
     radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 53% / 0.74), transparent 68%),
     radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 58% / 0.56), transparent 70%),
+    radial-gradient(72% 78% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 62% / 0.30), transparent 72%),
     linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 92%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 80%)) !important;
   background-blend-mode: normal !important;
   transition: none !important;
@@ -111,6 +140,7 @@ html.dynamic-theme .title-container .title-player {
   background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 88% / 0.88) !important;
   background-image:
     radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 58% / 0.46), transparent 72%),
+    radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 60% / 0.24), transparent 72%),
     linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 93% / 0.9), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 82% / 0.88)) !important;
   background-blend-mode: normal !important;
   box-shadow: 0 8px 20px hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 38% / 0.18) !important;
@@ -153,6 +183,7 @@ html.dark.dynamic-theme .music-player {
   background-image:
     radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.58), transparent 68%),
     radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 36% / 0.42), transparent 70%),
+    radial-gradient(72% 78% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 40% / 0.24), transparent 72%),
     linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 22%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 11%)) !important;
   background-blend-mode: normal !important;
 }
@@ -162,6 +193,7 @@ html.dark.dynamic-theme .title-container .title-player {
   background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 19% / 0.9) !important;
   background-image:
     radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.42), transparent 72%),
+    radial-gradient(72% 90% at var(--ambient-tertiary-x) var(--ambient-tertiary-y), hsl(var(--ambient-hue-tertiary) var(--ambient-saturation-tertiary) 38% / 0.18), transparent 72%),
     linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 24% / 0.92), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 14% / 0.92)) !important;
 }
 

@@ -4,10 +4,14 @@ const THEME_VARIABLES = [
   "--ambient-saturation",
   "--ambient-hue-secondary",
   "--ambient-saturation-secondary",
+  "--ambient-hue-tertiary",
+  "--ambient-saturation-tertiary",
   "--ambient-primary-x",
   "--ambient-primary-y",
   "--ambient-secondary-x",
   "--ambient-secondary-y",
+  "--ambient-tertiary-x",
+  "--ambient-tertiary-y",
   "--ambient-gradient-angle",
 ];
 
@@ -63,10 +67,14 @@ function getFallbackPalette() {
     saturation: 28,
     secondaryHue: 252,
     secondarySaturation: 36,
+    tertiaryHue: 210,
+    tertiarySaturation: 28,
     primaryX: 12,
     primaryY: 8,
     secondaryX: 92,
     secondaryY: 96,
+    tertiaryX: 52,
+    tertiaryY: 54,
     gradientAngle: 160,
   };
 }
@@ -77,10 +85,14 @@ function getNeutralPalette() {
     saturation: 0,
     secondaryHue: 210,
     secondarySaturation: 0,
+    tertiaryHue: 210,
+    tertiarySaturation: 0,
     primaryX: 12,
     primaryY: 8,
     secondaryX: 92,
     secondaryY: 96,
+    tertiaryX: 52,
+    tertiaryY: 54,
     gradientAngle: 160,
   };
 }
@@ -94,20 +106,26 @@ function getGradientAngle(primaryX, primaryY, secondaryX, secondaryY) {
   return Math.round((Math.atan2(deltaX, -deltaY) * 180) / Math.PI + 360) % 360;
 }
 
-function createSpatialPalette(primary, secondary) {
+function createSpatialPalette(primary, secondary, tertiary) {
   const primaryX = toBackgroundPosition(primary.x);
   const primaryY = toBackgroundPosition(primary.y);
   const secondaryX = secondary ? toBackgroundPosition(secondary.x) : 100 - primaryX;
   const secondaryY = secondary ? toBackgroundPosition(secondary.y) : 100 - primaryY;
+  const tertiaryX = tertiary ? toBackgroundPosition(tertiary.x) : 50;
+  const tertiaryY = tertiary ? toBackgroundPosition(tertiary.y) : 50;
   return {
     hue: primary.hue,
     saturation: primary.saturation,
     secondaryHue: secondary?.hue ?? (primary.hue + 48) % 360,
     secondarySaturation: secondary?.saturation ?? primary.saturation,
+    tertiaryHue: tertiary?.hue ?? secondary?.hue ?? primary.hue,
+    tertiarySaturation: tertiary?.saturation ?? secondary?.saturation ?? primary.saturation,
     primaryX,
     primaryY,
     secondaryX,
     secondaryY,
+    tertiaryX,
+    tertiaryY,
     gradientAngle: getGradientAngle(primaryX, primaryY, secondaryX, secondaryY),
   };
 }
@@ -178,7 +196,21 @@ export function getDynamicPalette(imageData) {
       return secondScore - firstScore;
     })[0];
 
-  return createSpatialPalette(primary, secondary);
+  const tertiary = colors
+    .filter((color) => (
+      color !== primary
+      && color !== secondary
+      && color.weight >= primary.weight * 0.08
+      && hueDistance(primary.hue, color.hue) >= 30
+      && (!secondary || hueDistance(secondary.hue, color.hue) >= 30)
+    ))
+    .sort((first, second) => {
+      const firstScore = first.weight * (0.8 + hueDistance(primary.hue, first.hue) / 900);
+      const secondScore = second.weight * (0.8 + hueDistance(primary.hue, second.hue) / 900);
+      return secondScore - firstScore;
+    })[0];
+
+  return createSpatialPalette(primary, secondary, tertiary);
 }
 
 export function getThemePaletteFromColor(color) {
@@ -195,10 +227,14 @@ export function getThemePaletteFromColor(color) {
     ...primary,
     secondaryHue: (primary.hue + 48) % 360,
     secondarySaturation: primary.saturation,
+    tertiaryHue: primary.hue,
+    tertiarySaturation: primary.saturation,
     primaryX: 18,
     primaryY: 12,
     secondaryX: 82,
     secondaryY: 88,
+    tertiaryX: 50,
+    tertiaryY: 50,
     gradientAngle: 155,
   };
 }
@@ -238,10 +274,14 @@ function applyPalette({
   saturation,
   secondaryHue,
   secondarySaturation,
+  tertiaryHue,
+  tertiarySaturation,
   primaryX = 12,
   primaryY = 8,
   secondaryX = 92,
   secondaryY = 96,
+  tertiaryX = 52,
+  tertiaryY = 54,
   gradientAngle = 160,
 }) {
   const root = document.documentElement;
@@ -257,10 +297,18 @@ function applyPalette({
     String(getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-hue-secondary")), nextSecondaryHue)),
   );
   root.style.setProperty("--ambient-saturation-secondary", `${secondarySaturation ?? saturation}%`);
+  const nextTertiaryHue = tertiaryHue ?? secondaryHue ?? hue;
+  root.style.setProperty(
+    "--ambient-hue-tertiary",
+    String(getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-hue-tertiary")), nextTertiaryHue)),
+  );
+  root.style.setProperty("--ambient-saturation-tertiary", `${tertiarySaturation ?? secondarySaturation ?? saturation}%`);
   root.style.setProperty("--ambient-primary-x", `${primaryX}%`);
   root.style.setProperty("--ambient-primary-y", `${primaryY}%`);
   root.style.setProperty("--ambient-secondary-x", `${secondaryX}%`);
   root.style.setProperty("--ambient-secondary-y", `${secondaryY}%`);
+  root.style.setProperty("--ambient-tertiary-x", `${tertiaryX}%`);
+  root.style.setProperty("--ambient-tertiary-y", `${tertiaryY}%`);
   root.style.setProperty(
     "--ambient-gradient-angle",
     `${getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-gradient-angle")), gradientAngle)}deg`,
