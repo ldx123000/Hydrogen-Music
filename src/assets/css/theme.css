@@ -1,5 +1,59 @@
 /* Global theme variables and minimal dark-mode overrides */
 
+@property --ambient-hue {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 210;
+}
+
+@property --ambient-saturation {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 28%;
+}
+
+@property --ambient-hue-secondary {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 252;
+}
+
+@property --ambient-saturation-secondary {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 36%;
+}
+
+@property --ambient-primary-x {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 12%;
+}
+
+@property --ambient-primary-y {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 8%;
+}
+
+@property --ambient-secondary-x {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 92%;
+}
+
+@property --ambient-secondary-y {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 96%;
+}
+
+@property --ambient-gradient-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 160deg;
+}
+
 :root {
   --bg: #f4f6f8;
   --text: #111213;
@@ -17,10 +71,58 @@
   --cover-backdrop-overlay: rgba(255, 255, 255, 0.3);
 }
 
+html {
+  transition:
+    --ambient-hue 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-saturation 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-hue-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-saturation-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-primary-x 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-primary-y 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-secondary-x 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-secondary-y 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-gradient-angle 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 html,
 body {
   background: var(--bg);
   color: var(--text);
+}
+
+/* The cover's palette only colors page backdrops; controls keep the normal theme contrast. */
+html.dynamic-theme .mainWindow,
+html.dynamic-theme .music-player {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 86%) !important;
+  background-image:
+    radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 53% / 0.74), transparent 68%),
+    radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 58% / 0.56), transparent 70%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 92%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 80%)) !important;
+  background-blend-mode: normal !important;
+  transition: none !important;
+}
+
+html.dynamic-theme .musicWidget {
+  box-shadow: 0 12px 28px hsl(var(--ambient-hue) var(--ambient-saturation) 36% / 0.28) !important;
+}
+
+html.dynamic-theme .music-widget,
+html.dynamic-theme .title-container .title-player {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 88% / 0.88) !important;
+  background-image:
+    radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 58% / 0.46), transparent 72%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 93% / 0.9), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 82% / 0.88)) !important;
+  background-blend-mode: normal !important;
+  box-shadow: 0 8px 20px hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 38% / 0.18) !important;
+  transition: none !important;
+}
+
+html.dynamic-theme .music-widget .music-progress {
+  background-color: hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 62% / 0.35) !important;
+}
+
+html.dynamic-theme .music-widget .widget-back {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 42%) !important;
 }
 
 /* Dark theme toggled by `.dark` on <html> */
@@ -43,6 +145,24 @@ body {
   --btn-minimize: #ffffff;
   --btn-maximize: #ffffff;
   --btn-close: #ffffff;
+}
+
+html.dark.dynamic-theme .mainWindow,
+html.dark.dynamic-theme .music-player {
+  background-color: hsl(var(--ambient-hue) 38% 13%) !important;
+  background-image:
+    radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.58), transparent 68%),
+    radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 36% / 0.42), transparent 70%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 22%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 11%)) !important;
+  background-blend-mode: normal !important;
+}
+
+html.dark.dynamic-theme .music-widget,
+html.dark.dynamic-theme .title-container .title-player {
+  background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 19% / 0.9) !important;
+  background-image:
+    radial-gradient(115% 150% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.42), transparent 72%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 24% / 0.92), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 14% / 0.92)) !important;
 }
 
 /* Keep it simple: default everything to readable text on dark */

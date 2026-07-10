@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:dynamic-theme": "node scripts/check-dynamic-theme.mjs",
     "check:siren-duration-concurrency": "node scripts/check-siren-duration-concurrency.mjs",
     "preview": "vite preview",
     "start": "chcp 65001 > nul && electron .",
