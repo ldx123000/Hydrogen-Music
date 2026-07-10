@@ -1,12 +1,15 @@
 import { defineStore } from 'pinia'
 import { getSirenAlbumDetail, getSirenAlbums, getSirenSong } from '../api/siren'
 import { normalizeSirenAlbum, normalizeSirenAlbumDetail, getSirenSourceId } from '../utils/siren'
+import { runWithConcurrency } from '../utils/runWithConcurrency.mjs'
 
 function getErrorMessage(error, fallback) {
     return error?.message || fallback
 }
 
 const DURATION_CACHE_KEY = 'siren_song_durations'
+// ponytail: fixed concurrency keeps idle preloading below four simultaneous metadata probes; tune from profiler data if the catalog or network workload grows.
+const DURATION_FETCH_CONCURRENCY = 4
 
 function loadDurationCache() {
     try {
@@ -16,10 +19,8 @@ function loadDurationCache() {
     }
 }
 
-function saveDurationToCache(sourceId, ms) {
+function saveDurationCache(cache) {
     try {
-        const cache = loadDurationCache()
-        cache[sourceId] = ms
         localStorage.setItem(DURATION_CACHE_KEY, JSON.stringify(cache))
     } catch { /* ignore */ }
 }
@@ -154,7 +155,7 @@ export const useSirenStore = defineStore('sirenStore', {
             }
             if (needFetch.length === 0) return
 
-            // 第二步：逐首流水线获取（API → 音频元数据），每完成一首立即更新 UI
+            // 第二步：限制并发地获取（API → 音频元数据），避免后台预加载占满渲染进程资源。
             const triggerUpdate = () => {
                 this.albumDetailsById = { ...this.albumDetailsById }
             }
@@ -168,8 +169,7 @@ export const useSirenStore = defineStore('sirenStore', {
                 }, 300)
             }
 
-            await Promise.allSettled(
-                needFetch.map(async song => {
+            await runWithConcurrency(needFetch, DURATION_FETCH_CONCURRENCY, async song => {
                     const sourceId = getSirenSourceId(song)
                     if (!sourceId) return
 
@@ -188,17 +188,17 @@ export const useSirenStore = defineStore('sirenStore', {
 
                         song.duration = ms
                         song.dt = ms
-                        saveDurationToCache(sourceId, ms)
+                        durationCache[sourceId] = ms
                         batchUpdate()
                     } catch { /* ignore */ }
                 })
-            )
 
             // 最终确保全部更新
             if (batchTimer) {
                 clearTimeout(batchTimer)
                 batchTimer = null
             }
+            saveDurationCache(durationCache)
             triggerUpdate()
         },
     },
