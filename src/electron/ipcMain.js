@@ -132,7 +132,7 @@ function getThemePaletteFromRgb(red, green, blue) {
   };
 }
 
-function getCoverThemePalette(data) {
+function getCoverThemePalette(data, width, height) {
   const colorBuckets = new Map();
   let pixelCount = 0;
   let chromaticCoverage = 0;
@@ -161,10 +161,15 @@ function getCoverThemePalette(data) {
     chromaticCoverage += saturation;
 
     const key = `${Math.floor(hue / 24)}:${Math.floor(lightness * 4)}`;
-    const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, weight: 0 };
+    const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, x: 0, y: 0, weight: 0 };
+    const pixelIndex = index / 4;
+    const x = (pixelIndex % width) / Math.max(width - 1, 1);
+    const y = Math.floor(pixelIndex / width) / Math.max(height - 1, 1);
     bucket.red += data[index] * weight;
     bucket.green += data[index + 1] * weight;
     bucket.blue += data[index + 2] * weight;
+    bucket.x += x * weight;
+    bucket.y += y * weight;
     bucket.weight += weight;
     colorBuckets.set(key, bucket);
   }
@@ -176,11 +181,23 @@ function getCoverThemePalette(data) {
         bucket.green / bucket.weight,
         bucket.blue / bucket.weight,
       ),
+      x: bucket.x / bucket.weight,
+      y: bucket.y / bucket.weight,
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
   if (!colors.length || chromaticCoverage < pixelCount * 0.15) {
-    return { hue: 210, saturation: 0, secondaryHue: 210, secondarySaturation: 0 };
+    return {
+      hue: 210,
+      saturation: 0,
+      secondaryHue: 210,
+      secondarySaturation: 0,
+      primaryX: 12,
+      primaryY: 8,
+      secondaryX: 92,
+      secondaryY: 96,
+      gradientAngle: 160,
+    };
   }
   const primary = colors[0];
   const distance = (first, second) => Math.min(Math.abs(first - second), 360 - Math.abs(first - second));
@@ -193,10 +210,26 @@ function getCoverThemePalette(data) {
       return secondScore - firstScore;
     })[0];
 
+  const toBackgroundPosition = (value) => Math.min(Math.max(Math.round(8 + value * 84), 8), 92);
+  const primaryX = toBackgroundPosition(primary.x);
+  const primaryY = toBackgroundPosition(primary.y);
+  const secondaryX = secondary ? toBackgroundPosition(secondary.x) : 100 - primaryX;
+  const secondaryY = secondary ? toBackgroundPosition(secondary.y) : 100 - primaryY;
+  const deltaX = secondaryX - primaryX;
+  const deltaY = secondaryY - primaryY;
+  const gradientAngle = Math.abs(deltaX) < 4 && Math.abs(deltaY) < 4
+    ? 160
+    : Math.round((Math.atan2(deltaX, -deltaY) * 180) / Math.PI + 360) % 360;
+
   return {
     ...primary,
     secondaryHue: secondary?.hue ?? (primary.hue + 48) % 360,
     secondarySaturation: secondary?.saturation ?? primary.saturation,
+    primaryX,
+    primaryY,
+    secondaryX,
+    secondaryY,
+    gradientAngle,
   };
 }
 
@@ -340,12 +373,12 @@ module.exports = async function IpcMainEvent(win, app, lyricFunctions = {}) {
         maxContentLength: 5 * 1024 * 1024,
         headers: { Referer: "https://www.kugou.com/" },
       });
-      const { data } = await sharp(response.data)
+      const { data, info } = await sharp(response.data)
         .resize(64, 64, { fit: "cover" })
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
-      return getCoverThemePalette(data);
+      return getCoverThemePalette(data, info.width, info.height);
     } catch (_) {
       return null;
     }

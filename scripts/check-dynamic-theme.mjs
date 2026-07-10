@@ -15,25 +15,39 @@ const redPalette = getDynamicPalette({ data: new Uint8ClampedArray(redPixels) })
 assert.ok(redPalette.hue <= 12 || redPalette.hue >= 348, `expected a red hue, got ${redPalette.hue}`);
 assert.ok(redPalette.saturation >= 20);
 
-const mixedPixels = [
-  ...Array.from({ length: 48 }, () => [220, 35, 45, 255]).flat(),
-  ...Array.from({ length: 48 }, () => [35, 70, 220, 255]).flat(),
-];
-const mixedPalette = getDynamicPalette({ data: new Uint8ClampedArray(mixedPixels) });
+const mixedPixels = Array.from({ length: 96 }, (_, index) => (
+  index % 12 < 6 ? [220, 35, 45, 255] : [35, 70, 220, 255]
+)).flat();
+const mixedPalette = getDynamicPalette({
+  data: new Uint8ClampedArray(mixedPixels),
+  width: 12,
+  height: 8,
+});
 const paletteDistance = Math.abs(mixedPalette.hue - mixedPalette.secondaryHue);
 assert.ok(Math.min(paletteDistance, 360 - paletteDistance) >= 35);
+assert.ok(Math.abs(mixedPalette.primaryX - mixedPalette.secondaryX) >= 20);
 
 assert.deepEqual(getThemePaletteFromColor("#ff0000"), {
   hue: 0,
   saturation: 85,
   secondaryHue: 48,
   secondarySaturation: 85,
+  primaryX: 18,
+  primaryY: 12,
+  secondaryX: 82,
+  secondaryY: 88,
+  gradientAngle: 155,
 });
 assert.deepEqual(getThemePaletteFromColor("#404040"), {
   hue: 210,
   saturation: 0,
   secondaryHue: 258,
   secondarySaturation: 0,
+  primaryX: 18,
+  primaryY: 12,
+  secondaryX: 82,
+  secondaryY: 88,
+  gradientAngle: 155,
 });
 assert.equal(getThemePaletteFromColor("not-a-color"), null);
 
@@ -43,6 +57,11 @@ assert.deepEqual(getDynamicPalette({ data: new Uint8ClampedArray(grayPixels) }),
   saturation: 0,
   secondaryHue: 210,
   secondarySaturation: 0,
+  primaryX: 12,
+  primaryY: 8,
+  secondaryX: 92,
+  secondaryY: 96,
+  gradientAngle: 160,
 });
 
 assert.deepEqual(getDynamicPalette({ data: new Uint8ClampedArray(0) }), {
@@ -50,5 +69,10 @@ assert.deepEqual(getDynamicPalette({ data: new Uint8ClampedArray(0) }), {
   saturation: 28,
   secondaryHue: 252,
   secondarySaturation: 36,
+  primaryX: 12,
+  primaryY: 8,
+  secondaryX: 92,
+  secondaryY: 96,
+  gradientAngle: 160,
 });
 console.log("dynamic-theme checks passed");

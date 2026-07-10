@@ -4,6 +4,11 @@ const THEME_VARIABLES = [
   "--ambient-saturation",
   "--ambient-hue-secondary",
   "--ambient-saturation-secondary",
+  "--ambient-primary-x",
+  "--ambient-primary-y",
+  "--ambient-secondary-x",
+  "--ambient-secondary-y",
+  "--ambient-gradient-angle",
 ];
 
 let requestId = 0;
@@ -58,6 +63,11 @@ function getFallbackPalette() {
     saturation: 28,
     secondaryHue: 252,
     secondarySaturation: 36,
+    primaryX: 12,
+    primaryY: 8,
+    secondaryX: 92,
+    secondaryY: 96,
+    gradientAngle: 160,
   };
 }
 
@@ -67,6 +77,38 @@ function getNeutralPalette() {
     saturation: 0,
     secondaryHue: 210,
     secondarySaturation: 0,
+    primaryX: 12,
+    primaryY: 8,
+    secondaryX: 92,
+    secondaryY: 96,
+    gradientAngle: 160,
+  };
+}
+
+const toBackgroundPosition = (value) => clamp(Math.round(8 + value * 84), 8, 92);
+
+function getGradientAngle(primaryX, primaryY, secondaryX, secondaryY) {
+  const deltaX = secondaryX - primaryX;
+  const deltaY = secondaryY - primaryY;
+  if (Math.abs(deltaX) < 4 && Math.abs(deltaY) < 4) return 160;
+  return Math.round((Math.atan2(deltaX, -deltaY) * 180) / Math.PI + 360) % 360;
+}
+
+function createSpatialPalette(primary, secondary) {
+  const primaryX = toBackgroundPosition(primary.x);
+  const primaryY = toBackgroundPosition(primary.y);
+  const secondaryX = secondary ? toBackgroundPosition(secondary.x) : 100 - primaryX;
+  const secondaryY = secondary ? toBackgroundPosition(secondary.y) : 100 - primaryY;
+  return {
+    hue: primary.hue,
+    saturation: primary.saturation,
+    secondaryHue: secondary?.hue ?? (primary.hue + 48) % 360,
+    secondarySaturation: secondary?.saturation ?? primary.saturation,
+    primaryX,
+    primaryY,
+    secondaryX,
+    secondaryY,
+    gradientAngle: getGradientAngle(primaryX, primaryY, secondaryX, secondaryY),
   };
 }
 
@@ -75,6 +117,8 @@ export function getDynamicPalette(imageData) {
   if (!data?.length) return getFallbackPalette();
 
   const colorBuckets = new Map();
+  const width = Math.max(Number(imageData?.width) || data.length / 4, 1);
+  const height = Math.max(Number(imageData?.height) || 1, 1);
   let pixelCount = 0;
   let chromaticCoverage = 0;
 
@@ -95,10 +139,15 @@ export function getDynamicPalette(imageData) {
     chromaticCoverage += saturation;
 
     const key = `${Math.floor(hue / 24)}:${Math.floor(lightness * 4)}`;
-    const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, weight: 0 };
+    const bucket = colorBuckets.get(key) || { red: 0, green: 0, blue: 0, x: 0, y: 0, weight: 0 };
+    const pixelIndex = index / 4;
+    const x = (pixelIndex % width) / Math.max(width - 1, 1);
+    const y = Math.floor(pixelIndex / width) / Math.max(height - 1, 1);
     bucket.red += data[index] * weight;
     bucket.green += data[index + 1] * weight;
     bucket.blue += data[index + 2] * weight;
+    bucket.x += x * weight;
+    bucket.y += y * weight;
     bucket.weight += weight;
     colorBuckets.set(key, bucket);
   }
@@ -110,6 +159,8 @@ export function getDynamicPalette(imageData) {
         bucket.green / bucket.weight,
         bucket.blue / bucket.weight,
       ),
+      x: bucket.x / bucket.weight,
+      y: bucket.y / bucket.weight,
       weight: bucket.weight,
     }))
     .sort((first, second) => second.weight - first.weight);
@@ -125,12 +176,7 @@ export function getDynamicPalette(imageData) {
       return secondScore - firstScore;
     })[0];
 
-  return {
-    hue: primary.hue,
-    saturation: primary.saturation,
-    secondaryHue: secondary?.hue ?? (primary.hue + 48) % 360,
-    secondarySaturation: secondary?.saturation ?? primary.saturation,
-  };
+  return createSpatialPalette(primary, secondary);
 }
 
 export function getThemePaletteFromColor(color) {
@@ -147,6 +193,11 @@ export function getThemePaletteFromColor(color) {
     ...primary,
     secondaryHue: (primary.hue + 48) % 360,
     secondarySaturation: primary.saturation,
+    primaryX: 18,
+    primaryY: 12,
+    secondaryX: 82,
+    secondaryY: 88,
+    gradientAngle: 155,
   };
 }
 
@@ -180,7 +231,17 @@ async function extractDynamicPalette(source) {
   return getDynamicPalette(context.getImageData(0, 0, canvas.width, canvas.height));
 }
 
-function applyPalette({ hue, saturation, secondaryHue, secondarySaturation }) {
+function applyPalette({
+  hue,
+  saturation,
+  secondaryHue,
+  secondarySaturation,
+  primaryX = 12,
+  primaryY = 8,
+  secondaryX = 92,
+  secondaryY = 96,
+  gradientAngle = 160,
+}) {
   const root = document.documentElement;
   const rootStyle = getComputedStyle(root);
   root.style.setProperty(
@@ -194,6 +255,14 @@ function applyPalette({ hue, saturation, secondaryHue, secondarySaturation }) {
     String(getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-hue-secondary")), nextSecondaryHue)),
   );
   root.style.setProperty("--ambient-saturation-secondary", `${secondarySaturation ?? saturation}%`);
+  root.style.setProperty("--ambient-primary-x", `${primaryX}%`);
+  root.style.setProperty("--ambient-primary-y", `${primaryY}%`);
+  root.style.setProperty("--ambient-secondary-x", `${secondaryX}%`);
+  root.style.setProperty("--ambient-secondary-y", `${secondaryY}%`);
+  root.style.setProperty(
+    "--ambient-gradient-angle",
+    `${getClosestHue(Number.parseFloat(rootStyle.getPropertyValue("--ambient-gradient-angle")), gradientAngle)}deg`,
+  );
   root.classList.add(THEME_CLASS);
 }
 

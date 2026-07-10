@@ -24,6 +24,36 @@
   initial-value: 36%;
 }
 
+@property --ambient-primary-x {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 12%;
+}
+
+@property --ambient-primary-y {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 8%;
+}
+
+@property --ambient-secondary-x {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 92%;
+}
+
+@property --ambient-secondary-y {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 96%;
+}
+
+@property --ambient-gradient-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 160deg;
+}
+
 :root {
   --bg: #f4f6f8;
   --text: #111213;
@@ -46,7 +76,12 @@ html {
     --ambient-hue 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-saturation 0.85s cubic-bezier(0.22, 1, 0.36, 1),
     --ambient-hue-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
-    --ambient-saturation-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+    --ambient-saturation-secondary 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-primary-x 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-primary-y 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-secondary-x 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-secondary-y 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    --ambient-gradient-angle 0.85s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html,
@@ -60,9 +95,9 @@ html.dynamic-theme .mainWindow,
 html.dynamic-theme .music-player {
   background-color: hsl(var(--ambient-hue) var(--ambient-saturation) 86%) !important;
   background-image:
-    radial-gradient(90% 100% at 12% 8%, hsl(var(--ambient-hue) var(--ambient-saturation) 53% / 0.74), transparent 68%),
-    radial-gradient(85% 90% at 92% 96%, hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 58% / 0.56), transparent 70%),
-    linear-gradient(160deg, hsl(var(--ambient-hue) var(--ambient-saturation) 92%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 80%)) !important;
+    radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 53% / 0.74), transparent 68%),
+    radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 58% / 0.56), transparent 70%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 92%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 80%)) !important;
   background-blend-mode: normal !important;
   transition: none !important;
 }
@@ -93,9 +128,9 @@ html.dark.dynamic-theme .mainWindow,
 html.dark.dynamic-theme .music-player {
   background-color: hsl(var(--ambient-hue) 38% 13%) !important;
   background-image:
-    radial-gradient(90% 100% at 12% 8%, hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.58), transparent 68%),
-    radial-gradient(85% 90% at 92% 96%, hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 36% / 0.42), transparent 70%),
-    linear-gradient(160deg, hsl(var(--ambient-hue) var(--ambient-saturation) 22%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 11%)) !important;
+    radial-gradient(90% 100% at var(--ambient-primary-x) var(--ambient-primary-y), hsl(var(--ambient-hue) var(--ambient-saturation) 42% / 0.58), transparent 68%),
+    radial-gradient(85% 90% at var(--ambient-secondary-x) var(--ambient-secondary-y), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 36% / 0.42), transparent 70%),
+    linear-gradient(var(--ambient-gradient-angle), hsl(var(--ambient-hue) var(--ambient-saturation) 22%), hsl(var(--ambient-hue-secondary) var(--ambient-saturation-secondary) 11%)) !important;
   background-blend-mode: normal !important;
 }
 
