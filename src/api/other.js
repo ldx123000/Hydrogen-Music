@@ -192,7 +192,9 @@ function normalizeSearchPlaylist(item = {}) {
 }
 
 function normalizeSearchMv(item = {}) {
-    const cover = resolveSearchImage(item.imgurl || item.cover || item.sizable_cover || item.pic || item.Pic || item.ThumbGif)
+    const pic = String(item.Pic || '')
+    const kugouPic = /^\d{8}.+\.[a-z]+$/i.test(pic) ? `https://imge.kugou.com/mvhdpic/400/${pic.slice(0, 8)}/${pic}` : pic
+    const cover = resolveSearchImage(item.imgurl || item.cover || item.sizable_cover || item.pic || item.ThumbGif || kugouPic)
 
     return {
         ...item,

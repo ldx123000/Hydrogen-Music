@@ -12,8 +12,8 @@
       settings: ['captions', 'quality', 'speed', 'loop'],
       autoplay: false,
       quality: {
-        default: 1080,
-        options: [1080, 720, 480, 240],
+        default: 720,
+        options: [1080, 720, 540, 432, 270],
       },
     };
     player.value = new Plyr('#player', config)

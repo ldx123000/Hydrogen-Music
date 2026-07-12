@@ -58,7 +58,7 @@ function normalizeMV(raw = {}, extra = {}) {
     const cover = resolveCover(raw.imgurl || raw.cover || raw.sizable_cover || raw.pic || raw.Pic || raw.ThumbGif || '')
     const artists = normalizeMvArtists(raw)
     const videoId = raw.vid || raw.video_id || raw.MvID || raw.id || raw.mvhash || raw.videoid || ''
-    const hash = raw.hash || raw.video_hash || raw.mvhash || raw.MvHash || ''
+    const hash = raw.hd_hash || raw.qhd_hash || raw.sd_hash || raw.ld_hash || raw.hash || raw.video_hash || raw.mvhash || raw.MvHash || ''
 
     return {
         ...raw,
@@ -163,11 +163,14 @@ export function getMVUrl(input, _r) {
         url: '/video/url',
         method: 'get',
         params: { hash },
-    }).then(result => ({
-        ...result,
-        data: {
-            url: result?.data?.url || result?.url || '',
-            hash,
-        },
-    }))
+    }).then(result => {
+        const hashData = result?.data?.[hash.toLowerCase()] || result?.data?.[hash] || {}
+        return {
+            ...result,
+            data: {
+                url: result?.data?.url || result?.url || hashData?.downurl || toArray(hashData?.backupdownurl)[0] || '',
+                hash,
+            },
+        }
+    })
 }

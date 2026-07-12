@@ -162,13 +162,20 @@ export const useOtherStore = defineStore('otherStore', {
                     return false;
                 }
 
-                const urlResult = await getMVUrl({ id: mvId, hash: mvHash }).catch(() => null)
-                const src = urlResult?.data?.url || ''
-                const sources = src ? [{
-                    src,
-                    type: 'video/mp4',
-                    size: 0,
-                }] : []
+                const qualityHashes = [
+                    [1080, mv.fhd_hash],
+                    [720, mv.hd_hash],
+                    [540, mv.qhd_hash],
+                    [432, mv.sd_hash],
+                    [270, mv.ld_hash],
+                ].filter(([, hash]) => hash)
+                if (qualityHashes.length === 0) qualityHashes.push([0, mvHash])
+
+                const sources = (await Promise.all(qualityHashes.map(async ([size, hash]) => {
+                    const urlResult = await getMVUrl({ id: mvId, hash }).catch(() => null)
+                    const src = urlResult?.data?.url || ''
+                    return src ? { src, type: 'video/mp4', size } : null
+                }))).filter(Boolean)
                 if (sources.length === 0) {
                     noticeOpen('MV 资源不可用', 2);
                     return false;
