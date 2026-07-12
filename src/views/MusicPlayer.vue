@@ -166,6 +166,7 @@ watch([currentTrack, isDj], ([song, djMode]) => {
         <Transition name="fade3">
             <div
                 v-if="showCoverBackdrop"
+                :key="coverBgUrl"
                 class="back-drop"
                 :style="{ backgroundImage: coverBgUrl ? `url(${coverBgUrl})` : 'none' }"
             ></div>
