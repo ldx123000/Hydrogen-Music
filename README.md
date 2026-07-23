@@ -138,6 +138,12 @@ Hydrogen Music 是一个第三方桌面音乐播放器。当前仓库在原 Hydr
 - macOS：DMG。
 - Linux：AppImage、Deb、RPM。
 
+Arch Linux 用户可通过 AUR 安装：
+
+```shell
+yay -S hydrogen-music-bin
+```
+
 首次使用建议先登录网易云账号。部分功能依赖账号权限、VIP 权益或第三方服务登录状态。
 
 ## 开发与构建

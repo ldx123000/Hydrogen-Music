@@ -9,6 +9,7 @@ lerna-debug.log*
 
 
 dist-ssr
+_aur-package/
 
 # Editor directories and files
 node_modules/*

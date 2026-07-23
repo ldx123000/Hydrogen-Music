@@ -1,0 +1,128 @@
+name: Publish AUR package
+
+run-name: Publish AUR package (${{ github.event.release.tag_name || inputs.tag || github.ref_name }})
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag. Defaults to v{package.json version}.
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aur-hydrogen-music-bin-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish-aur:
+    name: Publish hydrogen-music-bin
+    if: github.event_name != 'release' || github.event.release.prerelease == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      AUR_PACKAGE_NAME: hydrogen-music-bin
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Resolve release tag
+        id: release
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = 'release' ]; then
+            tag="$EVENT_TAG"
+          elif [ -n "$INPUT_TAG" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="v$(node -p "require('./package.json').version")"
+          fi
+
+          if [[ "$tag" != v* ]]; then
+            tag="v${tag}"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9][0-9A-Za-z._+]*$ ]]; then
+            echo "::error::Invalid stable release tag: $tag"
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate AUR package files
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          node scripts/update-aur-package.cjs "$RELEASE_TAG"
+          bash -n _aur-package/PKGBUILD
+          test -s _aur-package/.SRCINFO
+
+      - name: Configure AUR SSH access
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "::error::Missing AUR_SSH_PRIVATE_KEY repository secret"
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+
+          ssh-keyscan -t ed25519 aur.archlinux.org > ~/.ssh/known_hosts
+          fingerprint="$(ssh-keygen -lf ~/.ssh/known_hosts -E sha256 | awk '{print $2}' | sort -u)"
+          if [ "$fingerprint" != 'SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4' ]; then
+            echo "::error::Unexpected AUR SSH host fingerprint: $fingerprint"
+            exit 1
+          fi
+
+          cat > ~/.ssh/config <<'EOF'
+          Host aur.archlinux.org
+            User aur
+            IdentityFile ~/.ssh/aur
+            IdentitiesOnly yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Clone AUR repository
+        run: |
+          git -c init.defaultBranch=master clone \
+            "ssh://aur@aur.archlinux.org/${AUR_PACKAGE_NAME}.git" _aur-repo
+
+      - name: Commit and push AUR update
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          cp _aur-package/PKGBUILD _aur-package/.SRCINFO _aur-repo/
+
+          git -C _aur-repo config user.name 'ldx123000'
+          git -C _aur-repo config user.email 'ldx123000@gmail.com'
+          git -C _aur-repo add PKGBUILD .SRCINFO
+
+          if git -C _aur-repo diff --cached --quiet; then
+            echo 'AUR package is already up to date.'
+            exit 0
+          fi
+
+          git -C _aur-repo commit -m "Update to ${RELEASE_VERSION}"
+          git -C _aur-repo push origin HEAD:master
