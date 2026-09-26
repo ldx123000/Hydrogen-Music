@@ -105,6 +105,9 @@ function hidePlayer(callback) {
 function setSettings(settings) {
     ipcRenderer.send('set-settings', settings)
 }
+function setRememberWindowSize(enabled) {
+    return ipcRenderer.invoke('set-remember-window-size', enabled)
+}
 function clearLocalMusicData(type) {
     ipcRenderer.send('clear-local-music-data', type)
 }
@@ -317,6 +320,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     musicProcessControl,
     hidePlayer,
     setSettings,
+    setRememberWindowSize,
     getSettings: () => ipcRenderer.invoke('get-settings'),
     getSystemFonts: () => ipcRenderer.invoke('system-fonts:list'),
     openDirectory: () => ipcRenderer.invoke('dialog:openFile'),

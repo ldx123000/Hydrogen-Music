@@ -986,7 +986,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
     ipcMain.on('exit-app', (e, playlist) => {
         saveStoredPlaylistPayload(playlist)
-        app.exit()
+        app.quit()
     })
     ipcMain.handle('get-last-playlist', async () => {
         const lastPlaylist = await lastPlaylistStore.get('playlist')

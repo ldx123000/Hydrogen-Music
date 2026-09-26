@@ -1,5 +1,4 @@
 <script setup>
-  import { nextTick } from 'vue'
   import { useRouter } from 'vue-router'
   import ChildrenFolder from '../components/ChildrenFolder.vue'
   import LocalMusicClassify from '../components/LocalMusicClassify.vue'
@@ -27,26 +26,11 @@
     if (query.path) return query.path == item.dirPath
     return query.name == item.name
   }
-  const positionContextMenu = async event => {
-    await nextTick()
-    const menuList = document.getElementById('menu')
-    if (!menuList) return
-
-    const { clientX, clientY } = event
-    const screenWidth = document.body.clientWidth
-    const screenHeight = document.body.clientHeight
-    const menuWidth = menuList.offsetWidth || 140
-    const menuHeight = menuList.offsetHeight || 70
-    menuList.style.right = null
-    menuList.style.bottom = null
-    menuList.style.left = Math.max(0, Math.min(clientX, screenWidth - menuWidth)) + 'px'
-    menuList.style.top = Math.max(0, Math.min(clientY, screenHeight - menuHeight)) + 'px'
-  }
   const openFolderMenu = (event, item) => {
     otherStore.contextMenuShow = true
     otherStore.selectedItem = item
     otherStore.menuTree = otherStore.tree6
-    void positionContextMenu(event)
+    otherStore.contextMenuPosition = { x: event.clientX, y: event.clientY }
   }
 </script>
 

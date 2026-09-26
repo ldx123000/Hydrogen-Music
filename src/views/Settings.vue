@@ -13,7 +13,7 @@ import UpdateDialog from '../components/UpdateDialog.vue'
 import { setTheme, getSavedTheme } from '@/utils/theme'
 import { confirmAccountLogout, initializeCurrentAccountSession } from '@/utils/accountSession'
 import { applyCurrentHifiOutputSettings, enforceLocalOnlyPlayback, restoreOnlinePlayback } from '@/utils/player/lazy'
-import { getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
+import { getCachedSettingsSnapshot, getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
 import { applyCustomFontStyle, syncDesktopLyricCustomFont } from '@/utils/setFont'
 import { buildFontOptions, loadSystemFontOptions, resolveSystemFontLabel, resolveSystemFontValue } from '@/utils/fontResolver'
 import { markHifiOutputModeConfigured, resolveInitialHifiOutputMode } from '@/utils/hifiOutputModeMigration'
@@ -35,6 +35,7 @@ const lyricInterlude = ref(13)
 const searchAssistLimit = ref(8)
 const globalShortcuts = ref(false)
 const rememberWindowSize = ref(false)
+const rememberWindowSizeSaving = ref(false)
 const quitApp = ref('minimize')
 const quitAppOptions = ref([
     {
@@ -281,6 +282,26 @@ const setAppSettings = () => {
 
 const saveSettings = () => {
     initSettings({ settings: setAppSettings(), hydrateLocalMusic: true })
+}
+
+const toggleRememberWindowSize = async () => {
+    if (rememberWindowSizeSaving.value) return
+    const previousValue = rememberWindowSize.value
+    rememberWindowSize.value = !previousValue
+    rememberWindowSizeSaving.value = true
+    try {
+        const settings = await windowApi.setRememberWindowSize(rememberWindowSize.value)
+        rememberWindowSize.value = settings.other.rememberWindowSize
+        const snapshot = getCachedSettingsSnapshot() || settings
+        snapshot.other.rememberWindowSize = rememberWindowSize.value
+        setCachedSettingsSnapshot(snapshot)
+    } catch (error) {
+        rememberWindowSize.value = previousValue
+        console.error('保存窗口记忆设置失败:', error)
+        noticeOpen('保存设置失败，请重试', 2)
+    } finally {
+        rememberWindowSizeSaving.value = false
+    }
 }
 
 const setCustomFont = (font, option = null) => {
@@ -997,7 +1018,7 @@ const toggleLocalOnlyMode = async () => {
                         <div class="option">
                             <div class="option-name">记住窗口大小</div>
                             <div class="option-operation">
-                                <div class="toggle" @click="rememberWindowSize = !rememberWindowSize">
+                                <div class="toggle" :aria-disabled="rememberWindowSizeSaving" @click="toggleRememberWindowSize">
                                     <div class="toggle-off" :class="{ 'toggle-on-in': rememberWindowSize }">{{ rememberWindowSize ? '已开启' : '已关闭' }}</div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="rememberWindowSize"></div>

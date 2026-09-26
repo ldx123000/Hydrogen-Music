@@ -77,24 +77,7 @@
     otherStore.selectedItem = item
     otherStore.menuTree = otherStore.tree4
     
-    const { clientX, clientY } = e
-    const menuList = document.getElementById('menu')
-    const screenWidth = document.body.clientWidth
-    const screenHeight = document.body.clientHeight
-    if(screenWidth - clientX < 120) {
-      menuList.style.left = screenWidth - 140 + 'Px'
-      menuList.style.right = null
-    } else {
-      menuList.style.right = null
-      menuList.style.left = clientX + 'Px'
-    }
-    if(screenHeight - clientY < 240) {
-      menuList.style.top = screenHeight - 240 + 'Px'
-      menuList.style.bottom = null
-    } else {
-      menuList.style.bottom = null
-      menuList.style.top = clientY + 'Px'
-    }
+    otherStore.contextMenuPosition = { x: e.clientX, y: e.clientY }
   }
 
   watch(
