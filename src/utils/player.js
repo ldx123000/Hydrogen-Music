@@ -1018,7 +1018,7 @@ function syncPlayModeExternalState(mode) {
     window.playerApi.switchShuffle(mode === 3)
 }
 
-function applyPlayMode(mode, options = {}) {
+export function applyPlayMode(mode, options = {}) {
     const inFM = Object.prototype.hasOwnProperty.call(options, 'inFM') ? options.inFM : isPersonalFMContext()
     const syncExternal = options.syncExternal !== false
     const nextMode = normalizePlayMode(mode, inFM)
@@ -1875,6 +1875,7 @@ function getGaplessStartTarget(entry) {
 }
 
 function tryStartGaplessNextFromEnd(options = {}) {
+    if (playerStore.togetherRoomActive) return false
     if (!gaplessPlayback.value) return false
 
     const entry = gaplessPreload
@@ -1926,6 +1927,7 @@ function startGaplessTransitionMonitor() {
 function handlePlaybackEnded() {
     reportCurrentNcmPlaybackEnd('playend', true)
     stopProgressSampling()
+    if (typeof window !== 'undefined' && !window.dispatchEvent(new CustomEvent('listentogether:ended', { cancelable: true }))) return
     if (tryStartGaplessNextFromEnd()) return
 
     if (isPersonalFMContext()) {

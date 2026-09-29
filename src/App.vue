@@ -1,6 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import Home from './views/Home.vue';
+import ListenTogetherRuntime from './components/ListenTogetherRuntime.vue';
 import Title from './components/Title.vue';
 import SearchInput from './components/SearchInput.vue';
 import AudioVisualizer from './components/AudioVisualizer.vue';
@@ -51,6 +52,7 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
+    <ListenTogetherRuntime />
     <div class="mainWindow">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
