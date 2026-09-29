@@ -135,7 +135,11 @@ export async function applyLoginSession(data) {
     await ensureCsrfCookie()
 
     try {
-        return await hydrateAccountSession(token)
+        if (!isLogin()) throw new Error('登录失败，未获取到登录凭证')
+        const profile = await hydrateAccountSession(token)
+        if (!isAccountSessionTokenActive(token)) return null
+        if (!profile?.userId) throw new Error('登录失败，未获取到账号信息，请重试')
+        return profile
     } catch (error) {
         await clearCurrentAccountSessionState(token)
         throw error
