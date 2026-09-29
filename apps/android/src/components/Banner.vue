@@ -1,0 +1,318 @@
+<script setup>
+  import { ref, onActivated, onDeactivated, onBeforeUnmount } from 'vue'
+  import { getBanner } from '../api/other';
+  import { prefetchBreakingNewsDetails } from '../utils/breakingNewsDetail'
+  const bannerSessionCache = new Map()
+  const emit = defineEmits(['open-breaking-news'])
+  const timer1 = ref(null)
+  const timer2 = ref(null)
+  const timer3 = ref(null)
+  const timer4 = ref(null)
+  const slideIndex = ref(0)
+  const currentIndex = ref(0)
+  const transitionTime = ref(0)
+  const bannerTimer1 = ref(false)
+  const bannerTimer2 = ref(false)
+  const bannerList = ref([{}])
+  let isActive = false
+  //获取轮播图，0为pc端轮播图,此处选择的是ipad端
+  async function loadData(type) {
+      if (bannerSessionCache.has(type)) {
+          bannerList.value = bannerSessionCache.get(type)
+          prefetchBreakingNewsDetails(bannerList.value, { immediateFirst: true })
+          return
+      }
+      const bannerData = await getBanner(type)
+      const banners = Array.isArray(bannerData?.banners) ? bannerData.banners : [{}]
+      bannerSessionCache.set(type, banners)
+      bannerList.value = banners
+      prefetchBreakingNewsDetails(banners, { immediateFirst: true })
+  }
+
+  onActivated(async () => {
+      isActive = true
+      await loadData(3)
+      if (isActive) bannerStart()
+  })
+
+    function clearBannerTimers() {
+        clearTimeout(timer2.value)
+        clearTimeout(timer3.value)
+        clearTimeout(timer4.value)
+        timer2.value = null
+        timer3.value = null
+        timer4.value = null
+    }
+
+    function stopBanner() {
+        isActive = false
+        clearInterval(timer1.value)
+        timer1.value = null
+        clearBannerTimers()
+        resetBannerLoop()
+        bannerTimer1.value = false
+        bannerTimer2.value = false
+    }
+
+    onDeactivated(stopBanner)
+    onBeforeUnmount(stopBanner)
+
+    //banner开始轮播
+    function bannerStart() {
+        clearInterval(timer1.value)
+        if (!isActive || bannerList.value.length < 2) return
+        timer1.value = setInterval(() => {
+            nextImg()
+        }, 3000);
+    }
+
+    //banner鼠标移入停止计时
+    function bannerMouse(event, hovering) {
+        if (event.pointerType !== 'mouse') return
+        hovering ? clearInterval(timer1.value) : bannerStart()
+    }
+
+    //banner下一张
+    function nextImg() {
+        if (bannerList.value.length < 2) return
+        transitionTime.value = 0.8
+        if (currentIndex.value === bannerList.value.length - 1) {
+            slideIndex.value = bannerList.value.length
+            currentIndex.value = 0
+        } else {
+            currentIndex.value++
+            slideIndex.value = currentIndex.value
+        }
+        bannerTimerFun()
+    }
+
+    // The final slide duplicates the first. Reset only after its own transition
+    // finishes, so a new selection cannot be overwritten by an old timeout.
+    function resetBannerLoop() {
+        if (slideIndex.value !== bannerList.value.length) return
+        transitionTime.value = 0
+        slideIndex.value = 0
+    }
+
+    //banner下方选择条
+    function imgSlect(index) {
+        bannerTimerFun()
+        bannerStart()
+        transitionTime.value = 0.8
+        slideIndex.value = index
+        currentIndex.value = index
+    }
+
+    function nextBanner() {
+        bannerStart()
+        nextImg()
+    }
+
+    //banner右上角计时器
+    function bannerTimerFun() {
+        clearBannerTimers()
+        bannerTimer1.value = false
+        bannerTimer2.value = false
+        timer2.value = setTimeout(() => {
+            bannerTimer1.value = true
+            bannerTimer2.value = true
+        }, 1);
+        timer4.value = setTimeout(() => {
+            bannerTimer1.value = false
+        }, 900);
+        timer3.value = setTimeout(() => {
+            bannerTimer2.value = false
+        }, 2900);
+    }
+
+    //点击banner
+    function bannerItem(item, index) {
+        if (!item || (!item.pic && !item.imageUrl && !item.url && !item.targetId)) return
+
+        const targetType = Number(item.targetType)
+        const targetId = Number(item.targetId)
+
+        emit('open-breaking-news', {
+            bannerId: Number.isFinite(Number(item.bannerId)) ? Number(item.bannerId) : null,
+            pic: item.pic || item.imageUrl || '',
+            typeTitle: item.typeTitle || '',
+            targetType: Number.isFinite(targetType) ? targetType : null,
+            targetId: Number.isFinite(targetId) ? targetId : null,
+            url: item.url || null,
+            titleColor: item.titleColor || null,
+            index: Number.isFinite(Number(index)) ? Number(index) : 0,
+        })
+    }
+</script>
+
+<template>
+  <div>
+    <div class="banner">
+        <div class="banner-header">
+            <div class="banner-title">BREAKING NEWS</div>
+            <div class="banner-timer">
+                <div class="line"></div>
+                <div :class="{'timer': true, 'timer-active': bannerTimer1}">
+                    <div :class="{'timer-animation': true, 'timer-animation-active': bannerTimer2}"></div>
+                </div>
+            </div>
+        </div>
+        <div class="banner-img" @pointerenter="bannerMouse($event, true)" @pointerleave="bannerMouse($event, false)">
+            <div class="img-box" :style="{transform:`translateX(-${slideIndex * 100}%)`,transition:`transform ${transitionTime}s`}" @transitionend.self="resetBannerLoop">
+                <img @click="bannerItem(item, index)" v-for="(item, index) in bannerList" :key="item.bannerId || item.pic || item.imageUrl" :src="(item.pic || item.imageUrl) ? ((item.pic || item.imageUrl) + '?param=720y280') : undefined" alt="">
+                <img @click="bannerItem(bannerList[0], 0)" :src="(bannerList[0] && (bannerList[0].pic || bannerList[0].imageUrl)) ? ((bannerList[0].pic || bannerList[0].imageUrl) + '?param=720y280') : undefined" alt="">
+            </div>
+        </div>
+        <div class="selector-box">
+            <div @click="imgSlect(index)" class="selector" v-for="(item, index) in bannerList.length">
+                <div :class="{'selector-style': true,'selector-style-active': currentIndex == index}"></div>
+            </div>
+        </div>
+        <div class="banner-next" @click="nextBanner()"></div>
+      </div>
+  </div>
+</template>
+
+<style scoped lang="scss">
+  .banner{
+        position: relative;
+        .banner-img{
+            width: 35vw;
+            height: 13.7vw;
+            position: relative;
+            overflow: hidden;
+            .img-box{
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: row;
+                justify-content: flex-start;
+                align-items: flex-start;
+                position: absolute;
+                top: 0px;
+                left: 0px;
+                img{
+                    width: 100%;
+                    height: 100%;
+                    flex-shrink: 0;
+                    object-fit: cover;
+                    &:hover{
+                        cursor: pointer;
+                    }
+                }
+            }
+        }
+        .selector-box{
+            width: 100%;
+            height: 0.4vw;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            position: absolute;
+            bottom: -1vw;
+            .selector{
+                padding: 1.2vw 0.6vw 1.2vw 0;
+                &:hover{
+                    cursor: pointer;
+                    .selector-style{
+                        height: 0.3vw;
+                        background-color: black;
+                        opacity: 1;
+                    }
+                }
+                .selector-style{
+                    width: 2.2vw;
+                    height: 1px;
+                    background-color: rgb(106, 106, 106);
+                    opacity: 0.5;
+                    transition: 0.3s;
+                }
+                .selector-style-active{
+                    width: 4.5vw;
+                    height: 0.3vw;
+                    background-color: black;
+                    opacity: 1;
+                    transition-delay: 0.05s;
+                }
+            }
+        }
+        .banner-header{
+            width: 100%;
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            position: absolute;
+            top: -1.4vw;
+            left: 0;
+            .banner-title{
+                padding: 0.1vw 4vw 0.1vw 0.2vw;
+                background-color: black;
+                font: 0.65vw Geometos;
+                color: white;
+            }
+            .banner-timer{
+                margin-right: -8px;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                .line{
+                    width: 9vw;
+                    height: 0.5px;
+                    background-color: black;
+                }
+                .timer{
+                    width: 0.8vw;
+                    height: 0.8vw;
+                    border: 1px solid black;
+                    position: relative;
+                    right: -0.6vw;
+                    transition: 0s;
+                    .timer-animation{
+                        width: 0px;
+                        height: 0px;
+                        background-color: black;
+                        position: absolute;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                    }
+                    .timer-animation-active{
+                        animation: timer-animation-active 3s linear;
+                    }
+                    @keyframes timer-animation-active {
+                        86%{opacity: 1;}
+                        88%{opacity: 0;}
+                        90%{opacity: 1;}
+                        92%{opacity: 0;}
+                        94%{opacity: 1;}
+                        96%{opacity: 0;}
+                        98%{opacity: 1;}
+                        100%{width: 0.8vw;;height: 0.8vw;;opacity: 0;}
+                    }
+                }
+                .timer-active{
+                    transform: rotate(180deg);
+                    transition: 0.8s;
+                }
+            }
+        }
+        .banner-next{
+            width: 4vw;
+            height: 4vw;
+            border: {
+                right: 1px solid black;
+                bottom: 1px solid black;
+            };
+            position: absolute;
+            right: -0.9vw;
+            bottom: -0.9vw;
+            transition: 0.3s;
+            &:hover{
+                cursor: pointer;
+                right: -1.1vw;
+                bottom: -1.1vw;
+            }
+        }
+    }
+</style>

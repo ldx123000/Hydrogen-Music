@@ -1,0 +1,126 @@
+name: Build Android
+
+on:
+  push:
+    tags: ['android-v*']
+  pull_request:
+    paths:
+      - 'apps/android/**'
+      - 'package.json'
+      - 'src/assets/**'
+      - 'src/shared/**'
+      - 'src/utils/songLink.js'
+      - 'src/utils/listenTogether.js'
+      - 'src/utils/theme.js'
+      - 'scripts/patch-ncm-api.cjs'
+      - '.github/workflows/build-android.yml'
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Android build type
+        type: choice
+        options: [debug, release]
+        default: debug
+      draft_release:
+        description: Create a draft release (signed release builds only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      BUILD_VARIANT: ${{ startsWith(github.ref, 'refs/tags/android-v') && 'release' || inputs.variant || 'debug' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/android/package-lock.json
+            apps/android/mobile-runtime/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
+      - name: Install Android dependencies
+        run: npm run android:install
+      - name: Test Android API bridge
+        run: npm --prefix apps/android test
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="android-v${version}"
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "$tag" ]]; then
+            echo "Tag must match the root package.json: $tag"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Configure release signing
+        if: env.BUILD_VARIANT == 'release'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then echo "Missing signing secret: $name"; exit 1; fi
+          done
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hydrogen-android.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/hydrogen-android.jks" >> "$GITHUB_ENV"
+      - name: Build debug APK
+        if: env.BUILD_VARIANT == 'debug'
+        run: npm run android:build
+      - name: Build signed APK and AAB
+        if: env.BUILD_VARIANT == 'release'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          npm run android:release
+          npm run android:bundle
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hydrogen-music-android-${{ env.BUILD_VARIANT }}
+          path: apps/android/release/**
+          if-no-files-found: error
+          retention-days: 14
+      - name: Create Android draft release
+        if: env.BUILD_VARIANT == 'release' && (github.ref_type == 'tag' || inputs.draft_release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          assets=(apps/android/release/*/*-release.apk apps/android/release/*/*-release.aab)
+          if [[ "${#assets[@]}" != 2 ]]; then echo 'Expected APK and AAB'; exit 1; fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; manage its assets explicitly."
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --draft --target "$GITHUB_SHA" --title "Android ${RELEASE_TAG#android-v}" \
+            --notes 'Android APK 可直接安装；AAB 用于应用商店分发。安装要求和已知限制见 apps/android/README.md。'
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/hydrogen-android.jks"

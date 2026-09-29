@@ -37,13 +37,13 @@
     <div class="list-item" @click.stop="showFiles(item)" @contextmenu.prevent.stop="openFolderMenu($event, item)" :class="{'list-item-open': item.show && item.children.length != 0, 'list-item-selected': isSelectedFolder(item)}" v-for="(item, index) in props.folderChildren">
         <div class="folder" >
             <div class="folder-img">
-                <svg t="1671777626561" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2336" width="200" height="200"><path d="M418.133333 298.666667l-42.666666-42.666667H213.333333v512h640V298.666667H418.133333zM896 298.666667v512H170.666667V213.333333h226.133333l42.666667 42.666667H896v42.666667z m-298.666667 341.333333h170.666667v42.666667h-170.666667v-42.666667z" fill="#000000" p-id="2337"></path></svg>
+                <svg t="1671777626561" class="icon" viewBox="98 77 870 870" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2336" width="200" height="200"><path d="M418.133333 298.666667l-42.666666-42.666667H213.333333v512h640V298.666667H418.133333zM896 298.666667v512H170.666667V213.333333h226.133333l42.666667 42.666667H896v42.666667z m-298.666667 341.333333h170.666667v42.666667h-170.666667v-42.666667z" fill="#000000" p-id="2337"></path></svg>
             </div>
             <div class="folder-name">
                 <span class="name">{{ item.name }}</span>
             </div>
             <div class="folder-more" @click.stop="openChildren(item)" :class="{'folder-more-open': item.show}" v-if="item.children.length != 0">
-                <svg t="1671783136987" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="3068" width="200" height="200"><path d="M533.333333 605.866667L341.333333 413.866667l29.866667-29.866667 162.133333 162.133333L695.466667 384l29.866666 29.866667-192 192z" fill="#000000" p-id="3069"></path></svg>
+                <svg t="1671783136987" class="icon" viewBox="303 265 461 461" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="3068" width="200" height="200"><path d="M533.333333 605.866667L341.333333 413.866667l29.866667-29.866667 162.133333 162.133333L695.466667 384l29.866666 29.866667-192 192z" fill="#000000" p-id="3069"></path></svg>
             </div>
         </div>
         <Transition name="children">

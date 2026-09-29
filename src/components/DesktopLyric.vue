@@ -168,12 +168,12 @@
 
                 <div class="menu-item" @click="toggleLock">
                     <div class="item-icon" aria-hidden="true">
-                        <svg v-if="locked" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg v-if="locked" viewBox="0.8 0.5 14.4 14.4" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M4.5 7V5.4C4.5 3.6 5.7 2.4 7.5 2.4C8.9 2.4 10 3.2 10.4 4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
                             <path d="M3.5 7H12.5V13H3.5V7Z" stroke="currentColor" stroke-width="1.4"/>
                             <path d="M8 9.2V11" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
                         </svg>
-                        <svg v-else viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg v-else viewBox="0.8 0.5 14.4 14.4" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M4.5 7V5.4C4.5 3.6 5.7 2.4 7.5 2.4H8.5C10.3 2.4 11.5 3.6 11.5 5.4V7" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
                             <path d="M3.5 7H12.5V13H3.5V7Z" stroke="currentColor" stroke-width="1.4"/>
                             <path d="M8 9.2V11" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
@@ -188,7 +188,7 @@
 
                 <div class="menu-item" @click="adjustFontSize(2)">
                     <div class="item-icon" aria-hidden="true">
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="12" height="12" viewBox="1.2 1.2 9.6 9.6" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M3 6h6M6 3v6" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
                         </svg>
                     </div>
@@ -201,7 +201,7 @@
 
                 <div class="menu-item" @click="adjustFontSize(-2)">
                     <div class="item-icon" aria-hidden="true">
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="12" height="12" viewBox="1.2 1.2 9.6 9.6" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M3 6h6" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
                         </svg>
                     </div>
@@ -218,7 +218,7 @@
 
                 <div class="menu-item danger" @click="closeLyric">
                     <div class="item-icon" aria-hidden="true">
-                        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <svg viewBox="2.24 2.24 11.52 11.52" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/>
                         </svg>
                     </div>

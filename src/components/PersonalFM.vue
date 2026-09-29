@@ -16,7 +16,7 @@
                     <button class="fm-mode-trigger" :disabled="loading || modeSwitching" @click.stop="toggleModePanel">
                         <span class="mode-trigger-code">MODE</span>
                         <span class="mode-trigger-value">{{ selectedFmModeSummary }}</span>
-                        <svg class="mode-trigger-arrow" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <svg class="mode-trigger-arrow" width="12" height="12" viewBox="6 6.5 12 12" fill="currentColor" aria-hidden="true">
                             <path d="M7 10l5 5 5-5z" />
                         </svg>
                     </button>
@@ -85,10 +85,10 @@
                                     <template v-if="item.song && !item.isPlaceholder">
                                         <img :src="getFmSongCover(item.song) || '/src/assets/default-cover.png'" :alt="item.song.name || 'FM Cover'" />
                                         <div v-if="item.role === 'center'" class="fm-play-overlay">
-                                            <svg v-if="!isPlaying" width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
+                                            <svg v-if="!isPlaying" width="40" height="40" viewBox="5.1 3.6 16.8 16.8" fill="currentColor">
                                                 <path d="M8 5v14l11-7z" />
                                             </svg>
-                                            <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
+                                            <svg v-else width="40" height="40" viewBox="3.6 3.6 16.8 16.8" fill="currentColor">
                                                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                                             </svg>
                                         </div>
@@ -119,19 +119,19 @@
 
                     <div class="fm-actions">
                         <div class="action-btn prev" @click="goPrev" title="上一首">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <svg width="20" height="20" viewBox="4.8 4.8 14.4 14.4" fill="currentColor">
                                 <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
                             </svg>
                         </div>
 
                         <div class="action-btn trash" @click="trashSong" title="不喜欢">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <svg width="20" height="20" viewBox="1.2 1.2 21.6 21.6" fill="currentColor">
                                 <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
                             </svg>
                         </div>
 
                         <div class="action-btn like" @click="likeSong" :class="{ active: isCurrentSongLiked }" title="喜欢">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <svg width="20" height="20" viewBox="0 0.18 24 24" fill="currentColor">
                                 <path
                                     d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
                                 />
@@ -139,7 +139,7 @@
                         </div>
 
                         <div class="action-btn next" @click="goNext" title="下一首">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <svg width="20" height="20" viewBox="4.8 4.8 14.4 14.4" fill="currentColor">
                                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
                             </svg>
                         </div>

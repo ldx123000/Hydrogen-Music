@@ -4,3 +4,6 @@
 *.sh text eol=lf
 .github/workflows/*.yml text eol=lf
 scripts/mpv-audio-only/*.txt text eol=lf
+
+apps/android/android/gradlew text eol=lf
+apps/android/android/gradlew.bat text eol=crlf

@@ -1,0 +1,183 @@
+<script setup>
+  import { computed, onBeforeUnmount, ref, watch } from 'vue'
+  import { useRouter } from 'vue-router'
+  import VueSlider from 'vue-slider-component'
+  import { songTime2 } from '../utils/time';
+  import { changeProgress } from '../utils/player/lazy';
+  import { usePlayerStore } from '../store/playerStore';
+  import { storeToRefs } from 'pinia';
+  import { getSongDisplayName } from '../utils/songName';
+  import { getIndexedSong } from '../utils/songList';
+  import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop';
+  import { useStableImageSource } from '../composables/useStableImageSource';
+  import defaultLocalCover from '@shared-assets/icon/icon.png';
+  const router = useRouter()
+  const playerStore = usePlayerStore()
+  const { widgetState, lyricShow, musicVideo, videoIsPlaying, songList, currentIndex, songId, localBase64Img, progress, time, playerShow, showSongTranslation } = storeToRefs(playerStore)
+
+  const sliderDuration = computed(() => {
+    const currentTime = Number(time.value)
+    return Number.isFinite(currentTime) && currentTime > 0 ? currentTime : 0
+  })
+
+  const safeSliderMax = computed(() => {
+    const currentDuration = sliderDuration.value
+    if (currentDuration > 0) return Math.max(1, Math.ceil(currentDuration))
+
+    const currentProgress = Number(progress.value)
+    return Number.isFinite(currentProgress) && currentProgress > 0 ? Math.ceil(currentProgress) : 1
+  })
+
+  const sliderProgress = computed({
+    get: () => {
+      const currentProgress = Number(progress.value)
+      if (!Number.isFinite(currentProgress) || currentProgress <= 0) return 0
+      return Math.min(currentProgress, safeSliderMax.value)
+    },
+    set: value => {
+      const nextValue = Number(value)
+      progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0
+    }
+  })
+
+  const currentSong = computed(() => getIndexedSong(songList.value, currentIndex.value))
+  const currentSongCoverUrl = computed(() => withCoverParam(getSongCoverUrl(currentSong.value), 100))
+  const displayedCurrentSongCoverUrl = useStableImageSource(currentSongCoverUrl)
+
+  const backHome = () => {
+    if(widgetState.value) router.push('/')
+    if(videoIsPlaying.value) videoIsPlaying.value = false
+    widgetState.value = true
+    lyricShow.value = false
+  }
+  const removeHidePlayerListener = windowApi.hidePlayer(() => {
+    if(!widgetState.value) {
+      backHome()
+      return
+    }
+    if(router.currentRoute.value.name === 'sirenAlbum') router.push('/siren')
+  })
+
+  onBeforeUnmount(() => {
+    removeHidePlayerListener?.()
+  })
+</script>
+
+<template>
+  <div class="title-container">
+    <Transition name=fade>
+      <div class="title-logo" @click="backHome()" v-show="playerShow">Hydrogen</div>
+    </Transition>
+    <div class="title-player" :class="{'title-player-in': videoIsPlaying && !playerShow}" v-if="musicVideo && currentSong" @click="playerShow = true">
+      <div class="player-content" :class="{'player-content-in': videoIsPlaying && !playerShow}">
+        <div class="cover">
+          <img v-if="currentSong.type != 'local' && displayedCurrentSongCoverUrl" :src="displayedCurrentSongCoverUrl" alt="">
+          <img v-else-if="localBase64Img" :src="localBase64Img" alt="">
+          <img v-else :src="defaultLocalCover" alt="">
+        </div>
+        <div class="music-info">
+          <span class="music-name">{{getSongDisplayName(currentSong, '', showSongTranslation)}}</span>
+          <div class="music-time">
+            <vue-slider :key="'title-progress-' + (songId || currentIndex)" id='widget-progress' class="music-progress" @click.stop="changeProgress(sliderProgress)"  v-model="sliderProgress" :min="0" :max="safeSliderMax" :interval="1" :duration="0.5" :silent="true" tooltip="none"></vue-slider>
+            <span class="remaining-time">{{songTime2(Math.max(0, sliderDuration - sliderProgress))}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped lang="scss">
+  .title-container{
+    position: relative;
+    .title-logo{
+      font: 28Px Gilroy-ExtraBold;
+      color: rgb(26, 26, 26);
+    }
+    .title-player{
+      width: 0;
+      height: 8vh;
+      background-color: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 0 12px 2px rgba(0, 0, 0, 0.02);
+      backdrop-filter: blur(4px);
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 999;
+      transition: 0.5s cubic-bezier(.3,.79,.55,.99);
+      visibility: hidden;
+      overflow: hidden;
+      transform: translateX(-21px);
+      .player-content{
+        height: 100%;
+        padding: 4px 1.2vh;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        transform: translateX(-4px);
+        transition: 0.2s 1s cubic-bezier(.06,.52,.29,1);
+        opacity: 0;
+        .cover{
+          margin-right: 8px;
+          img{
+            width: 5.8vh;
+            vertical-align: bottom;
+          }
+        }
+        .music-info{
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          overflow: hidden;
+          white-space: nowrap;
+          .music-name{
+            margin-bottom: 0.5vh;
+            font: 1.8vh SourceHanSansCN-Bold;
+            color: black;
+          }
+          .music-time{
+            width: 100%;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            .music-progress{
+              margin-left: 1px;
+              width: 100% !important;
+              height: 0.6vh !important;
+              box-shadow: 0 0 0 0.5Px black;
+              transition: 0.2s;
+            }
+            .remaining-time{
+              width: 8vh;
+              font: 1.5vh Bender-Bold;
+              color: black;
+              line-height: 1.5vh;
+            }
+          }
+        }
+      }
+      .player-content-in{
+        opacity: 1;
+        visibility: visible;
+        transform: translateX(0px);
+        transition: 0.8s 1.2s cubic-bezier(.06,.52,.29,1);
+      }
+    }
+    .title-player-in{
+      width: 32vh;
+      visibility: visible;
+      transition: 0.4s 0.8s cubic-bezier(.06,.52,.29,1);
+    }
+  }
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: 0.2s;
+  }
+
+  .fade-enter-from,
+  .fade-leave-to {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+</style>

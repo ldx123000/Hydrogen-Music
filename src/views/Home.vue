@@ -301,7 +301,7 @@ watch(
                             <div class="user-container">
                                 <div class="user-head" @click="userStore.appOptionShow = true">
                                     <img v-if="isLogin() && userStore.user?.avatarUrl" :src="userStore.user.avatarUrl + '?param=100y100'" alt="" />
-                                    <svg v-else t="1672136404205" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5403" width="200" height="200">
+                                    <svg v-else t="1672136404205" class="icon" viewBox="-18 -28 1060 1060" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5403" width="200" height="200">
                                         <path
                                             d="M511.997 551.041c-218.044 0-399.92 168.61-441.722 392.645l883.45-0.439C911.607 719.432 729.83 551.041 511.997 551.041zM266.597 305.64c0 135.532 109.868 245.401 245.403 245.401 135.53 0 245.403-109.87 245.403-245.4C757.403 170.105 647.53 60.235 512 60.235c-135.535 0-245.403 109.87-245.403 245.406z"
                                             fill="#2c2c2c"

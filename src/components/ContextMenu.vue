@@ -340,7 +340,7 @@
           <div class="my-playlist">
             <div class="create-playlist" v-show="!justNewPlaylist" :style="{background: createActive ? 'rgba(53, 53, 53, 0.7)' : 'none'}" @click="createActive = !createActive">
               <div class="list-img">
-                <svg t="1671329712143" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2116" width="200" height="200"><path d="M939.939489 459.072557 562.339502 459.072557 562.339502 83.519182 462.055494 83.519182 462.055494 459.072557 84.455507 459.072557 84.455507 559.356564 462.055494 559.356564 462.055494 939.003164 562.339502 939.003164 562.339502 559.356564 939.939489 559.356564Z" fill="#ffffff" p-id="2117"></path></svg>
+                <svg t="1671329712143" class="icon" viewBox="-1 -2 1027 1027" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2116" width="200" height="200"><path d="M939.939489 459.072557 562.339502 459.072557 562.339502 83.519182 462.055494 83.519182 462.055494 459.072557 84.455507 459.072557 84.455507 559.356564 462.055494 559.356564 462.055494 939.003164 562.339502 939.003164 562.339502 559.356564 939.939489 559.356564Z" fill="#ffffff" p-id="2117"></path></svg>
               </div>
               <span class="list-name">创建新歌单并添加</span>
             </div>
@@ -348,7 +348,7 @@
               <input type="text" v-model="newPlaylistTitle" placeholder="请输入新歌单标题">
               <div class="checkbox" @click="isPrivacy = !isPrivacy">
                 <div class="box" :class="{'box-selected': isPrivacy}">
-                  <svg t="1671347600812" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="4196" width="200" height="200"><path d="M155.644361 439.225533 376.468722 660.086733l486.86146-490.229161 95.379301 95.352695-585.574692 588.933183L65.289494 546.298154 155.644361 439.225533 155.644361 439.225533zM155.644361 439.225533" fill="#272636" p-id="4197"></path></svg>
+                  <svg t="1671347600812" class="icon" viewBox="-24 -24 1072 1072" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="4196" width="200" height="200"><path d="M155.644361 439.225533 376.468722 660.086733l486.86146-490.229161 95.379301 95.352695-585.574692 588.933183L65.289494 546.298154 155.644361 439.225533 155.644361 439.225533zM155.644361 439.225533" fill="#272636" p-id="4197"></path></svg>
                 </div>
                 <span class="box-label">设置为隐私歌单</span>
               </div>

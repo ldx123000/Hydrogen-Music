@@ -1,10 +1,13 @@
 const fs = require('fs')
 const path = require('path')
 
+// Android installs its embedded API separately from the desktop dependencies.
+const nodeModulesDir = process.argv[2]
+  ? path.resolve(process.argv[2])
+  : path.resolve(__dirname, '..', 'node_modules')
+
 const utilTarget = path.resolve(
-  __dirname,
-  '..',
-  'node_modules',
+  nodeModulesDir,
   '@neteasecloudmusicapienhanced',
   'api',
   'util',
@@ -12,9 +15,7 @@ const utilTarget = path.resolve(
 )
 
 const requestTarget = path.resolve(
-  __dirname,
-  '..',
-  'node_modules',
+  nodeModulesDir,
   '@neteasecloudmusicapienhanced',
   'api',
   'util',
@@ -22,18 +23,14 @@ const requestTarget = path.resolve(
 )
 
 const serverTarget = path.resolve(
-  __dirname,
-  '..',
-  'node_modules',
+  nodeModulesDir,
   '@neteasecloudmusicapienhanced',
   'api',
   'server.js',
 )
 
 const songUrlV1Target = path.resolve(
-  __dirname,
-  '..',
-  'node_modules',
+  nodeModulesDir,
   '@neteasecloudmusicapienhanced',
   'api',
   'module',
@@ -41,6 +38,7 @@ const songUrlV1Target = path.resolve(
 )
 
 if (!fs.existsSync(utilTarget)) {
+  if (process.argv[2]) throw new Error(`NCM API dependency missing in ${nodeModulesDir}`)
   console.log('[patch-ncm-api] dependency not installed, skip patch')
   process.exit(0)
 }

@@ -1,0 +1,141 @@
+import { defineStore } from "pinia";
+
+function readInitialProgress() {
+    try {
+        if (typeof localStorage === 'undefined') return 0
+        const raw = localStorage.getItem('playerStore')
+        if (!raw) return 0
+        const parsed = JSON.parse(raw)
+        const progress = Number(parsed?.progress)
+        return Number.isFinite(progress) && progress > 0 ? progress : 0
+    } catch (_) {
+        return 0
+    }
+}
+
+function normalizePersistedVolume(value) {
+    const volume = Number(value)
+    if (!Number.isFinite(volume)) return 0.3
+    if (volume > 1 && volume <= 100) return volume / 100
+    return Math.max(0, Math.min(1, volume))
+}
+
+function normalizePlayerStorePayload(key, value) {
+    if (key !== 'playerStore' || typeof value !== 'string' || !value) return value
+
+    try {
+        const parsed = JSON.parse(value)
+        if (!parsed || typeof parsed !== 'object' || parsed.volume === undefined) return value
+
+        const normalizedVolume = normalizePersistedVolume(parsed.volume)
+        if (normalizedVolume === parsed.volume) return value
+
+        return JSON.stringify({
+            ...parsed,
+            volume: normalizedVolume,
+        })
+    } catch (_) {
+        return value
+    }
+}
+
+function createDedupedLocalStorage() {
+    const lastValues = new Map()
+    const getStorage = () => typeof localStorage === 'undefined' ? null : localStorage
+
+    return {
+        getItem(key) {
+            const storage = getStorage()
+            if (!storage) return null
+
+            const value = normalizePlayerStorePayload(key, storage.getItem(key))
+            lastValues.set(key, value)
+            return value
+        },
+        setItem(key, value) {
+            const storage = getStorage()
+            if (!storage) return
+
+            const nextValue = String(value)
+            const previousValue = lastValues.has(key)
+                ? lastValues.get(key)
+                : storage.getItem(key)
+
+            if (previousValue === nextValue) return
+
+            storage.setItem(key, nextValue)
+            lastValues.set(key, nextValue)
+        },
+        removeItem(key) {
+            const storage = getStorage()
+            if (!storage) return
+
+            storage.removeItem(key)
+            lastValues.delete(key)
+        },
+    }
+}
+
+const playerPersistStorage = createDedupedLocalStorage()
+
+export const usePlayerStore = defineStore('playerStore', {
+    state: () => {
+        return {
+            togetherRoomActive: false, // transient: defer automatic transitions to the room
+            widgetState: true,//是否开启widget
+            currentMusic: null,//播放列表的索引
+            playing: false,//是否正在播放
+            progress: readInitialProgress(),//进度条
+            volume: 0.3,//音量
+            // volumeBeforeMuted: 0,//静音前音量
+            playMode: 0,//0为顺序播放，1为列表循环，2为单曲循环，3为随机播放
+            listInfo: null,
+            songList: null,//播放列表
+            shuffledList: null,//随机播放列表
+            shuffleIndex: 0,//随机播放列表的索引
+            songId: null,
+            currentIndex: 0,
+            time: 0, //歌曲总时长
+            quality: null,
+            playlistWidgetShow: false,
+            playerChangeSong: false, //player页面切换歌曲更换歌名动画,
+            lyric: null,
+            lyricsObjArr: null,
+            currentLyricIndex: -1, // 当前歌词索引，用于桌面歌词同步
+            lyricLineOffsets: {}, // 按歌曲保存的逐行歌词时间偏移
+            lyricSize: null,
+            tlyricSize: null,
+            rlyricSize: null,
+            lyricType: ['original'],
+            lyricInterludeTime: null, //歌词间奏等待时间
+            searchAssistLimit: 8, //搜索下拉面板显示数量
+            lyricShow: false, //歌词是否显示
+            lyricEle: null,//歌词DOM
+            isLyricDelay: true, //调整进度的时候禁止赋予delay属性
+            localBase64Img: null, //如果是本地歌曲，获取封面
+            forbidLastRouter: false, //在主动跳转router时禁用回到上次离开的路由的地址功能
+            musicVideo: false,
+            addMusicVideo: false,
+            currentMusicVideo: null,
+            musicVideoDOM: null,
+            videoIsPlaying: false,
+            playerShow: true,
+            lyricBlur: false,
+            showSongTranslation: true, // 歌曲名是否显示翻译（原名 (翻译)）
+            gaplessPlayback: false, // 是否预缓冲下一首以减少切歌空隙
+            audioVisualizer: false, // 是否显示顶部音频可视化
+            localHifiOutput: false, // 本地音乐是否使用 HiFi 输出后端
+            localHifiOutputMode: 'shared', // 本地 HiFi 输出模式
+            localHifiMpvPath: '', // 自定义 MPV 可执行文件路径
+            localHifiAudioDevice: 'auto', // MPV 音频输出设备
+            isDesktopLyricOpen: false, // 桌面歌词是否打开
+            coverBlur: false, // 播放页使用封面模糊背景
+        }
+    },
+    actions: {
+    },
+    persist: {
+        storage: playerPersistStorage,
+        pick: ['volume','playMode','shuffleIndex','listInfo','songId','currentIndex','time','quality','lyricType','lyricLineOffsets','musicVideo','lyricBlur','showSongTranslation','gaplessPlayback','audioVisualizer','localHifiOutput','localHifiOutputMode','localHifiMpvPath','localHifiAudioDevice','coverBlur']
+    },
+})

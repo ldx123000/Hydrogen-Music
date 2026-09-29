@@ -1,4 +1,5 @@
 <script setup>
+const appVersion = __APP_VERSION__
 import { computed, ref, onActivated, onBeforeUnmount, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { noticeOpen, dialogOpen } from '@/utils/dialog'
@@ -656,7 +657,7 @@ const toggleLocalOnlyMode = async () => {
 <template>
     <div class="settings-page" @click="selectedShortcut = null">
         <div class="view-control">
-            <svg t="1669039513804" @click="routerChange()" class="router-last" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1053" width="200" height="200">
+            <svg t="1669039513804" @click="routerChange()" class="router-last" viewBox="-107 -86 1195 1195" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1053" width="200" height="200">
                 <path d="M716.608 1010.112L218.88 512.384 717.376 13.888l45.248 45.248-453.248 453.248 452.48 452.48z" p-id="1054"></path>
             </svg>
             <span class="setting-title">
@@ -1039,7 +1040,7 @@ const toggleLocalOnlyMode = async () => {
                 <div class="app-icon">
                     <img src="../assets/icon/icon.ico" alt="" />
                 </div>
-                <div class="version">V0.6.3</div>
+                <div class="version">V{{ appVersion }}</div>
                 <div class="update-check">
                     <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
                 </div>
@@ -1072,7 +1073,7 @@ const toggleLocalOnlyMode = async () => {
         flex-direction: row;
         align-items: center;
         svg {
-            padding: 8px;
+            padding: 4px;
             width: 32px;
             height: 32px;
             float: left;

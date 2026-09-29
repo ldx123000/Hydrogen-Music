@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+mobile-runtime/node_modules/
+*.jks
+*.keystore
+*.apk
+*.aab
+.env*
+android/capacitor.settings.gradle
+android/app/capacitor.build.gradle

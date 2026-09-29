@@ -1,0 +1,103 @@
+import request from '../utils/request'
+/**
+ * 登录后调用此接口 ,可获取用户账号信息
+ * @returns 
+ */
+ export function getUserProfile() {
+    return request({
+      url: '/user/account',
+      method: 'get',
+      params: {
+        timestamp: new Date().getTime(),
+      },
+    });
+  }
+
+/**
+ * 登录后调用此接口 , 传入用户 id, 可以获取用户歌单
+ * 必选参数 : uid : 用户 id
+ * 可选参数 :
+ * limit : 返回数量 , 默认为 30
+ * offset : 偏移数量，用于分页 , 如 :( 页数 -1)*30, 其中 30 为 limit 的值 , 默认为 0
+ * @returns 
+ */
+  export function getUserPlaylist(params, options = {}) {
+    return request({
+      url: '/user/playlist',
+      method: 'get',
+      suppressGlobalNotice: options.silent === true,
+      params,
+    });
+  }
+
+/**
+ * 获取用户信息 , 歌单，收藏，mv, dj 数量
+ * 说明 : 登录后调用此接口 , 可以获取用户信息
+ * @param {*} params 
+ * @returns 
+ */
+  export function getUserPlaylistCount(options = {}) {
+    return request({
+      url: '/user/subcount',
+      method: 'get',
+      suppressGlobalNotice: options.silent === true,
+      params: {
+        timestamp: new Date().getTime(),
+      }
+    });
+  }
+
+/**
+ * 说明 : 调用此接口 , 可退出登录
+ * @returns 
+ */
+  export function logout() {
+    return request({
+      url: '/logout',
+      method: 'post',
+      params: {
+
+      }
+    });
+  }
+
+/**
+ * 说明 : 调用此接口 , 传入用户 id, 可获取已喜欢音乐 id 列表(id 数组)
+ * @param {*} id 
+ * @returns 
+ */
+ export function getLikelist(id, options = {}) {
+    return request({
+      url: '/likelist',
+      method: 'get',
+      suppressGlobalNotice: options.silent === true,
+      params: {
+        id: id,
+        timestamp: new Date().getTime(),
+      }
+    });
+  }
+
+/**
+ * 说明: 登录后调用此接口，可获取当前 VIP 信息。
+ * @param {*} id 
+ * @returns 
+ */
+  export function getVipInfo() {
+    return request({
+      url: '/vip/info',
+      method: 'get',
+      params: {
+        timestamp: new Date().getTime(),
+      }
+    });
+  }
+/** 按页读取当前账号关注的人，供一起听邀请选择。 */
+export function getUserFollows(uid, offset = 0, limit = 30) {
+    return request({
+      url: '/user/follows',
+      method: 'get',
+      suppressGlobalNotice: true,
+      params: { uid, offset, limit, timestamp: Date.now() },
+    })
+}

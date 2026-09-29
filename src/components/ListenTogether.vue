@@ -64,7 +64,7 @@ function login() {
                     </div>
                 </div>
                 <button class="close-button" type="button" aria-label="收起一起听" title="收起" @click="together.show = false">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 5 14 14M19 5 5 19" /></svg>
+                    <svg width="16" height="16" viewBox="2.7 2.7 18.6 18.6" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 5 14 14M19 5 5 19" /></svg>
                 </button>
             </header>
 

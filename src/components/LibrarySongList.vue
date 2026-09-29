@@ -194,11 +194,11 @@ const openMenu = (e, item) => {
                             :aria-label="songId === item.song.id && playing ? '暂停' : '播放'"
                             :tabindex="hoverRowKey === item.rowKey ? 0 : -1"
                         >
-                            <svg v-if="songId === item.song.id && playing" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                            <svg v-if="songId === item.song.id && playing" viewBox="138 138 749 749" xmlns="http://www.w3.org/2000/svg">
                                 <rect x="256" y="200" width="160" height="624" rx="32" fill="currentColor" />
                                 <rect x="608" y="200" width="160" height="624" rx="32" fill="currentColor" />
                             </svg>
-                            <svg v-else viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                            <svg v-else viewBox="120 83 886 886" xmlns="http://www.w3.org/2000/svg">
                                 <path
                                     d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z"
                                     fill="currentColor"
@@ -269,12 +269,12 @@ const openMenu = (e, item) => {
                 flex-direction: row;
                 align-items: center;
                 svg {
-                    width: 14px;
-                    height: 14px;
+                    width: 16px;
+                    height: 16px;
                 }
                 .playing-eq {
-                    width: 14px;
-                    height: 14px;
+                    width: 16px;
+                    height: 16px;
                 }
                 .item-state {
                     width: 26px;

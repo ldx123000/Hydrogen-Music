@@ -1,0 +1,1705 @@
+/* Global theme variables and minimal dark-mode overrides */
+
+:root {
+  --bg: #f4f6f8;
+  --text: #111213;
+  --muted-text: #5b6066;
+  --panel: rgba(255, 255, 255, 0.9);
+  --player-panel: rgb(225, 240, 240);
+  --layer: rgba(255, 255, 255, 0.35);
+  --border: rgba(0, 0, 0, 0.2);
+  --shadow: 0 0 15px 2px rgba(189, 189, 189, 0.1);
+  --lyric-hilight-bg: #000000;
+  --lyric-hilight-bg-dim: rgba(0, 0, 0, 0.8);
+  --lyric-scan-inside-text: #ffffff;
+  /* text color on top of hilight bar */
+  --lyric-scan-outside-text: #000000;
+  /* text color outside bar */
+  --cover-backdrop-overlay: rgba(255, 255, 255, 0.3);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Dark theme toggled by `.dark` on <html> */
+.dark {
+  color-scheme: dark;
+  /* Arknights-like slate grey palette */
+  --bg: #21262b;
+  /* slightly lighter slate */
+  --text: #f1f3f5;
+  --muted-text: #c9ccd2;
+  --panel: rgba(44, 50, 58, 0.92);
+  --player-panel: var(--panel);
+  --layer: rgba(255, 255, 255, 0.14);
+  --border: rgba(255, 255, 255, 0.22);
+  --shadow: 0 0 24px rgba(0, 0, 0, 0.55);
+  --lyric-hilight-bg: #ffffff;
+  --lyric-hilight-bg-dim: rgba(255, 255, 255, 0.82);
+  --lyric-scan-inside-text: #000000;
+  --lyric-scan-outside-text: var(--text);
+  --cover-backdrop-overlay: rgba(0, 0, 0, 0.42);
+  --btn-minimize: #ffffff;
+  --btn-maximize: #ffffff;
+  --btn-close: #ffffff;
+}
+
+/* Keep it simple: default everything to readable text on dark */
+.dark body,
+.dark #app {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Broad text override to flip black text to white in dark mode */
+.dark * {
+  color: var(--text) !important;
+}
+
+/* Generic surface/background tweaks for common patterns */
+.dark .line,
+.dark .divider {
+  background-color: var(--border) !important;
+}
+
+/* Panels and light boxes that used rgba(255,255,255,0.35) */
+.dark .panel,
+.dark .card,
+.dark .settings-page .settings-user-info,
+.dark .settings-page .shortcuts div,
+.dark .settings-page .default-shortcuts,
+.dark .settings-page .check-update-btn,
+.dark .select-download-folder .selected-folder,
+.dark .local-folder .selected-local-folder-item .selected-folder,
+.dark .select-download-folder .select-option,
+.dark .local-folder .add-option,
+.dark .settings-page .setting-title .save,
+.dark .settings-page .button,
+.dark option {
+  background-color: var(--layer) !important;
+}
+
+/* Do not tint entire setting rows; keep only explicit buttons/controls framed */
+.dark .settings-page .option {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Shadows/borders that were pure black */
+.dark .shortcut-selected,
+.dark .default-shortcuts:hover,
+.dark .check-update-btn:hover,
+.dark .check-update-btn:focus,
+.dark .check-update-btn:active,
+.dark .settings-page .button:hover,
+.dark .settings-page .button:focus,
+.dark .settings-page .button:active,
+.dark .select-download-folder .select-option:hover,
+.dark .local-folder .add-option:hover {
+  box-shadow: 0 0 0 1px var(--text) !important;
+}
+
+/* Settings toggles: enabled state should be white bg with black text in dark mode */
+.dark .settings-page .toggle .toggle-on {
+  background-color: rgba(255, 255, 255, 0.86) !important;
+}
+
+.dark .settings-page .toggle .toggle-on-in {
+  color: #000000 !important;
+  background-color: transparent !important;
+}
+
+/* 歌词字体大小滑轨（Settings.vue 的 .font-size-slider）：与上面的开关同语义 ——
+   选中态在深色下用亮底暗字，未选中用暗底亮字。
+   组件里该控件嵌在 `.settings-page .settings-container .settings .item-options .option`
+   之下，scoped 编译后特异度高达 (0,8,0)，这里的 (0,4,0) 压不过，
+   所以按本文件已有惯例（上面两条 toggle 规则）用 !important。 */
+.dark .settings-page .font-size-slider {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .settings-page .font-size-slider .slider-thumb {
+  background-color: rgba(255, 255, 255, 0.86) !important;
+}
+
+.dark .settings-page .font-size-slider .slider-cell {
+  color: var(--text) !important;
+}
+
+.dark .settings-page .font-size-slider .slider-cell.is-active {
+  color: #000000 !important;
+}
+
+/* Drop-down and overlays */
+.dark .selector-option {
+  background: #21262d !important;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Selector options highlight (dark) */
+.dark .selector-option-item {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.18)) !important;
+}
+
+.dark .selector-option-item:hover {
+  background-position: 0 0 !important;
+  color: var(--text) !important;
+}
+
+.dark .selector-option-item-selected {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  color: var(--text) !important;
+}
+
+/* App background gradient override */
+.dark .mainWindow {
+  /* Subtle multi-layer gradients to avoid visible banding */
+  background-color: var(--bg) !important;
+  background-image:
+    radial-gradient(70% 90% at 18% 14%, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 60%),
+    radial-gradient(60% 80% at 82% 86%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(48, 54, 62, 1) 0%, rgba(36, 42, 50, 1) 100%) !important;
+  background-blend-mode: soft-light, soft-light, normal !important;
+  box-shadow: none !important;
+}
+
+/* Common containers */
+.dark .musicWidget {
+  box-shadow: var(--shadow) !important;
+}
+
+/* Title bar mini player */
+.dark .title-container .title-player {
+  background-color: var(--layer) !important;
+  box-shadow: 0 0 12px 2px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark .title-container .title-player .music-progress {
+  box-shadow: 0 0 0 0.5px var(--text) !important;
+}
+
+/* Music widget (bottom player) */
+.dark .music-widget,
+.dark .musicWidget {
+  background-color: var(--panel) !important;
+}
+
+.dark .music-widget .music-progress {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.dark .music-widget .music-img {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.dark .music-widget .music-progress-container .music-time {
+  color: var(--lyric-scan-inside-text) !important;
+}
+
+/* Playlist widget */
+.dark .playlist-widget {
+  background-color: var(--panel) !important;
+}
+
+.dark .playlist-widget .line {
+  background-color: var(--border) !important;
+}
+
+.dark .playlist-widget .list-item:hover,
+.dark .playlist-widget .list-item-playing {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .playlist-widget .playing-icon path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Scrollbars (dark) */
+/* Playlist widget scroller */
+.dark .playlist-widget .playlist-widget-item {
+  scrollbar-color: transparent transparent;
+}
+
+.dark .playlist-widget .playlist-widget-item::-webkit-scrollbar {
+  width: 6px;
+  height: 10px;
+  background: transparent !important;
+}
+
+.dark .playlist-widget .playlist-widget-item::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 8px;
+}
+
+.dark .playlist-widget .playlist-widget-item:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.24) !important;
+}
+
+.dark .playlist-widget .playlist-widget-item::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* Library song list scroller (playlist detail) */
+.dark .library-song-list {
+  scrollbar-color: transparent transparent;
+}
+
+.dark .library-song-list::-webkit-scrollbar {
+  width: 6px;
+  height: 10px;
+  background: transparent !important;
+}
+
+.dark .library-song-list::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 8px;
+}
+
+.dark .library-song-list:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.24) !important;
+}
+
+.dark .library-song-list::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* Comments panel scroller */
+.dark .arknights-comments {
+  scrollbar-color: transparent transparent;
+}
+
+.dark .arknights-comments::-webkit-scrollbar {
+  width: 4px;
+  height: 10px;
+  background: transparent !important;
+}
+
+.dark .arknights-comments::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 8px;
+}
+
+.dark .arknights-comments:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28) !important;
+}
+
+.dark .arknights-comments::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* My Music left lists */
+.dark .my-music .library-list::-webkit-scrollbar,
+.dark .my-music .download-list::-webkit-scrollbar,
+.dark .my-music .local-list::-webkit-scrollbar {
+  width: 6px;
+  height: 10px;
+  background: transparent !important;
+}
+
+.dark .my-music .library-list::-webkit-scrollbar-thumb,
+.dark .my-music .download-list::-webkit-scrollbar-thumb,
+.dark .my-music .local-list::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 8px;
+}
+
+.dark .my-music .library-list:hover::-webkit-scrollbar-thumb,
+.dark .my-music .download-list:hover::-webkit-scrollbar-thumb,
+.dark .my-music .local-list:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.24) !important;
+}
+
+.dark .my-music .library-list::-webkit-scrollbar-track,
+.dark .my-music .download-list::-webkit-scrollbar-track,
+.dark .my-music .local-list::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* Local music detail list */
+.dark .local-music-list {
+  scrollbar-color: transparent transparent;
+}
+
+.dark .local-music-list::-webkit-scrollbar {
+  width: 6px;
+  height: 10px;
+  background: transparent !important;
+}
+
+.dark .local-music-list::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 8px;
+}
+
+.dark .local-music-list:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.24) !important;
+}
+
+.dark .local-music-list::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* Local classify list */
+.dark .classify-list {
+  scrollbar-color: transparent transparent;
+}
+
+.dark .classify-list::-webkit-scrollbar {
+  width: 6px;
+  height: 10px;
+  background: transparent !important;
+}
+
+.dark .classify-list::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 8px;
+}
+
+.dark .classify-list:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.24) !important;
+}
+
+.dark .classify-list::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* Selector dropdown scroller */
+.dark .selector-option::-webkit-scrollbar {
+  width: 6px;
+  height: 10px;
+  background: transparent !important;
+}
+
+.dark .selector-option::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 8px;
+}
+
+.dark .selector-option:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28) !important;
+}
+
+.dark .selector-option::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* Hover translucent overlays (masks) */
+.dark .home-header .user .user-container .user-head .img-mask {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+/* Modal-like overlay panels (playlist/radio detail) */
+.dark .introduce-detail-text {
+  /* Dark mode wants lighter panel */
+  background: rgba(255, 255, 255, 0.16) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(120%) !important;
+  backdrop-filter: blur(18px) saturate(120%) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* In dark mode, corner squares on detail overlays should be black */
+.dark .introduce-detail-text .dialog-style {
+  background-color: rgba(0, 0, 0, 0.9) !important;
+}
+
+.dark .library-list .list-item::after {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .library-album-list .list-item:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .classify-list .list-item::after {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .local-music-list .list-item:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .library-song-list .list-item:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .library-song-list .list-item-playing {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .download-list .item:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Image hover accents in search results */
+.dark .result-list .item .item-img img:hover {
+  box-shadow: 0 0 10px 1px rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Player page accents */
+.dark .player-container .border {
+  background-color: var(--text) !important;
+}
+
+/* Main Player: progress + volume bar borders */
+.dark .player-container .player-process .music-progress {
+  /* replace light-mode black outline */
+  box-shadow: 0 0 0 0.5px var(--text) !important;
+}
+
+.dark .player-container .player-voluem .volume-slider {
+  box-shadow: 0 0 0 0.5px var(--text) !important;
+}
+
+.dark .player-container .voluem-outline {
+  border-color: var(--text) !important;
+}
+
+.dark .player-container .voluem-content {
+  background-color: var(--text) !important;
+}
+
+.dark .player-container .c-border1,
+.dark .player-container .c-border2,
+.dark .player-container .c-border3,
+.dark .player-container .c-border4 {
+  border-color: var(--text) !important;
+}
+
+.dark .player-container .volume-slider,
+.dark .title-container .music-progress {
+  box-shadow: 0 0 0 0.5px var(--text) !important;
+}
+
+.dark .player-container .voluem-outline,
+.dark .music-widget .volume-process-outline {
+  border-color: var(--text) !important;
+}
+
+.dark .player-container .voluem-content,
+.dark .music-widget .volume-process {
+  background-color: var(--text) !important;
+}
+
+.dark .player .info-music .music-author,
+.dark .player .process-time .time-current,
+.dark .player .process-time .time-end,
+.dark .title-container .remaining-time,
+.dark .music-widget .music-author,
+.dark .playlist-widget .item-author,
+.dark .playlist-widget .item-separator,
+.dark .playlist-widget .info-num {
+  color: var(--muted-text) !important;
+}
+
+.dark .player .music-author .author:hover,
+.dark .playlist-widget .item-author:hover {
+  color: var(--text) !important;
+}
+
+.dark .player .control svg,
+.dark .music-widget .music-control svg {
+  color: var(--text) !important;
+}
+
+.dark .player .control svg path,
+.dark .music-widget .music-control svg path {
+  stroke: currentColor !important;
+  fill: none !important;
+}
+
+.dark .player .song-control .icon:not(.comment-icon) path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Keep liked heart red in dark mode */
+.dark .player .song-control .like-icon.liked path {
+  fill: #E5404F !important;
+  stroke: #E5404F !important;
+}
+
+/* Comment icon uses an integrated SVG (bubble + count badge).
+   Do NOT apply generic "icon path fill" to it; always style parts explicitly. */
+.dark .player .song-control .comment-icon {
+  color: var(--text) !important;
+}
+
+.dark .player .song-control .comment-icon.comment-icon-active {
+  color: var(--text) !important;
+}
+
+.dark .player .song-control .comment-icon.comment-icon-inactive {
+  color: rgba(255, 255, 255, 0.34) !important;
+}
+
+.dark .player .song-control .comment-icon .comment-bubble,
+.dark .player .song-control .comment-icon .comment-line {
+  color: inherit !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+.dark .player .song-control .comment-icon.comment-icon-active .comment-bubble,
+.dark .player .song-control .comment-icon.comment-icon-active .comment-line {
+  stroke: var(--text) !important;
+}
+
+.dark .player .song-control .comment-icon.comment-icon-inactive .comment-bubble,
+.dark .player .song-control .comment-icon.comment-icon-inactive .comment-line {
+  stroke: rgba(255, 255, 255, 0.34) !important;
+}
+
+.dark .player .song-control .comment-icon .comment-count-pill {
+  fill: #ffffff !important;
+  stroke: #ffffff !important;
+  opacity: 0.98 !important;
+}
+
+.dark .player .song-control .comment-icon .comment-count-text {
+  fill: #000000 !important;
+  opacity: 1 !important;
+}
+
+/* In dark mode, dim lyric controls when turned off */
+.dark .player .song-control .lyric-toggle.inactive {
+  opacity: 0.5 !important;
+}
+
+.dark .player .song-control .lyric-toggle.inactive path {
+  fill: rgba(255, 255, 255, 0.45) !important;
+  stroke: rgba(255, 255, 255, 0.45) !important;
+}
+
+.dark .player .song-control .lyric-toggle.active path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+.dark .player .song-control .desktop-lyric-btn:not(.active) {
+  opacity: 0.5 !important;
+}
+
+.dark .player .song-control .desktop-lyric-btn:not(.active) path {
+  fill: rgba(255, 255, 255, 0.45) !important;
+  stroke: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Main Player page (layout wrapper) */
+.dark .music-player {
+  /* Match main window background to keep consistency with other pages */
+  background-color: var(--bg) !important;
+  background-image:
+    radial-gradient(70% 90% at 18% 14%, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 60%),
+    radial-gradient(60% 80% at 82% 86%, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(48, 54, 62, 1) 0%, rgba(36, 42, 50, 1) 100%) !important;
+  background-blend-mode: soft-light, soft-light, normal !important;
+}
+
+.dark .music-player .player-container {
+  background-color: var(--panel) !important;
+}
+
+.dark .music-player .player-container.cover-blur {
+  background-color: rgba(25, 27, 31, 0.35) !important;
+}
+
+.dark .music-player .player-blur {
+  background-color: rgba(25, 27, 31, 0.35) !important;
+}
+
+/* Player left panel text + bars */
+.dark .player .music-name-lable {
+  background-color: var(--text) !important;
+}
+
+.dark .player .process-time {
+  color: var(--muted-text) !important;
+}
+
+.dark .player .voluem-num {
+  color: var(--muted-text) !important;
+}
+
+.dark .player .music-author .author {
+  color: var(--muted-text) !important;
+}
+
+.dark .player .music-author .author:hover {
+  color: var(--text) !important;
+}
+
+.dark .player .music-author-lable-video {
+  border-color: var(--text) !important;
+}
+
+.dark .player .music-author-lable-video::after {
+  background-color: var(--text) !important;
+}
+
+/* Lyric component overrides */
+.dark .lyric-container .lyric-area .line {
+  background: transparent !important;
+}
+
+.dark .lyric-container .lyric-area .line:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .lyric-container .original,
+.dark .lyric-container .trans,
+.dark .lyric-container .roma {
+  color: var(--text) !important;
+}
+
+.dark .lyric-container .line-highlight .original,
+.dark .lyric-container .line-highlight .trans,
+.dark .lyric-container .line-highlight .roma {
+  color: #000000 !important;
+}
+
+.dark .lyric-container .hilight {
+  background-color: var(--text) !important;
+}
+
+.dark .lyric-container .music-interlude .diamond {
+  border-color: var(--text) !important;
+}
+
+.dark .lyric-container .music-interlude .diamond .diamond-inner {
+  background-color: var(--text) !important;
+}
+
+.dark .lyric-container .music-interlude .triangle {
+  border-top-color: var(--text) !important;
+}
+
+.dark .lyric-container .music-interlude .remaining {
+  color: var(--muted-text) !important;
+}
+
+.dark .lyric-container .music-interlude .interlude-title {
+  background-color: var(--text) !important;
+}
+
+.dark .lyric-container .music-interlude .interlude-title .title {
+  color: #000000 !important;
+}
+
+.dark .lyric-container .music-interlude .interlude-title .title-style svg path {
+  stroke: #000000 !important;
+  fill: #000000 !important;
+}
+
+.dark .lyric-container .music-interlude .interlude-progress {
+  background-color: var(--text) !important;
+}
+
+.dark .lyric-container .song-quality {
+  color: var(--muted-text) !important;
+}
+
+.dark .lyric-container .border {
+  border-color: var(--text) !important;
+}
+
+.dark .lyric-container .border3::after {
+  background-color: var(--text) !important;
+}
+
+.dark .lyric-container .lyric-nodata .tip {
+  color: var(--text) !important;
+}
+
+.dark .lyric-container .lyric-nodata .line1,
+.dark .lyric-container .lyric-nodata .line2 {
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0) calc(50% - 0.5px), rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0) calc(50% + 0.5px), rgba(255, 255, 255, 0) 100%) !important;
+}
+
+/* Library song list playing icon */
+.dark .library-song-list .item-title svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Local/Downloaded song list playing icon */
+.dark .local-music-list .item-title svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Animated playing equalizer (shared) */
+.playing-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 14px;
+  height: 14px;
+  gap: 2px;
+}
+
+.playing-eq .bar {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background-color: currentColor;
+  transform-origin: bottom;
+  animation: eqBar 1s ease-in-out infinite;
+}
+
+/* Pause animation when player paused */
+.playing-eq.is-paused .bar {
+  animation-play-state: paused;
+}
+
+@keyframes eqBar {
+  0% { transform: scaleY(0.28); }
+  35% { transform: scaleY(1); }
+  70% { transform: scaleY(0.45); }
+  100% { transform: scaleY(0.28); }
+}
+
+.playing-eq .bar:nth-child(1) { animation-duration: 0.9s;  animation-delay: 0.05s; }
+.playing-eq .bar:nth-child(2) { animation-duration: 1.15s; animation-delay: 0.12s; }
+.playing-eq .bar:nth-child(3) { animation-duration: 0.95s; animation-delay: 0s; }
+.playing-eq .bar:nth-child(4) { animation-duration: 1.25s; animation-delay: 0.18s; }
+
+/* Comments (right panel) dark styles */
+.dark .arknights-comments {
+  background: var(--panel) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+}
+
+.dark .arknights-comments .frame-corner {
+  border-color: rgba(255, 255, 255, 0.78) !important;
+}
+
+.dark .arknights-comments .comments-header .header-frame {
+  background: rgba(30, 34, 38, 0.56) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .comments-header .header-title {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .comments-header .title-underline {
+  background: var(--text) !important;
+}
+
+.dark .arknights-comments .login-prompt .prompt-frame {
+  background: rgba(30, 34, 38, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .arknights-comments .login-prompt .prompt-text {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .section-title {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .section-count {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .section-line {
+  background: var(--border) !important;
+}
+
+.dark .arknights-comments .comment-card {
+  background-color: rgba(30, 34, 38, 0.82) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  transition-property: transform, border-color, box-shadow !important;
+  transition-duration: 0.2s !important;
+  transition-timing-function: ease !important;
+  will-change: transform;
+}
+
+.dark .arknights-comments .comment-card.hot-card {
+  border-left-color: rgba(233, 192, 104, 0.76) !important;
+}
+
+.dark .arknights-comments .comment-card:hover {
+  background-color: rgba(30, 34, 38, 0.82) !important;
+  transform: translateY(-1px) !important;
+}
+
+.dark .arknights-comments .comment-meta .avatar-frame {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.dark .arknights-comments .username {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .timestamp {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .comment-text {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .comment-controls .control-item {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.dark .arknights-comments .comment-controls .control-item:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .arknights-comments .comment-controls .control-icon svg {
+  fill: rgba(255, 255, 255, 0.6) !important;
+}
+
+.dark .arknights-comments .comment-controls .control-text {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.dark .arknights-comments .comment-controls .control-item.active .control-icon svg,
+.dark .arknights-comments .comment-controls .control-item.active .control-text {
+  fill: #ff4757 !important;
+  color: #ff4757 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-toggle {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.68) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-toggle:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-panel {
+  background: rgba(32, 36, 41, 0.56) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-item,
+.dark .arknights-comments .floor-replies .floor-item:hover,
+.dark .arknights-comments .floor-replies .floor-item:focus-within {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-item {
+  border-left-color: rgba(255, 255, 255, 0.24) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-avatar {
+  border-color: rgba(255, 255, 255, 0.24) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-username,
+.dark .arknights-comments .floor-replies .floor-text {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-time,
+.dark .arknights-comments .floor-replies .floor-status {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-control-item {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-control-item:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-control-item .floor-control-icon svg {
+  fill: rgba(255, 255, 255, 0.7) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-control-item .floor-control-text {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-more {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  border-radius: 0 !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-more:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-toggle:focus,
+.dark .arknights-comments .floor-replies .floor-toggle:focus-visible,
+.dark .arknights-comments .floor-replies .floor-more:focus,
+.dark .arknights-comments .floor-replies .floor-more:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-error {
+  color: #ff7b7b !important;
+}
+
+.dark .arknights-comments .floor-replies .floor-error:hover {
+  color: #ff9d9d !important;
+}
+
+.dark .arknights-comments .comment-input-section .input-frame {
+  background: rgba(30, 34, 38, 0.52) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .comment-input-section .shortcut-hint,
+.dark .arknights-comments .inline-reply-box .reply-shortcut-hint {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .comment-input-section .comment-textarea,
+.dark .arknights-comments .inline-reply-box .reply-textarea {
+  background: rgba(25, 27, 31, 0.7) !important;
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .comment-input-section .comment-textarea::placeholder,
+.dark .arknights-comments .inline-reply-box .reply-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+.dark .arknights-comments .comment-input-section .comment-textarea:focus,
+.dark .arknights-comments .inline-reply-box .reply-textarea:focus {
+  background: rgba(25, 27, 31, 0.86) !important;
+}
+
+.dark .arknights-comments .input-border,
+.dark .arknights-comments .reply-input-border {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.dark .arknights-comments .comment-input-section .comment-textarea:focus + .input-border,
+.dark .arknights-comments .inline-reply-box .reply-textarea:focus + .reply-input-border {
+  border-color: rgba(255, 255, 255, 0.44) !important;
+}
+
+.dark .arknights-comments .comment-input-section .submit-button,
+.dark .arknights-comments .inline-reply-box .send-reply-btn {
+  background: var(--text) !important;
+  color: #000 !important;
+}
+
+.dark .arknights-comments .comment-input-section .submit-button:hover:not(:disabled),
+.dark .arknights-comments .inline-reply-box .send-reply-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.84) !important;
+  color: #000 !important;
+}
+
+.dark .arknights-comments .comment-input-section .submit-button:disabled,
+.dark .arknights-comments .inline-reply-box .send-reply-btn:disabled {
+  background: rgba(255, 255, 255, 0.24) !important;
+  color: rgba(255, 255, 255, 0.62) !important;
+}
+
+.dark .arknights-comments .cancel-reply-btn {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.dark .arknights-comments .cancel-reply-btn:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .inline-reply-box {
+  background: rgba(30, 34, 38, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .reply-header {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-left-color: rgba(255, 255, 255, 0.46) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .reply-prefix {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .reply-target {
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .close-reply {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: var(--text) !important;
+}
+
+.dark .arknights-comments .inline-reply-box .close-reply:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.dark .arknights-comments .loading-status {
+  background: rgba(30, 34, 38, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .arknights-comments .loading-status .loading-indicator {
+  border-color: rgba(255, 255, 255, 0.26) !important;
+  border-top-color: var(--text) !important;
+}
+
+.dark .arknights-comments .loading-status .loading-text {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .no-more-status,
+.dark .arknights-comments .empty-status {
+  background: rgba(30, 34, 38, 0.45) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .arknights-comments .no-more-status .status-text,
+.dark .arknights-comments .empty-status .status-text {
+  color: var(--muted-text) !important;
+}
+
+.dark .arknights-comments .comment-text.copyable:hover {
+  background-color: transparent !important;
+}
+
+.dark .arknights-comments .comment-text .copy-button {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .arknights-comments .comment-text .copy-button:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
+.dark .arknights-comments .comment-text .copy-icon {
+  color: var(--text) !important;
+}
+
+.dark .player-container .desktop-lyric-btn:not(.active) { opacity: 0.5 !important; }
+.dark .player-container .desktop-lyric-btn:not(.active) path {
+  fill: rgba(255, 255, 255, 0.45) !important;
+  stroke: rgba(255, 255, 255, 0.45) !important;
+}
+
+.dark .player-container .desktop-lyric-btn.active path {
+  fill: var(--text) !important;
+}
+
+/* Home header router tracker */
+.dark .home-header .header-router .router-tracker {
+  background-color: var(--text) !important;
+}
+
+.dark .home-header .header-router .user-head {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Home header links + icons */
+.dark .home-header .header-router a {
+  color: var(--muted-text) !important;
+}
+
+.dark .home-header .header-router a.router-link-active {
+  color: var(--text) !important;
+}
+
+.dark .home-header .header-router svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* My Radio page */
+.dark .my-radio .radio-header .title-tip { background-color: var(--text) !important; }
+.dark .my-radio .radio-card { background-color: rgba(255,255,255,0.12) !important; }
+.dark .my-radio .radio-card .cover { border-color: rgba(255,255,255,0.18) !important; }
+.dark .my-radio .radio-card .border { border-color: var(--text) !important; }
+
+/* Radio intro (right panel) */
+.dark .radio-intro .intro-header .cover { border-color: rgba(255,255,255,0.18) !important; }
+.dark .radio-intro .intro-content { background: var(--layer) !important; }
+.dark .radio-intro .border { border-color: var(--text) !important; }
+
+/* Home: BREAKING NEWS (Banner) */
+.dark .banner .banner-header .banner-title {
+  background-color: var(--text) !important;
+  color: #000 !important;
+}
+
+.dark .banner .banner-header .banner-timer .line {
+  background-color: var(--text) !important;
+}
+
+.dark .banner .banner-header .banner-timer .timer {
+  border-color: var(--text) !important;
+}
+
+.dark .banner .banner-header .banner-timer .timer .timer-animation {
+  background-color: var(--text) !important;
+}
+
+.dark .banner .selector-box .selector .selector-style {
+  background-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+.dark .banner .selector-box .selector:hover .selector-style,
+.dark .banner .selector-box .selector .selector-style-active {
+  background-color: var(--text) !important;
+}
+
+.dark .banner .banner-next {
+  border-right-color: var(--text) !important;
+  border-bottom-color: var(--text) !important;
+}
+
+/* Home: Newest Song list */
+.dark .newest-song .newest-song-title {
+  color: var(--text) !important;
+}
+
+.dark .newest-song .song-list .list-item {
+  border-bottom-color: var(--border) !important;
+}
+
+.dark .newest-song .song-list .list-item .song-name {
+  color: var(--text) !important;
+}
+
+.dark .newest-song .song-list .list-item .song-author {
+  color: var(--muted-text) !important;
+}
+
+.dark .newest-song .song-list .list-item .song-author span:hover {
+  color: var(--text) !important;
+}
+
+.dark .newest-song .song-list .list-item .item-play path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Home: Recommended blocks */
+.dark .rec-list-item .item-header .header .header-title-en {
+  background-color: var(--text) !important;
+  color: #000 !important;
+}
+
+.dark .rec-list-item .item-header .header .line {
+  background-color: var(--border) !important;
+}
+
+.dark .rec-list-item .item-header .header-more {
+  color: var(--muted-text) !important;
+}
+
+.dark .rec-list-item .item-header .header-more:hover {
+  color: var(--text) !important;
+}
+
+.dark .rec-list-item .item-header .header-title-cn {
+  color: var(--text) !important;
+}
+
+.dark .rec-list-item .item-list .item .item-name {
+  color: var(--text) !important;
+}
+
+.dark .rec-list-item .item-list .item .item-sub {
+  color: var(--muted-text) !important;
+}
+
+.dark .rec-list-item .item-list .item .item-sub:hover {
+  color: var(--text) !important;
+}
+
+/* Cloud Disk list */
+.dark .file-container .file-list .list-item {
+  border-bottom-color: var(--border) !important;
+}
+
+.dark .file-container .file-list .list-item .item-img {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .file-container .file-list .list-item .item-name {
+  color: var(--text) !important;
+}
+
+.dark .file-container .file-list .list-item .item-name .item-name2 {
+  color: var(--muted-text) !important;
+}
+
+.dark .file-container .file-list .list-item .item-other {
+  color: var(--muted-text) !important;
+}
+
+.dark .file-container .file-list .list-item .item-check {
+  border-color: var(--text) !important;
+}
+
+.dark .file-container .file-list .list-item .item-check-selected {
+  background-color: var(--text) !important;
+}
+
+.dark .file-container .file-list .list-item .item-check-selected svg path {
+  fill: #000000 !important;
+  stroke: #000000 !important;
+}
+
+.dark .file-container .file-edit .edit-item .item-name {
+  color: var(--text) !important;
+}
+
+.dark .file-container .file-edit .edit-item .icon path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Cloud Disk left title small square */
+.dark .cloud-disk .disk-left .disk-title .title-tip {
+  background-color: var(--text) !important;
+}
+
+/* Cloud Disk: dark icon/text adaptations */
+.dark .cloud-disk .disk-left .disk-title .title-name {
+  color: var(--text) !important;
+}
+
+.dark .cloud-disk .disk-left .disk-tab {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .cloud-disk .disk-left .file-type .type .type-name {
+  color: var(--text) !important;
+}
+
+.dark .cloud-disk .disk-left .file-type .type .type-icon .icon path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+.dark .cloud-disk .disk-left .file-type .type .type-icon .type-select path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+.dark .cloud-disk .disk-left .disk-info .info-container {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .cloud-disk .disk-left .disk-info .info-container .info-list .item-lable {
+  color: var(--text) !important;
+}
+
+.dark .cloud-disk .disk-left .disk-info .info-container .info-list .item-info {
+  color: var(--muted-text) !important;
+}
+
+.dark .cloud-disk .disk-left .tab-back1 path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+.dark .cloud-disk .disk-left .tab-back2 {
+  color: rgba(255, 255, 255, 0.25) !important;
+}
+
+.dark .cloud-disk .disk-left .disk-upload {
+  background-color: var(--layer) !important;
+}
+
+.dark .cloud-disk .disk-left .disk-upload:hover {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.dark .cloud-disk .disk-left .upload .upload-title {
+  color: var(--muted-text) !important;
+}
+
+.dark .cloud-disk .disk-left .upload .upload-icon .icon1 path {
+  stroke: var(--text) !important;
+}
+
+.dark .cloud-disk .disk-left .upload .upload-icon .icon2 path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* My Music: top tabs underline */
+.dark .library-type .type-one .option-tracker .tracker-line {
+  background-color: var(--border) !important;
+}
+
+.dark .library-type .type-one .option-tracker .tracker {
+  background-color: var(--text) !important;
+}
+
+/* My Music: NONE placeholder diagonals + corners */
+.dark .library-view .library-container .library-nodata .line1,
+.dark .library-view .library-container .library-nodata .line2 {
+  background: linear-gradient(to bottom right,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0) calc(50% - 0.5px),
+      rgba(255, 255, 255, 0.8) 50%,
+      rgba(255, 255, 255, 0) calc(50% + 0.5px),
+      rgba(255, 255, 255, 0) 100%) !important;
+}
+
+.dark .library-view .library-container .library-nodata .tip {
+  color: var(--text) !important;
+}
+
+.dark .library-view .library-container .border {
+  border-color: var(--text) !important;
+}
+
+/* My Music: Local/Downloaded folder lists (dark) */
+.dark .local-music-list .list-folder .list-item-open,
+.dark .local-music-list .children-folder .list-item-open,
+.dark .local-music-list .list-folder .list-item:hover,
+.dark .local-music-list .children-folder .list-item:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.dark .local-music-list .list-folder .list-item-selected,
+.dark .local-music-list .children-folder .list-item-selected {
+  background-color: transparent !important;
+  box-shadow: inset 0 0 0 0.5Px var(--text) !important;
+}
+
+.dark .local-music-list .folder-name .name {
+  color: var(--text) !important;
+}
+
+.dark .local-music-list .folder-img svg path,
+.dark .local-music-list .folder-more svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+.dark .local-music-list .children-folder .folder-name .name {
+  color: var(--text) !important;
+}
+
+.dark .local-music-list .children-folder .folder-img svg path,
+.dark .local-music-list .children-folder .folder-more svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Cloud Disk info title: force black-on-white even in dark */
+.dark .cloud-disk .disk-left .disk-info .info-container .info-title {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Window controls */
+.dark .window-control.windows svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Settings back arrow */
+.dark .settings-page .view-control svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Library detail nav arrows */
+.dark .library-detail .view-control svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Generic back/forward arrows */
+.dark .router-last path,
+.dark .router-next path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Library detail: create time box + view detail button */
+.dark .library-detail .introduce-other .introduce-1 {
+  border-color: var(--text) !important;
+  color: var(--text) !important;
+}
+
+.dark .library-detail .introduce-other .introduce-2 {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Library detail operation icons (collect/download/playall) */
+.dark .library-detail .library-operation svg path,
+.dark .library-detail .playall svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Playlist widget icons */
+.dark .playlist-widget .playlist-widget-position path,
+.dark .playlist-widget .playlist-widget-delete path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Library song list misc icons (e.g., playing, download) */
+.dark .library-content .list-item svg path {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Make library context MENU watermark subtle in dark */
+.dark .context-menu .menu-style5 {
+  color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .context-menu .menu-style {
+  color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Add-to-playlist watermark text */
+.dark .context-menu .add-to-playlist .add-style5 {
+  color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Generic inputs/buttons */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #1c1f22 !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+.dark .search-input {
+  background: transparent !important;
+}
+
+.dark button {
+  background-color: #2a2e34 !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Personal FM mode selected state: force white bg + black text in dark mode */
+.dark .personal-fm .fm-mode-btn.active,
+.dark .personal-fm .fm-submode-btn.active {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #111213 !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.dark .personal-fm .fm-mode-btn.active .mode-code,
+.dark .personal-fm .fm-mode-btn.active .mode-label,
+.dark .personal-fm .fm-submode-btn.active .mode-code,
+.dark .personal-fm .fm-submode-btn.active .mode-label {
+  color: #111213 !important;
+  opacity: 1 !important;
+}
+
+/* Login screens */
+.dark .login-page .mode-type {
+  background-color: var(--layer) !important;
+}
+
+.dark .login-page .mode-type::before,
+.dark .login-page .mode-type::after {
+  border-color: var(--text) !important;
+}
+
+.dark .login-content .login-other .login-method span {
+  color: var(--muted-text) !important;
+}
+
+.dark .login-content .login-other .login-method span:hover {
+  color: var(--text) !important;
+}
+
+.dark .cookie-container .cookie .cookie-input-area .cookie-input,
+.dark .account-container .account .account-adress .account-input,
+.dark .account-container .account .mail-password .password-input {
+  color: var(--text) !important;
+}
+
+.dark .cookie-tips .tips-content {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .embedded-login .login-description .sub-text {
+  color: var(--muted-text) !important;
+}
+
+.dark .embedded-login .login-status .status-text {
+  color: #8ec8ff !important;
+  background: rgba(142, 200, 255, 0.12) !important;
+}
+
+.dark .password-line {
+  background-color: var(--text) !important;
+}
+
+.dark .login-button {
+  border-color: var(--text) !important;
+  color: var(--text) !important;
+}
+
+.dark .login-button:hover:not(.loading) {
+  background-color: var(--text) !important;
+  color: #000000 !important;
+}
+
+.dark .login-button.loading {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: var(--muted-text) !important;
+  border-color: var(--border) !important;
+}
+
+.dark .login-button::before,
+.dark .login-button::after {
+  background: var(--text) !important;
+}
+
+/* vue-slider dark tweaks */
+.dark .vue-slider-rail {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .vue-slider-process {
+  background-color: var(--text) !important;
+}
+
+/* SVG icons that use hardcoded black fills/strokes */
+.dark svg [fill="#000"],
+.dark svg [fill="#000000"],
+.dark svg [fill="#111111"],
+.dark svg [fill="#1a1a1a"],
+.dark svg [fill="#222222"],
+.dark svg [fill="#231815"],
+.dark svg [fill="#262626"],
+.dark svg [fill="#2c2c2c"],
+.dark svg [fill="#333333"],
+.dark svg [fill="#353535"],
+.dark svg [fill="#444444"],
+.dark svg [fill="#555555"],
+.dark svg [stroke="#000"],
+.dark svg [stroke="#000000"],
+.dark svg [stroke="#222222"],
+.dark svg [stroke="#333333"],
+.dark svg [stroke="#444444"],
+.dark svg [stroke="#555555"],
+.dark svg path[style*="fill:#000"],
+.dark svg path[style*="fill:#111"],
+.dark svg path[style*="fill:#1a1a1a"],
+.dark svg path[style*="fill:#22"],
+.dark svg path[style*="fill:#23"],
+.dark svg path[style*="fill:#26"],
+.dark svg path[style*="fill:#2c2c2c"],
+.dark svg path[style*="fill:#33"],
+.dark svg path[style*="fill:#35"],
+.dark svg path[style*="stroke:#000"],
+.dark svg path[style*="stroke:#111"],
+.dark svg path[style*="stroke:#22"],
+.dark svg path[style*="stroke:#33"],
+.dark svg path[style*="stroke:#44"],
+.dark svg path[style*="stroke:#55"] {
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
+
+/* Mini player icons (right group) */
+.dark .music-widget .music-other svg path {
+  stroke: var(--text) !important;
+}
+
+.dark .music-widget .music-other svg path:not([fill]):not([style*='fill']) {
+  fill: var(--text) !important;
+}
+
+/* Respect images/media (don’t invert album arts etc.) */
+.dark img {
+  filter: none;
+}
+
+/* Placeholders */
+.dark ::placeholder {
+  color: var(--muted-text) !important;
+  opacity: 1;
+}
+
+/* Search input borders */
+.dark .search-border1,
+.dark .search-border2,
+.dark .search-border3,
+.dark .search-border4 {
+  border-color: var(--text) !important;
+}
+
+.dark .search-border-2 {
+  background-color: var(--text) !important;
+}
+
+/* Search assist dropdown: align with app-wide dark system surfaces */
+.dark .search-assist {
+  background: var(--panel) !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--shadow) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.dark .search-assist .assist-corner {
+  border-color: var(--text) !important;
+}
+
+.dark .search-assist .assist-header {
+  border-bottom-color: var(--border) !important;
+}
+
+.dark .search-assist .assist-header .assist-title {
+  color: var(--text) !important;
+}
+
+.dark .search-assist .assist-header .assist-count,
+.dark .search-assist .assist-body .assist-status,
+.dark .search-assist .assist-body .assist-item .assist-index {
+  color: var(--muted-text) !important;
+}
+
+.dark .search-assist .assist-header .assist-line {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.24), transparent) !important;
+}
+
+.dark .search-assist .assist-body .assist-item {
+  color: var(--text) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.22)) !important;
+}
+
+.dark .search-assist .assist-body .assist-item:hover {
+  color: #0f1114 !important;
+}
+
+/* MyMusic view tweaks */
+.dark .my-music .no-folder {
+  background-color: var(--layer) !important;
+  color: var(--text) !important;
+}
+
+.dark .my-music .library-container .library-nodata .line1,
+.dark .my-music .library-container .library-nodata .line2 {
+  background: linear-gradient(to bottom right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0) calc(50% - 0.5px), rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0) calc(50% + 0.5px), rgba(255, 255, 255, 0) 100%) !important;
+}

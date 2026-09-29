@@ -17,7 +17,16 @@
     "_dist": "vite build && node scripts/build.js -p always",
     "dist": "vite build && node scripts/build.js -p never",
     "mpv:download": "node scripts/mpv-audio-only/download-artifacts.cjs",
-    "mpv:download:all": "node scripts/mpv-audio-only/download-artifacts.cjs --platform all"
+    "mpv:download:all": "node scripts/mpv-audio-only/download-artifacts.cjs --platform all",
+    "android:install": "npm ci --prefix apps/android && npm ci --prefix apps/android/mobile-runtime --omit=dev",
+    "android:dev": "npm --prefix apps/android run dev",
+    "android:api": "npm --prefix apps/android run api",
+    "android:web": "npm --prefix apps/android run build",
+    "android:sync": "npm --prefix apps/android run sync",
+    "android:build": "npm --prefix apps/android run android:build",
+    "android:release": "npm --prefix apps/android run android:release",
+    "android:bundle": "npm --prefix apps/android run android:bundle",
+    "android:open": "npm --prefix apps/android run android:open"
   },
   "dependencies": {
     "@neteasecloudmusicapienhanced/api": "^4.35.1",

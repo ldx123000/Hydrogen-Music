@@ -1,0 +1,13 @@
+{
+  "name": "hydrogen-music-nodejs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App \u5185\u5d4c\u7684\u7f51\u6613\u4e91 API \u8fd0\u884c\u65f6",
+  "main": "index.js",
+  "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "4.35.1"
+  },
+  "scripts": {
+    "postinstall": "node ../../../scripts/patch-ncm-api.cjs node_modules && node ../scripts/patch-path-to-regexp.cjs node_modules"
+  }
+}

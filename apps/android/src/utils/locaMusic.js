@@ -1,0 +1,289 @@
+import pinia from '../store/pinia'
+import { useLocalStore } from '../store/localStore'
+import { storeToRefs } from 'pinia'
+import { nanoid } from 'nanoid'
+import { noticeOpen } from './dialog'
+import { buildLocalSongSearchText } from './songFilter'
+
+const localStore = useLocalStore(pinia)
+const { downloadedMusicFolder, downloadedFiles, localMusicFolder, localMusicList, localMusicClassify, isRefreshLocalFile } = storeToRefs(localStore)
+const pendingScanTypes = new Set()
+let bridgeInitialized = false
+let removeLocalMusicCountListener = null
+let removeLocalMusicFilesListener = null
+
+function normalizeArtists(song) {
+    const artists = song?.common?.artists
+    if (!Array.isArray(artists) || artists.length === 0) return ['其他']
+
+    if (artists.length === 1 && typeof artists[0] == 'string' && artists[0].includes(',')) {
+        const splitArtists = artists[0].split(',').map(item => item.trim()).filter(Boolean)
+        if (splitArtists.length > 0) return splitArtists
+    }
+
+    return artists.map(item => String(item || '').trim()).filter(Boolean)
+}
+
+function normalizeAlbum(song) {
+    const albumName = String(song?.common?.album || '').trim()
+    return albumName || '其他'
+}
+
+function getPayloadMetadata(localData) {
+    return localData?.locaFilesMetadata || localData?.localFilesMetadata
+}
+
+export function buildFolderIndex(metadataRoot) {
+    const foldersByName = {}
+    const songSearchById = {}
+
+    const addFolderLookup = (node, songs) => {
+        const entry = {
+            name: node.name,
+            dirPath: node.dirPath,
+            songs,
+        }
+        if (node.dirPath) foldersByName[node.dirPath] = entry
+        if (node.name && !foldersByName[node.name]) foldersByName[node.name] = entry
+    }
+
+    const walk = (node) => {
+        if (!node || !Array.isArray(node.children)) return []
+
+        const aggregatedSongs = []
+        for (let i = 0; i < node.children.length; i++) {
+            const child = node.children[i]
+            // 用节点自身的标识判断是不是文件夹，不能只看"有没有 children"：
+            // 安卓扫描为了让列表项能安全地读 item.children.length（缺这个字段会抛错白屏），
+            // 给歌曲节点也带了一个空 children 数组，于是"有 children 就是文件夹"不再成立
+            // —— 那样所有歌都会被当成文件夹递归下去，列表里一首歌都收不到。
+            const isFolder = child && (child.type === 'folder' || (Array.isArray(child.children) && child.children.length > 0))
+            if (isFolder) {
+                aggregatedSongs.push(...walk(child))
+            } else if (child) {
+                aggregatedSongs.push(child)
+                if (child.id) {
+                    songSearchById[String(child.id)] = buildLocalSongSearchText(child)
+                }
+            }
+        }
+
+        addFolderLookup(node, aggregatedSongs.slice())
+
+        return aggregatedSongs
+    }
+
+    const roots = Array.isArray(metadataRoot) ? metadataRoot : [metadataRoot]
+    const flatSongs = []
+    roots.forEach(root => {
+        flatSongs.push(...walk(root))
+    })
+
+    return {
+        foldersByName,
+        songSearchById,
+        flatSongs,
+    }
+}
+
+function findFolderPathLookupProbe(node) {
+    if (!node) return ''
+    if (Array.isArray(node)) {
+        for (const item of node) {
+            const probe = findFolderPathLookupProbe(item)
+            if (probe) return probe
+        }
+        return ''
+    }
+
+    if (Array.isArray(node.children)) {
+        if (node.dirPath && node.name && node.dirPath !== node.name) return node.dirPath
+        for (const child of node.children) {
+            const probe = findFolderPathLookupProbe(child)
+            if (probe) return probe
+        }
+    }
+    return ''
+}
+
+function derivedSupportsFolderPathLookup(derived, metadataRoot) {
+    const probe = findFolderPathLookupProbe(metadataRoot)
+    if (!probe) return true
+    return !!derived?.lookupIndex?.foldersByName?.[probe]
+}
+
+export function buildLocalClassify(flatSongs = []) {
+    const artistMap = new Map()
+    const albumMap = new Map()
+
+    flatSongs.forEach(song => {
+        const artists = normalizeArtists(song)
+        artists.forEach(artist => {
+            const artistKey = artist || '其他'
+            if (!artistMap.has(artistKey)) {
+                artistMap.set(artistKey, {
+                    id: nanoid(),
+                    type: 'artist',
+                    name: artistKey,
+                    songs: [],
+                })
+            }
+            artistMap.get(artistKey).songs.push(song)
+        })
+
+        const albumName = normalizeAlbum(song)
+        if (!albumMap.has(albumName)) {
+            albumMap.set(albumName, {
+                id: nanoid(),
+                type: 'album',
+                name: albumName,
+                songs: [],
+            })
+        }
+        albumMap.get(albumName).songs.push(song)
+    })
+
+    const artists = Array.from(artistMap.values())
+    const albums = Array.from(albumMap.values())
+
+    return {
+        artists,
+        albums,
+        artistsById: artists.reduce((result, artist) => {
+            result[String(artist.id)] = artist
+            return result
+        }, {}),
+        albumsById: albums.reduce((result, album) => {
+            result[String(album.id)] = album
+            return result
+        }, {}),
+    }
+}
+
+export function buildDerivedPayload(type, metadataRoot) {
+    const folderIndex = buildFolderIndex(metadataRoot)
+    if (type === 'downloaded') {
+        return {
+            lookupIndex: {
+                foldersByName: folderIndex.foldersByName,
+                songSearchById: folderIndex.songSearchById,
+            },
+            classify: null,
+        }
+    }
+
+    const localClassify = buildLocalClassify(folderIndex.flatSongs)
+    return {
+        lookupIndex: {
+            foldersByName: folderIndex.foldersByName,
+            songSearchById: folderIndex.songSearchById,
+            artistsById: localClassify.artistsById,
+            albumsById: localClassify.albumsById,
+        },
+        classify: {
+            artists: localClassify.artists,
+            albums: localClassify.albums,
+        },
+    }
+}
+
+function ensureDerivedPayload(type, localData) {
+    const cachedDerived = localData?.derived
+    if (cachedDerived?.lookupIndex) {
+        const metadataRoot = getPayloadMetadata(localData)
+        const hasPathLookup = derivedSupportsFolderPathLookup(cachedDerived, metadataRoot)
+        if (type === 'downloaded' && hasPathLookup) return cachedDerived
+        if (hasPathLookup && cachedDerived?.classify?.artists && cachedDerived?.classify?.albums) return cachedDerived
+    }
+
+    const nextDerived = buildDerivedPayload(type, getPayloadMetadata(localData))
+    try {
+        windowApi.persistLocalMusicDerived({
+            type,
+            derived: nextDerived,
+        })
+    } catch (_) {}
+    return nextDerived
+}
+
+function applyDownloadedPayload(localData, derived) {
+    downloadedMusicFolder.value = localData.dirTree
+    downloadedFiles.value = getPayloadMetadata(localData)
+
+    localStore.updateLookupIndex('downloaded', {
+        foldersByName: derived?.lookupIndex?.foldersByName || {},
+        songSearchById: derived?.lookupIndex?.songSearchById || {},
+    })
+}
+
+function applyLocalPayload(localData, derived) {
+    localMusicFolder.value = localData.dirTree
+    localMusicList.value = getPayloadMetadata(localData)
+    localMusicClassify.value = {
+        artists: derived?.classify?.artists || [],
+        albums: derived?.classify?.albums || [],
+    }
+
+    localStore.updateLookupIndex('local', {
+        foldersByName: derived?.lookupIndex?.foldersByName || {},
+        songSearchById: derived?.lookupIndex?.songSearchById || {},
+        artistsById: derived?.lookupIndex?.artistsById || {},
+        albumsById: derived?.lookupIndex?.albumsById || {},
+    })
+}
+
+export function scanMusic(params) {
+    initLocalMusicBridge()
+
+    const type = params?.type
+    const refresh = params?.refresh === true
+    if (!type) return
+    if (!refresh && pendingScanTypes.has(type)) return
+
+    pendingScanTypes.add(type)
+    if(isRefreshLocalFile.value)
+        noticeOpen("正在扫描本地音乐,请稍等", 3)
+    windowApi.scanLocalMusic(params)
+}
+
+export function initLocalMusicBridge() {
+    if (bridgeInitialized) return
+    bridgeInitialized = true
+
+    removeLocalMusicCountListener = windowApi.localMusicCount((event, count) => {
+        noticeOpen('已扫描' + count + '首', 2)
+    })
+
+    removeLocalMusicFilesListener = windowApi.localMusicFiles((event, localData) => {
+        if (!localData?.type) return
+        pendingScanTypes.delete(localData.type)
+
+        if(localData.type == 'downloaded') {
+            const derived = ensureDerivedPayload('downloaded', localData)
+            applyDownloadedPayload(localData, derived)
+        }
+
+        if(localData.type == 'local') {
+            const derived = ensureDerivedPayload('local', localData)
+            applyLocalPayload(localData, derived)
+        }
+
+        if(isRefreshLocalFile.value) {
+            if(localData.type == 'downloaded') {
+                noticeOpen("下载目录已更新，共" + localData.count + '首音乐', 3)
+            } else {
+                noticeOpen("扫描完毕 共" + localData.count + '首', 3)
+            }
+            isRefreshLocalFile.value = false
+        }
+    })
+}
+
+export function destroyLocalMusicBridge() {
+    removeLocalMusicCountListener?.()
+    removeLocalMusicFilesListener?.()
+    removeLocalMusicCountListener = null
+    removeLocalMusicFilesListener = null
+    bridgeInitialized = false
+    pendingScanTypes.clear()
+}
