@@ -152,6 +152,9 @@ function login() {
 .listen-together-inline button.danger { color: #9b3b29; border-color: rgba(155, 59, 41, .35); }
 .icon-button { width: 30px; min-height: 30px !important; padding: 0 !important; font-family: Bender-Bold, sans-serif !important; }
 .close-button { grid-column: 3; border: 0 !important; font-size: 21px !important; }
+.listen-together-inline--player .together-header { grid-template-columns: minmax(0, 1fr) 30px; }
+.listen-together-inline--player .header-song { grid-column: 1 / -1; grid-row: 2; text-align: left; }
+.listen-together-inline--player .close-button { grid-column: 2; grid-row: 1; }
 .segment-control { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; width: min(320px, 100%); margin-bottom: 14px; }
 .segment-control button { border-radius: 0; margin-left: -1px; }
 .segment-control button:first-child { margin-left: 0; border-radius: 4px 0 0 4px; }
@@ -188,9 +191,7 @@ function login() {
     .members { grid-template-columns: 1fr; }
     .playlist-handoff { align-items: flex-start; }
 }
-@media (prefers-color-scheme: dark) {
-    .listen-together-inline { --panel: rgba(29, 42, 46, .98); --ink: #dae9ed; --muted: #a1b4ba; --line: rgba(210, 235, 240, .16); }
-    .listen-together-inline button.primary, .segment-control button[aria-selected="true"] { color: #202b2e; }
-    .error { background: rgba(110, 40, 29, .36); color: #f1b5a9; }
-}
+:global(.dark .listen-together-inline) { --panel: rgba(29, 42, 46, .98); --ink: #dae9ed; --muted: #a1b4ba; --line: rgba(210, 235, 240, .16); }
+:global(.dark .listen-together-inline button.primary), :global(.dark .listen-together-inline .segment-control button[aria-selected="true"]) { color: #202b2e; }
+:global(.dark .listen-together-inline .error) { background: rgba(110, 40, 29, .36); color: #f1b5a9; }
 </style>

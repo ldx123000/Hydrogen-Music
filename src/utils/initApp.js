@@ -1,7 +1,6 @@
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
 import { useUserStore } from '../store/userStore'
-import { useListenTogetherStore } from '../store/listenTogetherStore'
 import { storeToRefs } from 'pinia'
 import { getPreferredQuality } from './quality'
 import { initializeCurrentAccountSession } from './accountSession'
@@ -20,7 +19,6 @@ const playerStore = usePlayerStore()
 const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime, searchAssistLimit, showSongTranslation, gaplessPlayback, audioVisualizer, localHifiOutput, localHifiOutputMode, localHifiMpvPath, localHifiAudioDevice } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const userStore = useUserStore()
-const listenTogetherStore = useListenTogetherStore()
 
 let baseInitPromise = null
 let deferredInitPromise = null
@@ -264,9 +262,6 @@ async function runDeferredAppInit() {
     }
 
     await restoreLastSongOnce()
-    if (!userStore.localOnlyMode && userStore.user?.userId) {
-        await listenTogetherStore.restore({ silent: true })
-    }
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('listenTogether:startup-ready'))
 
     if (!userStore.localOnlyMode) scheduleSirenDurationPreload()

@@ -31,18 +31,23 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
         if (targetId && !desiredIds.includes(targetId)) desiredIds.push(targetId)
         const songs = await details(desiredIds, active)
         if (!active()) return
-        const target = songs.find(song => String(song.id) === targetId)
+        const songsById = new Map(songs.map(song => [String(song.id), song]))
+        const target = songsById.get(targetId)
         if (command && !target) throw new Error('房间当前歌曲暂不可用，请稍后重试')
         const playerApi = await import('../utils/player')
         if (!active()) return
         if (ids !== null || (command && !player.songList?.some(song => String(song.id) === targetId))) {
-            playerApi.addToList('together', songs)
+            playerApi.addToList('together', songs, null, { persist: false })
             const index = songs.findIndex(song => String(song.id) === String(player.songId))
             if (index >= 0) player.currentIndex = index
+            // Leaving personal FM restores its previous mode in a watcher.
+            // Let that finish before applying the room's mode and shuffle order.
+            await nextTick()
+            if (!active()) return
         }
         if (player.playMode !== localPlayMode(mode)) playerApi.applyPlayMode(localPlayMode(mode))
         if (mode === 'RANDOM') {
-            player.shuffledList = randomIds.map(id => songs.find(song => String(song.id) === id)).filter(Boolean)
+            player.shuffledList = randomIds.map(id => songsById.get(id)).filter(Boolean)
             player.shuffleIndex = Math.max(0, player.shuffledList.findIndex(song => String(song.id) === targetId))
         }
         if (command) {
@@ -58,13 +63,25 @@ export const useListenTogetherStore = defineStore('listenTogether', () => {
                 if (Date.now() > deadline) throw new Error('歌曲加载超时，可能没有播放权限；将自动重试')
                 await new Promise(resolve => setTimeout(resolve, 100))
             }
-            if (!active() || String(player.songId) !== targetId) return
+            if (!active()) return
+            if (String(player.songId) !== targetId) throw new Error('房间当前歌曲未能加载，请重新同步')
+            // Howler resumes a playing HTML5 track asynchronously after a seek.
+            // Finish pausing first so that resume cannot undo a remote pause.
+            if (command.playStatus === 'PAUSE' && player.playing) {
+                playerApi.pauseMusic()
+                while (active() && player.playing && String(player.songId) === targetId) {
+                    if (Date.now() > deadline) throw new Error('暂停歌曲超时，请重新同步')
+                    await new Promise(resolve => setTimeout(resolve, 50))
+                }
+                if (!active()) return
+                if (String(player.songId) !== targetId) throw new Error('房间当前歌曲已变化，请重新同步')
+            }
             const desiredPosition = Math.min(position(), Math.max(0, (Number(player.time) || Infinity) - 0.25))
             if (changed || Math.abs(player.progress - desiredPosition) > 1.5 || command.commandType === 'PROGRESS') playerApi.changeProgress(desiredPosition)
             if (command.playStatus === 'PLAY' && !player.playing) playerApi.startMusic()
-            if (command.playStatus === 'PAUSE' && player.playing) playerApi.pauseMusic()
         }
         await nextTick()
+        if (active()) playerApi.savePlaylist()
     }
     const session = createTogetherSession({ state, api: togetherRequest,
         userId: () => user.localOnlyMode ? null : user.user?.userId,

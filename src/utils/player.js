@@ -24,6 +24,7 @@ import { initPlayerExternalBridge as initExternalBridge } from './player/externa
 import { loadStoredPlaylist, persistPlaylistBeforeExit, saveStoredPlaybackProgress, saveStoredPlaylist } from './player/playlistPersistence'
 import { createNextShuffledCycle, createShuffledList, haveSameSongIds } from './player/queue'
 import { normalizeQueueSong, normalizeQueueSongs } from './player/queueSong'
+import { isTogetherSong } from './listenTogether'
 import { getPrefetchedSongAssets, getSongAssetKey, prefetchSongAssets } from './player/assetPrefetch'
 import { getLyricWithCloudFallback, isCloudDiskSong, markCloudDiskSong } from './player/lyricFallback'
 import { createDecodedAudioPlayer } from './player/webAudioGapless'
@@ -1469,7 +1470,7 @@ function handlePlaybackLoadFailure(error, { advance = false, song = null, availa
     const isNetworkError = isTransientPlaybackRequestError(error)
     noticeOpen(isNetworkError ? '网络请求失败，请稍后重试' : getRestrictedPlaybackFailureMessage(song, availability || error), 2)
     resetFailedPlaybackState()
-    if (advance && !isNetworkError) playNext()
+    if (advance && !isNetworkError && !(playerStore.togetherRoomActive && isTogetherSong(song))) playNext()
 }
 
 function startMusicVideoSampling() {
@@ -1728,7 +1729,7 @@ function handlePlaybackStarted(playback) {
     resetStreamRecoveryAttempts()
     const fadeInMs = fadeInDurationByHowl.has(playback) ? fadeInDurationByHowl.get(playback) : 200
     fadeInDurationByHowl.delete(playback)
-    if (playback?.__hmHifiOutputPlayer || fadeInMs <= 0) {
+    if (playback?.__hmHifiOutputPlayer || fadeInMs <= 0 || volume.value === 0) {
         playback.volume(volume.value)
     } else {
         playback.fade(0, volume.value, fadeInMs)
@@ -1745,7 +1746,7 @@ function handlePlaybackPaused(playback) {
     stopProgressSampling()
     playing.value = false
     syncExternalPlaybackState()
-    if (playback?.__hmHifiOutputPlayer) return
+    if (playback?.__hmHifiOutputPlayer || volume.value === 0) return
     playback.fade(volume.value, 0, 200)
 }
 
@@ -2585,7 +2586,7 @@ export function pauseMusic() {
     stopProgressSampling()
     const currentHowl = getCurrentHowl()
     persistPlaybackSnapshotNow()
-    if (playing.value && currentHowl?.__hmHifiOutputPlayer) {
+    if (playing.value && currentHowl && (currentHowl.__hmHifiOutputPlayer || volume.value === 0)) {
         currentHowl.pause?.()
         playing.value = false
         syncExternalPlaybackState()

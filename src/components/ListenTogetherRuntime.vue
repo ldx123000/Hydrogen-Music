@@ -13,7 +13,6 @@ let pollTimer
 let updateTimer
 let pendingSeek = false
 let pollGeneration = 0
-let restoreGeneration = 0
 let automaticRestoreReady = false
 
 function scheduleUpdate(seek = false) {
@@ -35,7 +34,10 @@ async function poll(generation) {
 }
 
 const onSeek = () => scheduleUpdate(true)
-const onAutomaticRestoreReady = () => { automaticRestoreReady = true }
+const onAutomaticRestoreReady = () => {
+    automaticRestoreReady = true
+    if (user.user?.userId && !user.localOnlyMode) void together.restore({ silent: true })
+}
 const onEnded = event => {
     if (!together.state.roomId || !together.supported || player.playMode === 2) return
     event.preventDefault()
@@ -64,13 +66,12 @@ watch(() => [player.songId, player.playing, player.currentMusic, player.playMode
 () => scheduleUpdate(), { flush: 'post' })
 
 watch(() => [user.user?.userId, user.localOnlyMode], ([userId, localOnly]) => {
-    const generation = ++restoreGeneration
+    clearTimeout(updateTimer)
+    pendingSeek = false
     together.reset()
     together.show = false
     if (!automaticRestoreReady || !userId || localOnly) return
-    void together.restore({ silent: true }).then(() => {
-        if (generation !== restoreGeneration || disposed) together.reset()
-    })
+    void together.restore({ silent: true })
 })
 
 onMounted(() => {
