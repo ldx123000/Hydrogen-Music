@@ -307,7 +307,8 @@ watch(currentTrack, (song) => {
         opacity: 0;
         animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
         position: relative;
-        z-index: 1;
+        // 播放器侧边面板需要覆盖右侧歌词，避免歌词层拦截点击。
+        z-index: 2;
         @keyframes player-in {
             0% {
                 height: 0;

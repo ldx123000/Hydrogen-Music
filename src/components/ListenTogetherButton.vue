@@ -2,7 +2,6 @@
 import { useListenTogetherStore } from '../store/listenTogetherStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useUserStore } from '../store/userStore'
-defineProps({ compact: Boolean })
 const together = useListenTogetherStore()
 const player = usePlayerStore()
 const user = useUserStore()
@@ -18,18 +17,37 @@ function toggle() {
 </script>
 
 <template>
-    <button v-if="!user.localOnlyMode" type="button" class="listen-together-button" :class="{ active: together.state.roomId || together.show, compact }" :title="together.show ? '收起一起听' : together.state.roomId ? '打开一起听控制' : '一起听 · 邀请好友或加入房间'" aria-label="打开或收起一起听控制" :aria-expanded="together.show" @click.stop="toggle">
-        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 14v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="12" width="4" height="8" rx="2"/><rect x="17" y="12" width="4" height="8" rx="2"/><path d="M9 14l3 3 3-3"/></svg>
-        <span v-if="!compact">{{ together.state.roomId ? '正在一起听' : '一起听' }}</span>
+    <button v-if="!user.localOnlyMode" type="button" class="listen-together-button" :class="{ active: together.show }" :title="together.show ? '收起一起听' : together.state.roomId ? '正在一起听 · 打开房间' : '一起听 · 邀请好友或加入房间'" aria-label="打开或收起一起听控制" :aria-expanded="together.show" @click.stop="toggle">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path fill="none" d="M4 13v-2a8 8 0 0 1 16 0v2"/><path fill="none" d="M3 12h4v8H3zM17 12h4v8h-4z"/></svg>
         <i v-if="together.state.roomId" aria-hidden="true" />
     </button>
 </template>
 
 <style scoped>
-.listen-together-button { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 6px; min-height: 30px; border: 0; border-radius: 5px; padding: 4px 7px; background: transparent; color: var(--text, #202b2e); cursor: pointer; font: inherit; font-size: 12px; -webkit-app-region: no-drag; }
-.listen-together-button.compact { padding: 4px; }
-.listen-together-button:hover { background: rgba(110, 156, 169, .16); }
-.listen-together-button.active { color: #448a9c; }
-.listen-together-button:focus-visible { outline: 2px solid #448a9c; outline-offset: 2px; }
-i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; position: absolute; top: 1px; right: 1px; }
+.listen-together-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    padding: 2px;
+    border: 0;
+    border-radius: 0;
+    appearance: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    opacity: .5;
+    transition: opacity .2s, transform .2s;
+    -webkit-app-region: no-drag;
+}
+.listen-together-button:hover { opacity: .8; }
+.listen-together-button.active { opacity: 1; }
+.listen-together-button:active { transform: scale(.9); }
+.listen-together-button:focus-visible { box-shadow: 0 0 0 1px var(--text); }
+svg { flex-shrink: 0; }
+i { width: 4px; height: 4px; background: var(--text); position: absolute; top: -2px; right: -2px; }
+:global(.dark .listen-together-button) { background: transparent !important; }
 </style>

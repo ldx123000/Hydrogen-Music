@@ -5,12 +5,10 @@ import { confirmAccountLogout } from '../utils/accountSession'
 import { isLogin } from '../utils/authority'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
-import { useListenTogetherStore } from '../store/listenTogetherStore'
 
 const router = useRouter()
 const userStore = useUserStore()
 const playerStore = usePlayerStore()
-const togetherStore = useListenTogetherStore()
 const HEADER_CENTER = 0.55
 const isActive = ref(false)
 const routerContainer = ref(null)
@@ -317,7 +315,6 @@ watch(
                                 <transition name="app-option" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
                                     <div class="app-option" :class="{ 'app-option-active': isActive, 'app-option-local-only': userStore.localOnlyMode }" v-show="userStore.appOptionShow">
                                         <div class="option" @click="toSettings()">设置</div>
-                                        <button class="option together-option" v-if="!userStore.localOnlyMode" @click="userStore.appOptionShow = false; togetherStore.open()">一起听</button>
                                         <div class="option" v-if="!userStore.localOnlyMode" @click="handleAuthOptionClick()">{{ isLogin() ? '退出登录' : '账号登录' }}</div>
 
                                         <div class="option-style option-style1"></div>
@@ -450,7 +447,7 @@ main {
                     }
                 }
                 .app-option {
-                    --app-option-height: 120px;
+                    --app-option-height: 88px;
                     padding: 0;
                     width: 100px;
                     height: 0;
@@ -485,12 +482,6 @@ main {
                         &:active {
                             transform: scale(0.95);
                         }
-                    }
-                    .together-option {
-                        display: block;
-                        width: 100%;
-                        border: 0;
-                        background: transparent;
                     }
                     .option-style {
                         width: 4px;

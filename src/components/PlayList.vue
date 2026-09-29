@@ -142,7 +142,7 @@
   .playlist-widget{
     width: 310Px;
     height: 0;
-    background-color: rgba(225, 240, 240, 1);
+    background-color: var(--player-panel);
     transition: 0.3s cubic-bezier(.19,.8,.49,.99);
     overflow: hidden;
     display: flex;

@@ -459,7 +459,7 @@ const toggleDjSub = async isSubscribe => {
             </div>
 
             <div class="song-control" :class="{ 'is-intelligence-mode': isIntelligenceMode }">
-                <ListenTogetherButton compact />
+                <ListenTogetherButton />
                 <svg
                     t="1673355036226"
                     v-if="musicVideo"
@@ -879,7 +879,7 @@ const toggleDjSub = async isSubscribe => {
             </div>
         </div>
 
-        <ListenTogether :active="!widgetState" variant="player" />
+        <ListenTogether :active="!widgetState" />
         <PlayList v-if="playlistWidgetLoaded" class="playlist-widget-player" :class="{ 'playlist-widget-open': playlistWidgetShow }"></PlayList>
 
         <span class="border border1"></span>

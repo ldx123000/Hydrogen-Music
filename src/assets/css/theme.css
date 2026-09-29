@@ -5,6 +5,7 @@
   --text: #111213;
   --muted-text: #5b6066;
   --panel: rgba(255, 255, 255, 0.9);
+  --player-panel: rgb(225, 240, 240);
   --layer: rgba(255, 255, 255, 0.35);
   --border: rgba(0, 0, 0, 0.2);
   --shadow: 0 0 15px 2px rgba(189, 189, 189, 0.1);
@@ -32,6 +33,7 @@ body {
   --text: #f1f3f5;
   --muted-text: #c9ccd2;
   --panel: rgba(44, 50, 58, 0.92);
+  --player-panel: var(--panel);
   --layer: rgba(255, 255, 255, 0.14);
   --border: rgba(255, 255, 255, 0.22);
   --shadow: 0 0 24px rgba(0, 0, 0, 0.55);

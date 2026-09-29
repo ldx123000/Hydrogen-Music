@@ -22,12 +22,18 @@ async function load() {
     try {
         const result = await getUserFollows(user.user.userId, offset.value)
         if (token !== generation) return
-        if (result.code !== 200 || !Array.isArray(result.follow)) throw new Error(result.message || '关注列表加载失败，请重试')
+        if (result.code !== 200 || !Array.isArray(result.follow)) throw new Error(result.message || result.msg || '关注列表加载失败，请重试')
         offset.value += result.follow.length
         const known = new Set(friends.value.map(friend => String(friend.userId)))
         friends.value.push(...result.follow.filter(friend => friend.userId && !known.has(String(friend.userId))))
         more.value = result.more === undefined ? result.follow.length === 30 : !!result.more
-    } catch (cause) { if (token === generation) error.value = cause.message || '关注列表加载失败，请重试' }
+    } catch (cause) {
+        if (token === generation) {
+            const status = cause.response?.status
+            error.value = cause.response?.data?.message || cause.response?.data?.msg
+                || (status ? `关注列表加载失败（${status}），请稍后重试` : cause.message || '关注列表加载失败，请重试')
+        }
+    }
     finally { if (token === generation) loading.value = false }
 }
 watch(() => user.user?.userId, () => {
@@ -50,12 +56,13 @@ async function invite(friend) {
 
 <template>
     <div class="friend-picker">
-        <p>选择你关注的人，发送网易云一起听邀请。</p>
+        <p class="friend-hint">选择关注的好友，邀请一起听。</p>
         <input v-model="filter" aria-label="筛选关注的人" placeholder="搜索已加载的昵称" />
         <ul>
             <li v-for="friend in visibleFriends" :key="friend.userId">
                 <img v-if="friend.avatarUrl" :src="friend.avatarUrl" alt="" referrerpolicy="no-referrer" />
-                <span>{{ friend.nickname }}</span>
+                <span v-else class="friend-avatar" aria-hidden="true">{{ (friend.nickname || '网').slice(0, 1) }}</span>
+                <span class="friend-name" :title="friend.nickname">{{ friend.nickname }}</span>
                 <button type="button" :disabled="!!inviting || together.state.busy || sent.has(String(friend.userId))" @click="invite(friend)">{{ inviting === String(friend.userId) ? '邀请中…' : sent.has(String(friend.userId)) ? '已邀请' : '邀请' }}</button>
             </li>
         </ul>
@@ -65,14 +72,18 @@ async function invite(friend) {
     </div>
 </template>
 
-<style scoped>
-.friend-picker p { font-size: 12px; color: var(--muted, #66767b); margin: 10px 0; }
-.friend-picker input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line, #d7e2e5); border-radius: 5px; background: transparent; color: inherit; }
-.friend-picker ul { max-height: 240px; overflow-y: auto; list-style: none; padding: 0; margin: 10px 0; }
-.friend-picker li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line, #d7e2e5); }
-.friend-picker img { width: 34px; height: 34px; border-radius: 50%; }
-.friend-picker span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.friend-picker button { border: 1px solid var(--line, #d7e2e5); border-radius: 5px; padding: 7px 14px; background: transparent; color: inherit; cursor: pointer; }
-.friend-picker button:disabled { opacity: .5; cursor: default; }
-.friend-picker button:focus-visible, .friend-picker input:focus-visible { outline: 2px solid #448a9c; outline-offset: 2px; }
+<style scoped lang="scss">
+.friend-picker {
+    p { font-size: 12px; line-height: 1.7; color: var(--muted-text) !important; margin: 12px 0; }
+    .friend-hint { margin: 0 0 12px; }
+    input {
+        width: 100%;
+    }
+    ul { max-height: 220px; overflow-y: auto; list-style: none; padding: 0; margin: 8px 0 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+    li { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    img, .friend-avatar { width: 30px; height: 30px; flex: 0 0 30px; object-fit: cover; }
+    .friend-avatar { display: grid; place-items: center; border: 1px solid var(--border); font-size: 12px; }
+    .friend-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    > button { margin-top: 12px; }
+}
 </style>

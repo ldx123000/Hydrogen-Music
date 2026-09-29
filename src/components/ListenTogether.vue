@@ -6,10 +6,7 @@ import { usePlayerStore } from '../store/playerStore'
 import { useUserStore } from '../store/userStore'
 import ListenTogetherFriends from './ListenTogetherFriends.vue'
 
-const props = defineProps({
-    active: Boolean,
-    variant: { type: String, default: 'widget' },
-})
+defineProps({ active: Boolean })
 
 const together = useListenTogetherStore()
 const player = usePlayerStore()
@@ -55,22 +52,20 @@ function login() {
         <section
             v-if="active && together.show"
             class="listen-together-inline"
-            :class="`listen-together-inline--${variant}`"
             aria-label="一起听控制"
         >
             <header class="together-header">
-                <div class="header-state">
-                    <span class="status-dot" :class="{ idle: !together.state.roomId, warning: together.state.connection === 'reconnecting' }" />
-                    <div>
-                        <strong>{{ together.state.roomId ? '一起听' : '连接一起听' }}</strong>
-                        <small>{{ together.state.roomId ? `${connectionLabel} · ${together.state.users.length || 1} 人 · ${elapsedLabel}` : '网易云双人房间' }}</small>
+                <div class="header-title">
+                    <strong>一起听</strong>
+                    <div class="header-state">
+                        <span v-if="together.state.roomId" class="status-dot" :class="{ reconnecting: together.state.connection === 'reconnecting' }" />
+                        <small>{{ together.state.roomId ? `${connectionLabel} · ${together.state.users.length || 1} 人` : '与好友同步播放' }}</small>
+                        <time v-if="together.state.roomId">{{ elapsedLabel }}</time>
                     </div>
                 </div>
-                <div class="header-song" v-if="together.state.roomId">
-                    <span>{{ together.state.applying ? '正在跟随对方' : together.supported ? '共享播放中' : '等待网易云歌曲' }}</span>
-                    <strong>{{ song?.name || '暂无歌曲' }}</strong>
-                </div>
-                <button class="icon-button close-button" type="button" aria-label="收起一起听" title="收起" @click="together.show = false">×</button>
+                <button class="close-button" type="button" aria-label="收起一起听" title="收起" @click="together.show = false">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 5 14 14M19 5 5 19" /></svg>
+                </button>
             </header>
 
             <div class="together-content">
@@ -98,12 +93,16 @@ function login() {
                 </template>
 
                 <template v-else>
+                    <div class="header-song">
+                        <span class="section-label">{{ together.state.applying ? '正在跟随对方' : together.supported ? '当前共享' : '等待网易云歌曲' }}</span>
+                        <strong :title="song?.name">{{ song?.name || '暂无歌曲' }}</strong>
+                    </div>
                     <div class="playlist-handoff">
                         <div>
                             <strong>当前播放列表</strong>
                             <span>{{ player.songList?.length || 0 }} 首歌曲</span>
                         </div>
-                        <button class="primary" type="button" @click.stop="openPlaylist">打开播放列表</button>
+                        <button class="text-button" type="button" @click.stop="openPlaylist">打开列表 <span aria-hidden="true">↗</span></button>
                     </div>
 
                     <div class="people-pane">
@@ -129,69 +128,173 @@ function login() {
     </Transition>
 </template>
 
-<style scoped>
-.listen-together-inline { --panel: rgba(236, 246, 247, .98); --ink: #202b2e; --muted: #68797d; --line: rgba(42, 58, 62, .16); --accent: #448a9c; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 14px 32px rgba(28, 44, 48, .18); font: 13px SourceHanSansCN-Bold, sans-serif; z-index: 140; }
-.listen-together-inline--widget { position: absolute; left: 0; right: 0; bottom: 65px; max-height: min(520px, calc(100vh - 155px)); border-radius: 6px 6px 0 0; }
-.listen-together-inline--player { position: absolute; inset: 0; border-radius: 4px; box-shadow: none; z-index: 140; }
-.together-header { flex: 0 0 auto; min-height: 58px; display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 1.4fr) 30px; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
-.header-state { display: flex; align-items: center; min-width: 0; gap: 9px; }
-.header-state > div, .header-song { min-width: 0; display: grid; }
-.header-state strong, .header-song strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.header-state small, .header-song span, .muted { color: var(--muted); font-size: 11px; }
-.header-song { text-align: right; }
-.status-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px rgba(68, 138, 156, .12); }
-.status-dot.idle { background: #98a4a7; box-shadow: none; }
-.status-dot.warning { background: #c57b31; }
-.together-content { min-height: 0; overflow-y: auto; padding: 14px; }
-.listen-together-inline button, .listen-together-inline input { box-sizing: border-box; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: inherit; font: inherit; }
-.listen-together-inline button { min-height: 32px; padding: 6px 11px; cursor: pointer; }
-.listen-together-inline button:hover:not(:disabled) { border-color: var(--accent); background: rgba(68, 138, 156, .08); }
-.listen-together-inline button:disabled { opacity: .45; cursor: default; }
-.listen-together-inline button:focus-visible, .listen-together-inline input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.listen-together-inline button.primary { border-color: var(--ink); background: var(--ink); color: #fff; }
-.listen-together-inline button.danger { color: #9b3b29; border-color: rgba(155, 59, 41, .35); }
-.icon-button { width: 30px; min-height: 30px !important; padding: 0 !important; font-family: Bender-Bold, sans-serif !important; }
-.close-button { grid-column: 3; border: 0 !important; font-size: 21px !important; }
-.listen-together-inline--player .together-header { grid-template-columns: minmax(0, 1fr) 30px; }
-.listen-together-inline--player .header-song { grid-column: 1 / -1; grid-row: 2; text-align: left; }
-.listen-together-inline--player .close-button { grid-column: 2; grid-row: 1; }
-.segment-control { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; width: min(320px, 100%); margin-bottom: 14px; }
-.segment-control button { border-radius: 0; margin-left: -1px; }
-.segment-control button:first-child { margin-left: 0; border-radius: 4px 0 0 4px; }
-.segment-control button:last-child { border-radius: 0 4px 4px 0; }
-.segment-control button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
-.empty-state { display: grid; justify-items: start; gap: 10px; color: var(--muted); }
-.entry-layout { max-width: 520px; }
-.join-form { display: grid; grid-template-columns: 1fr minmax(150px, .38fr); gap: 10px; }
-.join-form label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
-.join-form input { width: 100%; min-height: 36px; padding: 8px 10px; }
-.form-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
-.playlist-handoff { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 10px 0 13px; border-bottom: 1px solid var(--line); }
-.playlist-handoff > div { min-width: 0; display: grid; gap: 2px; }
-.playlist-handoff strong { font-size: 14px; }
-.playlist-handoff span, .section-label { color: var(--muted); font-size: 11px; }
-.section-label { display: block; margin-bottom: 5px; }
-.members { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; list-style: none; margin: 0 0 14px; padding: 0; }
-.members li { min-width: 0; display: flex; align-items: center; gap: 9px; padding: 9px; border-bottom: 1px solid var(--line); }
-.members img, .avatar-fallback { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; object-fit: cover; }
-.avatar-fallback { display: grid; place-items: center; background: rgba(68, 138, 156, .14); color: var(--accent); }
-.members li > div { min-width: 0; display: grid; }
-.members strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.members small { color: var(--muted); }
-.room-actions { display: flex; justify-content: space-between; gap: 8px; }
-.error { margin: 12px 0 0; padding: 8px 10px; background: #fff0ec; color: #9b3b29; }
-.together-inline-enter-active, .together-inline-leave-active { transition: opacity .16s ease, transform .2s cubic-bezier(.2, .8, .2, 1); }
-.together-inline-enter-from, .together-inline-leave-to { opacity: 0; transform: translateY(8px); }
-@media (max-width: 720px) {
-    .together-header { grid-template-columns: 1fr 30px; }
-    .header-song { display: none; }
-    .close-button { grid-column: 2; }
-    .join-form { grid-template-columns: 1fr; }
-    .inviter-field, .form-actions { grid-column: auto; }
-    .members { grid-template-columns: 1fr; }
-    .playlist-handoff { align-items: flex-start; }
+<style scoped lang="scss">
+.listen-together-inline {
+    position: absolute;
+    left: calc(100% + 60px);
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    width: 310px;
+    max-width: calc(100vw - 60px);
+    max-height: 100%;
+    // 保留主题色，使用不透明背景遮住底层歌词。
+    background: rgb(from var(--player-panel) r g b / 1);
+    color: var(--text);
+    font: 13px SourceHanSansCN-Bold, sans-serif;
+    text-align: left;
+    z-index: 140;
+
+    // 与设置页的直角控件一致，同时覆盖浏览器默认的彩色焦点环。
+    :deep(button), :deep(input) {
+        appearance: none;
+        outline: none;
+        border: 0;
+        border-radius: 0;
+        color: var(--text);
+        font: inherit;
+    }
+    :deep(button) {
+        min-height: 30px;
+        padding: 5px 12px;
+        line-height: 20px;
+        background: var(--layer) !important;
+        transition: box-shadow .2s, opacity .2s;
+        &:hover:not(:disabled), &:focus-visible { box-shadow: 0 0 0 1px var(--text); }
+        &:active:not(:disabled) { opacity: .8; }
+        &:disabled { opacity: .4; cursor: default; }
+    }
+    :deep(input) {
+        min-height: 34px;
+        padding: 7px 10px;
+        background: var(--layer);
+        transition: box-shadow .2s;
+        &:focus { box-shadow: inset 0 -1px 0 var(--text); }
+    }
+    button.primary {
+        background: var(--text) !important;
+        color: var(--bg) !important;
+        &:hover:not(:disabled) { opacity: .8; }
+    }
+    .muted, .section-label, .header-state small { color: var(--muted-text) !important; }
 }
-:global(.dark .listen-together-inline) { --panel: rgba(29, 42, 46, .98); --ink: #dae9ed; --muted: #a1b4ba; --line: rgba(210, 235, 240, .16); }
-:global(.dark .listen-together-inline button.primary), :global(.dark .listen-together-inline .segment-control button[aria-selected="true"]) { color: #202b2e; }
-:global(.dark .listen-together-inline .error) { background: rgba(110, 40, 29, .36); color: #f1b5a9; }
+.together-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 0 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+.header-title { min-width: 0; }
+.header-title > strong { display: block; font-size: 16px; line-height: 1.5; }
+.header-state {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 4px;
+    small { font-size: 12px; }
+    time { margin-left: 5px; font: 12px Bender-Bold, sans-serif; font-variant-numeric: tabular-nums; }
+}
+.status-dot {
+    width: 4px;
+    height: 4px;
+    background: var(--text);
+    &.reconnecting { background: transparent; outline: 1px solid var(--text); }
+}
+.listen-together-inline .close-button {
+    display: grid;
+    place-items: center;
+    min-height: 24px;
+    width: 24px;
+    padding: 3px;
+    margin: 0 -4px 0 0;
+    border: 0;
+    background: transparent !important;
+    &:hover:not(:disabled) { box-shadow: none; opacity: .65; }
+    &:focus-visible:not(:disabled) { box-shadow: 0 0 0 1px var(--text); }
+}
+.together-content {
+    min-height: 0;
+    padding: 12px 12px 16px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+.segment-control {
+    display: flex;
+    gap: 16px;
+    margin: -4px 0 12px;
+    border-bottom: 1px solid var(--border);
+    button {
+        padding: 6px 4px;
+        border: 0;
+        border-bottom: 2px solid transparent !important;
+        background: transparent !important;
+        color: var(--muted-text) !important;
+        &[aria-selected="true"] { border-bottom-color: var(--text) !important; color: var(--text) !important; }
+        &:hover:not(:disabled) { color: var(--text) !important; box-shadow: none; }
+        &:focus-visible:not(:disabled) { box-shadow: inset 0 0 0 1px var(--text); }
+    }
+}
+.empty-state {
+    display: grid;
+    justify-items: start;
+    gap: 20px;
+    padding: 6px 0;
+    line-height: 1.8;
+    span { color: var(--muted-text) !important; }
+}
+.join-form {
+    display: grid;
+    gap: 14px;
+    label { display: grid; gap: 7px; font-size: 12px; }
+    input { width: 100%; font-size: 13px; }
+}
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.header-song {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 16px;
+    strong { font-size: 16px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.section-label { display: block; font-size: 11px; }
+.playlist-handoff {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    margin-bottom: 20px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    > div { display: grid; gap: 3px; }
+    strong { font-size: 12px; }
+    > div > span { font-size: 11px; color: var(--muted-text) !important; }
+    button { white-space: nowrap; font-size: 12px; }
+}
+.members {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin: 12px 0 20px;
+    padding: 0;
+    list-style: none;
+    li { min-width: 0; display: flex; align-items: center; gap: 9px; }
+    img, .avatar-fallback { width: 32px; height: 32px; flex: 0 0 32px; object-fit: cover; }
+    .avatar-fallback { display: grid; place-items: center; border: 1px solid var(--border); }
+    li > div { min-width: 0; display: grid; gap: 2px; }
+    strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    small { font-size: 10px; color: var(--muted-text) !important; }
+}
+.muted { margin-bottom: 16px; font-size: 12px; }
+.room-actions { display: flex; justify-content: space-between; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border); }
+.error { margin: 16px 0 0; padding: 2px 0 2px 10px; border-left: 2px solid var(--text); font-size: 12px; line-height: 1.7; }
+.together-inline-enter-active, .together-inline-leave-active { transition: opacity .18s, transform .22s cubic-bezier(.19, .8, .49, .99); }
+.together-inline-enter-from, .together-inline-leave-to { opacity: 0; transform: translateY(8px); }
+@media (max-width: 900px) {
+    .listen-together-inline { left: 0; width: max(100%, 310px); }
+}
 </style>
