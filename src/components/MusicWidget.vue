@@ -1,4 +1,6 @@
 <script setup>
+import ListenTogetherButton from './ListenTogetherButton.vue'
+import ListenTogether from './ListenTogether.vue'
   import { computed, defineAsyncComponent, ref, watch} from 'vue'
   import { useRouter } from 'vue-router'
   import { songTime2 } from '../utils/time';
@@ -224,6 +226,7 @@
             </div>
         </div>
         <div class="music-other" :class="{'is-intelligence-mode': isIntelligenceMode}">
+            <ListenTogetherButton compact />
             <!-- 喜欢/收藏：歌曲与电台分别处理 -->
             <template v-if="!isDjMode">
             <svg t="1668786418014" v-if="canShowSongLike" @click="likeSong(true)" v-show="!checkIsLike(songId)" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1417" width="200" height="200"><path d="M736.603 35.674c-87.909 0-169.647 44.1-223.447 116.819C459.387 79.756 377.665 35.674 289.708 35.674c-158.47 0-287.397 140.958-287.397 314.233 0 103.371 46.177 175.887 83.296 234.151 107.88 169.236 379.126 379.846 390.616 388.725 11.068 8.557 24.007 12.837 36.917 12.837 12.939 0 25.861-4.28 36.917-12.837 11.503-8.879 282.765-219.488 390.614-388.725C977.808 525.793 1024 453.277 1024 349.907 1023.999 176.632 895.071 35.674 736.603 35.674zM888.196 544.065C785.507 705.207 513.139 915.679 513.139 915.679S240.802 705.206 138.081 544.065c-37.884-59.491-71.805-116.034-71.805-194.158 0-134.904 100.025-244.309 223.433-244.309 91.199 0 169.491 59.833 204.225 145.493l0-0.427 0.094 0c2.588 8.933 10.132 15.445 19.113 15.445 9.013 0 16.558-6.512 19.128-15.445l0.265 0c34.813-85.404 112.996-145.066 204.07-145.066 123.378 0 223.433 109.405 223.433 244.309C960.035 428.031 926.111 484.574 888.196 544.065z" p-id="1418"></path></svg>
@@ -255,6 +258,7 @@
         </div>
     </div>
     <PlayList v-if="playlistWidgetLoaded" class="playlist-widget" :class="{'playlist-widget-open': playlistWidgetShow}"></PlayList>
+    <ListenTogether :active="widgetState" variant="widget" />
     <div class="widget-back"></div>
   </div>
 </template>

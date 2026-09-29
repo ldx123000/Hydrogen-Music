@@ -1,4 +1,6 @@
 <script setup>
+import ListenTogetherButton from './ListenTogetherButton.vue'
+import ListenTogether from './ListenTogether.vue'
 import { computed, defineAsyncComponent, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/time';
@@ -457,6 +459,7 @@ const toggleDjSub = async isSubscribe => {
             </div>
 
             <div class="song-control" :class="{ 'is-intelligence-mode': isIntelligenceMode }">
+                <ListenTogetherButton compact />
                 <svg
                     t="1673355036226"
                     v-if="musicVideo"
@@ -876,6 +879,7 @@ const toggleDjSub = async isSubscribe => {
             </div>
         </div>
 
+        <ListenTogether :active="!widgetState" variant="player" />
         <PlayList v-if="playlistWidgetLoaded" class="playlist-widget-player" :class="{ 'playlist-widget-open': playlistWidgetShow }"></PlayList>
 
         <span class="border border1"></span>

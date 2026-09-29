@@ -81,6 +81,7 @@ const playerPersistStorage = createDedupedLocalStorage()
 export const usePlayerStore = defineStore('playerStore', {
     state: () => {
         return {
+            togetherRoomActive: false, // transient: defer automatic transitions to the room
             widgetState: true,//是否开启widget
             currentMusic: null,//播放列表的索引
             playing: false,//是否正在播放
