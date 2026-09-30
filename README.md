@@ -157,6 +157,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1 -C
 
 ## 许可与致谢
 
+### 声明
+
+本项目仅供个人学习与研究使用，禁止用于商业用途或任何非法用途。项目内涉及的音乐、歌词、评论、图片、视频等内容版权归其权利方所有。
+
 本项目基于上游 **[Hydrogen Music](https://github.com/ldx123000/HydrogenMusic)**
 （作者 **ldx123000**，MIT License）修改而来。
 
