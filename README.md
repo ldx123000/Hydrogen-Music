@@ -10,9 +10,13 @@
 </p>
 
 <p align="center">
-  <img src="img/mobile/home.png" width="180" alt="首页" />
-  <img src="img/mobile/player.png" width="180" alt="播放页" />
-  <img src="img/mobile/settings.png" width="180" alt="设置" />
+  <img src="img/mobile/home.jpg" width="150" alt="首页" />
+  <img src="img/mobile/player.jpg" width="150" alt="播放页" />
+  <img src="img/mobile/lyrics.jpg" width="150" alt="歌词" />
+  <img src="img/mobile/comments.jpg" width="150" alt="评论区" />
+  <img src="img/mobile/fm.jpg" width="150" alt="私人漫游" />
+  <img src="img/mobile/siren.jpg" width="150" alt="塞壬唱片" />
+  <img src="img/mobile/settings.jpg" width="150" alt="设置" />
 </p>
 
 ---
