@@ -181,9 +181,36 @@ export const initDownloadManager = () => {
         }
     })
 
+    /**
+     * 「立即开始下载」。
+     *
+     * 桌面端由主进程在收到 download-start 后触发 download-next 来推队列；
+     * 安卓端没有主进程，所以这里直接推一次，并把状态先摆正
+     * （否则 download-next 回来看不到"正在下载且列表非空"就不会往下走）。
+     * 已经是下载中的话直接忽略，保持幂等。
+     */
+    const startQueue = () => {
+        if (isDownloading.value && currentIndex >= 0) return
+        if (downloadList.value.length === 0) return
+        isDownloading.value = true
+        isFirstDownload.value = false
+        currentIndex = 0
+        download()
+    }
+
+    // 原生插件与 webBridge 通过这个事件通知"可以开始了"
+    window.addEventListener('hm:download-start', startQueue)
+
     windowApi.downloadError(code => {
         if (code == 'noSavePath') {
             noticeOpen('请先在设置中设置下载目录', 2)
+            return
+        }
+        // 目录不可写是最常见的失败：能读到文件但 provider 不支持 createDocument。
+        // 明确告诉用户"重新选目录"，而不是笼统的"下载失败"。
+        if (typeof code === 'string' && code.indexOf('saveFailed') === 0) {
+            console.warn('[download] 写入目录失败:', code)
+            noticeOpen('无法写入下载目录，请在设置里重新选择（建议用系统文件选择器选「Download」）', 4)
             return
         }
         noticeOpen('下载失败', 2)

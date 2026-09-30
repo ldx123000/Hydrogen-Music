@@ -1,12 +1,10 @@
 <script setup>
-import ListenTogetherButton from './ListenTogetherButton.vue'
-import ListenTogether from './ListenTogether.vue'
 import { computed, defineAsyncComponent, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { songTime2 } from '../utils/time';
 import VueSlider from 'vue-slider-component';
 import OverflowMarquee from './base/OverflowMarquee.vue';
-import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, prefetchIntelligenceMode, likeSong } from '../utils/player/lazy';
+import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, prefetchIntelligenceMode, likeSong, changeProgressByDragStart, changeProgressByDragEnd } from '../utils/player/lazy';
 import { getDjDetail, subDj } from '../api/dj';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
@@ -18,7 +16,33 @@ import { getSongCoverUrl, withCoverParam } from '../utils/coverBackdrop';
 import { getSongDisplayName } from '../utils/songName';
 import { getIndexedSong } from '../utils/songList';
 import { useStableImageSource } from '../composables/useStableImageSource';
+import { useIsMobile } from '../composables/useIsMobile';
+import AudioVisualizer from './AudioVisualizer.vue';
 import defaultLocalCover from '../assets/icon/icon.png';
+
+// 移动端在封面下方额外渲染一条音乐波形（见模板里的 .hm-player-wave）
+const isMobile = useIsMobile();
+
+// 移动端播放页在专辑/歌名下方显示一行当前歌词。
+// 数据来自播放器共享状态：lyricsObjArr（逐行数组）+ currentLyricIndex。
+function resolveCurrentLyricItem() {
+    const list = Array.isArray(playerStore.lyricsObjArr)
+        ? playerStore.lyricsObjArr
+        : (Array.isArray(playerStore.lyric) ? playerStore.lyric : null)
+    const index = playerStore.currentLyricIndex
+    if (!list || index < 0 || index >= list.length) return null
+    return list[index] || null
+}
+const currentLyricLine = computed(() => {
+    const item = resolveCurrentLyricItem()
+    return item ? (item.lyric || item.text || '') : ''
+})
+const currentLyricTrans = computed(() => {
+    if (!playerStore.lyricType || playerStore.lyricType.indexOf('trans') === -1) return ''
+    const item = resolveCurrentLyricItem()
+    return item ? (item.tlyric || '') : ''
+});
+
 const PlayList = defineAsyncComponent(() => import('./PlayList.vue'));
 
 // 定义 props 和 emit
@@ -124,6 +148,51 @@ const sliderProgress = computed({
         progress.value = Number.isFinite(nextValue) && nextValue > 0 ? Math.min(nextValue, safeSliderMax.value) : 0;
     },
 });
+
+/* ------------------------------------------------------------------
+   进度条拖动（与迷你条同一套做法）。
+
+   原来只有 @click + v-model 绑 computed：
+     · vue-slider-component 的 dragOnClick 默认 false，"按在轨道上拖"根本不触发
+       （桌面端是靠 player.js 里挂在 window 上的 mousedown/mouseup 桥绕过的，
+       手机触摸下不可靠）
+     · v-model 的 set 每帧写 progress.value → 拖动期间每帧都在 seek
+   这里显式打开 drag-on-click，并改成：拖动中只更新本地值跟手，松手才 seek 一次。
+   ------------------------------------------------------------------ */
+const isProgressDragging = ref(false);
+const localProgressValue = ref(0);
+
+watch(
+    () => sliderProgress.value,
+    value => {
+        if (!isProgressDragging.value) localProgressValue.value = value;
+    },
+    { immediate: true }
+);
+
+watch(
+    () => [songId.value, currentIndex.value],
+    () => {
+        isProgressDragging.value = false;
+        localProgressValue.value = sliderProgress.value;
+    }
+);
+
+const onProgressDragStart = () => {
+    isProgressDragging.value = true;
+    changeProgressByDragStart();
+};
+
+const onProgressDragging = value => {
+    const nextValue = Number(Array.isArray(value) ? value[0] : value);
+    if (Number.isFinite(nextValue)) localProgressValue.value = nextValue;
+};
+
+const onProgressDragEnd = () => {
+    const target = Number(localProgressValue.value);
+    isProgressDragging.value = false;
+    changeProgressByDragEnd(Number.isFinite(target) && target > 0 ? target : 0);
+};
 
 function normalizeSliderVolume(value) {
     const currentVolume = Number(value);
@@ -336,6 +405,14 @@ const toggleDjSub = async isSubscribe => {
                     </div>
                 </div>
             </div>
+            <!-- 移动端：专辑/歌名下方的一行当前歌词 -->
+            <div
+                v-if="isMobile && currentLyricLine"
+                class="hm-one-line-lyric"
+            >{{ currentLyricLine }}<span v-if="currentLyricTrans" class="hm-one-line-trans">{{ currentLyricTrans }}</span></div>
+            <!-- 移动端播放页的音乐波形。桌面端那个「顶部音频可视化」在播放时随顶栏一起隐藏，
+                 所以手机上单独在这里渲染一个，位置在歌曲信息与控制区之间。 -->
+            <AudioVisualizer v-if="isMobile" class="hm-player-wave" force-visible />
             <div class="player-control">
                     <div class="player-process">
                         <div class="process-time">
@@ -347,20 +424,22 @@ const toggleDjSub = async isSubscribe => {
                             :key="'player-progress-' + (songId || currentIndex)"
                             id="widget-progress"
                             class="music-progress"
-                            @click="changeProgress(sliderProgress)"
-                            v-model="sliderProgress"
+                            v-model="localProgressValue"
                             :min="0"
                             :max="safeSliderMax"
                             :interval="1"
-                            :duration="0.5"
-                            :silent="true"
+                            :duration="0"
                             tooltip="none"
+                            drag-on-click
+                            @drag-start="onProgressDragStart"
+                            @dragging="onProgressDragging"
+                            @drag-end="onProgressDragEnd"
                         ></vue-slider>
                     </div>
                 </div>
 
                 <div class="control">
-                    <svg @click="playLast()" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="17 12 170 170" fill="none">
+                    <svg @click="playLast()" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
                         <defs><rect id="path_0" x="0" y="0" width="200" height="200" /></defs>
                         <g opacity="1" transform="translate(0 0)  rotate(0 100 100)">
                             <mask id="bg-mask-0" fill="white"><use xlink:href="#path_0" /></mask>
@@ -382,7 +461,7 @@ const toggleDjSub = async isSubscribe => {
                         xmlns:xlink="http://www.w3.org/1999/xlink"
                         width="200"
                         height="200"
-                        viewBox="4 4 192 192"
+                        viewBox="0 0 200 200"
                         fill="none"
                     >
                         <defs><rect id="path_0" x="0" y="0" width="200" height="200" /></defs>
@@ -413,7 +492,7 @@ const toggleDjSub = async isSubscribe => {
                         xmlns:xlink="http://www.w3.org/1999/xlink"
                         width="200"
                         height="200"
-                        viewBox="14 4 193 193"
+                        viewBox="0 0 200 200"
                         fill="none"
                     >
                         <defs><rect id="path_0" x="0" y="0" width="200" height="200" /></defs>
@@ -430,7 +509,7 @@ const toggleDjSub = async isSubscribe => {
                             </g>
                         </g>
                     </svg>
-                    <svg @click="playNext()" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="17 12 170 170" fill="none">
+                    <svg @click="playNext()" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none">
                         <defs><rect id="path_0" x="0" y="0" width="200" height="200" /></defs>
                         <g opacity="1" transform="translate(0 0)  rotate(0 100 100)">
                             <mask id="bg-mask-0" fill="white"><use xlink:href="#path_0" /></mask>
@@ -459,13 +538,12 @@ const toggleDjSub = async isSubscribe => {
             </div>
 
             <div class="song-control" :class="{ 'is-intelligence-mode': isIntelligenceMode }">
-                <ListenTogetherButton />
                 <svg
                     t="1673355036226"
                     v-if="musicVideo"
                     @click="toAddMusicVideo()"
                     class="icon"
-                    viewBox="-25 0 1072 1072"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="16255"
@@ -484,7 +562,7 @@ const toggleDjSub = async isSubscribe => {
                     v-show="hasRomaLyric && lyricType.indexOf('roma') != -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.splice(lyricType.indexOf('roma'), 1)"
                     class="icon lyric-toggle active"
-                    viewBox="-103 -102 1229 1229"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="47744"
@@ -502,7 +580,7 @@ const toggleDjSub = async isSubscribe => {
                     v-show="hasRomaLyric && lyricType.indexOf('roma') == -1 && lyricType.indexOf('noRoma') == -1"
                     @click="lyricType.push('roma')"
                     class="icon lyric-toggle inactive"
-                    viewBox="-103 -102 1229 1229"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="47744"
@@ -521,7 +599,7 @@ const toggleDjSub = async isSubscribe => {
                     v-show="hasTransLyric && lyricType.indexOf('trans') != -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.splice(lyricType.indexOf('trans'), 1)"
                     class="icon lyric-toggle active"
-                    viewBox="-102 -102 1229 1229"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="49286"
@@ -539,7 +617,7 @@ const toggleDjSub = async isSubscribe => {
                     v-show="hasTransLyric && lyricType.indexOf('trans') == -1 && lyricType.indexOf('noTrans') == -1"
                     @click="lyricType.push('trans')"
                     class="icon lyric-toggle inactive"
-                    viewBox="-102 -102 1229 1229"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="49286"
@@ -558,7 +636,7 @@ const toggleDjSub = async isSubscribe => {
                     v-show="hasOriginalLyric && lyricType.indexOf('original') != -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.splice(lyricType.indexOf('original'), 1)"
                     class="icon lyric-toggle active"
-                    viewBox="-102 -102 1229 1229"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="11459"
@@ -586,7 +664,7 @@ const toggleDjSub = async isSubscribe => {
                     v-show="hasOriginalLyric && lyricType.indexOf('original') == -1 && lyricType.indexOf('noOriginal') == -1"
                     @click="lyricType.push('original')"
                     class="icon lyric-toggle inactive"
-                    viewBox="-102 -102 1229 1229"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="11459"
@@ -618,7 +696,7 @@ const toggleDjSub = async isSubscribe => {
                         @click="likeSong(true)"
                         v-show="!checkIsLike(songId)"
                         class="icon like-icon"
-                        viewBox="-100 -102 1226 1226"
+                        viewBox="0 0 1024 1024"
                         version="1.1"
                         xmlns="http://www.w3.org/2000/svg"
                         p-id="1417"
@@ -636,7 +714,7 @@ const toggleDjSub = async isSubscribe => {
                         @click="likeSong(false)"
                         v-show="checkIsLike(songId)"
                         class="icon like-icon liked"
-                        viewBox="-101 -102 1227 1227"
+                        viewBox="0 0 1025 1024"
                         version="1.1"
                         xmlns="http://www.w3.org/2000/svg"
                         p-id="9975"
@@ -658,7 +736,7 @@ const toggleDjSub = async isSubscribe => {
                         @click="toggleDjSub(true)"
                         v-show="!djSubed"
                         class="icon like-icon"
-                        viewBox="-100 -102 1226 1226"
+                        viewBox="0 0 1024 1024"
                         version="1.1"
                         xmlns="http://www.w3.org/2000/svg"
                         p-id="1417"
@@ -676,7 +754,7 @@ const toggleDjSub = async isSubscribe => {
                         @click="toggleDjSub(false)"
                         v-show="djSubed"
                         class="icon like-icon liked"
-                        viewBox="-101 -102 1227 1227"
+                        viewBox="0 0 1025 1024"
                         version="1.1"
                         xmlns="http://www.w3.org/2000/svg"
                         p-id="9975"
@@ -696,7 +774,7 @@ const toggleDjSub = async isSubscribe => {
                     t="1669445939818"
                     @click="download()"
                     class="icon"
-                    viewBox="-64 -64 1152 1152"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="5311"
@@ -727,7 +805,7 @@ const toggleDjSub = async isSubscribe => {
                     t="1668785761323"
                     @click="toAlbum()"
                     class="icon"
-                    viewBox="-79 -92 1189 1189"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="1173"
@@ -756,7 +834,7 @@ const toggleDjSub = async isSubscribe => {
                     @pointerenter="prefetchIntelligenceMode()"
                     v-show="playMode == 0"
                     class="icon"
-                    viewBox="-102 -102 1229 1229"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="3089"
@@ -776,7 +854,7 @@ const toggleDjSub = async isSubscribe => {
                     @pointerenter="prefetchIntelligenceMode()"
                     v-show="playMode == 1"
                     class="icon"
-                    viewBox="-26 -26 1075 1075"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="2180"
@@ -795,7 +873,7 @@ const toggleDjSub = async isSubscribe => {
                     @pointerenter="prefetchIntelligenceMode()"
                     v-show="playMode == 2"
                     class="icon"
-                    viewBox="-26 -26 1075 1075"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="2500"
@@ -815,7 +893,7 @@ const toggleDjSub = async isSubscribe => {
                     @pointerenter="prefetchIntelligenceMode()"
                     v-show="playMode == 3"
                     class="icon"
-                    viewBox="-29 -26 1079 1079"
+                    viewBox="0 0 1024 1024"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
                     p-id="2661"
@@ -832,7 +910,7 @@ const toggleDjSub = async isSubscribe => {
                     v-show="isIntelligenceMode"
                     @click="changePlayMode()"
                     class="icon intelligence-mode-icon"
-                    viewBox="-0.11 -0.66 31.32 31.32"
+                    viewBox="0 0 32 32"
                     xmlns="http://www.w3.org/2000/svg"
                     aria-label="心动模式"
                 >
@@ -846,7 +924,7 @@ const toggleDjSub = async isSubscribe => {
                     v-if="showCommentPanelAction"
                     @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
                     :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
-                    class="icon comment-icon"
+                    class="icon comment-icon hm-mobile-hide"
                     viewBox="0 0 24 24"
                     version="1.1"
                     xmlns="http://www.w3.org/2000/svg"
@@ -865,8 +943,8 @@ const toggleDjSub = async isSubscribe => {
                 <svg
                     @click="toggleDesktopLyric"
                     :class="{ active: isDesktopLyricOpen }"
-                    class="icon desktop-lyric-btn"
-                    viewBox="-102 -102 1229 1229"
+                    class="icon desktop-lyric-btn hm-mobile-hide"
+                    viewBox="0 0 1024 1024"
                     xmlns="http://www.w3.org/2000/svg"
                     width="200"
                     height="200"
@@ -879,7 +957,6 @@ const toggleDjSub = async isSubscribe => {
             </div>
         </div>
 
-        <ListenTogether :active="!widgetState" />
         <PlayList v-if="playlistWidgetLoaded" class="playlist-widget-player" :class="{ 'playlist-widget-open': playlistWidgetShow }"></PlayList>
 
         <span class="border border1"></span>
@@ -1240,7 +1317,6 @@ const toggleDjSub = async isSubscribe => {
             }
         }
         .song-control {
-            --player-action-icon-size: 24px;
             width: 50px;
             display: flex;
             flex-direction: column;
@@ -1252,8 +1328,8 @@ const toggleDjSub = async isSubscribe => {
             opacity: 0;
             svg {
                 margin-top: 0;
-                width: var(--player-action-icon-size);
-                height: var(--player-action-icon-size);
+                width: 2.5vh;
+                height: 2.5vh;
                 display: block;
             }
             &.is-intelligence-mode svg[t="1670376314067"] {
@@ -1310,8 +1386,9 @@ const toggleDjSub = async isSubscribe => {
         transition: all 0.3s ease;
         color: rgba(0, 0, 0, 0.6);
         overflow: visible;
-        width: var(--player-action-icon-size) !important;
-        height: var(--player-action-icon-size) !important;
+        width: 3.16vh !important;
+        height: 3.16vh !important;
+        margin-bottom: -0.5vh;
 
         .comment-bubble,
         .comment-line {

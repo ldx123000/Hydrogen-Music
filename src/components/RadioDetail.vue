@@ -137,7 +137,7 @@ export default { name: 'RadioDetail' }
 <template>
   <div class="library-detail">
     <div class="view-control">
-      <svg t="1669039513804" @click="router.back()" class="router-last" viewBox="-107 -86 1195 1195" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1053" width="200" height="200"><path d="M716.608 1010.112L218.88 512.384 717.376 13.888l45.248 45.248-453.248 453.248 452.48 452.48z" p-id="1054"></path></svg>
+      <svg t="1669039513804" @click="router.back()" class="router-last" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1053" width="200" height="200"><path d="M716.608 1010.112L218.88 512.384 717.376 13.888l45.248 45.248-453.248 453.248 452.48 452.48z" p-id="1054"></path></svg>
     </div>
     <div class="library-introduce">
       <div class="introduce">
@@ -153,7 +153,7 @@ export default { name: 'RadioDetail' }
             <span class="introduce-num">共 {{ totalCount }} 期</span>
             <div class="library-operation">
               <div class="operation-download" @click="onPlayAll()">
-                <svg t="1668421583939" class="playall-icon" viewBox="120 83 886 886" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6964" width="200" height="200"><path d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z" p-id="6965"></path></svg>
+                <svg t="1668421583939" class="playall-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6964" width="200" height="200"><path d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z" p-id="6965"></path></svg>
                 <span>播放全部</span>
               </div>
             </div>
@@ -170,7 +170,7 @@ export default { name: 'RadioDetail' }
             <p class="text">{{ radioDesc }}</p>
           </div>
           <div class="text-close" @click="introduceDetailShow = false">
-            <svg t="1671966797621" class="icon" viewBox="102 102 819 819" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1965" width="200" height="200"><path d="M576 512l277.333333 277.333333-64 64-277.333333-277.333333L234.666667 853.333333 170.666667 789.333333l277.333333-277.333333L170.666667 234.666667 234.666667 170.666667l277.333333 277.333333L789.333333 170.666667 853.333333 234.666667 576 512z" fill="#ffffff" p-id="1966"></path></svg>
+            <svg t="1671966797621" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1965" width="200" height="200"><path d="M576 512l277.333333 277.333333-64 64-277.333333-277.333333L234.666667 853.333333 170.666667 789.333333l277.333333-277.333333L170.666667 234.666667 234.666667 170.666667l277.333333 277.333333L789.333333 170.666667 853.333333 234.666667 576 512z" fill="#ffffff" p-id="1966"></path></svg>
           </div>
           <span class="dialog-style dialog-style1"></span>
           <span class="dialog-style dialog-style2"></span>
@@ -183,7 +183,7 @@ export default { name: 'RadioDetail' }
     <div class="library-option">
       <div class="library-playall">
         <div class="playall" @click="onPlayAll()">
-          <svg t="1668421583939" class="playall-icon" viewBox="120 83 886 886" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6964" width="200" height="200"><path d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z" p-id="6965"></path></svg>
+          <svg t="1668421583939" class="playall-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6964" width="200" height="200"><path d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z" p-id="6965"></path></svg>
           <span>播放全部</span>
         </div>
         <div class="playall-line"></div>
@@ -209,7 +209,7 @@ export default { name: 'RadioDetail' }
       margin-left: -8Px;
       height: 32Px;
       svg{
-        padding: 4Px;
+        padding: 8Px;
         width: 32Px;
         height: 32Px;
         float: left;

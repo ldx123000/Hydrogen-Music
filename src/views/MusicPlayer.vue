@@ -4,6 +4,8 @@ import Lyric from '../components/Lyric.vue';
 import ProgramIntro from '../components/ProgramIntro.vue';
 import { ref, watch, nextTick, computed, defineAsyncComponent } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
+import { useIsMobile } from '../composables/useIsMobile';
+import { getSongDisplayName } from '../utils/songName';
 import { getMusicComments } from '../api/song';
 import { getDjProgramComments } from '../api/dj';
 import { readCommentCountCache, writeCommentCountCache } from '../utils/commentCountCache';
@@ -18,6 +20,34 @@ const PlayerVideo = defineAsyncComponent(() => import('../components/PlayerVideo
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
 const rightPanelMode = ref(0);
 const lyricKey = ref(0);
+
+const isMobile = useIsMobile();
+// 移动端窄屏放不下左右分栏，改成「封面 / 歌词 / 评论」整屏三选一
+const mobileView = ref('cover');
+
+const mobileTitle = computed(() => {
+    return getSongDisplayName(currentTrack.value, '', playerStore.showSongTranslation);
+});
+
+const mobilePanelOpen = computed(() => isMobile.value && mobileView.value !== 'cover');
+
+// 本地歌曲与塞壬音源没有评论数据
+const canShowMobileComments = computed(() => !!commentTarget.value);
+
+const showMobileLyric = () => {
+    mobileView.value = mobileView.value === 'lyric' ? 'cover' : 'lyric';
+    if (mobileView.value === 'lyric') rightPanelMode.value = 0;
+};
+
+const showMobileComments = () => {
+    mobileView.value = mobileView.value === 'comments' ? 'cover' : 'comments';
+    if (mobileView.value === 'comments') rightPanelMode.value = 1;
+};
+
+const exitPlayer = () => {
+    mobileView.value = 'cover';
+    playerStore.widgetState = true;
+};
 
 // 监听面板模式变化，当切换到歌词时刷新歌词组件
 watch(rightPanelMode, (newMode, oldMode) => {
@@ -184,7 +214,36 @@ watch(currentTrack, (song) => {
 </script>
 
 <template>
-    <div class="music-player">
+    <div class="music-player" :class="{ 'hm-panel-open': isMobile && mobilePanelOpen }">
+        <div class="hm-player-topbar" v-if="isMobile">
+            <button type="button" class="hm-player-btn" aria-label="返回" @click="exitPlayer">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" /></svg>
+            </button>
+            <div class="hm-player-heading">{{ mobileTitle }}</div>
+            <button
+                type="button"
+                class="hm-player-btn"
+                :class="{ 'hm-player-btn-active': mobileView === 'lyric' }"
+                aria-label="歌词"
+                @click="showMobileLyric"
+            >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 6h16M4 11h16M4 16h10" />
+                </svg>
+            </button>
+            <button
+                v-if="canShowMobileComments"
+                type="button"
+                class="hm-player-btn"
+                :class="{ 'hm-player-btn-active': mobileView === 'comments' }"
+                aria-label="评论"
+                @click="showMobileComments"
+            >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 12a8 8 0 0 1-8 8H7l-3 3v-6.6A8 8 0 1 1 20 12z" />
+                </svg>
+            </button>
+        </div>
         <Transition name="fade3">
             <div
                 v-if="showCoverBackdrop"
@@ -233,6 +292,62 @@ watch(currentTrack, (song) => {
 </template>
 
 <style scoped lang="scss">
+.hm-player-topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    height: 44px;
+    position: absolute;
+    top: var(--hm-safe-top, 0px);
+    left: 0;
+    right: 0;
+    z-index: 30;
+
+    .hm-player-heading {
+        flex: 1;
+        min-width: 0;
+        font: 15px SourceHanSansCN-Bold, sans-serif;
+        color: var(--text);
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+}
+
+.hm-player-btn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text);
+    transition: background-color 0.18s;
+
+    svg {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    &:active {
+        background: rgba(0, 0, 0, 0.07);
+    }
+}
+
+.hm-player-btn-active {
+    background: rgba(0, 0, 0, 0.08);
+}
+
 @media screen and (max-aspect-ratio: 5/6) {
     .player-container {
         display: none;
@@ -307,8 +422,7 @@ watch(currentTrack, (song) => {
         opacity: 0;
         animation: player-in 0.7s 0.2s cubic-bezier(0.4, 0, 0.12, 1) forwards;
         position: relative;
-        // 播放器侧边面板需要覆盖右侧歌词，避免歌词层拦截点击。
-        z-index: 2;
+        z-index: 1;
         @keyframes player-in {
             0% {
                 height: 0;

@@ -1,5 +1,4 @@
 <script setup>
-const appVersion = __APP_VERSION__
 import { computed, ref, onActivated, onBeforeUnmount, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { noticeOpen, dialogOpen } from '@/utils/dialog'
@@ -14,7 +13,7 @@ import UpdateDialog from '../components/UpdateDialog.vue'
 import { setTheme, getSavedTheme } from '@/utils/theme'
 import { confirmAccountLogout, initializeCurrentAccountSession } from '@/utils/accountSession'
 import { applyCurrentHifiOutputSettings, enforceLocalOnlyPlayback, restoreOnlinePlayback } from '@/utils/player/lazy'
-import { getCachedSettingsSnapshot, getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
+import { getSettingsSnapshot, setCachedSettingsSnapshot } from '@/utils/settingsSnapshot'
 import { applyCustomFontStyle, syncDesktopLyricCustomFont } from '@/utils/setFont'
 import { buildFontOptions, loadSystemFontOptions, resolveSystemFontLabel, resolveSystemFontValue } from '@/utils/fontResolver'
 import { markHifiOutputModeConfigured, resolveInitialHifiOutputMode } from '@/utils/hifiOutputModeMigration'
@@ -32,11 +31,70 @@ const musicLevelOptions = ref(MUSIC_LEVEL_OPTIONS.map(option => ({ ...option }))
 const lyricSize = ref(20)
 const tlyricSize = ref(13)
 const rlyricSize = ref(12)
+
+/**
+ * 歌词字体大小：三档预设（小/中/大），由一条滑轨控件切换。
+ *
+ * 原来「歌词 / 翻译 / 罗马音」是三个自由输入框，手机上要点开输入法手填数字，
+ * 很难用；而且三者的大小比例本来就应该固定（罗马音 < 翻译 < 原文）。
+ * 这里用一档控制三者，比值沿用原来的 20 / 13 / 12。
+ *
+ * 档位只有三个、且彼此有序，用下拉菜单是杀鸡用牛刀（还要多一次点击），
+ * 改成滑轨后一次点击直达。原「超小」档已去掉，老数据会由 pickFontSizePreset
+ * 映射到最接近的一档（16px → 小 18px）。
+ */
+const FONT_SIZE_PRESETS = [
+    { label: '小', value: 'sm', lyric: 18, tran: 12, roma: 11 },
+    { label: '中', value: 'md', lyric: 20, tran: 13, roma: 12 },
+    { label: '大', value: 'lg', lyric: 24, tran: 15, roma: 14 },
+]
+
+/** 由已保存的字号反推最接近的档位（老数据是任意数字，需要映射到某一档）。
+ *  默认档位（中）按 value 取、不写死下标 —— 数组长度会变，下标会错位。 */
+const DEFAULT_FONT_SIZE_PRESET = 'md'
+const findFontSizePreset = value =>
+    FONT_SIZE_PRESETS.find(item => item.value === value)
+    || FONT_SIZE_PRESETS.find(item => item.value === DEFAULT_FONT_SIZE_PRESET)
+    || FONT_SIZE_PRESETS[0]
+
+const pickFontSizePreset = lyric => {
+    const current = Number(lyric)
+    if (!Number.isFinite(current)) return DEFAULT_FONT_SIZE_PRESET
+    let best = findFontSizePreset(DEFAULT_FONT_SIZE_PRESET)
+    let bestDiff = Infinity
+    FONT_SIZE_PRESETS.forEach(item => {
+        const diff = Math.abs(item.lyric - current)
+        if (diff < bestDiff) { bestDiff = diff; best = item }
+    })
+    return best.value
+}
+
+const fontSizePreset = ref(DEFAULT_FONT_SIZE_PRESET)
+
+/** 当前档位在轨道上的序号（0/1/2），滑轨滑块靠它位移。 */
+const fontSizePresetIndex = computed(() => {
+    const index = FONT_SIZE_PRESETS.findIndex(item => item.value === fontSizePreset.value)
+    return index < 0 ? 0 : index
+})
+
+/** 切换档位时同步写入三个字号（保存逻辑沿用原有的 lyricSize 等字段）。 */
+const applyFontSizePreset = value => {
+    const preset = findFontSizePreset(value)
+    fontSizePreset.value = preset.value
+    lyricSize.value = preset.lyric
+    tlyricSize.value = preset.tran
+    rlyricSize.value = preset.roma
+    // 必须同时写进 playerStore —— 歌词渲染只认它上面的值，
+    // 只更新本页 ref 的话界面会显示新档位但字号毫无变化。
+    playerStore.lyricSize = preset.lyric
+    playerStore.tlyricSize = preset.tran
+    playerStore.rlyricSize = preset.roma
+}
+
 const lyricInterlude = ref(13)
 const searchAssistLimit = ref(8)
 const globalShortcuts = ref(false)
 const rememberWindowSize = ref(false)
-const rememberWindowSizeSaving = ref(false)
 const quitApp = ref('minimize')
 const quitAppOptions = ref([
     {
@@ -69,6 +127,11 @@ const getRendererPlatform = () => {
     }
 }
 const hifiOutputPlatform = computed(() => hifiOutputState.value.platform || getRendererPlatform())
+// Android 版没有随包附带的 MPV 后端，「本地音乐 HiFi 输出」这一整块（后端路径、
+// 独占模式、输出设备选择）在手机上都无从谈起。原生 App 里直接隐藏，
+// 本地音乐改由系统播放器输出。
+const isNativeApp = computed(() => typeof window !== 'undefined' && window.__HM_APP__ === true)
+const showHifiSettings = computed(() => !isNativeApp.value)
 const localHifiOutputModeOptions = computed(() => {
     if (hifiOutputPlatform.value === 'darwin') {
         return [
@@ -145,12 +208,21 @@ const applySettingsToForm = settings => {
     lyricSize.value = normalizedSettings.music.lyricSize
     tlyricSize.value = normalizedSettings.music.tlyricSize
     rlyricSize.value = normalizedSettings.music.rlyricSize
+    // 老数据是任意数字，映射到最接近的档位显示
+    fontSizePreset.value = pickFontSizePreset(lyricSize.value)
+    // 歌词渲染读的是 playerStore 上的这三个字段，只改本页的 ref 不会生效。
+    // 冷启动时也必须同步一次，否则设置页显示"大"、实际渲染还是默认值。
+    playerStore.lyricSize = lyricSize.value
+    playerStore.tlyricSize = tlyricSize.value
+    playerStore.rlyricSize = rlyricSize.value
     lyricInterlude.value = normalizedSettings.music.lyricInterlude
     searchAssistLimit.value = normalizedSettings.music.searchAssistLimit
     playerStore.showSongTranslation = normalizedSettings.music.showSongTranslation !== false
     playerStore.gaplessPlayback = normalizedSettings.music.gaplessPlayback === true
     playerStore.audioVisualizer = normalizedSettings.music.audioVisualizer === true
-    playerStore.localHifiOutput = normalizedSettings.music.localHifiOutput === true
+    // 原生 App（Android）没有 MPV 后端：即使桌面端存过「已开启」也要强制关掉，
+    // 否则本地音乐会走一条在手机上不存在的输出链路。
+    playerStore.localHifiOutput = !isNativeApp.value && normalizedSettings.music.localHifiOutput === true
     playerStore.localHifiOutputMode = resolveInitialHifiOutputMode(normalizedSettings.music.localHifiOutputMode)
     playerStore.localHifiMpvPath = normalizedSettings.music.localHifiMpvPath
     playerStore.localHifiAudioDevice = normalizedSettings.music.localHifiAudioDevice
@@ -285,26 +357,6 @@ const saveSettings = () => {
     initSettings({ settings: setAppSettings(), hydrateLocalMusic: true })
 }
 
-const toggleRememberWindowSize = async () => {
-    if (rememberWindowSizeSaving.value) return
-    const previousValue = rememberWindowSize.value
-    rememberWindowSize.value = !previousValue
-    rememberWindowSizeSaving.value = true
-    try {
-        const settings = await windowApi.setRememberWindowSize(rememberWindowSize.value)
-        rememberWindowSize.value = settings.other.rememberWindowSize
-        const snapshot = getCachedSettingsSnapshot() || settings
-        snapshot.other.rememberWindowSize = rememberWindowSize.value
-        setCachedSettingsSnapshot(snapshot)
-    } catch (error) {
-        rememberWindowSize.value = previousValue
-        console.error('保存窗口记忆设置失败:', error)
-        noticeOpen('保存设置失败，请重试', 2)
-    } finally {
-        rememberWindowSizeSaving.value = false
-    }
-}
-
 const setCustomFont = (font, option = null) => {
     const rawFont = typeof font === 'string' ? font : customFont.value
     const resolvedFont = resolveSystemFontValue(rawFont)
@@ -354,11 +406,33 @@ const routerChange = () => {
 }
 
 const selectFolder = type => {
+    // Android：目录选择统一走原生 SAF 插件（LocalMusic）。
+    // 桌面端 openFile 由 Electron 提供真实路径；安卓上它是空实现（返回 null），
+    // 所以"下载目录"以前永远停在"待选择"，下载时就会提示"请先在设置中设置下载目录"。
+    const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalMusic
+    const pickViaNative = (onPicked) => {
+        plugin.pickFolder()
+            .then(result => { if (result && result.uri) onPicked(result) })
+            .catch(() => { /* 用户取消，忽略 */ })
+    }
+
     if (type == 'download') {
+        if (plugin && typeof plugin.pickFolder === 'function') {
+            // 存目录名用于显示；真正的 URI 由插件持久化，下载/扫描时使用
+            pickViaNative(result => { downloadFolder.value = result.name || 'Download' })
+            return
+        }
         windowApi.openFile().then(path => {
             downloadFolder.value = path
         })
     } else if (type == 'local') {
+        if (plugin && typeof plugin.pickFolder === 'function') {
+            pickViaNative(result => {
+                const label = result.name || 'Download'
+                if (localFolder.value.indexOf(label) == -1) localFolder.value.push(label)
+            })
+            return
+        }
         windowApi.openFile().then(path => {
             if (path && localFolder.value.indexOf(path) == -1) localFolder.value.push(path)
         })
@@ -657,13 +731,13 @@ const toggleLocalOnlyMode = async () => {
 <template>
     <div class="settings-page" @click="selectedShortcut = null">
         <div class="view-control">
-            <svg t="1669039513804" @click="routerChange()" class="router-last" viewBox="-107 -86 1195 1195" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1053" width="200" height="200">
+            <svg t="1669039513804" @click="routerChange()" class="router-last" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1053" width="200" height="200">
                 <path d="M716.608 1010.112L218.88 512.384 717.376 13.888l45.248 45.248-453.248 453.248 452.48 452.48z" p-id="1054"></path>
             </svg>
             <span class="setting-title">
-                设置(离开页面以保存设置或
-                <span class="save" @click="save()">点击</span>
-                保存)
+                <span class="setting-title-hint">设置(离开页面以保存设置或</span>
+                <span class="save" @click="save()"><span class="save-desktop">点击</span><span class="save-mobile">保存</span></span>
+                <span class="setting-title-hint">保存)</span>
             </span>
         </div>
         <div class="settings-container">
@@ -758,22 +832,29 @@ const toggleLocalOnlyMode = async () => {
                                 <input v-model="searchAssistLimit" name="searchAssistLimit" />
                             </div>
                         </div>
+                        <!-- 歌词字体大小：原来「歌词 / 翻译 / 罗马音」是三个自由输入框，
+                             手机上要调出输入法手填数字，很难用；改成三档预设。
+                             三者比例固定（罗马音 < 翻译 < 原文），仍写回原来的三个字段。
+                             三档彼此有序，用滑轨比下拉少一次点击。 -->
                         <div class="option">
                             <div class="option-name">歌词字体大小</div>
                             <div class="option-operation">
-                                <input v-model="lyricSize" name="lyricSize" />
-                            </div>
-                        </div>
-                        <div class="option">
-                            <div class="option-name">歌词翻译字体大小</div>
-                            <div class="option-operation">
-                                <input v-model="tlyricSize" name="tlyricSize" />
-                            </div>
-                        </div>
-                        <div class="option">
-                            <div class="option-name">罗马歌词字体大小</div>
-                            <div class="option-operation">
-                                <input v-model="rlyricSize" name="rlyricSize" />
+                                <div class="font-size-slider" role="radiogroup" aria-label="歌词字体大小">
+                                    <div
+                                        class="slider-thumb"
+                                        :style="{ transform: `translateX(${fontSizePresetIndex * 100}%)` }"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <div
+                                        v-for="preset in FONT_SIZE_PRESETS"
+                                        :key="preset.value"
+                                        class="slider-cell"
+                                        :class="{ 'is-active': fontSizePreset === preset.value }"
+                                        role="radio"
+                                        :aria-checked="fontSizePreset === preset.value ? 'true' : 'false'"
+                                        @click="applyFontSizePreset(preset.value)"
+                                    >{{ preset.label }}</div>
+                                </div>
                             </div>
                         </div>
                         <div class="option">
@@ -782,7 +863,11 @@ const toggleLocalOnlyMode = async () => {
                                 <input v-model="lyricInterlude" name="lyricInterlude" />
                             </div>
                         </div>
-                        <div class="option" v-if="!userStore.localOnlyMode">
+                        <!-- 音乐视频（B 站）功能在 Android 上没有意义：
+                             播放与下载依赖 Electron 主进程的网络豁免（windowApi.requestTrustedResource
+                             之外的 getBiliVideo / musicVideoIsExists 等在 webBridge 里都是空实现），
+                             设置项留着也点不动，整块在移动端隐藏。 -->
+                        <div class="option hm-mobile-hide" v-if="!userStore.localOnlyMode">
                             <div class="option-name">开启音乐视频功能</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="setMusicVideo()">
@@ -793,7 +878,7 @@ const toggleLocalOnlyMode = async () => {
                                 </div>
                             </div>
                         </div>
-                        <div class="option" v-if="!userStore.localOnlyMode && playerStore.musicVideo">
+                        <div class="option hm-mobile-hide" v-if="!userStore.localOnlyMode && playerStore.musicVideo">
                             <div class="option-name">删除所有未被使用的音乐视频</div>
                             <div class="option-operation">
                                 <div class="button" @click="clearMusicVideo()">清除</div>
@@ -816,6 +901,8 @@ const toggleLocalOnlyMode = async () => {
                                 </div>
                             </div>
                         </div>
+                        <!-- 本地 HiFi 输出整块依赖随包的 MPV 后端，Android 上隐藏 -->
+                        <template v-if="showHifiSettings">
                         <div class="option">
                             <div class="option-name">本地音乐 HiFi 输出</div>
                             <div class="option-operation">
@@ -862,6 +949,7 @@ const toggleLocalOnlyMode = async () => {
                                 <div class="select-option" v-if="playerStore.localHifiMpvPath" @click="clearHifiMpvPath">清除</div>
                             </div>
                         </div>
+                        </template>
                         <div class="option" v-if="!userStore.localOnlyMode && playerStore.musicVideo">
                             <div class="option-name">音乐视频缓存</div>
                             <div class="select-download-folder">
@@ -900,21 +988,25 @@ const toggleLocalOnlyMode = async () => {
                         </div>
                         <div class="option">
                             <div class="option-name">本地目录</div>
-                            <div class="local-folder">
-                                <div class="selected-local-folder-item">
-                                    <div class="selected-folder" :title="item" @contextmenu="deleteLocalFolder(index)" v-for="(item, index) in localFolder">{{ item ? item : '请添加' }}</div>
-                                    <div class="tip">您可以同时添加多个目录,右键移除您不需要的目录。数据量过大时需要一定扫描时间,请稍等。</div>
-                                </div>
-                                <div class="add-option" @click="selectFolder('local')">添加</div>
+                            <!-- 与「下载目录」用同一套 UI（select-download-folder + select-option），
+                                 两处外观、间距、对齐完全一致；也不再显示那段说明文字。 -->
+                            <div class="select-download-folder">
+                                <div class="selected-folder" :title="item" @contextmenu="deleteLocalFolder(index)" v-for="(item, index) in localFolder">{{ item ? item : '请添加' }}</div>
+                                <div class="select-option" @click="selectFolder('local')">添加</div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="settings-item">
+                <!-- 快捷键：整块在移动端隐藏。
+                     Android 上没有物理键盘，也没有 Electron 的 globalShortcut 能力，
+                     「开启全局快捷键」「功能说明 / 快捷键 / 全局快捷键」列表和
+                     「恢复默认快捷键」全都没有意义（之前只隐藏了开关那一行，
+                     剩下的标题和列表还留在页面上）。 -->
+                <div class="settings-item hm-mobile-hide">
                     <h2 class="item-title">快捷键</h2>
                     <div class="line"></div>
                     <div class="item-options" tabindex="0" @keydown="inputShortcut($event)">
-                        <div class="option">
+                        <div class="option hm-mobile-hide">
                             <div class="option-name">开启全局快捷键</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="globalShortcuts = !globalShortcuts">
@@ -925,12 +1017,12 @@ const toggleLocalOnlyMode = async () => {
                                 </div>
                             </div>
                         </div>
-                        <div class="shortcuts-title">
+                        <div class="shortcuts-title hm-mobile-hide">
                             <div class="title-function">功能说明</div>
                             <div class="title-shortcuts">快捷键</div>
                             <div class="title-globalShortcuts" :class="{ 'forbid-shortcuts': !globalShortcuts }">全局快捷键</div>
                         </div>
-                        <div class="shortcuts" v-for="(item, index) in shortcutsList">
+                        <div class="shortcuts hm-mobile-hide" v-for="(item, index) in shortcutsList">
                             <div class="shortcut-name">{{ item.name }}</div>
                             <div
                                 class="shortcut"
@@ -947,7 +1039,7 @@ const toggleLocalOnlyMode = async () => {
                                 {{ formatShortcutName(item.globalShortcut) }}
                             </div>
                         </div>
-                        <div class="default-shortcuts" @click="setDefaultShortcuts()">恢复默认快捷键</div>
+                        <div class="default-shortcuts hm-mobile-hide" @click="setDefaultShortcuts()">恢复默认快捷键</div>
                     </div>
                 </div>
                 <div class="settings-item">
@@ -958,12 +1050,6 @@ const toggleLocalOnlyMode = async () => {
                             <div class="option-name">主题</div>
                             <div class="option-operation">
                                 <Selector v-model="theme" :options="themeOptions"></Selector>
-                            </div>
-                        </div>
-                        <div class="option">
-                            <div class="option-name">自定义字体</div>
-                            <div class="option-operation">
-                                <FontSelector v-model="customFont" :options="fontOptions" :loading="systemFontsLoading" @open="loadSystemFonts" @change="setCustomFont"></FontSelector>
                             </div>
                         </div>
                         <div class="option" v-if="!userStore.localOnlyMode">
@@ -1016,10 +1102,10 @@ const toggleLocalOnlyMode = async () => {
                                 <div class="button" @click="clearFmRecent">清空</div>
                             </div>
                         </div>
-                        <div class="option">
+                        <div class="option hm-mobile-hide">
                             <div class="option-name">记住窗口大小</div>
                             <div class="option-operation">
-                                <div class="toggle" :aria-disabled="rememberWindowSizeSaving" @click="toggleRememberWindowSize">
+                                <div class="toggle" @click="rememberWindowSize = !rememberWindowSize">
                                     <div class="toggle-off" :class="{ 'toggle-on-in': rememberWindowSize }">{{ rememberWindowSize ? '已开启' : '已关闭' }}</div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="rememberWindowSize"></div>
@@ -1027,7 +1113,7 @@ const toggleLocalOnlyMode = async () => {
                                 </div>
                             </div>
                         </div>
-                        <div class="option">
+                        <div class="option hm-mobile-hide">
                             <div class="option-name">退出应用时</div>
                             <div class="option-operation">
                                 <Selector v-model="quitApp" :options="quitAppOptions"></Selector>
@@ -1040,11 +1126,11 @@ const toggleLocalOnlyMode = async () => {
                 <div class="app-icon">
                     <img src="../assets/icon/icon.ico" alt="" />
                 </div>
-                <div class="version">V{{ appVersion }}</div>
-                <div class="update-check">
-                    <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
-                </div>
-                <div class="app-author" @click="toGithub()">Made by ldx123000 | Modified from Hydrogen Music</div>
+                <div class="version">hydrogen-music</div>
+                <div class="version">Android V1.0.2 <span class="beta-tag">bata</span></div>
+                <div class="app-author" @click="toGithub()">Android | CY | 羟醛缩合可以增长碳链</div>
+                <!-- 原作者署名保留，不要删 -->
+                <div class="app-author original">Made by ldx123000 | Modified from Hydrogen Music</div>
             </div>
         </div>
 
@@ -1073,7 +1159,7 @@ const toggleLocalOnlyMode = async () => {
         flex-direction: row;
         align-items: center;
         svg {
-            padding: 4px;
+            padding: 8px;
             width: 32px;
             height: 32px;
             float: left;
@@ -1267,6 +1353,63 @@ const toggleLocalOnlyMode = async () => {
                                 background-color: transparent;
                             }
                         }
+                        /* 歌词字体大小：三档滑轨。
+                         *
+                         * 美术规范沿用同页其它控件：
+                         *   · 直角、无圆角（本项目全局 border-radius: 0）
+                         *   · 轨道底色 rgba(255,255,255,.35)，与 .toggle-off / .button 一致
+                         *   · 选中态纯黑填充 + 白字，与 .toggle 开启态、Selector 选中项一致
+                         *   · 字体 SourceHanSansCN-Bold 13px，高度 34px，宽度 200px
+                         * 滑块用 z-index:0 而不是负值 —— 本项目有先例（见 .toggle-on 的
+                         * z-index:-1 被父级 overflow:hidden 的层叠上下文盖住），
+                         * 背景层天然在子元素之下，靠正常的绘制顺序即可。 */
+                        .font-size-slider {
+                            margin-right: 1px;
+                            width: 200px;
+                            height: 34px;
+                            position: relative;
+                            display: flex;
+                            flex-direction: row;
+                            background-color: rgba(255, 255, 255, 0.35);
+                            overflow: hidden;
+                            .slider-thumb {
+                                width: calc(100% / 3);
+                                height: 100%;
+                                position: absolute;
+                                top: 0;
+                                left: 0;
+                                z-index: 0;
+                                background-color: black;
+                                /* 与 Selector 的 background-position 切换同一条缓动 */
+                                transition: transform 0.2s;
+                            }
+                            .slider-cell {
+                                /* 三格等宽、文字居中。
+                                 * 用 div 而不是 button：theme.css 有一条全局
+                                 *   `.dark button { background-color:#2a2e34 !important; color:var(--text) !important }`，
+                                 * 会把格子刷成不透明深色、盖住底下的滑块（深色下实测整条滑轨
+                                 * 看不出选中的是哪一格）。本页其它同类控件（.toggle / .button /
+                                 * Selector 选项）本来也都是 div，这里保持一致。 */
+                                flex: 1 1 0;
+                                min-width: 0;
+                                height: 100%;
+                                position: relative;
+                                z-index: 1;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                background: transparent;
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                cursor: pointer;
+                                user-select: none;
+                                -webkit-tap-highlight-color: transparent;
+                                transition: color 0.2s;
+                                &.is-active {
+                                    color: white;
+                                }
+                            }
+                        }
                         .button {
                             margin-right: 1px;
                             padding: 5px 10px;
@@ -1432,6 +1575,20 @@ const toggleLocalOnlyMode = async () => {
             .version {
                 font: 14px Geometos;
                 color: black;
+                text-align: center;
+                line-height: 1.5;
+                /* 版本号后面的 bata 标记：小号、带底框，和版本号区分开 */
+                .beta-tag {
+                    display: inline-block;
+                    margin-left: 6px;
+                    padding: 0 6px;
+                    border: 1px solid currentColor;
+                    border-radius: 3px;
+                    font: 10px SourceHanSansCN-Bold;
+                    line-height: 16px;
+                    vertical-align: 1px;
+                    opacity: 0.75;
+                }
             }
             .update-check {
                 margin: 8px 0;
@@ -1467,11 +1624,25 @@ const toggleLocalOnlyMode = async () => {
             }
             .app-author {
                 margin-top: 10px;
-                font: 14px Bender-Bold;
+                /* 这行含中文，Bender-Bold 没有中文字形，
+                   交给 SourceHanSansCN-Bold（项目里中文统一用它），字号略降避免换行 */
+                font: 13px SourceHanSansCN-Bold;
                 color: black;
+                text-align: center;
+                line-height: 1.4;
                 &:hover {
                     cursor: pointer;
                     text-decoration: underline;
+                }
+                /* 原作者署名：次要层级，比上面那行小一点、淡一点 */
+                &.original {
+                    margin-top: 6px;
+                    font-size: 11px;
+                    opacity: 0.65;
+                    &:hover {
+                        text-decoration: none;
+                        cursor: default;
+                    }
                 }
             }
         }

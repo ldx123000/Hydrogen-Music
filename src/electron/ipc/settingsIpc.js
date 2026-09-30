@@ -36,17 +36,7 @@ function registerSettingsIpc({ ipcMain, settingsStore, win, registerShortcuts })
         const parsedSettings = JSON.parse(settings)
         const normalizedSettings = normalizeDirectorySettings(parsedSettings)
         settingsStore.set('settings', normalizedSettings)
-        win.emit('save-window-state')
         registerShortcuts(win)
-    })
-
-    ipcMain.handle('set-remember-window-size', (_event, enabled) => {
-        if (typeof enabled !== 'boolean') throw new TypeError('rememberWindowSize must be a boolean')
-        const settings = normalizeSettings(settingsStore.get('settings'))
-        settings.other.rememberWindowSize = enabled
-        settingsStore.set('settings', settings)
-        win.emit('save-window-state')
-        return settings
     })
 
     ipcMain.handle('get-settings', async () => {

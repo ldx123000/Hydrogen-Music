@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Hydrogen Music Android 版 — 交付说明</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.7;
+    color: #1a1a1a;
+    margin: 0;
+  }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: .5px; }
+  h2 {
+    font-size: 13.5pt; margin: 22px 0 8px; padding-left: 9px;
+    border-left: 4px solid #111; line-height: 1.3;
+  }
+  h3 { font-size: 11.5pt; margin: 15px 0 6px; color: #222; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 9px 0; font-size: 9.5pt; }
+  th, td { border: 1px solid #c9c9c9; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: 600; }
+  code {
+    font-family: Consolas, "Courier New", monospace;
+    background: #f2f2f2; padding: 1px 4px; font-size: 9pt; border-radius: 2px;
+  }
+  pre {
+    font-family: Consolas, "Courier New", monospace;
+    background: #f7f7f7; border: 1px solid #e0e0e0; border-left: 3px solid #999;
+    padding: 8px 10px; font-size: 8.8pt; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-all; margin: 8px 0;
+  }
+  .cover {
+    border: 2px solid #111; padding: 18px 20px; margin-bottom: 20px;
+  }
+  .sub { color: #555; font-size: 10pt; margin-top: 6px; }
+  .kv { font-size: 9.5pt; }
+  .kv td:first-child { width: 27%; background: #fafafa; font-weight: 600; white-space: nowrap; }
+  .note {
+    background: #fdf6e3; border-left: 3px solid #d9a441;
+    padding: 8px 11px; margin: 9px 0; font-size: 9.8pt;
+  }
+  .ok { color: #1a7f37; font-weight: 600; }
+  .bad { color: #b42318; font-weight: 600; }
+  .pb { page-break-before: always; }
+  .tag {
+    display: inline-block; border: 1px solid #333; padding: 0 5px;
+    font-size: 8.5pt; margin-right: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Hydrogen Music — Android 版交付说明</h1>
+  <p class="sub">网易云音乐第三方客户端 · Capacitor + 内嵌 Node 运行时 · 移动端适配版</p>
+  <table class="kv">
+    <tr><td>交付包</td><td><code>HydrogenMusic.apk</code>（219,387,275 字节 / 约 209 MB）</td></tr>
+    <tr><td>SHA-256</td><td><code>27A690C7A49BC969B825F42DB72A25808CBFE88904372B0D6D13BACAC5C93F1A</code></td></tr>
+    <tr><td>构建时间</td><td>2026-09-29 15:03</td></tr>
+    <tr><td>版本</td><td>1.0.2（debug 签名）</td></tr>
+    <tr><td>构建方式</td><td><code>bash run-full-build.sh</code>（源码 → vite build → gradle assembleDebug）</td></tr>
+  </table>
+</div>
+
+<h2>一、安装须知</h2>
+
+<ol>
+  <li>把 <code>HydrogenMusic.apk</code> 传到手机，点击安装。系统会提示「未知来源应用」，允许即可。</li>
+  <li>必须是 <strong>debug 签名</strong>，安装时若提示「签名不一致」，需先卸载旧版再装。</li>
+  <li>首次启动会解压约 <strong>4800 个运行时文件</strong>，需要 <strong>40～60 秒</strong>，期间白屏属正常，请耐心等待，不要中途杀掉进程。</li>
+</ol>
+
+<div class="note">
+  <strong>⚠️ 容易装错：</strong>桌面上的 <code>HydrogenMusic-1.0.2.apk</code> 是 <strong>9/16 的旧包</strong>，
+  不含本轮的云盘布局、通知栏进度、默认深色主题等修复。请认准
+  <code>HydrogenMusic.apk</code>（<strong>15:03 构建、209 MB</strong>）。
+</div>
+
+<h2>二、项目结构</h2>
+
+<table>
+  <tr><th>目录 / 文件</th><th>说明</th></tr>
+  <tr><td><code>源码/</code></td><td>Vue 3 + Electron 桌面端源码，Android 版在此基础上移植</td></tr>
+  <tr><td><code>源码/src/</code></td><td>前端源码：视图、组件、store、工具</td></tr>
+  <tr><td><code>源码/android/</code></td><td>Capacitor Android 工程（含自写的原生插件）</td></tr>
+  <tr><td><code>源码/mobile-runtime/</code></td><td>内嵌 Node 运行时（提供本地 API 转发层）</td></tr>
+  <tr><td><code>源码/src/assets/css/mobile.css</code></td><td><strong>移动端 UI 覆盖层，所有手机端适配都集中在这里</strong></td></tr>
+  <tr><td><code>ui-matrix/</code></td><td>自动化测试脚本与验证报告（非 App 代码）</td></tr>
+  <tr><td><code>02-改动清单.md</code></td><td>按文件列出全部改动及原因（交接主文档）</td></tr>
+  <tr><td><code>03-待办与已知问题.md</code></td><td>未完成事项与需要注意的坑</td></tr>
+</table>
+
+<h2>三、构建方法</h2>
+
+<h3>3.1 前置环境</h3>
+<table>
+  <tr><th>项</th><th>本机路径 / 版本</th></tr>
+  <tr><td>JDK</td><td><code>C:/jdk-21</code></td></tr>
+  <tr><td>Android SDK</td><td><code>C:/android-sdk</code>（需含 NDK 与 CMake）</td></tr>
+  <tr><td>Gradle 缓存</td><td><code>C:/hydrogen-gradle</code></td></tr>
+  <tr><td>Node</td><td>v22（脚本会自动探测）</td></tr>
+</table>
+
+<h3>3.2 一键构建</h3>
+<pre>cd 源码
+bash run-full-build.sh</pre>
+
+<p>脚本依次完成：</p>
+<ol>
+  <li>检测路径是否含中文 —— 含中文则<strong>自动镜像源码到纯 ASCII 目录</strong> <code>C:/hydrogen-build</code> 再继续<br />
+      （AGP 拒绝在中文路径下构建；NDK 编译 libnode 的 JNI 层同理）</li>
+  <li>vite build 前端 + 复制内嵌 Node 运行时（约 4824 个文件 / 59 MB）</li>
+  <li><code>gradlew assembleDebug</code> 打包</li>
+  <li>APK 自动拷到桌面 <code>HydrogenMusic.apk</code></li>
+</ol>
+
+<div class="note">
+  <strong>两个硬约束：</strong><br />
+  ① <strong>不要运行 <code>npx cap sync</code></strong> —— 本项目依赖"生成物常驻构建目录"，sync 会破坏它。<br />
+  ② 构建路径必须纯 ASCII，务必走 <code>run-full-build.sh</code>，不要手动复制源码。
+</div>
+
+<h2 class="pb">四、技术架构要点</h2>
+
+<table>
+  <tr><th>层</th><th>实现</th></tr>
+  <tr><td>壳</td><td>Capacitor 8（Android WebView）</td></tr>
+  <tr><td>内嵌后端</td><td><code>@capawesome/capacitor-nodejs</code>，内嵌 Node 18；端口 36530 跑 API、36531 做转发层</td></tr>
+  <tr><td>前端</td><td>Vue 3 + Pinia + vue-router（hash 模式）+ Howler</td></tr>
+  <tr><td>原生插件</td><td>自写 <code>MediaNotificationPlugin</code>（通知栏/锁屏控制）+ <code>MediaPlaybackService</code>（前台服务）</td></tr>
+</table>
+
+<h3>4.1 移动端统一适配方案（核心决策）</h3>
+<p>不逐机型微调，而是<strong>把布局视口锁死为设计宽 390</strong>，WebView 按屏幕宽等比缩放：</p>
+<table>
+  <tr><th>位置</th><th>做法</th></tr>
+  <tr><td><code>index.html</code></td><td><code>&lt;meta name="viewport" content="width=390, viewport-fit=cover, user-scalable=no"&gt;</code></td></tr>
+  <tr><td><code>MainActivity.java</code></td><td><code>setUseWideViewPort(true)</code> + <code>setLoadWithOverviewMode(true)</code> + 禁缩放 + <code>setTextZoom(100)</code></td></tr>
+  <tr><td><code>mobile.css</code></td><td><code>text-size-adjust: 100%</code>（字体免疫系统缩放）</td></tr>
+</table>
+<p><strong>收益</strong>：320～430dp 全机型渲染同一套布局，任何机型都不会错位/溢出。<br />
+<strong>代价</strong>：窄屏整页等比缩小、宽屏放大，<em>字号绝对大小</em>在不同手机上略有差异。这是该方案的固有取舍。</p>
+
+<h2>五、本轮改动摘要</h2>
+
+<p>完整清单见 <code>02-改动清单.md</code>（A–G 节）。按问题归类：</p>
+
+<h3>5.1 登录态丢失（A 节 / D2）</h3>
+<p>根因不是 cookie 存储，而是<strong>两条"误清登录态"的路径</strong>：</p>
+<ul>
+  <li><code>request.js</code>：任何请求（含<strong>没带 MUSIC_U 的匿名请求</strong>）收到 301/401/403 都触发全局登出</li>
+  <li><code>accountSession.js</code>：启动水合失败（冷启动 Node 未就绪、请求超时）也清空登录态</li>
+</ul>
+<p>已分别加守卫 <code>shouldTriggerAutoLogout()</code> / <code>isAuthError()</code>，只有"确实带了登录 cookie 仍被拒绝"才清理。</p>
+
+<h3>5.2 移动端 UI 缺陷（E 节）</h3>
+<table>
+  <tr><th>问题</th><th>根因（真机实测）</th></tr>
+  <tr><td>「每日推荐」跳进「我的」</td><td>路由挂在 <code>/mymusic/playlist/rec</code> 下 → 提升为顶层 <code>/recommend</code>，新增页内返回按钮，Tab 归「首页」高亮</td></tr>
+  <tr><td>漫游页 MODE 按钮压住标题</td><td>按钮 x 213..363/y 77..105 与徽标 x 132..258/y 81..107 正面重叠 → 标题下移 30px</td></tr>
+  <tr><td>设置页三个开关"看不见"</td><td>开启态底色 <code>rgba(255,255,255,.9)</code> 而文字色仍为 white → 白字压白底</td></tr>
+  <tr><td>云盘页文件名被压成一列</td><td>桌面左右双栏硬塞：左栏 154px、列表只剩 162px 且溢出 → 改为上下堆叠</td></tr>
+  <tr><td>搜索页「张鑫03:58」粘连</td><td>歌手列 70% 与时长列 30% 边界严丝合缝 → 补右侧内边距</td></tr>
+  <tr><td>设置页控件列错位 42px</td><td>开关宽 189、选择器固定 148 → 统一撑满控件区</td></tr>
+</table>
+
+<h3>5.3 歌词字体大小改为三档滑轨（F 节）</h3>
+<p>由下拉菜单改为「小 / 中 / 大」滑轨控件，一次点击直达。美术规范沿用同页既有控件：
+直角无圆角 · 轨道底色 <code>rgba(255,255,255,.35)</code> · 选中态纯黑填充+白字 · 13px 思源黑体 Bold · 高 34px。</p>
+<div class="note">
+  <strong>踩坑记录：</strong>第一版格子用 <code>&lt;button&gt;</code>，被 <code>theme.css</code> 的全局规则
+  <code>.dark button { background-color:#2a2e34 !important }</code> 刷成不透明深色，
+  <strong>盖住了底下的滑块</strong> —— 浅色正常、深色下完全看不出选中哪一格。
+  改用 <code>&lt;div&gt;</code>（本页同类控件本来就都是 div）解决。
+  另：<code>reset.css</code> 未重置 <code>border-radius</code>，<code>&lt;button&gt;</code> 会带 UA 的 2px 圆角，与"全局直角"规范冲突。
+</div>
+
+<h3>5.4 通知栏进度一直显示 00:00-00:00（G 节）</h3>
+<p><strong>根因：Capacitor 的 <code>PluginCall.getLong()</code> 对 JS 数字（经桥是 Double）不做转换、直接返回 null</strong> ——
+于是 <code>show({duration})</code> 里的时长<strong>根本没进原生</strong>，<code>METADATA_KEY_DURATION</code> 与 <code>PlaybackState</code> 全是 0。</p>
+<p>用 <code>adb shell dumpsys media_session</code> 实测确认（修复前 <code>position=0, buffered position=0</code>）。</p>
+<ul>
+  <li>新增 <code>readLong()</code>：按 <code>Number</code> 取参，兼容 Integer/Double/String</li>
+  <li>新增 <code>setProgress</code> 插件方法 + JS 侧按秒级节流推送进度（store 里是<strong>秒</strong>，原生要<strong>毫秒</strong>）</li>
+  <li><code>PlaybackState</code> 不再用 <code>PLAYBACK_POSITION_UNKNOWN</code></li>
+</ul>
+<p><strong>修复后实测</strong>：<code>position=150000</code>(2:30) / <code>buffered=211000</code>(3:31)，与推送值一致。</p>
+<p><strong>顺带修掉一个真 bug</strong>：<code>hide()</code> 只 <code>cancel()</code> 通知、<strong>从不停前台服务</strong>，
+导致清空播放列表后通知一直赖着。已改为先 <code>stopService</code> 再 <code>cancel</code>，
+并给服务 <code>onDestroy</code> 补 <code>stopForeground(STOP_FOREGROUND_REMOVE)</code>。</p>
+
+<h3>5.5 默认深色主题（G 节）</h3>
+<p>默认主题由 <code>system</code> 改为 <code>dark</code>，并附带<strong>一次性迁移</strong>。</p>
+<div class="note">
+  <strong>为什么必须迁移：</strong>老版本默认值是 <code>system</code>，而启动时会把
+  <code>getSavedTheme()</code> 的结果<strong>写回 localStorage</strong> —— 即使用户从没改过主题，
+  机器上也早存着 <code>system</code>。<strong>只改兜底值的话，已装过 App 的机器永远看不到变化。</strong><br />
+  迁移标记 <code>theme.default.migrated</code>：只把"没存过"和"存的是老默认值 system"切成 dark；
+  用户显式选过的 light/dark 一律不动。
+</div>
+
+<h3>5.6 整页可横向拖动导致两侧被切（G 节）</h3>
+<p><strong>现象</strong>：云盘等页面在部分手机上出现"左边被切、右边也被切"的错位。</p>
+<p><strong>根因</strong>：不少浮层用「绝对定位 + 负 <code>right</code>」做滑入（云盘的编辑面板是
+<code>.file-edit { right: -140px }</code>），把 <code>.home-content</code>（<code>overflow:auto</code>）
+撑出一段横向滚动范围，整页可以被横向带动。</p>
+<p><strong>为什么常规检查发现不了</strong>：横向溢出被 <code>.home-content</code> 吸收，
+<code>documentElement.scrollWidth</code> 完全正常 —— 必须单独量内容区。</p>
+<p><strong>修复</strong>：让 <code>.file-container</code> 裁掉它（保留滑入动画），并给移动端的
+<code>.home-content</code> 加 <code>overflow-x: hidden</code>，一次性掐掉这一类问题。实测修复后横向可滚动量 <code>126px → 0</code>。</p>
+
+<h2 class="pb">六、测试方法与结果</h2>
+
+<h3>6.1 自动化测试脚本（<code>ui-matrix/</code>）</h3>
+<table>
+  <tr><th>脚本</th><th>作用</th></tr>
+  <tr><td><code>matrix-full.mjs</code></td><td>全量矩阵：8 轮 × 9 页，检查横向溢出、内容区可横滑、低对比度文字（WCAG）、碎图、页面专属断言</td></tr>
+  <tr><td><code>matrix-check.mjs</code></td><td>轻量矩阵：5 宽 × 6 页</td></tr>
+  <tr><td><code>shots.mjs</code></td><td>逐页截图留证（9 页 × 浅色/深色）</td></tr>
+  <tr><td><code>cdp-eval.mjs</code> / <code>cdp-eval-file.mjs</code></td><td>通过 CDP 连真机/模拟器 WebView 执行 JS（后者支持异步）</td></tr>
+</table>
+<p>测试原理：<code>adb forward</code> 把 WebView 的 devtools 端口映射到 9222，用 Node WebSocket 连上去执行探针脚本。</p>
+
+<h3>6.2 覆盖范围与结果</h3>
+<table>
+  <tr><th>轮次</th><th>配置</th><th>结果</th></tr>
+  <tr><td>1–5</td><td>320 / 360 / 390 / 411 / 430 dp，浅色，字体 1.0</td><td class="ok">9 页全过</td></tr>
+  <tr><td>6</td><td>390dp，系统字体放大到 1.3</td><td class="ok">9 页全过</td></tr>
+  <tr><td>7–8</td><td>390 / 320 dp，深色模式</td><td class="ok">9 页全过</td></tr>
+</table>
+<p>9 个页面：首页 / 我的 / 云盘 / 设置 / 漫游 / 每日推荐 / 塞壬 / 搜索 / 歌单详情。</p>
+
+<h3>6.3 其他验证</h3>
+<ul>
+  <li><strong>原生日志</strong>：logcat 全量扫描 <span class="ok">0 个 FATAL、0 个 AndroidRuntime</span></li>
+  <li><strong>运行期 JS</strong>：全页面遍历 <span class="ok">0 未捕获异常、0 未处理 Promise 拒绝、0 console.error</span></li>
+  <li><strong>装机一致性</strong>：设备端 <code>sha256sum</code> 与交付包哈希<strong>逐字节一致</strong>（确保测的就是交付件）</li>
+  <li><strong>通知栏</strong>：直接读系统 <code>dumpsys media_session</code> 验证进度与清理</li>
+</ul>
+
+<div class="note">
+  <strong>关于测试脚本自身的坑：</strong>低对比度检测最初用 <code>el.textContent</code> 取文字，
+  会把"父容器的继承 color"当成实际文字色，误报 <code>div.toggle</code> 对比度 1.12。
+  修正为只取元素自身的直接文本节点后，真页面 0 误报、且注入的白底白字探针能被准确检出。<br />
+  <strong>教训：测试脚本本身也需要被验证</strong>，否则会把工具缺陷当成产品缺陷去"修"，越修越乱。
+</div>
+
+<h2>七、已知问题与待办</h2>
+<table>
+  <tr><th>项</th><th>状态</th></tr>
+  <tr><td>通知栏进度条 / 按钮</td><td>已用合成数据验证通过；<strong>仍需用真实曲目实听确认</strong></td></tr>
+  <tr><td>后台音频是否连续</td><td>未实听确认（前台服务已验证不被系统回收）</td></tr>
+  <tr><td>波形是合成包络</td><td>非真实频谱。移动端 Howler 退化为 HTML5 audio，<code>captureStream()</code> 因 CDN 无 CORS 头拿不到轨道</td></tr>
+  <tr><td>冷启动偏慢</td><td>每次启动解压 4800+ 运行时文件（首次 40–60s）。可考虑加"已解压"标记跳过</td></tr>
+  <tr><td>仅 debug 签名</td><td>要发布需配置 release keystore</td></tr>
+  <tr><td>MIUI 灵动岛 System.err 噪声</td><td>MIUI 自身代码抛的 NPE，应用侧改不了，不影响功能</td></tr>
+</table>
+
+<h3>7.1 给后续维护者的提醒</h3>
+<ul>
+  <li>有效节奏是<strong>"真机量数据 → 改 → 再量"</strong>，不要盲改。</li>
+  <li>移动端 UI 调整<strong>集中写在 <code>mobile.css</code></strong>，不要改组件内部样式（保持桌面端零影响）。</li>
+  <li>改完必须重新构建 —— <code>mobile.css</code> 与 Java 代码都打进 APK，改源码不重建不会生效。</li>
+  <li><code>theme.css</code> 里有一条全局 <code>.dark button { ... !important }</code>，新增按钮控件时注意它会被覆盖。</li>
+</ul>
+
+<hr style="margin:22px 0; border:none; border-top:1px solid #ddd;" />
+<p style="font-size:9pt; color:#666;">
+  Hydrogen Music Android 移植交付说明 · 生成于 2026-09-29 · 对应构建 SHA-256
+  <code>27A690C7A49BC969B825F42DB72A25808CBFE88904372B0D6D13BACAC5C93F1A</code>
+</p>
+
+</body>
+</html>

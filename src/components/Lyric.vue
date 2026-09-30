@@ -161,7 +161,8 @@ function showLineOffsetMenu(event, item, index) {
     }
 
     const menuWidth = 190;
-    const menuHeight = 150;
+    // 比原来多一个「显示翻译」按钮，高度相应放大
+    const menuHeight = 200;
     const x = Math.min(event.clientX, Math.max(8, window.innerWidth - menuWidth - 8));
     const y = Math.min(event.clientY, Math.max(8, window.innerHeight - menuHeight - 8));
 
@@ -195,6 +196,27 @@ function updateLineOffset(deltaSec) {
     );
     hideLineOffsetMenu();
 }
+
+/**
+ * 切换歌词翻译（中文）显示。
+ *
+ * 注意：真正决定"是否渲染译文"的是 playerStore.lyricType（数组里有 'trans' 才显示），
+ * 不是 showSongTranslation —— 后者只影响歌名是否显示译名。
+ * 这里与 Player.vue 里那排歌词开关操作的是同一个状态。
+ */
+function toggleLyricTranslation() {
+    const list = playerStore.lyricType
+    if (!Array.isArray(list)) return
+    const at = list.indexOf('trans')
+    if (at === -1) {
+        if (list.indexOf('noTrans') === -1) list.push('trans')
+    } else {
+        list.splice(at, 1)
+    }
+}
+
+const translationOn = computed(() => Array.isArray(playerStore.lyricType)
+    && playerStore.lyricType.indexOf('trans') !== -1)
 
 function resetLineOffset() {
     updateLineOffset(-getDisplayedLyricLineOffset(lineOffsetMenu.value.item));
@@ -1433,6 +1455,12 @@ watch([playing, lyricShow], ([p, show]) => {
                 <button type="button" @click="resetLineOffset">
                     <span class="offset-action-main">重置本行偏移</span>
                     <span class="offset-action-meta">RESET</span>
+                </button>
+                <!-- 歌词翻译（中文）开关：此前只能去「设置 → 显示歌曲翻译」里改，
+                     播放时想临时切一下很不方便，这里补一个入口。 -->
+                <button type="button" class="offset-action-toggle" @click="toggleLyricTranslation">
+                    <span class="offset-action-main">{{ translationOn ? '隐藏翻译' : '显示翻译' }}</span>
+                    <span class="offset-action-meta">TRANSLATION · {{ translationOn ? 'ON' : 'OFF' }}</span>
                 </button>
             </div>
             <span class="offset-corner offset-corner-tl">+</span>

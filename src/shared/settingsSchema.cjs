@@ -64,8 +64,10 @@ function normalizeMusicSettings(music = {}) {
     normalized.searchAssistLimit = normalizeSearchAssistLimit(normalized.searchAssistLimit)
     normalized.level = normalizeMusicLevel(normalized.level)
     normalized.showSongTranslation = normalized.showSongTranslation !== false
-    normalized.gaplessPlayback = normalized.gaplessPlayback === true
-    normalized.audioVisualizer = normalized.audioVisualizer === true
+    // 默认开启：只有显式传 false 才关闭（原来是 === true，即缺省即关闭，
+    // 会把 settingsDefaults.json 里的 true 覆盖掉）
+    normalized.gaplessPlayback = normalized.gaplessPlayback !== false
+    normalized.audioVisualizer = normalized.audioVisualizer !== false
     normalized.localHifiOutput = normalized.localHifiOutput === true
     normalized.localHifiOutputMode = normalizeLocalHifiOutputMode(normalized.localHifiOutputMode)
     normalized.localHifiMpvPath = normalizeOptionalPlainText(normalized.localHifiMpvPath, DEFAULT_SETTINGS.music.localHifiMpvPath)

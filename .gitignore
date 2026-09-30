@@ -24,3 +24,36 @@ dist/*
 *.njsproj
 *.sln
 *.sw?
+
+# ---------------------------------------------------------------------------
+# Android / Capacitor
+# ---------------------------------------------------------------------------
+# 说明：android/ 里的「原生工程源码」是要提交的
+#   （AndroidManifest.xml、app/build.gradle、strings.xml、MainActivity.java 等
+#    都含本项目的手工改动：竖屏锁定、包名 com.hydrogen.music、允许明文 HTTP）。
+# 下面这些是**构建产物**或**机器相关配置**，不应提交。
+android/app/build/
+android/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/
+android/local.properties
+
+# 由 scripts/build-android.cjs 生成到安卓资源目录的前端产物与内嵌运行时
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# 打包产物
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# 内嵌 Node 运行时的依赖（在 mobile-runtime/ 下 npm install 得到）
+mobile-runtime/node_modules/
+
+# 手机视口自动化测试（scripts/mobile-test/cdp.cjs）的本机产物：
+# Edge 的用户数据目录有好几十 MB，截图只是调试痕迹，都不该进版本库
+scripts/mobile-test/cdp-profile/
+scripts/mobile-test/*.png
+

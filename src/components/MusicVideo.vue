@@ -667,7 +667,7 @@ const reopenVideo = async () => {
 <template>
     <div class="music-video">
         <div class="set-video-container">
-            <svg t="1671966797621" class="close" @click="close()" viewBox="102 102 819 819" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1965" width="200" height="200" data-v-4ab3cf75="">
+            <svg t="1671966797621" class="close" @click="close()" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1965" width="200" height="200" data-v-4ab3cf75="">
                 <path
                     d="M576 512l277.333333 277.333333-64 64-277.333333-277.333333L234.666667 853.333333 170.666667 789.333333l277.333333-277.333333L170.666667 234.666667 234.666667 170.666667l277.333333 277.333333L789.333333 170.666667 853.333333 234.666667 576 512z"
                     fill="#ffffff"
@@ -856,7 +856,7 @@ const reopenVideo = async () => {
                                     v-if="!isDownloading"
                                     t="1670569532229"
                                     class="item-delete"
-                                    viewBox="150 150 758 758"
+                                    viewBox="0 0 1024 1024"
                                     version="1.1"
                                     xmlns="http://www.w3.org/2000/svg"
                                     p-id="2597"

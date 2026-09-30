@@ -1,19 +1,23 @@
 <script setup>
 import { computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import Home from './views/Home.vue';
-import ListenTogetherRuntime from './components/ListenTogetherRuntime.vue';
 import Title from './components/Title.vue';
 import SearchInput from './components/SearchInput.vue';
 import AudioVisualizer from './components/AudioVisualizer.vue';
 import WindowControl from './components/WindowControl.vue';
 import MusicWidget from './components/MusicWidget.vue';
+import MobileTabBar from './components/mobile/MobileTabBar.vue';
+import { useIsMobile } from './composables/useIsMobile';
 import { destroyDesktopLyric, initDesktopLyric } from './utils/desktopLyric';
 import { destroyLyricRuntime, initLyricRuntime } from './composables/usePlayerRuntime';
+import { initMediaSession, initNativeMediaNotification } from './utils/mediaSession';
 import { usePlaylistSync } from './composables/usePlaylistSync';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
 import { useUserStore } from './store/userStore';
+import { useRouter } from 'vue-router';
+import { initAndroidBackButton } from './utils/backButton';
 
 const MusicPlayer = defineAsyncComponent(() => import('./views/MusicPlayer.vue'));
 const VideoPlayer = defineAsyncComponent(() => import('./components/VideoPlayer.vue'));
@@ -25,6 +29,8 @@ const Update = defineAsyncComponent(() => import('./components/Update.vue'));
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
 const userStore = useUserStore();
+const router = useRouter();
+const isMobile = useIsMobile();
 usePlaylistSync();
 const visualizerActive = computed(() => {
     return playerStore.audioVisualizer && playerStore.playerShow && !playerStore.widgetState && !!playerStore.currentMusic;
@@ -34,15 +40,28 @@ const removeCheckUpdateListener = windowApi.checkUpdate((version) => {
     otherStore.newVersion = version;
 });
 
+// 返回键处理器的取消订阅函数（见下方 onMounted）
+let disposeAndroidBackButton = null;
+
 onMounted(() => {
     initLyricRuntime();
     initDesktopLyric();
+    // 系统媒体控制（Android 通知栏 / 锁屏的歌曲信息与播放控制）。
+    // 这个模块一直存在但从没被调用过，所以通知栏始终不显示。
+    initMediaSession();
+    // Android WebView 不提供 mediaSession/Notification API（真机实测全是 undefined），
+    // 通知栏改由原生插件发系统通知。
+    void initNativeMediaNotification();
+    // Android 返回键 / 返回手势：原生只派发事件，具体行为在这里决定
+    // （关播放页 → 回上一级 → 才退出 App）。之前没接管，按一下就直接退到桌面。
+    disposeAndroidBackButton = initAndroidBackButton(router);
 });
 
 onUnmounted(() => {
     destroyDesktopLyric();
     destroyLyricRuntime();
     removeCheckUpdateListener?.();
+    disposeAndroidBackButton?.();
 });
 
 // 双击标题栏最大化窗口的处理函数
@@ -52,13 +71,18 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <ListenTogetherRuntime />
-    <div class="mainWindow">
+    <div class="mainWindow" :class="{ 'has-mini-player': !!playerStore.songList }">
         <Transition name="home">
             <Home class="home" v-show="playerStore.widgetState"></Home>
         </Transition>
     </div>
-    <div class="globalWidget" :class="{ 'visualizer-active': visualizerActive }">
+    <div
+        class="globalWidget"
+        :class="{
+            'visualizer-active': visualizerActive,
+            'hm-player-mode': isMobile && !!playerStore.songList && !playerStore.widgetState,
+        }"
+    >
         <Title class="widget-title"></Title>
         <AudioVisualizer class="widget-visualizer"></AudioVisualizer>
         <div class="widget-search" v-if="!userStore.localOnlyMode">
@@ -92,6 +116,8 @@ const handleTitleBarDoubleClick = () => {
     <div class="globalNotice">
         <GlobalNotice v-if="otherStore.noticeShow"></GlobalNotice>
     </div>
+    <!-- 移动端底部导航：仅在浏览态出现，全屏播放页会占满屏幕 -->
+    <MobileTabBar v-if="isMobile && playerStore.widgetState" />
     <Transition name="fade">
         <div class="update" v-if="otherStore.toUpdate">
             <Update></Update>

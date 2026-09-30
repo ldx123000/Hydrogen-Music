@@ -1,9 +1,9 @@
 <script setup>
-  import { computed, nextTick, onActivated, onUnmounted, ref } from 'vue'
+  import { computed, onActivated, onUnmounted, ref } from 'vue'
   import DataCheckAnimaton from './DataCheckAnimaton.vue'
   import { noticeOpen } from '../utils/dialog'
   import { loginByPhone, sendPhoneCaptcha } from '../api/login'
-  import { applyLoginSession } from '../utils/accountSession'
+  import { loginHandle } from '../utils/handle'
 
   const emits = defineEmits(['jumpTo'])
 
@@ -18,8 +18,6 @@
 
   const loginAnimation = ref(false)
   const dataCheckAnimaton = ref(null)
-  let loginErrorTimer = null
-  let loginCompleted = false
 
   const captchaButtonText = computed(() => {
     if (captchaSending.value) return '发送中'
@@ -27,20 +25,13 @@
     return '获取验证码'
   })
 
-  onActivated(async () => {
-    if (loginCompleted) {
-      loginCompleted = false
-      loginAnimation.value = false
-      phoneCaptcha.value = ''
-    }
-    await nextTick()
+  onActivated(() => {
     accountInput.value?.focus()
   })
 
   onUnmounted(() => {
     clearCaptchaTimer()
     if (focusTimer.value) clearTimeout(focusTimer.value)
-    if (loginErrorTimer) clearTimeout(loginErrorTimer)
   })
 
   const inputFocus = () => {
@@ -79,10 +70,11 @@
   })
 
   const validatePhoneBase = () => {
-    const { phone, countrycode: code } = getPhoneLoginPayloadBase()
+    const phone = accountNumber.value.replace(/\s/g, '')
+    const code = countrycode.value.replace('+', '').trim()
 
-    if (!/^\d{1,3}$/.test(code)) {
-      noticeOpen('请输入正确的国家区号', 2)
+    if (!code || !phone) {
+      noticeOpen('请输入正确的手机号', 2)
       return false
     }
 
@@ -107,14 +99,14 @@
 
   const loginError = () => {
     dataCheckAnimaton.value?.errorAnimation()
-    loginErrorTimer = setTimeout(() => {
+    const errorTimer = setTimeout(() => {
       loginAnimation.value = false
-      loginErrorTimer = null
+      clearTimeout(errorTimer)
     }, 1500)
   }
 
   const sendCaptcha = async () => {
-    if (captchaSending.value || captchaCountdown.value > 0 || loginAnimation.value) return
+    if (captchaSending.value || captchaCountdown.value > 0) return
     if (!validatePhoneBase()) return
 
     captchaSending.value = true
@@ -123,27 +115,26 @@
         ...getPhoneLoginPayloadBase(),
         ctcode: countrycode.value.replace('+', '').replace(/\s/g, ''),
       })
-      if (result?.code === 200 && result?.data !== false) {
+      if (result?.code === 200 || result?.data === true) {
         noticeOpen('验证码已发送', 1)
         startCaptchaCountdown()
         return
       }
-      throw new Error('验证码发送失败', { cause: result })
+      throw new Error(result?.message || result?.msg || '验证码发送失败')
     } catch (error) {
-      noticeOpen(getLoginErrorMessage(error), 3)
+      noticeOpen(error?.response?.data?.message || error?.message || '验证码发送失败，请稍后重试', 2)
     } finally {
       captchaSending.value = false
     }
   }
 
   const getLoginErrorMessage = error => {
-    const data = error?.response?.data || error?.cause
-    if (data?.code === 8821 || data?.hitType === 60001) return '网易云要求完成行为验证，请切换二维码登录'
+    const data = error?.response?.data
+    if (data?.code === 8821 || data?.hitType === 60001) return '当前登录需要行为验证，请稍后再试'
     return data?.message || data?.msg || error?.message || '登录失败，请稍后重试'
   }
 
   async function login() {
-    if (loginAnimation.value || captchaSending.value) return
     if (!validatePhone()) return
 
     loginAnimation.value = true
@@ -155,14 +146,12 @@
       })
 
       if (result?.code === 200) {
-        const profile = await applyLoginSession(result)
-        if (!profile) throw new Error('登录已取消，请重试')
-        loginCompleted = true
+        loginHandle(result, 'account')
         emits('jumpTo')
         return
       }
 
-      throw new Error('登录失败，请检查手机号与验证码', { cause: result })
+      throw new Error(result?.message || result?.msg || '登录失败，请检查账号与密码')
     } catch (error) {
       noticeOpen(getLoginErrorMessage(error), 2)
       loginError()
@@ -180,17 +169,12 @@
             class="phone-country"
             type="text"
             v-model="countrycode"
-            :disabled="loginAnimation || captchaSending"
-            inputmode="tel"
-            autocomplete="tel-country-code"
             spellcheck="false"
           >
           <input
             class="account-input account-input2"
             v-model="accountNumber"
-            :disabled="loginAnimation || captchaSending"
-            type="tel"
-            autocomplete="tel-national"
+            type="text"
             name="account"
             ref="accountInput"
             spellcheck="false"
@@ -208,16 +192,13 @@
             type="text"
             name="captcha"
             v-model="phoneCaptcha"
-            :disabled="loginAnimation"
-            inputmode="numeric"
-            autocomplete="one-time-code"
             spellcheck="false"
             @keyup.enter="login"
           >
           <button
             class="captcha-button"
             type="button"
-            :disabled="captchaSending || captchaCountdown > 0 || loginAnimation"
+            :disabled="captchaSending || captchaCountdown > 0"
             @click="sendCaptcha"
           >
             {{ captchaButtonText }}

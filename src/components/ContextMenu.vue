@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, watch, watchPostEffect } from 'vue'
+  import { ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import { createPlaylist, updatePlaylist, deletePlaylist } from '../api/playlist'
   import { addToNext, addToNextLocal } from '../utils/player/lazy'
@@ -11,7 +11,6 @@
   import { useUserStore } from '../store/userStore';
   import { getLikelist, getUserPlaylistCount, getUserPlaylist } from '../api/user'
   import { schedulePlaylistCacheInvalidation } from '../utils/cacheInvalidation'
-  import { copyToClipboard } from '../utils/clipboard'
   import { storeToRefs } from 'pinia';
   const router = useRouter()
   const libraryStore = useLibraryStore()
@@ -20,15 +19,6 @@
   const playerStore = usePlayerStore()
   const userStore = useUserStore()
   const { librarySongs, listType1, listType2 } = storeToRefs(libraryStore)
-  const menu = ref(null)
-
-  watchPostEffect(() => {
-    if (!otherStore.contextMenuShow || !menu.value) return
-    const { x, y } = otherStore.contextMenuPosition
-    const menuList = menu.value
-    menuList.style.left = Math.max(0, Math.min(x, document.body.clientWidth - menuList.offsetWidth)) + 'px'
-    menuList.style.top = Math.max(0, Math.min(y, document.body.clientHeight - menuList.offsetHeight)) + 'px'
-  })
 
   const isPrivacy = ref(false)
   const createActive = ref(false)
@@ -230,18 +220,10 @@
     })
   }
 
-  const copySongLink = async () => {
-    const link = `https://music.163.com/#/song?id=${otherStore.selectedItem.id}`
-    otherStore.contextMenuShow = false
-    const copied = await copyToClipboard(link)
-    noticeOpen(copied ? '歌曲链接已复制' : '复制失败', 2)
-  }
-
   const menuOpt = (id) => {
     if(id == 1) { addToNext(otherStore.selectedItem, true); return; }
     if(id == 2) { addToNext(otherStore.selectedItem, false); return; }
     if(id == 3) { localStore.updateDownloadList(otherStore.selectedItem); return; }
-    if(id == 12) { return copySongLink(); }
     if(id == 11) {
       const song = otherStore.selectedItem
       const albumId = song?.al?.id
@@ -322,7 +304,7 @@
 </script>
 
 <template>
-  <div ref="menu" id="menu" class="context-menu">
+  <div id="menu" class="context-menu">
     <div class="menu-container" v-show="otherStore.contextMenuShow">
       <div class="menu-item">
         <div class="item" @click="menuOpt(item.id)" v-for="(item, index) in otherStore.menuTree">{{item.name}}</div>
@@ -340,7 +322,7 @@
           <div class="my-playlist">
             <div class="create-playlist" v-show="!justNewPlaylist" :style="{background: createActive ? 'rgba(53, 53, 53, 0.7)' : 'none'}" @click="createActive = !createActive">
               <div class="list-img">
-                <svg t="1671329712143" class="icon" viewBox="-1 -2 1027 1027" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2116" width="200" height="200"><path d="M939.939489 459.072557 562.339502 459.072557 562.339502 83.519182 462.055494 83.519182 462.055494 459.072557 84.455507 459.072557 84.455507 559.356564 462.055494 559.356564 462.055494 939.003164 562.339502 939.003164 562.339502 559.356564 939.939489 559.356564Z" fill="#ffffff" p-id="2117"></path></svg>
+                <svg t="1671329712143" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2116" width="200" height="200"><path d="M939.939489 459.072557 562.339502 459.072557 562.339502 83.519182 462.055494 83.519182 462.055494 459.072557 84.455507 459.072557 84.455507 559.356564 462.055494 559.356564 462.055494 939.003164 562.339502 939.003164 562.339502 559.356564 939.939489 559.356564Z" fill="#ffffff" p-id="2117"></path></svg>
               </div>
               <span class="list-name">创建新歌单并添加</span>
             </div>
@@ -348,7 +330,7 @@
               <input type="text" v-model="newPlaylistTitle" placeholder="请输入新歌单标题">
               <div class="checkbox" @click="isPrivacy = !isPrivacy">
                 <div class="box" :class="{'box-selected': isPrivacy}">
-                  <svg t="1671347600812" class="icon" viewBox="-24 -24 1072 1072" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="4196" width="200" height="200"><path d="M155.644361 439.225533 376.468722 660.086733l486.86146-490.229161 95.379301 95.352695-585.574692 588.933183L65.289494 546.298154 155.644361 439.225533 155.644361 439.225533zM155.644361 439.225533" fill="#272636" p-id="4197"></path></svg>
+                  <svg t="1671347600812" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="4196" width="200" height="200"><path d="M155.644361 439.225533 376.468722 660.086733l486.86146-490.229161 95.379301 95.352695-585.574692 588.933183L65.289494 546.298154 155.644361 439.225533 155.644361 439.225533zM155.644361 439.225533" fill="#272636" p-id="4197"></path></svg>
                 </div>
                 <span class="box-label">设置为隐私歌单</span>
               </div>

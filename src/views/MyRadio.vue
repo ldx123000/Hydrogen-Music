@@ -109,7 +109,7 @@ const playLatestProgram = async (radio) => {
           <div class="cover">
             <img :src="(radio.picUrl || radio.intervenePicUrl) + '?param=240y240'" alt="" />
             <div class="overlay">
-              <svg width="28" height="28" viewBox="5.1 3.6 16.8 16.8" fill="currentColor">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
               </svg>
             </div>

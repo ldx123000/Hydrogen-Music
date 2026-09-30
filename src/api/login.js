@@ -106,7 +106,6 @@ export function loginByPhone(data) {
     return request({
         url: '/login/cellphone',
         method: 'post',
-        suppressGlobalNotice: true,
         params: {
             timestamp: new Date().getTime(),
         },
@@ -121,7 +120,6 @@ export function sendPhoneCaptcha(data) {
     return request({
         url: '/captcha/sent',
         method: 'post',
-        suppressGlobalNotice: true,
         params: {
             timestamp: new Date().getTime(),
         },

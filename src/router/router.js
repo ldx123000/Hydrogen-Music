@@ -163,19 +163,6 @@ const routes = [
                 }
             },
             {
-                path: '/mymusic/playlist/rec',
-                name: 'rec',
-                component: RecommendSongs,
-                beforeEnter: (to, from, next) => {
-                    if(isLogin()) {
-                        next()
-                    } else {
-                        noticeOpen("请先登录", 2)
-                        next({name: 'login'})
-                    }
-                }
-            },
-            {
                 path: '/mymusic/dj/:id',
                 name: 'dj',
                 component: RadioDetail,
@@ -218,6 +205,19 @@ const routes = [
         path: '/personalfm',
         name: 'personalfm',
         component: PersonalFMPage,
+        beforeEnter: (to, from, next) => {
+            if(isLogin()) {
+                next()
+            } else {
+                noticeOpen("请先登录", 2)
+                next({name: 'login'})
+            }
+        }
+    },
+    {
+        path: '/recommend',
+        name: 'recommend',
+        component: RecommendSongs,
         beforeEnter: (to, from, next) => {
             if(isLogin()) {
                 next()

@@ -1,0 +1,1821 @@
+/**
+ * 移动端样式层
+ *
+ * 原项目是绝对定位 + 固定像素的桌面布局，这里不改动组件本身，
+ * 而是把所有移动端规则收敛到 html[data-hm-mobile="true"] 之下统一覆盖。
+ * 桌面端（窄窗口以外的情形）完全不受影响。
+ *
+ * 断点由 useIsMobile.js 决定：视口宽度 <= 820px。
+ */
+
+html[data-hm-mobile='true'] {
+  --hm-tabbar-h: 54px;
+  /* 迷你条高度：原来 64px。进度条改成常显 13px 后，它压在封面顶部，
+     所以整体加高 12px，并让封面等内容从进度条下方开始（见下面 .music-info 的 padding-top）。 */
+  --hm-mini-h: 76px;
+  --hm-topbar-h: 56px;
+  --hm-safe-top: env(safe-area-inset-top, 0px);
+  --hm-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --hm-page-gutter: 14px;
+}
+
+/* ------------------------------------------------------------ 基础重置 */
+
+html[data-hm-mobile='true'] {
+  height: 100%;
+  /* 手机浏览器滚动容易触发整页橡皮筋，交给内部容器滚动 */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  /* 禁止 WebView 按系统字体缩放放大文字（与原生 textZoom=100 双保险），
+     否则固定像素的顶栏/迷你条在字体缩放大的手机上会被撑变形 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html[data-hm-mobile='true'] body {
+  display: block;
+  min-height: 100%;
+  width: 100%;
+  overscroll-behavior: none;
+}
+
+html[data-hm-mobile='true'] #app {
+  text-align: left;
+  /* 键盘弹出时避免整页被顶起 */
+  height: 100%;
+}
+
+/* 触摸设备上没有悬浮概念，图标类元素恢复为按压反馈 */
+html[data-hm-mobile='true'] * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ------------------------------------------------------------ 桌面专属 UI */
+
+/* 窗口控制按钮、拖拽条：手机与浏览器里都没有意义 */
+html[data-hm-mobile='true'] #app .dragBar,
+html[data-hm-web='true'] .dragBar {
+  display: none !important;
+}
+
+/* 音频可视化在窄屏会挤压搜索框 */
+html[data-hm-mobile='true'] #app .globalWidget .widget-visualizer {
+  display: none !important;
+}
+
+/* 自动更新弹窗属于桌面端行为 */
+html[data-hm-mobile='true'] #app .update {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------ 顶部栏 */
+
+html[data-hm-mobile='true'] #app .globalWidget {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--hm-topbar-h) + var(--hm-safe-top));
+  padding: var(--hm-safe-top) var(--hm-page-gutter) 0;
+  align-items: center;
+  z-index: 1300;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(12px);
+  /* 顶栏铺满整条（背景不留空缺），但自身不参与命中测试：
+     否则它会把右上角头像的点击整个吃掉。交互只由下面重新开启的子元素负责。 */
+  pointer-events: none;
+}
+
+html[data-hm-mobile='true'] #app .globalWidget > * {
+  pointer-events: auto;
+}
+
+html[data-hm-mobile='true'] #app .globalWidget .widget-title {
+  flex-shrink: 0;
+}
+
+html[data-hm-mobile='true'] #app .globalWidget .widget-search {
+  flex: 1;
+  min-width: 0;
+  margin-left: 10px;
+  /* 右侧留出头像的位置：搜索框原来一直延伸到头像下面，会把点击吃掉 */
+  margin-right: 46px;
+  /* 桌面端为了避让可视化做了位移，移动端直接复位 */
+  transform: none !important;
+}
+
+/* Home.vue 的顶部导航整体让位给底部 Tab，只保留右上角头像入口 */
+html[data-hm-mobile='true'] #app .home-header {
+  position: fixed;
+  top: var(--hm-safe-top);
+  right: var(--hm-page-gutter);
+  left: auto;
+  height: var(--hm-topbar-h);
+  margin: 0;
+  z-index: 1310;
+  display: flex;
+  align-items: center;
+  /* 整条导航在手机上让位给底部 Tab，所以禁用命中；但头像入口必须单独开回来，
+     否则点击会穿透到下面的搜索框，表现为"点头像没反应、连设置都进不去"。
+     （实测 elementFromPoint 头像中心拿到的是 DIV.widget-search） */
+  pointer-events: none;
+}
+
+/* ⚠️ 以下三条已失效：`.user` 被 Home.vue 用 Teleport 移到了 body 顶层
+   （原因见 Home.vue 里 `.user` 上方的说明——否则会被顶栏那层 rgba(255,255,255,.86)
+   的蒙版整个盖住，头像显示成一个白圆）。它们现在不再位于 #app 内，
+   这些选择器全部匹配不到。
+   对应的定位/尺寸已改写到 Home.vue 的非 scoped 样式块里（搜 "Teleport 到 body"）。
+   这里保留原文但不删除，方便对照。 */
+html[data-hm-mobile='true'] #app .home-header .user,
+html[data-hm-mobile='true'] #app .home-header .user-container,
+html[data-hm-mobile='true'] #app .home-header .user-head {
+  pointer-events: auto;
+}
+
+/* 头像本身给一个明确的可点区域，别只有 32px 那么难点 */
+html[data-hm-mobile='true'] #app .home-header .user-head {
+  width: 36px;
+  height: 36px;
+}
+
+html[data-hm-mobile='true'] #app .home-header .header-router {
+  transform: none !important;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+
+html[data-hm-mobile='true'] #app .home-header .primary-nav,
+html[data-hm-mobile='true'] #app .home-header .button-siren,
+html[data-hm-mobile='true'] #app .home-header .router-tracker {
+  display: none !important;
+}
+
+html[data-hm-mobile='true'] #app .home-header .header-router-right {
+  position: static;
+  margin: 0;
+}
+
+html[data-hm-mobile='true'] #app .home-header .user-container {
+  width: 32px;
+  height: 32px;
+}
+
+/* 账户菜单原来向左偏移，窄屏下会超出屏幕 */
+html[data-hm-mobile='true'] #app .home-header .app-option {
+  top: 42px;
+  left: auto;
+  right: 0;
+  width: 118px;
+}
+
+html[data-hm-mobile='true'] #app .home-header .app-option .option {
+  padding: 12px 16px;
+  font-size: 15px;
+}
+
+/* ------------------------------------------------------------ 内容区 */
+
+html[data-hm-mobile='true'] #app .mainWindow .home {
+  height: calc(100% - var(--hm-tabbar-h) - var(--hm-safe-bottom));
+}
+
+html[data-hm-mobile='true'] #app .mainWindow.has-mini-player .home {
+  height: calc(100% - var(--hm-tabbar-h) - var(--hm-safe-bottom) - var(--hm-mini-h));
+}
+
+/* .home-header 改成悬浮后不再占位，这里补出顶部空间 */
+html[data-hm-mobile='true'] #app .home-content {
+  padding: calc(var(--hm-topbar-h) + var(--hm-safe-top)) var(--hm-page-gutter) 8px;
+  height: 100%;
+}
+
+/* 全屏播放页是沉浸式的，让出顶部空间给播放页自己的工具栏 */
+html[data-hm-mobile='true'] #app .globalWidget.hm-player-mode {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------ 迷你播放条 */
+
+html[data-hm-mobile='true'] #app .musicWidget {
+  left: 0;
+  right: 0;
+  bottom: calc(var(--hm-tabbar-h) + var(--hm-safe-bottom));
+  width: 100%;
+  height: var(--hm-mini-h);
+  transform: none;
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* 迷你条内部：手机音量走系统，图标区只留播放列表入口 */
+html[data-hm-mobile='true'] #app .musicWidget .music-volume {
+  display: none;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-other .icon {
+  display: none;
+}
+
+/* 桌面固定 230px，窄屏会把歌曲信息区挤到 0 宽 */
+html[data-hm-mobile='true'] #app .musicWidget .music-other {
+  width: auto;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding-right: 12px;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-other .playlist-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+
+/* 桌面固定 476px 且不收缩，390px 屏幕上会把歌曲信息区压成 0 宽 */
+html[data-hm-mobile='true'] #app .musicWidget .music-right {
+  width: auto;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-control {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0 8px;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-control .control-icon {
+  margin: 0 6px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-info {
+  flex: 1;
+  min-width: 0;
+  margin-left: 12px;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-info .music-name {
+  font-size: 14px;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-info .music-author {
+  font-size: 11px;
+}
+
+/* 曲目信息区必须能被压缩，否则长歌名/多歌手会溢出到右侧播放控制上
+   （桌面版是固定 width:175Px，窄屏改成 auto 后若不给 min-width:0 与 overflow:hidden，
+   内容会一直撑开并盖住控制按钮）。 */
+html[data-hm-mobile='true'] #app .musicWidget .music-info-other {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* ---- 迷你条进度条：手机上默认就用"展开态" ----
+   组件里的写法是靠 :hover 才展开：
+       .music-progress-container:hover { .music-progress { height: 13Px } .music-time { opacity: 1 } }
+       .music-progress-container      { .music-progress { height: 2.5Px } .music-time { opacity: 0 } }
+   触屏上"点一下"会粘住 :hover，于是表现为「点一下进度条才变宽、时间才出现」。
+   手机上不需要这种悬停交互，直接常显展开态（粗进度条 + 时间常显）。 */
+html[data-hm-mobile='true'] #app .musicWidget .music-progress-container {
+  height: 13px;
+  /* 进度条整体下移，别压在上方内容上 */
+  top: 0;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-progress-container .music-progress {
+  height: 13px !important;
+  transition: none;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-progress-container .music-time {
+  opacity: 1;
+  pointer-events: none;
+  transition: none;
+}
+
+/* 封面与曲目信息从进度条下方开始，避免 13px 的进度条压住封面顶部
+   （迷你条已加高到 76px，这里用 padding-top 把内容推下来）。 */
+html[data-hm-mobile='true'] #app .musicWidget .music-info {
+  padding-top: 14px;
+  box-sizing: border-box;
+}
+
+/* 触摸热区：进度条本体只有几像素高，手指点不中。
+   用透明伪元素把可点/可拖区域上下撑大（伪元素不画颜色，视觉不变）。 */
+html[data-hm-mobile='true'] #app .musicWidget .music-progress {
+  position: relative;
+  touch-action: none;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-progress::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 28px;
+  background: transparent;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-name,
+html[data-hm-mobile='true'] #app .musicWidget .music-name .overflow-marquee {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* 歌手名可能是多个 <span> 横排，单个 span 加 text-overflow 没用，
+   所以让 .music-author 自己做 nowrap + 裁剪。 */
+html[data-hm-mobile='true'] #app .musicWidget .music-author {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html[data-hm-mobile='true'] #app .musicWidget .music-author .author {
+  white-space: nowrap;
+}
+
+/* 播放列表弹层改为贴底的整宽面板 */
+html[data-hm-mobile='true'] #app .musicWidget .playlist-widget {
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-height: 62vh;
+}
+
+/* ------------------------------------------------------------ 全屏播放页 */
+
+html[data-hm-mobile='true'] #app .music-player {
+  padding: 0;
+  flex-direction: column;
+  padding-top: calc(var(--hm-safe-top) + 44px);
+  padding-bottom: var(--hm-safe-bottom);
+}
+
+/* 覆盖组件内「竖屏只留歌词」的规则：手机上封面与控制必须可见 */
+html[data-hm-mobile='true'] #app .music-player .player-container {
+  display: flex;
+  width: 100% !important;
+  height: auto;
+  flex: 1;
+  min-height: 0;
+  /* 桌面端容器留了内边距，窄屏下会吃掉封面宽度 */
+  padding: 0;
+  animation: none;
+  opacity: 1;
+  background-color: transparent;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-container.player-hide {
+  display: none !important;
+}
+
+html[data-hm-mobile='true'] #app .music-player .right-panel {
+  margin-left: 0;
+  width: 100% !important;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 封面与歌词/评论整屏二选一，由播放页顶栏的按钮切换 */
+html[data-hm-mobile='true'] #app .music-player.hm-panel-open .player-container {
+  display: none !important;
+}
+
+html[data-hm-mobile='true'] #app .music-player:not(.hm-panel-open) .right-panel {
+  display: none !important;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player {
+  /* 桌面端用 space-between 把三块撑满整列，手机上会导致歌名飘到屏幕中间 */
+  justify-content: flex-start;
+  padding-top: 14px;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-control {
+  /* 控制区固定贴底，剩余空白留在歌名与控制之间 */
+  margin-top: auto;
+}
+
+/* 播放页内的封面：正方形、随宽度自适应，并在竖直方向居中 */
+html[data-hm-mobile='true'] #app .music-player .player-cover {
+  display: flex;
+  justify-content: center;
+  /* 占满「顶栏下方 → 控制区上方」的剩余空间，封面在其中垂直居中；
+     原来只做水平居中，封面贴在最上面、空白全堆在底部，看着就不居中 */
+  align-items: center;
+  flex: 1;
+  min-height: 0;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-cover .cover {
+  padding: 0;
+  width: min(76vw, 320px);
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-cover .cover img {
+  max-height: none;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+}
+
+/* 角落装饰在窄屏会压到封面 */
+html[data-hm-mobile='true'] #app .music-player .c-border {
+  display: none;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-info {
+  margin-top: 4px;
+  padding: 10px 20px;
+  width: 100%;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-info .info-music {
+  justify-content: center;
+  text-align: center;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-info .info-music .music-name-lable,
+html[data-hm-mobile='true'] #app .music-player .player-info .info-music .music-author-lable {
+  display: none;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-info .music-name {
+  margin-left: 0;
+  font-size: 19px;
+  text-align: center;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-info .music-author {
+  margin-left: 0;
+  font-size: 12px;
+}
+
+/* 播放页的音乐波形：位于歌曲信息与控制区之间，水平居中。
+   组件基础样式是为顶栏设计的（宽度由 --visualizer-width 控制、带 24px 左间距、
+   入场还有 3px 下移），这里全部按整屏播放页重新定位。 */
+html[data-hm-mobile='true'] #app .music-player .hm-player-wave {
+  --visualizer-width: min(72vw, 300px);
+  --visualizer-gap: 0px;
+  flex: 0 0 auto;
+  width: min(72vw, 300px);
+  height: 30px;
+  margin: 2px auto 12px;
+  color: rgba(0, 0, 0, 0.72);
+}
+
+html[data-hm-mobile='true'] #app .music-player .hm-player-wave,
+html[data-hm-mobile='true'] #app .music-player .hm-player-wave.is-visible {
+  /* 入场位移是给顶栏做的，播放页里不需要 */
+  transform: none;
+}
+
+html[data-hm-mobile='true'].dark #app .music-player .hm-player-wave {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* 右下角的音质角标（48KHz/1536Kpbs/WAV）
+   组件里是 `bottom: -0.9vh; right: 1.5vh; font: 1.5vh` —— 这套 vh 基线是给桌面端
+   调的，手机上会被推出容器底部：真机实测（视口 406×904）该元素落在 y 894.5..912.1，
+   比视口底部还低 8.1px，于是文字下半截被裁掉、显示不全。
+   这里改成贴容器内侧并给足安全距离，字号也换成固定 px（避免随视口高度变化）。 */
+html[data-hm-mobile='true'] #app .music-player .song-quality {
+  bottom: 6px;
+  right: 10px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-control {
+  padding: 6px 20px calc(10px + var(--hm-safe-bottom));
+  height: auto;
+  gap: 14px;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-control .process-time {
+  font-size: 11px;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-control .control svg {
+  width: 42px;
+  height: 42px;
+}
+
+/* 手机音量由系统控制，隐藏内置音量条 */
+html[data-hm-mobile='true'] #app .music-player .player-voluem {
+  display: none;
+}
+
+/* 这一排是「歌词翻译(中文) / 罗马音 / 原文」+ 喜欢 + MV 的开关。
+   桌面端靠鼠标 hover 才显形，手机上原本整块 display:none ——
+   结果就是用户在手机播放页**找不到中文（翻译）按钮**。改为常显的一行图标。 */
+html[data-hm-mobile='true'] #app .music-player .song-control {
+  display: flex;
+  /* 桌面版是竖排（column + gap:3vh），手机上必须改横排，否则 6 个图标会撑出几百像素高 */
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 22px;
+  position: static;
+  width: 100%;
+  height: auto;
+  max-height: 30px;
+  flex: 0 0 auto;
+  margin: 4px 0 2px;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+  /* 桌面版把它排在控制区之后，手机上要挪到控制区**上面**，
+     否则会贴在屏幕最底边、被系统手势条压住 */
+  order: 30;
+}
+
+html[data-hm-mobile='true'] #app .music-player .player-control {
+  order: 40;
+}
+
+html[data-hm-mobile='true'] #app .music-player .song-control .icon {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  opacity: 1;
+}
+
+/* 未激活的开关在手机上也要看得清（桌面靠 hover 提亮，触屏没有 hover） */
+html[data-hm-mobile='true'] #app .music-player .song-control .icon.lyric-toggle {
+  opacity: 0.45;
+}
+
+html[data-hm-mobile='true'] #app .music-player .song-control .icon.lyric-toggle.active,
+html[data-hm-mobile='true'] #app .music-player .song-control .icon.like-icon.liked {
+  opacity: 1;
+}
+
+/* 手机上隐藏这一行末尾的两个入口（添加到歌单 / 显示专辑）：
+   触屏上用得少，却把本就紧张的一行挤满。桌面端保留。 */
+html[data-hm-mobile='true'] #app .music-player .song-control .hm-mobile-hide {
+  display: none !important;
+}
+
+/* 播放页右上角的「歌词 / 评论」按钮：手机上不要任何圆形高亮。
+   组件里 `.hm-player-btn` 是 border-radius:50%，点一下（:active）和选中（-active）
+   都会给一个半透明圆底；叠在专辑封面的暖色背景上就是一圈很显眼的橙色。
+   这里把**所有可能画出圆的来源**一次关掉，选中态改用图标深浅表达。 */
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn,
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn:active,
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn:focus,
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn:focus-visible,
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn:hover,
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn-active {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn::before,
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn::after {
+  display: none !important;
+  content: none !important;
+}
+
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn {
+  opacity: 0.42;
+  transition: opacity 0.18s;
+}
+
+html[data-hm-mobile='true'] #app .music-player .hm-player-btn-active {
+  opacity: 1;
+}
+
+/* 播放页单行歌词：专辑封面下方一行当前歌词 */
+html[data-hm-mobile='true'] #app .music-player .hm-one-line-lyric {
+  width: 100%;
+  max-width: 100%;
+  padding: 0 22px;
+  margin: 6px 0 2px;
+  text-align: center;
+  font: 15px SourceHanSansCN-Regular, sans-serif;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  opacity: 0.88;
+}
+
+html[data-hm-mobile='true'] #app .music-player .hm-one-line-lyric .hm-one-line-trans {
+  display: block;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+
+/* 进度条加大触摸热区，并禁止浏览器把手势抢去滚动 */
+html[data-hm-mobile='true'] #app .music-player .process,
+html[data-hm-mobile='true'] #app .music-player .music-progress {
+  height: 22px !important;
+}
+
+html[data-hm-mobile='true'] #app .music-player .process .music-progress {
+  touch-action: none;
+}
+
+/* ------------------------------------------------------------ 首页 */
+
+/* 桌面端 Banner / 每日推荐 / 最新歌曲 三块横排占满一行（35+27+24.4vw），
+   窄屏下必须纵向堆叠，否则每块只有几十像素宽 */
+html[data-hm-mobile='true'] #app .home-page .page-header {
+  flex-direction: column;
+  padding-top: 8px;
+  gap: 26px;
+}
+
+html[data-hm-mobile='true'] #app .home-page .page-header .banner,
+html[data-hm-mobile='true'] #app .home-page .page-header .newest-song {
+  width: 100%;
+  height: auto;
+}
+
+/* Banner：轮播位移由 JS 按 vw 计算，窄屏会错位，这里固定展示第一张并整宽铺开 */
+html[data-hm-mobile='true'] #app .banner .banner-img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 720 / 280;
+}
+
+html[data-hm-mobile='true'] #app .banner .banner-img .img-box {
+  left: 0 !important;
+}
+
+html[data-hm-mobile='true'] #app .banner .banner-img .img-box img {
+  width: 100%;
+  height: 100%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+/* 标题条原来悬浮在图上，窄屏改为正常流，避免压住图片 */
+html[data-hm-mobile='true'] #app .banner .banner-header {
+  position: static;
+  margin-bottom: 8px;
+}
+
+html[data-hm-mobile='true'] #app .banner .banner-title {
+  padding: 3px 10px;
+  font: 10px Geometos, sans-serif;
+}
+
+html[data-hm-mobile='true'] #app .banner .banner-timer .line {
+  width: 56px;
+}
+
+html[data-hm-mobile='true'] #app .banner .banner-timer .timer {
+  width: 10px;
+  height: 10px;
+  right: -4px;
+}
+
+html[data-hm-mobile='true'] #app .banner .selector-box {
+  position: static;
+  height: auto;
+  margin-top: 10px;
+}
+
+html[data-hm-mobile='true'] #app .banner .selector-box .selector {
+  padding: 8px 8px 8px 0;
+}
+
+html[data-hm-mobile='true'] #app .banner .selector-box .selector .selector-style {
+  width: 28px;
+  height: 2px;
+}
+
+html[data-hm-mobile='true'] #app .banner .banner-next {
+  display: none;
+}
+
+/* 每日推荐：桌面是「描边大字两行 + 英文小字居中 + 右侧大日期」的排版艺术，
+   且内部全靠视口百分比定位。窄屏上放大后必然互相重叠，
+   这里改成一行式入口卡片：标题 + 日期 + 播放按钮。 */
+html[data-hm-mobile='true'] #app .home-page .page-header .recommendation {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  min-height: 88px;
+  padding: 12px 16px;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-left {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+  margin-left: 0;
+  display: block;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-title {
+  font: 20px SourceHanSansCN-Heavy, sans-serif;
+  font-weight: 900;
+  line-height: 1.25;
+  color: #000;
+  /* 桌面用描边空心字，手机上实心更易读 */
+  -webkit-text-stroke-width: 0;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-title-en {
+  position: static;
+  width: auto;
+  margin-top: 2px;
+  font: 10px Gilroy-ExtraBold, sans-serif;
+  color: #6f6f6f;
+  text-align: left;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-title-border1,
+html[data-hm-mobile='true'] #app .recommendation .rec-title-border2,
+html[data-hm-mobile='true'] #app .recommendation .rec-background {
+  display: none;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-middle {
+  margin-left: 0;
+  width: auto;
+  flex-shrink: 0;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-play-background {
+  width: 46px;
+  height: 46px;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-play {
+  width: 30px;
+  height: 30px;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-right {
+  flex-shrink: 0;
+  /* 桌面这层是给“大日期”排版留的宽盒子（实测 121px 宽而日期只有 30px），
+     手机上让它贴合内容，日期才能真的贴到卡片右边 */
+  width: auto;
+  margin-right: 0;
+}
+
+html[data-hm-mobile='true'] #app .recommendation .rec-date {
+  font: 20px Bender-Bold, sans-serif;
+  line-height: 1.15;
+  color: #000;
+  text-align: right;
+  /* recTime 是「月\n日」两行文本，需保留换行 */
+  white-space: pre-line;
+}
+
+/* 播放按钮带 auto 左外边距，把「播放键 + 日期」整体推到卡片最右侧，
+   标题与英文小字留在左边 —— 右侧不再留一大片空白。 */
+html[data-hm-mobile='true'] #app .recommendation .rec-middle {
+  margin-left: auto;
+}
+
+html[data-hm-mobile='true'] #app .home-page .page-content {
+  margin-top: 24px;
+}
+
+html[data-hm-mobile='true'] #app .home-page .page-content .rec-list {
+  margin-bottom: 24px;
+}
+
+/* 推荐歌单/歌手/专辑：5 列改 3 列 */
+html[data-hm-mobile='true'] #app .rec-list-item .item-list {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px 10px;
+}
+
+/* 这些组件的字号原本是 vw，390px 宽下会缩到 4~5px */
+html[data-hm-mobile='true'] #app .rec-list-item .header-title-cn {
+  font: 16px SourceHanSansCN-Bold, sans-serif;
+  line-height: 22px;
+}
+
+html[data-hm-mobile='true'] #app .rec-list-item .header .header-title-en {
+  /* 原来写死 width:34%（约 129px），而 "RECOMMENDED SONG LIST" 需要 147px，
+     配合 white-space:nowrap + overflow:visible，多出来的部分被直接切掉。
+     改成按内容宽度；后面的 .line 自己会占满剩余空间。 */
+  width: auto;
+  flex: 0 0 auto;
+  max-width: none;
+  font: 10px Geometos, sans-serif;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+html[data-hm-mobile='true'] #app .rec-list-item .header .line {
+  flex: 1 1 auto;
+  min-width: 12px;
+}
+
+html[data-hm-mobile='true'] #app .rec-list-item .item-name,
+html[data-hm-mobile='true'] #app .rec-list-item .item-sub {
+  font: 12px SourceHanSansCN-Bold, sans-serif;
+}
+
+html[data-hm-mobile='true'] #app .rec-list .list-item + .list-item {
+  margin-top: 28px;
+}
+
+/* 最新歌曲列表 */
+html[data-hm-mobile='true'] #app .newest-song .newest-song-title {
+  position: static;
+  margin-bottom: 10px;
+  font: 16px SourceHanSansCN-Bold, sans-serif;
+}
+
+/* 最新歌曲列表：原本靠父容器高度裁切，父级改 auto 后需要自己限高 */
+html[data-hm-mobile='true'] #app .newest-song .song-list {
+  max-height: 320px;
+}
+
+html[data-hm-mobile='true'] #app .newest-song .song-list .list-item {
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+html[data-hm-mobile='true'] #app .newest-song .song-list .song-img {
+  width: 42px;
+  height: 42px;
+  margin-right: 10px;
+}
+
+html[data-hm-mobile='true'] #app .newest-song .song-list .song-other {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+html[data-hm-mobile='true'] #app .newest-song .song-name {
+  font: 14px SourceHanSansCN-Bold, sans-serif;
+}
+
+html[data-hm-mobile='true'] #app .newest-song .song-author {
+  font: 12px SourceHanSansCN-Bold, sans-serif;
+}
+
+/* 每日推荐卡片：正文字号同样是 vw */
+html[data-hm-mobile='true'] #app .recommendation .rec-title-en,
+html[data-hm-mobile='true'] #app .recommendation .rec-date,
+html[data-hm-mobile='true'] #app .recommendation .rec-bottom {
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------ 登录页 */
+
+html[data-hm-mobile='true'] #app .login-content {
+  padding: 0 26px;
+}
+
+html[data-hm-mobile='true'] #app .login-content .login-container {
+  height: 100%;
+}
+
+/* ------------------------------------------------------------ 设置页 */
+
+html[data-hm-mobile='true'] #app .settings-page .settings-title {
+  font-size: 30px;
+  line-height: 1.2;
+  margin: 6px 0 0;
+}
+
+/* 页头那行「设置(离开页面以保存设置或点击保存)」是桌面说明文案。
+   390px 屏上它从返回箭头一直排到右边缘，只剩「保存」两个字可点，
+   手机改成：说明文案全去掉，只留一个靠右的「保存」按钮。
+   桌面端 DOM 不变（提示文案与「点击」都还在）。 */
+html[data-hm-mobile='true'] #app .settings-page .view-control {
+  justify-content: space-between;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .setting-title-hint {
+  display: none;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .setting-title .save-desktop {
+  display: none;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .setting-title .save-mobile {
+  display: inline;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .setting-title .save {
+  margin-left: auto;
+  font-size: 14px;
+  padding: 7px 16px;
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 设置内容区：组件写的是 width:80% + margin auto，390px 屏上左右各白扔 50px，
+   而每行「标签 132px + 间隙 12px + 控件 148px」本就吃紧。
+   改成整宽 + 统一 gutter。 */
+html[data-hm-mobile='true'] #app .settings-page .settings-container {
+  width: 100%;
+  padding-left: var(--hm-page-gutter);
+  padding-right: var(--hm-page-gutter);
+  box-sizing: border-box;
+}
+
+/* 账号信息条（头像 + 昵称 + 退出）
+   桌面端是 padding:10px 40px + 固定 100px 高、头像 70px；
+   390px 屏上左右各 40px 就吃掉 80px，昵称一长就把整行挤变形，
+   所以收窄内边距、缩小头像，并让昵称省略而不是撑开。 */
+html[data-hm-mobile='true'] #app .settings-page .settings-user-info {
+  padding: 12px var(--hm-page-gutter);
+  height: auto;
+  min-height: 72px;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .settings-user-info .user {
+  flex: 1;
+  min-width: 0;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .settings-user-info .user-head {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  margin-right: 12px;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .settings-user-info .user-info {
+  min-width: 0;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .settings-user-info .user-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .settings-user-info .logout {
+  flex: 0 0 auto;
+  margin-left: 12px;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .settings .settings-item {
+  margin-top: 28px;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .option {
+  margin-bottom: 20px;
+}
+
+/* 选项名与控件两端对齐，避免长标签把控件挤出屏幕。
+ *
+ * 这里原来写的是 flex:1 —— 左列会"吃掉"所有剩余空间，于是标签越长、控件越靠右：
+ *     音质选择 / 主题 / 歌词字体大小（标签宽 154）→ 值左边界 206
+ *     各开关（标签宽 102）                      → 值左边界 154
+ *     本地目录（标签不换行，只占 12px）          → 值左边界 64
+ * 三种边界并存，视觉上就是"没对齐"。
+ * 改成固定左列宽度，右列统一靠右，所有行都落在同一列上。 */
+html[data-hm-mobile='true'] #app .settings-page .option .option-name {
+  flex: 0 0 auto;
+  min-width: 0;
+  /* 能容纳"下载歌曲时创建独立歌词文件"这类最长标签（两行显示） */
+  width: 132px;
+  padding-right: 0;
+  margin-right: 12px;
+  line-height: 1.35;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .option .option-operation,
+html[data-hm-mobile='true'] #app .settings-page .option .select-download-folder,
+html[data-hm-mobile='true'] #app .settings-page .option .local-folder {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .option .select-download-folder {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 「下载目录 / 本地目录」里的目录名。
+ * 组件写的是 width:50vw（手机上约 200px），和"选择/添加"并排必然挤出容器；
+ * 这里改成自适应 + 省略号，两处 UI 完全一致。 */
+html[data-hm-mobile='true'] #app .settings-page .option .select-download-folder .selected-folder {
+  width: auto;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 130px;
+  height: 30px;
+  margin-bottom: 0;
+  padding: 0 8px;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .option .select-download-folder .select-option {
+  flex: 0 0 auto;
+  margin: 0;
+  white-space: nowrap;
+}
+
+
+
+/* 选择器 / 输入框 / 字体滑轨要与开关占同一列。
+ *
+ * 组件给的是 width:148px + flex-shrink:0，而控件区是右对齐 —— 于是开关（189px）
+ * 左边界在 172，"无损 / 中 / 跟随系统"这些选择器只剩 148px 被推到 214，
+ * 两列相差 42px，看着就是"值没对齐"。
+ * 改成撑满控件区，左右边界都与开关一致。
+ * .font-size-slider（歌词字体大小滑轨）同理：它自带 width:200px，
+ * 不覆盖的话会比同排其它控件窄一截、左边界也偏 11px。 */
+html[data-hm-mobile='true'] #app .settings-page .option input,
+html[data-hm-mobile='true'] #app .settings-page .option .selector,
+html[data-hm-mobile='true'] #app .settings-page .option .font-size-slider {
+  width: 100%;
+  flex: 1 1 auto;
+  margin-right: 0;
+}
+
+/* 选择器里的文字改左对齐。
+ *
+ * 组件默认 text-align:center，于是"无损""深色"这类短值停在控件中间，
+ * 而开关里的"已开启"是居中的整块填充 —— 两者视觉上不在同一列，
+ * 看起来就是"音质选择/主题后面的值没对齐"。
+ * 左对齐后，所有非开关类控件的值都从同一列起，与开关的整块填充也协调。 */
+html[data-hm-mobile='true'] #app .settings-page .option .selector .selector-head,
+html[data-hm-mobile='true'] #app .settings-page .option .selector .select-head-cont {
+  text-align: left;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .option .selector .selector-head {
+  display: flex;
+  align-items: center;
+  padding-left: 2px;
+}
+
+/* ------------------------------------------------------------ 搜索页 */
+
+/* 歌曲行的「歌手 → 时长」之间必须有间隙。
+ *
+ * 组件里 .item-other 是 width:45% 的 flex + space-between，
+ * 内部 .item-author 固定 70%、.item-time 固定 30%，两者边界严丝合缝：
+ * 较长的歌手名（如「周杰伦/李硕/张鑫」）会把 70% 填满到最后一像素，
+ * 紧接着就是时长，实测出现「张鑫03:58」这种粘在一起的效果。
+ * 给歌手列补右侧内边距（不改编列宽，时长列仍保持竖直对齐）。 */
+html[data-hm-mobile='true'] #app .library-content .list-item .item-other .item-author {
+  padding-right: 10px;
+  box-sizing: border-box;
+}
+
+/* 桌面是「歌曲 70% + 专辑 30%」并排、各自内部再滚动；
+   手机上必须单栏、由外层统一纵向滚动，否则歌名只剩几个字 */
+html[data-hm-mobile='true'] #app .search-page .search-container {
+  height: calc(100% - 47px);
+  overflow: auto;
+}
+
+html[data-hm-mobile='true'] #app .search-page .search-classify {
+  flex-direction: column;
+}
+
+html[data-hm-mobile='true'] #app .search-page .search-classify .classify-item,
+html[data-hm-mobile='true'] #app .search-page .search-classify .classify-item:first-child,
+html[data-hm-mobile='true'] #app .search-page .search-classify .classify-item:last-child {
+  width: 100%;
+  height: auto;
+}
+
+html[data-hm-mobile='true'] #app .search-page .search-classify .classify-item + .classify-item {
+  margin-top: 22px;
+}
+
+html[data-hm-mobile='true'] #app .search-page .classify-content {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+html[data-hm-mobile='true'] #app .search-page .search-classify-other:last-child {
+  margin-bottom: 24px;
+}
+
+html[data-hm-mobile='true'] #app .search-page .classify-title {
+  font: 18px SourceHanSansCN-Bold, sans-serif;
+}
+
+html[data-hm-mobile='true'] #app .search-page .view-control .search-title {
+  font: 16px SourceHanSansCN-Bold, sans-serif;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------ 页面通用收紧 */
+
+/* 我的音乐：桌面是「左侧歌单栏 262px + 右侧详情」的并排结构，窄屏改为上下堆叠 */
+html[data-hm-mobile='true'] #app .my-music {
+  flex-direction: column;
+  /* 桌面为底部迷你播放条预留了 110px，移动端由外层统一留白 */
+  height: 100%;
+}
+
+html[data-hm-mobile='true'] #app .my-music .music-library {
+  width: 100%;
+  height: auto;
+  max-height: 46vh;
+  padding-top: 0;
+  flex-shrink: 0;
+}
+
+html[data-hm-mobile='true'] #app .my-music .music-library .library-type {
+  height: auto;
+}
+
+html[data-hm-mobile='true'] #app .my-music .library-type .type-one .type-option span,
+html[data-hm-mobile='true'] #app .my-music .library-type .type-two .type-option span {
+  margin-right: 14px;
+  font-size: 15px;
+}
+
+/* 原来用 calc(100% - 50px)，父级高度变成 auto 后百分比失效，改为限高内滚 */
+html[data-hm-mobile='true'] #app .my-music .music-library .library-list,
+html[data-hm-mobile='true'] #app .my-music .music-library .download-list,
+html[data-hm-mobile='true'] #app .my-music .music-library .local-list {
+  height: auto;
+  max-height: calc(46vh - 62px);
+}
+
+html[data-hm-mobile='true'] #app .my-music .music-library .list-item {
+  padding: 10px 4px;
+}
+
+html[data-hm-mobile='true'] #app .my-music .library-view {
+  margin-left: 0;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 进入「我创建的 / 收藏 / 歌手」等详情后，详情必须占满整屏。
+   手机上再留着左栏只会把详情挤成半屏，列表要靠详情页的返回按钮或底部
+   「我的」Tab 回到根列表。 */
+html[data-hm-mobile='true'] #app .my-music.has-detail .music-library {
+  display: none !important;
+}
+
+html[data-hm-mobile='true'] #app .my-music.has-detail .library-view {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/* 未选中任何详情时，桌面遗留的空态占位（四角取景框 + NONE + 斜线）会在手机上占掉半屏，
+   观感像渲染坏了。手机上：隐藏右侧空态视图，左栏歌单列表直接撑满剩余空间。
+   未登录时 .library-view 带 library-view-nologin（登录提示），必须保留不隐藏。 */
+html[data-hm-mobile='true'] #app .my-music:not(.has-detail) .library-view:not(.library-view-nologin) {
+  display: none !important;
+}
+
+html[data-hm-mobile='true'] #app .my-music:not(.has-detail) .music-library {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html[data-hm-mobile='true'] #app .my-music:not(.has-detail) .music-library .library-list,
+html[data-hm-mobile='true'] #app .my-music:not(.has-detail) .music-library .download-list,
+html[data-hm-mobile='true'] #app .my-music:not(.has-detail) .music-library .local-list {
+  max-height: none;
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 弹出层、菜单、对话框留出安全边距 */
+html[data-hm-mobile='true'] #app .globalDialog,
+html[data-hm-mobile='true'] #app .contextMune {
+  padding: 0 var(--hm-page-gutter);
+}
+
+html[data-hm-mobile='true'] #app .globalNotice {
+  bottom: calc(var(--hm-tabbar-h) + var(--hm-safe-bottom) + 76px);
+  max-width: calc(100vw - 28px);
+}
+
+/* 悬浮滚动条在触屏上没有意义 */
+html[data-hm-mobile='true'] ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* ------------------------------------------------------------ 每日推荐（二级页面） */
+
+/* 「每日推荐」是挂在首页下的独立二级路由 /recommend（不再落在「我的」下）。
+   组件里 .rec-container 的 padding-top:40px 是桌面尺寸，手机顶栏已经占位，
+   这里收掉避免大片空白；页面内自带一个返回按钮（桌面端不渲染）。 */
+html[data-hm-mobile='true'] #app .rec-container {
+  padding-top: 0;
+}
+
+html[data-hm-mobile='true'] #app .rec-container .rec-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 7px 12px 7px 10px;
+  border: 1px solid var(--border);
+  /* reset.css 没有重置按钮圆角，<button> 会带着 UA 的 2px 圆角，
+     和本项目「全局直角」的规范不符（同页的日期选择器就是直角）。 */
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--text);
+  font: 14px SourceHanSansCN-Bold, sans-serif;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[data-hm-mobile='true'] #app .rec-container .rec-back svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+html[data-hm-mobile='true'] #app .rec-container .rec-back:active {
+  opacity: 0.6;
+}
+
+/* ------------------------------------------------------------ 私人漫游 */
+
+/* 右上角的模式切换按钮是绝对定位（top:12px / right:12px，宽 150px），
+   而 .fm-header 的内容是居中的。手机实测按钮占 x 213..363、y 77..105，
+   与「PERSONAL FM」徽标（x 132..258、y 81..107）正面重叠，MODE 二字正好
+   盖在 FM 上。这里把标题整体下移，让开悬浮按钮。
+   断点与组件自身的 @media (max-width:900px) 保持一致，避免在宽屏平板上
+   误加顶部留白（那里按钮走的是桌面定位）。 */
+@media (max-width: 900px) {
+  html[data-hm-mobile='true'] #app .fm-header {
+    padding-top: 30px;
+  }
+}
+
+/* 封面轮播两侧的「占位槽」在窄屏会被裁掉一半。
+ *
+ * 轮播是「左槽 + 中槽 + 右槽」居中排列、外层 overflow:hidden，桌面轨道 682px
+ * 能完整放下；手机上轨道 484px 而可视区只有 362px，左右各被裁 61px。
+ * 左侧占位槽里的 "NO PREV" 文字实测落在 x -9..39，只剩 "REV" 半个词露在外面，
+ * 看着像渲染坏了。
+ * 有真实封面时侧槽露出一角是想要的效果（保留）；这里只把**占位槽**藏起来，
+ * 用 visibility 而非 display，避免轨道重排导致中槽不再居中。 */
+html[data-hm-mobile='true'] #app .fm-cover-slot.slot-side.slot-placeholder {
+  visibility: hidden;
+}
+
+/* ------------------------------------------------------------ 云盘页 */
+
+/* 云盘桌面是「左栏 55%（类型九宫格 + 云盘信息 + 上传）+ 右栏文件列表」并排。
+   390px 屏上实测：左栏 154px、右栏只剩 162px，且右栏带 margin-left:50px
+   直接溢出到 380（视口 390、内容区右边界 376）。文件名被压成一列。
+   手机上改成上下堆叠：左栏收成顶部一条（类型横排、隐藏信息卡），
+   文件列表占满剩余高度。 */
+html[data-hm-mobile='true'] #app .cloud-disk {
+  flex-direction: column;
+  /* 桌面为底部迷你播放条留了 110px，移动端高度由外层统一给 */
+  height: 100%;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  flex: 0 0 auto;
+}
+
+/* 左栏高度在桌面是 calc(78% - 29px)，父级变 auto 后百分比失效 */
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .disk-tab {
+  height: auto;
+}
+
+/* 六个类型横排一行 */
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .file-type {
+  height: auto;
+  padding: 10px 6px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .file-type .type-icon .icon {
+  width: 26px;
+  height: 26px;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .file-type .type-icon .type-select {
+  width: 44px;
+  height: 34px;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .file-type .type-name {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+/* 云盘信息卡：桌面靠 height:45% 撑满左栏下段；父级变 auto 后要改成自适应，
+   并把行距收紧，压成一条紧凑的信息带（内容一项不删）。 */
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .disk-info {
+  padding: 8px 6px;
+  height: auto;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .disk-info .info-container {
+  height: auto;
+  padding: 6px 8px;
+  gap: 6px;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .disk-info .info-list {
+  height: auto;
+  padding: 0 2px;
+  gap: 4px;
+  justify-content: flex-start;
+}
+
+/* 装饰性水印（左上角圆环 + 右上角 INFO）在压缩后的左栏里会压在类型按钮上 */
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .tab-back1,
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .tab-back2 {
+  display: none;
+}
+
+/* 上传区收成一条 */
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .disk-upload {
+  margin-top: 8px;
+  height: auto;
+  min-height: 52px;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .disk-upload .upload .upload-icon {
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .disk-left .disk-upload .upload .upload-title {
+  font-size: 16px;
+}
+
+/* 文件列表占满剩余高度；桌面那 50px 左外边距在手机上必然溢出 */
+html[data-hm-mobile='true'] #app .cloud-disk .disk-right {
+  margin-top: 12px;
+  margin-left: 0;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+/* 勾选态的编辑面板（全部取消 / 下载 / 删除）。
+ *
+ * 组件用「负 right」做滑入：`.file-edit { right:-140px }`，选中后
+ * `.file-edit-selected { right:-10px }`。在桌面端没问题，但手机上它会
+ * 把祖先撑出横向滚动范围（实测 .home-content 的 scrollWidth 516 > 390），
+ * 页面一旦被横向带动，就表现为两侧内容被切（真机反馈）。
+ *
+ * 处理方式：让 .file-container 裁掉它（它本来就是 .file-edit 的定位父级），
+ * 这样既不产生溢出、又保留滑入动画；选中态再收进容器内，避免被裁掉一截。 */
+html[data-hm-mobile='true'] #app .cloud-disk .file-container {
+  overflow: hidden;
+}
+
+html[data-hm-mobile='true'] #app .cloud-disk .file-edit-selected {
+  right: 0;
+}
+
+/* 内容区一律禁止横向滚动。
+ *
+ * 为什么要专门加这条：App 里不少浮层用「绝对定位 + 负 right」做滑入
+ * （云盘的编辑面板就是），它们会把 .home-content（overflow:auto）
+ * 撑出一段横向滚动范围。页面本身看不出异常 —— documentElement.scrollWidth
+ * 完全正常，所以常规的溢出检查发现不了；但用户一旦横向滑动，
+ * 或点击屏外元素触发浏览器自动 scrollIntoView，整页就会错位，
+ * 表现为「左边被切、右边也被切」。手机上不存在需要横向滚动的页面，
+ * 直接掐掉这一整类问题。桌面端不受影响（这条被 data-hm-mobile 限定）。 */
+html[data-hm-mobile='true'] #app .home-content {
+  overflow-x: hidden;
+}
+
+/* ------------------------------------------------------------ 深色模式 */
+
+html[data-hm-mobile='true'].dark #app .globalWidget {
+  background: rgba(18, 18, 18, 0.86);
+}
+
+/* mobile.css 里不少规则用了硬编码浅色，组件的 scoped 样式也大多是浅色底，
+   深色模式下会露白。这里逐块压过去，颜色统一走 theme.css 的变量。 */
+
+/* 页面底色 */
+html[data-hm-mobile='true'].dark #app,
+html[data-hm-mobile='true'].dark #app .home,
+html[data-hm-mobile='true'].dark #app .home-content,
+html[data-hm-mobile='true'].dark #app .main,
+html[data-hm-mobile='true'].dark #app .my-music {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* 顶栏 */
+html[data-hm-mobile='true'].dark #app .globalWidget {
+  background: rgba(24, 28, 33, 0.9);
+  color: var(--text);
+}
+
+html[data-hm-mobile='true'].dark #app .globalWidget .widget-title,
+html[data-hm-mobile='true'].dark #app .globalWidget .widget-search {
+  color: var(--text);
+}
+
+/* 底部 Tab 栏（★ 必须在移动端覆盖层里修，不能在组件里用 :global(.dark)）
+   组件的 scoped 样式里本来写了三条 :global(.dark) .hm-tabbar/.hm-tab/.hm-tab-active，
+   但 **Vue 的 scoped 编译器不会把 :global() 规则输出到产物里** —— 实测编译后的
+   样式表中只有 .hm-tabbar[data-v-*]（浅色底），那三条深色规则整块消失。
+   后果：深色模式下 Tab 栏是"浅色底 + 浅色字"，对比度只有 1.05，
+   六个主页面（首页/我的/漫游/搜索/云盘/塞壬）的底部标签全部看不见。
+   这里用 mobile.css 的高优先级前缀压过去，与顶栏同色系。 */
+html[data-hm-mobile='true'].dark #app .hm-tabbar {
+  background: rgba(24, 28, 33, 0.92);
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-hm-mobile='true'].dark #app .hm-tab {
+  color: #8f959e;
+}
+
+html[data-hm-mobile='true'].dark #app .hm-tab-active {
+  color: var(--text);
+}
+
+/* 迷你播放条 */
+html[data-hm-mobile='true'].dark #app .musicWidget {
+  background: rgba(28, 32, 37, 0.94);
+  color: var(--text);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 设置页与列表类浅色卡片 */
+html[data-hm-mobile='true'].dark #app .settings-page .option,
+html[data-hm-mobile='true'].dark #app .settings-page .settings-item,
+html[data-hm-mobile='true'].dark #app .settings-page .settings-user-info,
+html[data-hm-mobile='true'].dark #app .settings-page .shortcuts div,
+html[data-hm-mobile='true'].dark #app .my-music .music-library,
+html[data-hm-mobile='true'].dark #app .my-music .library-view,
+html[data-hm-mobile='true'].dark #app .my-music .library-list,
+html[data-hm-mobile='true'].dark #app .my-music .download-list,
+html[data-hm-mobile='true'].dark #app .my-music .local-list {
+  background-color: transparent;
+  color: var(--text);
+}
+
+html[data-hm-mobile='true'].dark #app .settings-page .settings-user-info {
+  background-color: var(--layer);
+}
+
+/* 头像下拉面板 */
+html[data-hm-mobile='true'].dark #app .app-option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+html[data-hm-mobile='true'].dark #app .app-option .option {
+  color: var(--text);
+}
+
+/* 首页「每日推荐」卡片
+   组件里是 background-color: rgba(255,255,255,.35)，深色下叠出 rgb(111,114,117) 的中灰块，
+   卡片内的小字（rec-title-en / rec-date）是浅色，实测只有 4.36:1，卡在 AA 门槛下。
+   注意这个浅底色在深色模式下**反而**显得突兀（深底上一块发灰的白药丸），
+   所以这里压成深色中性底，小字对比度随之到 ~14:1。
+   另：移动端把中文描边大字（rec-title-border1/2）和 rec-background 隐藏了，
+   只剩 rec-title + rec-title-en，所以只需处理容器底色。 */
+html[data-hm-mobile='true'].dark #app .recommendation {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-hm-mobile='true'].dark #app .recommendation .rec-title-en {
+  color: var(--text);
+}
+
+html[data-hm-mobile='true'].dark #app .recommendation .rec-date {
+  color: var(--text);
+}
+
+/* 设置页开关（.toggle）
+   theme.css 的深色块只处理了"开启"态：
+       .dark .settings-page .toggle .toggle-on    { background: rgba(255,255,255,.86) }  ← 白滑块
+       .dark .settings-page .toggle .toggle-on-in { color: #000 }                        ← 黑字
+   但"关闭"态的 .toggle-off 仍是浅色（rgba(255,255,255,.35)，来自 Settings.vue 的
+   scoped 样式），于是深色下：
+     · 关闭态 = 浅色块 + 浅色字（--text #f1f3f5）→ 实测 4.36:1，且看着像一整块白药丸
+     · 开关两态都是浅色块，状态几乎分不出来
+   这里把关闭态压回深色中性底，保住"开=亮 / 关=暗"的可辨识度。
+   注：开关文字的可读性实测是好的（滑块铺满整个轨道，文字叠在滑块上，
+   开启态黑字压白滑块 21:1、关闭态浅字压深底 ~11:1），所以只动底色，不动文字色。 */
+html[data-hm-mobile='true'].dark #app .settings-page .toggle .toggle-off {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 「已开启 / 已关闭」文字必须在同一行。
+   组件里 .toggle-off 是 width:100% + padding:5px 10px，却没设 box-sizing，
+   于是实际宽度 = 容器 + 20px，文字被迫换行（再被外层 overflow:hidden 裁掉一半）。 */
+html[data-hm-mobile='true'] #app .settings-page .toggle .toggle-off,
+html[data-hm-mobile='true'] #app .settings-page .toggle .toggle-on {
+  box-sizing: border-box;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* 开关的"开启"底色改用容器自身的背景层绘制。
+ *
+ * 组件原本靠 .toggle-on（一个子元素）当填充，并给它 z-index:-1 想垫在文字下面。
+ * 但 .toggle 自己带 overflow:hidden 且建立了层叠上下文，负 z-index 的子元素
+ * 会被父级背景盖住 —— 结果白色滑块不可见，只剩黑字压在深色面板上，
+ * 深色模式下几乎读不出来（实测就是这个现象）。
+ *
+ * 用 .toggle 的 background-image 画填充：背景层天然位于所有子元素之下，
+ * 不依赖 z-index，两套主题下表现一致。 */
+html[data-hm-mobile='true'] #app .settings-page .toggle {
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+/* 「开启」态底色：浅色主题用黑底（与桌面端观感一致，也和「关闭」的浅底形成
+   明确对比）；深色主题反过来用白底。
+   注意文字色必须跟着底色走 —— 早前这里两套主题都填了浅底，而下面的文字色
+   规则仍给浅色主题留着 `color: white`，于是「开启」态变成白字压白底，
+   实测三个默认开启的开关（显示歌曲翻译 / 歌曲无缝衔接 / 音频可视化）
+   整块看不见。 */
+html[data-hm-mobile='true'] #app .settings-page .toggle:has(.toggle-off.toggle-on-in) {
+  background-color: #000;
+}
+
+html[data-hm-mobile='true'].dark #app .settings-page .toggle:has(.toggle-off.toggle-on-in) {
+  background-color: rgba(255, 255, 255, 0.86);
+}
+
+/* 组件里那个滑块不再参与显示，避免它再被父级背景遮住造成"半明半暗" */
+html[data-hm-mobile='true'] #app .settings-page .toggle .toggle-on {
+  display: none !important;
+}
+
+/* 深色模式下"开启"态的文字颜色要显式指定。
+   组件给的是 .toggle-on-in { color: white }，但那条 scoped 规则靠祖先链匹配；
+   这里按主题变量显式设置，避免出现"文字颜色跟着背景走"导致看不清。 */
+html[data-hm-mobile='true'].dark #app .settings-page .toggle .toggle-off {
+  color: var(--text);
+}
+
+html[data-hm-mobile='true'].dark #app .settings-page .toggle .toggle-off.toggle-on-in {
+  color: #0f1114;
+}
+
+html[data-hm-mobile='true'] #app .settings-page .toggle .toggle-off.toggle-on-in {
+  color: white;
+}
+
+/* 歌词字体大小滑轨：深色主题与 .toggle 用同一套配色逻辑
+   （关=暗底亮字 / 开=亮底暗字），保证同页控件的状态语义一致。
+   浅色主题下组件 scoped 样式已经给了"黑滑块 + 白字"，这里只补深色。 */
+html[data-hm-mobile='true'].dark #app .settings-page .font-size-slider {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-hm-mobile='true'].dark #app .settings-page .font-size-slider .slider-thumb {
+  background-color: rgba(255, 255, 255, 0.86);
+}
+
+html[data-hm-mobile='true'].dark #app .settings-page .font-size-slider .slider-cell {
+  color: var(--text);
+}
+
+html[data-hm-mobile='true'].dark #app .settings-page .font-size-slider .slider-cell.is-active {
+  color: #0f1114;
+}
+
+/* 播放页：组件自带一条浅色渐变底，深色下要盖掉 */
+html[data-hm-mobile='true'].dark #app .music-player {
+  background: var(--bg);
+  background-image: none;
+  color: var(--text);
+}
+
+html[data-hm-mobile='true'].dark #app .music-player .song-control .icon,
+html[data-hm-mobile='true'].dark #app .music-player .hm-player-btn,
+html[data-hm-mobile='true'].dark #app .music-player .hm-one-line-lyric,
+html[data-hm-mobile='true'].dark #app .music-player .player-info {
+  color: var(--text);
+}
+
+/* 弹层 / 右键菜单 / 提示 */
+html[data-hm-mobile='true'].dark #app .contextMune,
+html[data-hm-mobile='true'].dark #app .globalDialog .dialog-container {
+  background: var(--panel);
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------ 通用：桌面专属项 */
+/* 模板里标了 hm-mobile-hide 的元素在手机上隐藏。
+   （设置页的 Windows 相关项、播放页那一行末尾的入口等都用这个标记） */
+html[data-hm-mobile='true'] #app .hm-mobile-hide {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------ 专辑/歌单/电台 详情头部
+   桌面结构是「左：封面+信息（宽度 = 100% - 右栏130px）+ 右：发行时间/查看详情」，
+   搜索与排序用 `right: calc(-1 * 130px)` 绝对定位"跨"到右栏里。
+   实测窄屏（406px）后果：
+     · .introduce-info 只剩 89px 宽，歌名「神的游戏」被挤成两行
+     · 发行时间 / 查看详情 / 搜索+排序 三样堆在同一列里，互相挤
+     · 卡片高度固定 150px，搜索框越出卡片底部压到歌曲列表
+   移动端改成：封面+信息在上，搜索/排序与发行时间在下的纵向布局。 */
+html[data-hm-mobile='true'] #app .library-introduce {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: auto;
+}
+
+html[data-hm-mobile='true'] #app .library-introduce .introduce {
+  width: 100%;
+  /* 封面在左、歌名/歌手/曲目数移到封面右边（原来是上下堆叠） */
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+html[data-hm-mobile='true'] #app .library-introduce .introduce .introduce-img {
+  width: 110px;
+  height: 110px;
+  flex: 0 0 110px;
+  margin-right: 12px;
+  margin-bottom: 0;
+}
+
+html[data-hm-mobile='true'] #app .library-introduce .introduce .introduce-info {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  /* 让歌名/歌手/曲目数在封面右侧垂直居中 */
+  align-self: center;
+}
+
+html[data-hm-mobile='true'] #app .library-introduce .introduce .introduce-name {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+/* 搜索 + 排序：取消跨栏的绝对定位，改为整宽一行 */
+html[data-hm-mobile='true'] #app .library-introduce .operation-search {
+  position: static;
+  transform: none;
+  right: auto;
+  top: auto;
+  width: 100%;
+  margin-top: 10px;
+  justify-content: space-between;
+}
+
+/* 搜索框的放大镜图标：真机实测它和输入框重叠（图标 287..295、输入框 289 起），
+   占位文字 "SEARCH" 被压在图标下面显示不全。手机上有清晰的 SEARCH 占位文字就够了，
+   直接去掉这个图标。 */
+html[data-hm-mobile='true'] #app .operation-search .search-icon {
+  display: none !important;
+}
+
+/* 去掉图标后输入框还是差一点："SEARCH" 实测需要 48px，而输入框只有 47px，
+   占位文字最后一个字母被截断。搜索区不收缩，顺手给输入框留出余量并居中。 */
+html[data-hm-mobile='true'] #app .operation-search .song-filter-input {
+  min-width: 0;
+}
+
+html[data-hm-mobile='true'] #app .operation-search .filter-input {
+  width: 56px;
+  min-width: 56px;
+}
+
+/* 发行时间 / 查看详情：原来是右栏竖排，改成一行横向排列 */
+html[data-hm-mobile='true'] #app .library-introduce .introduce-other {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+html[data-hm-mobile='true'] #app .library-introduce .introduce-other .introduce-1,
+html[data-hm-mobile='true'] #app .library-introduce .introduce-other .introduce-2 {
+  width: auto;
+  flex: 0 1 auto;
+  margin-top: 0;
+  /* 组件里这些 div 写死了 height:16px，而这里要加内边距，
+     不改成 auto 的话内容会顶出边框（实测文字伸出框底 2~3px）。
+     显式给 line-height，让文字在框内垂直居中。 */
+  height: auto;
+  min-height: 18px;
+  line-height: 18px;
+  padding: 2px 8px;
+  box-sizing: border-box;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ 专辑/电台「查看详情」弹层
+   组件（LibraryDetail.vue / RadioDetail.vue）里是写死的桌面尺寸：
+       .introduce-detail-text-active { width: 700px; height: 400px; padding: 30px 60px }
+   在 406px 宽的手机上宽度溢出约 300px，左右各 60px 内边距又把正文挤成窄条，
+   导致文字断行错乱；溢出的内容还会让 .detail-text 的 overflow:auto 冒出滚动条
+   （就是详情文字底部那条细横条）。
+   这里改成跟随视口宽度，并把内边距收窄、限高，让正文正常换行且不出现滚动条。 */
+html[data-hm-mobile='true'] #app .introduce-detail-text.introduce-detail-text-active {
+  box-sizing: border-box;
+  width: calc(100vw - 32px);
+  max-width: calc(100vw - 32px);
+  height: auto;
+  max-height: 70vh;
+  padding: 18px 16px;
+  /* 组件用 top/left:50% + translate(-50%,-50%) 居中，这里保持 fixed 才能让定位生效 */
+  position: fixed;
+}
+
+html[data-hm-mobile='true'] #app .introduce-detail-text .detail-text {
+  width: 100%;
+  height: auto;
+  max-height: calc(70vh - 70px);
+  overflow: hidden;
+  overflow-y: auto;
+}
+
+html[data-hm-mobile='true'] #app .introduce-detail-text .detail-text .text {
+  font-size: 13px;
+  line-height: 1.7;
+  text-indent: 2em;
+  /* 中文长文按正常规则换行，避免出现"行末/行首孤字"那种错乱感 */
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+/* 弹层的展开动画是给桌面做的：宽度从 0 撑到 700px、再拉高到 400px。
+   手机上没有 700px 可用空间，动画中途会横向溢出、再突然变高，看起来"很怪"；
+   而且关键帧的 100% 会覆盖上面写的 height:auto。
+   这里换成一个不碰尺寸的淡入+轻微放大。 */
+html[data-hm-mobile='true'] #app .introduce-detail-text.metro-enter-active {
+  animation: hm-intro-in 0.22s ease-out both;
+}
+
+html[data-hm-mobile='true'] #app .introduce-detail-text.metro-leave-active {
+  animation: hm-intro-in 0.16s ease-in reverse both;
+}
+
+@keyframes hm-intro-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+

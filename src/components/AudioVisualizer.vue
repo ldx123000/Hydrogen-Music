@@ -23,8 +23,16 @@ const {
     widgetState,
 } = storeToRefs(playerStore)
 
+// 移动端播放页把波形直接渲染在封面下方，不受桌面端「顶部音频可视化」开关影响
+// （手机播放时顶栏整个是隐藏的，那个开关没有意义）。
+const props = defineProps({
+    forceVisible: { type: Boolean, default: false },
+})
+
 const visible = computed(() => {
-    return audioVisualizer.value && playerShow.value && !widgetState.value && !!currentMusic.value
+    if (!currentMusic.value || !playerShow.value || widgetState.value) return false
+    if (props.forceVisible) return true
+    return audioVisualizer.value
 })
 
 function createFlatLevels() {
@@ -300,8 +308,29 @@ function buildAnalyserLevels() {
     return nextLevels
 }
 
-function reattachStaleAnalyser() {
-    if (!analyser || !playing.value || !visible.value) {
+/**
+ * 合成波形（仅移动端播放页兜底用）。
+ *
+ * 真机实测：Android WebView 里 Howler 退化成 HTML5 <audio> 模式（没有 _context/_gain，
+ * 也没有 bufferSource），唯一剩下的分析路径是 captureStream()；而网易云音频来自
+ * 跨域 CDN 且不带 CORS 头，captureStream 拿不到音频轨道 → 分析器永远挂不上 →
+ * 波形退化成一条平线，看起来就是"坏的"。
+ *
+ * 既然拿不到真实频谱，这里用一条平滑包络驱动柱子，至少能正确表达
+ * 「正在播放 / 已暂停」。桌面端不受影响：它走真实 analyser。
+ */
+let syntheticTime = 0
+function buildSyntheticLevels() {
+    syntheticTime += 0.045
+    return Array.from({ length: BAR_COUNT }, (_, i) => {
+        const wave = Math.sin(syntheticTime * 2.1 + i * 0.46) * 0.5 + 0.5
+        const beat = Math.sin(syntheticTime * 5.6 + i * 0.12) * 0.5 + 0.5
+        const level = 0.16 + 0.62 * wave * (0.55 + 0.45 * beat)
+        return Math.min(1, Math.max(FLAT_LEVEL, level))
+    })
+}
+
+function reattachStaleAnalyser() {    if (!analyser || !playing.value || !visible.value) {
         emptyAnalyserFrames = 0
         return false
     }
@@ -338,6 +367,9 @@ function drawFrame() {
     if (analyserLevels) {
         emptyAnalyserFrames = 0
         levels.value = analyserLevels
+    } else if (props.forceVisible) {
+        // 移动端兜底：拿不到真实频谱时用合成包络，避免波形是一条平线（见 buildSyntheticLevels）
+        levels.value = buildSyntheticLevels()
     } else {
         const reattaching = reattachStaleAnalyser()
         settleFlat()

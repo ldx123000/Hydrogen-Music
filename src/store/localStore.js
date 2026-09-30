@@ -55,7 +55,16 @@ export const useLocalStore = defineStore('localStore', {
             return uniqueArr;
         },
         updateDownloadList(list) {
-            if(!this.downloadedFolderSettings) {noticeOpen("请先在设置中设置下载目录", 2);return}
+            // Android 上不需要先设置下载目录：原生 MusicDownload 插件通过 MediaStore
+            // 直接写入系统公共「下载」目录（Android 10+），无需任何目录授权。
+            // 桌面端仍要求先设置目录（下载器需要目标路径）。
+            const nativeDownloadReady = typeof window !== 'undefined'
+                && !!window.Capacitor
+                && !!(window.Capacitor.Plugins && window.Capacitor.Plugins.MusicDownload)
+            if(!this.downloadedFolderSettings && !nativeDownloadReady) {
+                noticeOpen("请先在设置中设置下载目录", 2)
+                return
+            }
             this.downloadList = this.downloadList.concat(list)
             this.downloadList = this.removedup(this.downloadList, 'id')
             if(!this.isDownloading && this.isFirstDownload) {

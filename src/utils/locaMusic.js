@@ -53,7 +53,12 @@ export function buildFolderIndex(metadataRoot) {
         const aggregatedSongs = []
         for (let i = 0; i < node.children.length; i++) {
             const child = node.children[i]
-            if (child && Array.isArray(child.children)) {
+            // 用节点自身的标识判断是不是文件夹，不能只看"有没有 children"：
+            // 安卓扫描为了让列表项能安全地读 item.children.length（缺这个字段会抛错白屏），
+            // 给歌曲节点也带了一个空 children 数组，于是"有 children 就是文件夹"不再成立
+            // —— 那样所有歌都会被当成文件夹递归下去，列表里一首歌都收不到。
+            const isFolder = child && (child.type === 'folder' || (Array.isArray(child.children) && child.children.length > 0))
+            if (isFolder) {
                 aggregatedSongs.push(...walk(child))
             } else if (child) {
                 aggregatedSongs.push(child)

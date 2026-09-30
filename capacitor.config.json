@@ -1,0 +1,19 @@
+{
+  "appId": "com.hydrogen.music",
+  "appName": "Hydrogen Music",
+  "webDir": "dist",
+  "loggingBehavior": "debug",
+  "android": {
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "Nodejs": {
+      "nodeDir": "nodejs",
+      "startMode": "auto"
+    }
+  }
+}

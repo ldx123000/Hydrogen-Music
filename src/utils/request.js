@@ -9,8 +9,40 @@ const libraryStore = useLibraryStore(pinia)
 
 import { noticeOpen } from "./dialog";
 
+const DESKTOP_API_BASE = 'http://localhost:36530'
+// App 内嵌 Node 运行时暴露的转发端口（见 mobile-runtime/index.js）。
+// 这里必须用 127.0.0.1 而不是 localhost：Android 上 localhost 可能优先解析到
+// IPv6 的 ::1，而运行时只监听 IPv4，会导致连接被拒（表现为"API 请求错误"）。
+const NATIVE_APP_API_BASE = 'http://127.0.0.1:36531'
+
+// 同一份前端代码要跑在三种环境里：Electron 桌面端、手机浏览器、原生 App。
+// 三者拿到 NCM API 的方式不同，这里按运行时分流。
+function resolveApiBaseURL() {
+  const isDesktopRuntime = typeof windowApi !== 'undefined'
+    && typeof windowApi.requestNcmApi === 'function'
+  if (isDesktopRuntime) return DESKTOP_API_BASE
+
+  // 原生 App：构建脚本会在 index.html 里注入这个标记（见 scripts/build-android.cjs）。
+  // 比探测 Capacitor 运行时更可靠——不依赖桥的注入时机。
+  if (typeof window !== 'undefined' && window.__HM_APP__ === true) return NATIVE_APP_API_BASE
+
+  // 兜底：能拿到 Capacitor 运行时也按原生处理
+  const capacitor = typeof window !== 'undefined' ? window.Capacitor : undefined
+  if (capacitor) {
+    const isNative = typeof capacitor.isNativePlatform === 'function'
+      ? capacitor.isNativePlatform()
+      : (typeof capacitor.getPlatform === 'function' && capacitor.getPlatform() !== 'web')
+    if (isNative) return NATIVE_APP_API_BASE
+  }
+
+  // 浏览器端由同源服务把 /api 反向代理到内置 NCM API（见 server/mobile-server.cjs）
+  const injected = typeof window !== 'undefined' ? window.__HM_API_BASE__ : ''
+  if (typeof injected === 'string' && injected) return injected.replace(/\/+$/, '')
+  return '/api'
+}
+
 const request = axios.create({
-  baseURL: 'http://localhost:36530',
+  baseURL: resolveApiBaseURL(),
   withCredentials: true,
   timeout: 10000,
 });
@@ -39,8 +71,62 @@ function waitWithTimeout(promise, timeoutMs) {
   })
 }
 
+// ---- 原生 App：等内嵌 Node 转发层就绪 ----
+// App 冷启动时 WebView 会立刻加载并发起请求，而内嵌 Node 运行时（libnode + 网易云 API）
+// 需要 1~3 秒才监听端口，首批请求会全部 Network Error 且不会自动重试——
+// 用户看到的就是"进去之后像连不到网"。这里在发首个请求前先探测端口是否已在监听。
+const NATIVE_BRIDGE_PROBE_TIMEOUT_MS = 20000
+const NATIVE_BRIDGE_PROBE_INTERVAL_MS = 300
+const NATIVE_BRIDGE_PROBE_SINGLE_TIMEOUT_MS = 1500
+
+function isNativeAppRuntime() {
+  return typeof window !== 'undefined' && window.__HM_APP__ === true
+}
+
+// 探测一次：只要拿到任何 HTTP 响应（哪怕 404/502），就说明转发层已在监听
+function probeNativeBridgeOnce() {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (ok) => {
+      if (settled) return
+      settled = true
+      resolve(ok)
+    }
+    try {
+      const xhr = new XMLHttpRequest()
+      xhr.open('GET', `${NATIVE_APP_API_BASE}/__hm_ready`, true)
+      xhr.timeout = NATIVE_BRIDGE_PROBE_SINGLE_TIMEOUT_MS
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState === 4) finish(xhr.status > 0)
+      }
+      xhr.ontimeout = () => finish(false)
+      xhr.onerror = () => finish(false)
+      xhr.send()
+    } catch (_) {
+      finish(false)
+    }
+  })
+}
+
+async function waitForNativeBridge() {
+  const deadline = Date.now() + NATIVE_BRIDGE_PROBE_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    if (await probeNativeBridgeOnce()) return { ready: true, native: true }
+    await new Promise((resolve) => setTimeout(resolve, NATIVE_BRIDGE_PROBE_INTERVAL_MS))
+  }
+  // 超时也让请求继续，让上层拿到真实错误，而不是无限挂起
+  return { ready: true, native: true, timedOut: true }
+}
+
 function ensureNcmApiReady() {
   if (ncmApiReadyPromise) return ncmApiReadyPromise
+
+  // 原生 App：先等内嵌转发层就绪（原因见上方注释）
+  if (isNativeAppRuntime()) {
+    ncmApiReadyPromise = waitForNativeBridge()
+      .catch(() => ({ ready: true, native: true }))
+    return ncmApiReadyPromise
+  }
 
   if (typeof windowApi === 'undefined' || typeof windowApi.whenNcmApiReady !== 'function') {
     ncmApiReadyPromise = Promise.resolve({ ready: true, skipped: true })
@@ -251,6 +337,13 @@ function triggerAutoLogout(reason) {
   noticeOpen(message, 3);
 }
 
+// 只有请求确实携带了 MUSIC_U 仍被判定未登录，才允许触发自动登出。
+// 匿名态请求（未带登录 cookie）返回 301 属正常现象，不能据此清空全局登录态。
+function shouldTriggerAutoLogout(config) {
+  const cookieParam = String(config?.params?.cookie || '')
+  return cookieParam.indexOf('MUSIC_U') !== -1
+}
+
 // 请求拦截器
 request.interceptors.request.use(async function (config) {
   await ensureNcmApiReady()
@@ -274,21 +367,19 @@ request.interceptors.request.use(async function (config) {
   return Promise.reject(error);
 });
 
-function isAuthApi(url) {
-  return url.startsWith('/login') || url.startsWith('/captcha/') || url === '/logout'
-}
-
 // 响应拦截器
 request.interceptors.response.use(function (response) {
   const url = response?.config?.url || ''
   const data = response?.data
 
   // 跳过登录/登出相关接口的自动判断
-  if (!isAuthApi(url) && data && typeof data === 'object') {
+  const isAuthApi = url.startsWith('/login') || url === '/logout'
+  if (!isAuthApi && data && typeof data === 'object') {
     const code = data.code
     const text = data.msg || data.message || ''
     // NCM 未登录常见返回：code=301 或者 message/msgs 提示需要登录
-    if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
+    if ((code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || ''))
+      && shouldTriggerAutoLogout(response?.config)) {
       triggerAutoLogout('登录状态已失效，已自动退出');
     }
   }
@@ -300,12 +391,13 @@ request.interceptors.response.use(function (response) {
   const code = error?.response?.data?.code
 
   // 若后端以HTTP身份错误返回，直接触发自动登出
-  if (!isAuthApi(url) && (status === 401 || status === 403)) {
+  if ((status === 401 || status === 403) && shouldTriggerAutoLogout(error?.config)) {
     triggerAutoLogout('登录已过期，请重新登录');
-  } else if (!isAuthApi(url)) {
+  } else {
     // 后端也可能以200以外的状态携带业务code
     const text = error?.response?.data?.msg || error?.response?.data?.message || ''
-    if (code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || '')) {
+    if ((code === 301 || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text || ''))
+      && shouldTriggerAutoLogout(error?.config)) {
       triggerAutoLogout('登录状态已失效，已自动退出');
     }
   }

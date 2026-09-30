@@ -18,23 +18,44 @@
   const playerStore = usePlayerStore()
   const localStore = useLocalStore()
   const { downloadedMusicFolder, localMusicFolder, localMusicClassify, downloadedFolderSettings, localFolderSettings } = storeToRefs(localStore)
+
+  /**
+   * 传给 LocalMusicList 的 folderlist 必须是**数组**。
+   *
+   * 桌面端 dirTree 返回的是目录数组，而安卓原生扫描（MediaStore）返回的是一个
+   * 带 name/children 的**根节点对象**。直接把根对象交给 v-for 会遍历它的键
+   * （id/name/dirPath/type/children/count 正好 6 个），于是渲染出一堆没有名字的项。
+   * 这里统一取 children；拿不到就退回空数组。
+   */
+  const toFolderList = node => {
+    if (Array.isArray(node)) return node
+    if (node && Array.isArray(node.children)) return node.children
+    return []
+  }
+  const localFolderList = computed(() => toFolderList(localMusicFolder.value))
+  const downloadedFolderList = computed(() => toFolderList(downloadedMusicFolder.value))
   const shouldShowNone = computed(() => {
     const isMyMusicRoot = router.currentRoute.value.fullPath == '/mymusic'
     const hasRestorableLibraryRoute = !!lastLibraryRoute.value && (lastLibraryRoute.value.name == 'playlist' || lastLibraryRoute.value.name == 'album' || lastLibraryRoute.value.name == 'artist')
     const canRestoreLibraryDetail = hasRestorableLibraryRoute && !!libraryInfo.value && !playerStore.forbidLastRouter
     return isMyMusicRoot && !canRestoreLibraryDetail
   })
+  // 是否处于「歌单/专辑/歌手/电台详情」路由。
+  // 桌面端是「左侧列表 + 右侧详情」并排，详情路由不影响左栏；
+  // 手机上空间不够，详情必须占满整屏，由 mobile.css 依据这个 class 隐藏左栏。
+  const DETAIL_ROUTE_NAMES = ['playlist', 'album', 'artist', 'dj', 'localFiles', 'localAlbum', 'localArtist']
+  const isDetailRoute = computed(() => DETAIL_ROUTE_NAMES.includes(router.currentRoute.value.name))
 
 </script>
 
 <template>
-  <div class="my-music" :class="{'my-music-full': !playerStore.songList}">
+  <div class="my-music" :class="{'my-music-full': !playerStore.songList, 'has-detail': isDetailRoute}">
     <div class="music-library" v-if="user || userStore.localOnlyMode">
       <LibraryType class="library-type"></LibraryType>
       <LibraryList v-if="!userStore.localOnlyMode" v-show="listType1 != 2 && listType1 != 3" class="library-list"></LibraryList>
       <DownloadList v-if="!userStore.localOnlyMode" v-show="listType1 == 2 && listType2 == 0" class="download-list"></DownloadList>
-      <LocalMusicList :folderlist="downloadedMusicFolder" type="downloaded" v-if="!userStore.localOnlyMode && downloadedMusicFolder" v-show="listType1 == 2 && listType2 == 1" class="local-list"></LocalMusicList>
-      <LocalMusicList :folderlist="localMusicFolder" :classifylist="localMusicClassify" type="local" v-if="localMusicFolder" v-show="listType1 == 3" class="local-list"></LocalMusicList>
+      <LocalMusicList :folderlist="downloadedFolderList" type="downloaded" v-if="!userStore.localOnlyMode && downloadedMusicFolder" v-show="listType1 == 2 && listType2 == 1" class="local-list"></LocalMusicList>
+      <LocalMusicList :folderlist="localFolderList" :classifylist="localMusicClassify" type="local" v-if="localMusicFolder" v-show="listType1 == 3" class="local-list"></LocalMusicList>
       <div class="no-folder" @click="router.push('/settings')" v-if="!userStore.localOnlyMode && !downloadedFolderSettings && listType1 == 2 && listType2 == 1">去设置下载地址</div>
       <div class="no-folder" @click="router.push('/settings')" v-if="localFolderSettings.length == 0 && listType1 == 3">去设置扫描地址</div>
     </div>

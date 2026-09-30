@@ -565,7 +565,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                 @click="routerChange(0)"
                 class="router-last"
                 :class="{ 'router-disabled': !canGoBack }"
-                viewBox="-107 -86 1195 1195"
+                viewBox="0 0 1024 1024"
                 version="1.1"
                 xmlns="http://www.w3.org/2000/svg"
                 p-id="1053"
@@ -579,7 +579,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                 @click="routerChange(1)"
                 class="router-next"
                 :class="{ 'router-disabled': !canGoForward }"
-                viewBox="-107 -86 1195 1195"
+                viewBox="0 0 1024 1024"
                 version="1.1"
                 xmlns="http://www.w3.org/2000/svg"
                 p-id="1207"
@@ -614,7 +614,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                         v-show="!libraryInfo.followed"
                                         t="1669112450805"
                                         class="collect-icon"
-                                        viewBox="15 15 996 996"
+                                        viewBox="0 0 1024 1024"
                                         version="1.1"
                                         xmlns="http://www.w3.org/2000/svg"
                                         p-id="2261"
@@ -628,7 +628,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                         v-show="libraryInfo.followed"
                                         t="1670744716630"
                                         class="collected-icon"
-                                        viewBox="1 6 1009 1009"
+                                        viewBox="0 0 1024 1024"
                                         version="1.1"
                                         xmlns="http://www.w3.org/2000/svg"
                                         p-id="2167"
@@ -647,7 +647,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                                     <svg
                                         t="1669030443895"
                                         class="download-icon"
-                                        viewBox="-35 -41 1106 1106"
+                                        viewBox="0 0 1024 1024"
                                         version="1.1"
                                         xmlns="http://www.w3.org/2000/svg"
                                         p-id="10347"
@@ -686,7 +686,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
                         <p class="text">{{ libraryInfo.description || libraryInfo.briefDesc || '暂无描述' }}</p>
                     </div>
                     <div class="text-close" @click="introduceDetailShow = false">
-                        <svg t="1671966797621" class="icon" viewBox="102 102 819 819" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1965" width="200" height="200">
+                        <svg t="1671966797621" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1965" width="200" height="200">
                             <path
                                 d="M576 512l277.333333 277.333333-64 64-277.333333-277.333333L234.666667 853.333333 170.666667 789.333333l277.333333-277.333333L170.666667 234.666667 234.666667 170.666667l277.333333 277.333333L789.333333 170.666667 853.333333 234.666667 576 512z"
                                 fill="#ffffff"
@@ -710,7 +710,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
             </div>
             <div class="library-playall" v-show="isSongList || (isSinger && artistPageType == 0)">
                 <div class="playall">
-                    <svg t="1668421583939" class="playall-icon" viewBox="120 83 886 886" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6964" width="200" height="200" data-v-ef3af43f="">
+                    <svg t="1668421583939" class="playall-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6964" width="200" height="200" data-v-ef3af43f="">
                         <path
                             d="M864.5 516.2c-2.4-4.1-6.2-6.9-10.4-8.3L286.4 159c-8.9-5-20.3-2-25.5 6.6-2.1 3.6-2.8 7.5-2.3 11.3v697.5c-0.5 3.8 0.2 7.8 2.3 11.3 5.2 8.7 16.6 11.6 25.5 6.6l567.7-349c4.2-1.3 8-4.2 10.4-8.3 1.7-3 2.5-6.3 2.4-9.5 0.1-3-0.7-6.3-2.4-9.3z m-569-308.8l517.6 318.3L295.5 844V207.4z"
                             p-id="6965"
@@ -781,7 +781,7 @@ const onAfterLeave = () => (introduceDetailShowDelay.value = false);
         margin-left: -8px;
         height: 32px;
         svg {
-            padding: 4px;
+            padding: 8px;
             width: 32px;
             height: 32px;
             float: left;

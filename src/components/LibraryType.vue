@@ -1,5 +1,5 @@
 <script setup>
-  import { onActivated, ref, watch } from 'vue'
+  import { onActivated, onBeforeUnmount, onMounted, nextTick, ref, watch } from 'vue'
   import router from '../router/router'
   import { getUserPlaylistCount, getUserPlaylist } from '../api/user'
   import { getUserSubAlbum } from '../api/album'
@@ -229,7 +229,55 @@
     option.value = num
     typeTracker.value = num
     void refreshCurrentSection()
+    // 切换后文字宽度不变，但保险起见重新量一次
+    void nextTick(syncTracker)
   }
+
+  /* ---------------------------------------------------------------- 顶部标签指示条
+     组件里 tracker0~3 是**写死的像素位置**（width 32/32/64/64Px，left 4/57/110/193Px），
+     这套数值是按桌面端字号量出来的。手机上字号与字体度量不同，
+     实测标签实际位置 l=19/63/107/181、宽 30/30/60/60，
+     于是指示条整体右偏（"本地管理"偏了 26px）且比标签宽 4px。
+     这里改成按标签的真实几何动态定位，任何字号/语言下都能对齐。 */
+  const typeOptionRef = ref(null)
+  const trackerBoxRef = ref(null)
+  const trackerStyle = ref({ left: '0px', width: '0px', opacity: '0' })
+
+  const syncTracker = () => {
+    const container = typeOptionRef.value
+    const box = trackerBoxRef.value
+    if (!container || !box) return
+    const spans = Array.from(container.querySelectorAll('.option'))
+    // 标签顺序与 typeTracker 编号一致：歌单0 收藏1 下载管理2 本地管理3
+    const el = spans[typeTracker.value]
+    if (!el) { trackerStyle.value = { left: '0px', width: '0px', opacity: '0' }; return }
+    // 注意：标签和指示条分属不同元素，offsetParent 不同（标签挂在 mainWindow，
+    // 指示条挂在 .option-tracker，二者相差 14px），直接用 offsetLeft 会整体右偏。
+    // 统一换算到视口坐标再求相对位移，任何层级/内边距下都对齐。
+    const boxRect = box.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    trackerStyle.value = {
+      left: (elRect.left - boxRect.left) + 'px',
+      width: elRect.width + 'px',
+      opacity: '1',
+    }
+  }
+
+  let trackerResizeObserver = null
+  onMounted(async () => {
+    await nextTick()
+    syncTracker()
+    // 字体加载完成、屏幕旋转、窗口尺寸变化都会改变标签宽度，跟着量
+    if (typeof ResizeObserver !== 'undefined' && typeOptionRef.value) {
+      trackerResizeObserver = new ResizeObserver(() => syncTracker())
+      trackerResizeObserver.observe(typeOptionRef.value)
+    }
+  })
+  onBeforeUnmount(() => {
+    trackerResizeObserver?.disconnect()
+    trackerResizeObserver = null
+  })
+  watch([typeTracker, option], () => { void nextTick(syncTracker) })
 
   function changeType(num) {
     if (option.value == 0) {
@@ -299,15 +347,15 @@
   <div>
     <div class="library-type">
         <div class="type-one">
-            <div class="type-option">
+            <div class="type-option" ref="typeOptionRef">
             <span v-if="!userStore.localOnlyMode" class="option" :class="{'option-selected': option == 0}" @click="changeTracker(0)" id="myPlaylist">歌单</span>
             <span v-if="!userStore.localOnlyMode" class="option" :class="{'option-selected': option == 1}" @click="changeTracker(1)">收藏</span>
             <span v-if="!userStore.localOnlyMode" class="option" :class="{'option-selected': option == 2}" @click="changeTracker(2)">下载管理</span>
             <span class="option" :class="{'option-selected': option == 3}" @click="changeTracker(3)">本地管理</span>
             </div>
-            <div class="option-tracker">
+            <div class="option-tracker" ref="trackerBoxRef">
             <div class="tracker-line"></div>
-            <div :class="{'tracker': true, 'tracker0': typeTracker == 0, 'tracker1': typeTracker == 1, 'tracker2': typeTracker == 2, 'tracker3': typeTracker == 3, 'tracker-local-only': userStore.localOnlyMode}"></div>
+            <div class="tracker" :style="trackerStyle"></div>
             </div>
         </div>
         <div class="type-two">

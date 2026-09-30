@@ -5,11 +5,17 @@ import { getHistoryRecommendSongDates } from '../api/playlist';
 import { useLibraryStore } from '../store/libraryStore';
 import { playAll } from '../utils/player/lazy';
 import { noticeOpen } from '../utils/dialog';
+import { useIsMobile } from '../composables/useIsMobile';
 import LibrarySongList from './LibrarySongList.vue';
 
 const libraryStore = useLibraryStore();
 const route = useRoute();
 const router = useRouter();
+const isMobile = useIsMobile();
+
+// 每日推荐是挂在首页下的二级页面，手机上没有顶栏返回入口，
+// 因此页面内自带一个返回按钮（桌面端不渲染，保持原样）。
+const goBack = () => router.push('/');
 
 const historyDates = ref([]);
 const selectedDate = ref('');
@@ -294,6 +300,12 @@ onDeactivated(() => {
 
 <template>
     <div class="rec-container">
+        <button v-if="isMobile" class="rec-back" type="button" aria-label="返回" @click="goBack">
+            <svg viewBox="0 0 1024 1024" width="18" height="18" aria-hidden="true">
+                <path d="M716.608 1010.112L218.88 512.384 717.376 13.888l45.248 45.248-453.248 453.248 452.48 452.48z" />
+            </svg>
+            <span>返回</span>
+        </button>
         <div class="rec-header">
             <h1>每日推荐歌曲</h1>
             <span class="rec-subtitle">根据你的音乐口味生成，每天6:00更新</span>

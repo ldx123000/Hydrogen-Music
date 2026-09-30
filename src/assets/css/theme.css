@@ -5,7 +5,6 @@
   --text: #111213;
   --muted-text: #5b6066;
   --panel: rgba(255, 255, 255, 0.9);
-  --player-panel: rgb(225, 240, 240);
   --layer: rgba(255, 255, 255, 0.35);
   --border: rgba(0, 0, 0, 0.2);
   --shadow: 0 0 15px 2px rgba(189, 189, 189, 0.1);
@@ -33,7 +32,6 @@ body {
   --text: #f1f3f5;
   --muted-text: #c9ccd2;
   --panel: rgba(44, 50, 58, 0.92);
-  --player-panel: var(--panel);
   --layer: rgba(255, 255, 255, 0.14);
   --border: rgba(255, 255, 255, 0.22);
   --shadow: 0 0 24px rgba(0, 0, 0, 0.55);
@@ -110,6 +108,27 @@ body {
 .dark .settings-page .toggle .toggle-on-in {
   color: #000000 !important;
   background-color: transparent !important;
+}
+
+/* 歌词字体大小滑轨（Settings.vue 的 .font-size-slider）：与上面的开关同语义 ——
+   选中态在深色下用亮底暗字，未选中用暗底亮字。
+   组件里该控件嵌在 `.settings-page .settings-container .settings .item-options .option`
+   之下，scoped 编译后特异度高达 (0,8,0)，这里的 (0,4,0) 压不过，
+   所以按本文件已有惯例（上面两条 toggle 规则）用 !important。 */
+.dark .settings-page .font-size-slider {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .settings-page .font-size-slider .slider-thumb {
+  background-color: rgba(255, 255, 255, 0.86) !important;
+}
+
+.dark .settings-page .font-size-slider .slider-cell {
+  color: var(--text) !important;
+}
+
+.dark .settings-page .font-size-slider .slider-cell.is-active {
+  color: #000000 !important;
 }
 
 /* Drop-down and overlays */

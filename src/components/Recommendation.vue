@@ -1,17 +1,42 @@
 <script setup>
-  import { onActivated, onBeforeUnmount, onMounted, ref } from 'vue'
+  import { computed, onActivated, onBeforeUnmount, onMounted, ref } from 'vue'
   import { playAll } from '../utils/player/lazy';
   import { useRouter } from 'vue-router';
   import { useLibraryStore } from '../store/libraryStore'
   import { useLocalStore } from '../store/localStore';
   import { isLogin } from '../utils/authority';
   import { noticeOpen } from '../utils/dialog';
+  import { useIsMobile } from '../composables/useIsMobile';
   const libraryStore = useLibraryStore()
   const localStore = useLocalStore()
   const router = useRouter()
+  const isMobile = useIsMobile()
   const recTime = ref('')
   const showMore = ref(false)
   const showMoreTitle = ref('每 日推 荐')
+
+  /**
+   * 是否允许「悬停切换标题」。
+   *
+   * 桌面端用 mouseover/mouseout 把标题在「每 日推 荐」↔「查 看详 情」间切换；
+   * 但触摸设备没有悬停——WebView 会在点按时合成一次 mouseover，而 mouseout 永不触发，
+   * 于是标题会永久卡在「查看详情」（真机实测反馈）。
+   * 因此仅在非移动布局、且设备确实具备悬停能力时才启用切换。
+   */
+  const hoverCapable = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(hover: hover)').matches
+    : true
+
+  /**
+   * 卡片标题的实际显示文本。
+   *
+   * 桌面端把文字写成 '每 日推 荐' / '查 看详 情'（字间插空格）当作排版装饰，
+   * 但手机上字号小、又有一层描边字被关掉，这些空格就变成"字与字之间有缝"，
+   * 看起来像对齐出了问题。移动端直接去掉空格。
+   */
+  const displayTitle = computed(() => (
+    isMobile.value ? String(showMoreTitle.value || '').replace(/\s+/g, '') : showMoreTitle.value
+  ))
   let dateRefreshTimer = null
 
   const scheduleDateRefresh = () => {
@@ -50,6 +75,8 @@
   })
 
   const more = (flag) => {
+    // 触屏上没有悬停（点按会合成 mouseover 且永不 mouseout），切了就会卡住，直接跳过
+    if (isMobile.value || !hoverCapable) return
     if(flag) {
         showMore.value = true
         showMoreTitle.value = '查 看详 情'
@@ -61,7 +88,7 @@
   const checkRecSongs = () => {
     libraryStore.libraryInfo = null
     localStore.currentSelectedSongs = null
-    router.push('/mymusic/playlist/rec')
+    router.push('/recommend')
   }
   const playRecAll = async () => {
     if(isLogin()) {
@@ -78,13 +105,13 @@
   <div class="recommendation" @mouseover="more(true)" @mouseout="more(false)" @click="checkRecSongs()">
     <div class="rec-left">
         <svg class="rec-title-border1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="200" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 100 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="one" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(2 2)  rotate(0 100 0.0004999999999997229)" d="M0,0L200,0 "/><path id="five" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(0 198)  rotate(0 34.5 0.0005)" d="M0,0L69,0 "/><path id="four" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(70 68)  rotate(0 0.0005 66)" d="M0,132L0,0 "/><path id="直线 1" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(2 0)  rotate(0 0.0005 100)" d="M0,200L0,0 "/><path id="six" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(69 70)  rotate(0 66 0.0005)" d="M0,0L132,0 "/><path id="two" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(198 2)  rotate(0 0.0005 34)" d="M0,0L0,68 "/></g></g></svg>
-        <div class="rec-title" :class="{'show-more': showMore}">{{showMoreTitle}}</div>
+        <div class="rec-title" :class="{'show-more': showMore}">{{displayTitle}}</div>
         <div class="rec-title-en">DAILY RECOMMENDATION</div>
         <svg class="rec-title-border2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="200" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(180 100 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="one" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(2 2)  rotate(0 100 0.0004999999999997229)" d="M0,0L200,0 "/><path id="five" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(0 198)  rotate(0 34.5 0.0005)" d="M0,0L69,0 "/><path id="four" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(70 68)  rotate(0 0.0005 66)" d="M0,132L0,0 "/><path id="直线 1" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(2 0)  rotate(0 0.0005 100)" d="M0,200L0,0 "/><path id="six" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(69 70)  rotate(0 66 0.0005)" d="M0,0L132,0 "/><path id="two" style="stroke:#000000; stroke-width:4; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(198 2)  rotate(0 0.0005 34)" d="M0,0L0,68 "/></g></g></svg>
     </div>
     <div class="rec-middle">
         <div class="rec-play-background">
-            <svg class="rec-play" @click.stop="playRecAll()" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="10 -9 217 217" fill="none"><defs><rect id="path_0" x="0" y="0" width="200" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 100 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="play" fill-rule="evenodd" style="fill:#E4EFF2" transform="translate(-5.999999999999972 -2.842170943040401e-14)  rotate(90 99.99999999999997 100)" opacity="1" d="M13.4,150L186.6,150L100,0L13.4,150Z "/><path id="play" style="stroke:#000000; stroke-width:8; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(-5.999999999999972 -2.842170943040401e-14)  rotate(90 99.99999999999997 100)" d="M13.4,150L186.6,150L100,0L13.4,150Z "/></g></g></svg>
+            <svg class="rec-play" @click.stop="playRecAll()" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200" fill="none"><defs><rect id="path_0" x="0" y="0" width="200" height="200"/></defs><g opacity="1" transform="translate(0 0)  rotate(0 100 100)"><mask id="bg-mask-0" fill="white"><use xlink:href="#path_0"/></mask><g mask="url(#bg-mask-0)"><path id="play" fill-rule="evenodd" style="fill:#E4EFF2" transform="translate(-5.999999999999972 -2.842170943040401e-14)  rotate(90 99.99999999999997 100)" opacity="1" d="M13.4,150L186.6,150L100,0L13.4,150Z "/><path id="play" style="stroke:#000000; stroke-width:8; stroke-opacity:1; stroke-dasharray:0 0" transform="translate(-5.999999999999972 -2.842170943040401e-14)  rotate(90 99.99999999999997 100)" d="M13.4,150L186.6,150L100,0L13.4,150Z "/></g></g></svg>
             <div class="rec-play-border rec-play-border1"></div>
             <div class="rec-play-border rec-play-border2"></div>
             <div class="rec-play-border rec-play-border3"></div>

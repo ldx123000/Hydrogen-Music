@@ -61,7 +61,7 @@ function createMpris(window){
   player.on('quit', () => {
     const renderer = getRenderer();
     if (renderer) renderer.send('player-save');
-    else app.quit();
+    else app.exit();
   });
   player.on('seek', offset => {
     const currentPosition = Number(player.getPosition?.() || 0);

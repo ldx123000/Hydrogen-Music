@@ -92,12 +92,3 @@ import request from '../utils/request'
       }
     });
   }
-/** 按页读取当前账号关注的人，供一起听邀请选择。 */
-export function getUserFollows(uid, offset = 0, limit = 30) {
-    return request({
-      url: '/user/follows',
-      method: 'get',
-      suppressGlobalNotice: true,
-      params: { uid, offset, limit, timestamp: Date.now() },
-    })
-}

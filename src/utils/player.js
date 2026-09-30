@@ -15,6 +15,7 @@ import { markRaw, toRaw, watch } from "vue";
 import { getPreferredQuality } from './quality'
 import { resolveMatchedTrackByQualityPreference, resolveTrackByQualityPreference } from './musicUrlResolver'
 import { getSongDisplayName } from './songName'
+import { resolveLocalAudioUrl } from './webBridge'
 import { getSirenSourceId, getSirenAudioExtension, isSirenSong } from './siren'
 import { syncLyricIndexForSeek } from '../composables/usePlayerRuntime'
 import { getNoCopyrightRecommendedSongId, getRestrictedPlaybackFailureMessage, hasNoCopyrightAlternativeHint } from './restrictedPlaybackAvailability'
@@ -24,7 +25,6 @@ import { initPlayerExternalBridge as initExternalBridge } from './player/externa
 import { loadStoredPlaylist, persistPlaylistBeforeExit, saveStoredPlaybackProgress, saveStoredPlaylist } from './player/playlistPersistence'
 import { createNextShuffledCycle, createShuffledList, haveSameSongIds } from './player/queue'
 import { normalizeQueueSong, normalizeQueueSongs } from './player/queueSong'
-import { isTogetherSong } from './listenTogether'
 import { getPrefetchedSongAssets, getSongAssetKey, prefetchSongAssets } from './player/assetPrefetch'
 import { getLyricWithCloudFallback, isCloudDiskSong, markCloudDiskSong } from './player/lyricFallback'
 import { createDecodedAudioPlayer } from './player/webAudioGapless'
@@ -586,8 +586,12 @@ async function resolveSongPlaybackInfo(song, options = {}) {
     if (song.type === 'local') {
         const localPath = song.url || song.path || song.dirPath
         if (!localPath) return null
+        // 本地音频在安卓上是 content://，WebView 播不了，需要先转成 blob URL
+        // （原生读出字节 → blob，支持 Range，进度条可拖动）。桌面端直接返回路径。
+        const resolvedUrl = await resolveLocalAudioUrl(localPath)
+        if (!resolvedUrl) return null
         return {
-            url: windowApi?.toFileUrl ? windowApi.toFileUrl(localPath) : localPath,
+            url: resolvedUrl,
             localPath,
             trackInfo: null,
             isSiren: false,
@@ -838,6 +842,13 @@ function resetCurrentLyricState() {
 function loadLocalCoverForSong(song, targetSongId) {
     if (applyPrefetchedLocalCoverForSong(song, targetSongId)) return
 
+    // 扫描时已经从音频里读到的内嵌封面，直接用，不必再去原生读一遍
+    if (song && song.cover) {
+        localBase64Img.value = song.cover
+        try { window.dispatchEvent(new CustomEvent('mediaSession:updateArtwork')) } catch (_) {}
+        return
+    }
+
     windowApi.getLocalMusicImage(song.url).then(base64 => {
         if (songId.value !== targetSongId) return
         localBase64Img.value = base64
@@ -1019,7 +1030,7 @@ function syncPlayModeExternalState(mode) {
     window.playerApi.switchShuffle(mode === 3)
 }
 
-export function applyPlayMode(mode, options = {}) {
+function applyPlayMode(mode, options = {}) {
     const inFM = Object.prototype.hasOwnProperty.call(options, 'inFM') ? options.inFM : isPersonalFMContext()
     const syncExternal = options.syncExternal !== false
     const nextMode = normalizePlayMode(mode, inFM)
@@ -1470,7 +1481,7 @@ function handlePlaybackLoadFailure(error, { advance = false, song = null, availa
     const isNetworkError = isTransientPlaybackRequestError(error)
     noticeOpen(isNetworkError ? '网络请求失败，请稍后重试' : getRestrictedPlaybackFailureMessage(song, availability || error), 2)
     resetFailedPlaybackState()
-    if (advance && !isNetworkError && !(playerStore.togetherRoomActive && isTogetherSong(song))) playNext()
+    if (advance && !isNetworkError) playNext()
 }
 
 function startMusicVideoSampling() {
@@ -1729,7 +1740,7 @@ function handlePlaybackStarted(playback) {
     resetStreamRecoveryAttempts()
     const fadeInMs = fadeInDurationByHowl.has(playback) ? fadeInDurationByHowl.get(playback) : 200
     fadeInDurationByHowl.delete(playback)
-    if (playback?.__hmHifiOutputPlayer || fadeInMs <= 0 || volume.value === 0) {
+    if (playback?.__hmHifiOutputPlayer || fadeInMs <= 0) {
         playback.volume(volume.value)
     } else {
         playback.fade(0, volume.value, fadeInMs)
@@ -1746,7 +1757,7 @@ function handlePlaybackPaused(playback) {
     stopProgressSampling()
     playing.value = false
     syncExternalPlaybackState()
-    if (playback?.__hmHifiOutputPlayer || volume.value === 0) return
+    if (playback?.__hmHifiOutputPlayer) return
     playback.fade(volume.value, 0, 200)
 }
 
@@ -1876,7 +1887,6 @@ function getGaplessStartTarget(entry) {
 }
 
 function tryStartGaplessNextFromEnd(options = {}) {
-    if (playerStore.togetherRoomActive) return false
     if (!gaplessPlayback.value) return false
 
     const entry = gaplessPreload
@@ -1928,7 +1938,6 @@ function startGaplessTransitionMonitor() {
 function handlePlaybackEnded() {
     reportCurrentNcmPlaybackEnd('playend', true)
     stopProgressSampling()
-    if (typeof window !== 'undefined' && !window.dispatchEvent(new CustomEvent('listentogether:ended', { cancelable: true }))) return
     if (tryStartGaplessNextFromEnd()) return
 
     if (isPersonalFMContext()) {
@@ -2124,6 +2133,10 @@ export function localMusicHandle(list, isToNext) {
                 sampleRate: song.format.sampleRate / 1000,
                 bitsPerSample: song.format.bitsPerSample,
                 bitrate: Math.round(song.format.bitrate / 1000),
+                // 扫描时若从音频里读到了内嵌封面，这里必须带上，
+                // 否则播放器拿不到（loadLocalCoverForSong 只会再去原生问一次，
+                // 而原生对没有内嵌图的文件只能返回空）。
+                cover: song.common.cover || null,
             }
         )
     });
@@ -2586,7 +2599,7 @@ export function pauseMusic() {
     stopProgressSampling()
     const currentHowl = getCurrentHowl()
     persistPlaybackSnapshotNow()
-    if (playing.value && currentHowl && (currentHowl.__hmHifiOutputPlayer || volume.value === 0)) {
+    if (playing.value && currentHowl?.__hmHifiOutputPlayer) {
         currentHowl.pause?.()
         playing.value = false
         syncExternalPlaybackState()

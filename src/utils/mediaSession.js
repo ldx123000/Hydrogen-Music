@@ -251,3 +251,105 @@ export function initMediaSession() {
     })
   } catch (_) {}
 }
+
+/**
+ * 原生媒体通知（Android 通知栏 / 锁屏控制）。
+ *
+ * 实测本机 Android 16 的 WebView **不提供** navigator.mediaSession / MediaMetadata /
+ * Notification（全部 undefined），所以上面那套 Web 标准在 App 里根本不生效，
+ * 通知栏必须由原生插件 MediaNotification 去发。
+ *
+ * 插件不存在时（浏览器 / Electron）直接返回，不做任何事。
+ */
+export async function initNativeMediaNotification() {
+  try {
+    const { Capacitor, registerPlugin } = await import('@capacitor/core')
+    if (!Capacitor || typeof Capacitor.isNativePlatform !== 'function') return
+    if (!Capacitor.isNativePlatform()) return
+    if (typeof Capacitor.isPluginAvailable === 'function' && !Capacitor.isPluginAvailable('MediaNotification')) {
+      return
+    }
+
+    const MediaNotification = registerPlugin('MediaNotification')
+    const playerStore = usePlayerStore(pinia)
+    const refs = storeToRefs(playerStore)
+    const { songList, currentIndex, playing, songId, playMode, shuffledList, shuffleIndex, showSongTranslation, time, progress } = refs
+
+    // 曲目 / 播放状态变化时，把最新信息推给通知栏
+    const push = () => {
+      const track = getCurrentTrack({ songList, currentIndex, playMode, shuffledList, shuffleIndex, songId })
+      if (!track) {
+        void MediaNotification.hide().catch(() => {})
+        return
+      }
+      const covers = getArtworkForTrack(track)
+      void MediaNotification.show({
+        title: getSongDisplayName(track, '', showSongTranslation.value) || track.name || '',
+        artist: getArtistsForTrack(track).join(' / '),
+        album: (track.al || track.album || {}).name || '',
+        coverUrl: covers.length ? covers[0].src : '',
+        playing: !!playing.value,
+        // MIUI 的媒体卡片在 mediaId 为空、时长为 0 时渲染异常（按钮点不动），必须带上
+        mediaId: track.id === undefined || track.id === null ? '' : String(track.id),
+        duration: Number(track.dt || track.duration || 0),
+      }).catch(() => {})
+    }
+
+    /**
+     * 把播放进度推给原生。
+     *
+     * 通知栏媒体卡片上的进度条与「当前时间 / 总时长」读的是 MediaSession 的
+     * PlaybackState；此前只在切歌时推过一次、且位置恒为 PLAYBACK_POSITION_UNKNOWN，
+     * 系统拿不到有效位置，就固定显示 00:00 - 00:00（用户实测反馈）。
+     *
+     * 单位换算：store 里的 time / progress 是**秒**，原生 PlaybackState 要**毫秒**；
+     * track.dt 本身就是毫秒，仅作时长兜底。
+     * 节流：至少间隔 1s 且位置变化 ≥0.8s 才推，避免每秒都跨桥。
+     */
+    let lastProgressAt = 0
+    let lastProgressPos = -1
+    const pushProgress = (force = false) => {
+      try {
+        const track = getCurrentTrack({ songList, currentIndex, playMode, shuffledList, shuffleIndex, songId })
+        if (!track) return
+        const durationMs = Math.round((Number(time.value) || 0) * 1000) || Number(track.dt || track.duration || 0)
+        const positionMs = Math.max(0, Math.round((Number(progress.value) || 0) * 1000))
+        const now = Date.now()
+        if (!force) {
+          if (now - lastProgressAt < 1000) return
+          if (Math.abs(positionMs - lastProgressPos) < 800) return
+        }
+        lastProgressAt = now
+        lastProgressPos = positionMs
+        void MediaNotification.setProgress({ position: positionMs, duration: durationMs }).catch(() => {})
+      } catch (_) {}
+    }
+
+    watch([songList, currentIndex, playMode, shuffledList, shuffleIndex, songId, showSongTranslation], push, { immediate: true })
+    watch(playing, () => {
+      void MediaNotification.setPlaying({ playing: !!playing.value }).catch(() => {})
+      // 暂停/续播时补推一次位置，保证暂停后卡片上的时间停在正确位置
+      pushProgress(true)
+    })
+    // 播放中续推进度：time 变化（拿到真实时长）或 progress 前进都会触发
+    watch([progress, time], () => pushProgress())
+
+    // 通知栏上的按钮 → 播放控制
+    MediaNotification.addListener('mediaAction', async event => {
+      const action = event && event.action
+      console.log('[媒体通知] 前端收到动作:', action)
+      try {
+        const mod = await import('./player/lazy')
+        if (action === 'play') mod.startMusic()
+        else if (action === 'pause') mod.pauseMusic()
+        else if (action === 'next') mod.playNext()
+        else if (action === 'previous') mod.playLast()
+      } catch (error) {
+        console.warn('[媒体通知] 执行动作失败:', action, error && error.message)
+      }
+    })
+    console.log('[媒体通知] 已注册 mediaAction 监听')
+  } catch (error) {
+    console.warn('[mediaSession] 原生媒体通知初始化失败:', error && error.message)
+  }
+}

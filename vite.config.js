@@ -1,15 +1,16 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
-import packageJson from './package.json'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
   base: './',
-  define: { __APP_VERSION__: JSON.stringify(packageJson.version) },
   build: {
     target: 'es2018', // 更新到ES2018以支持async generator functions
+    // 清空 dist 会产生一次批量删除，Android 构建环境对此有保护（每轮上限 50 个文件），
+    // 会让 vite build 直接失败。构建脚本通过 HM_KEEP_DIST=1 改为覆盖写入。
+    emptyOutDir: process.env.HM_KEEP_DIST !== '1',
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
@@ -76,7 +77,17 @@ export default defineConfig({
   server: {
     // 启用 gzip 压缩
     open: false,
-    cors: true
+    cors: true,
+    // 监听 0.0.0.0，手机可通过局域网 IP 直接访问开发服务
+    host: true,
+    proxy: {
+      // 浏览器/手机端前端用相对路径 /api 请求，开发时由 Vite 转发到本地 NCM 服务
+      '/api': {
+        target: 'http://127.0.0.1:36530',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api/, ''),
+      },
+    }
   },
   // 预览服务器配置
   preview: {

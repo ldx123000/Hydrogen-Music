@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { noticeOpen } from '../utils/dialog'
 import { usePlayerStore } from '../store/playerStore'
 import { searchHotDetail, searchSuggest, searchSuggestPc } from '../api/other'
-import { getSongIdFromLink } from '../utils/songLink'
 
 const DEFAULT_ASSIST_LIMIT = 8
 const MIN_ASSIST_LIMIT = 1
@@ -39,7 +38,6 @@ function normalizeAssistLimit(value) {
 }
 
 const assistLimit = computed(() => normalizeAssistLimit(playerStore.searchAssistLimit))
-const songLinkId = computed(() => getSongIdFromLink(searchKeyword.value))
 const isSuggestMode = computed(() => JTrim(searchKeyword.value) !== '')
 const currentList = computed(() => {
     const list = isSuggestMode.value ? suggestList.value : hotList.value
@@ -246,7 +244,7 @@ function handleArrowUp() {
 function handleAssistEnter(event) {
     if (isComposing.value) return
 
-    if (!songLinkId.value && assistVisible.value && activeAssistIndex.value >= 0) {
+    if (assistVisible.value && activeAssistIndex.value >= 0) {
         const item = currentList.value[activeAssistIndex.value]
         if (item) {
             event.preventDefault()
@@ -383,11 +381,11 @@ function handleSearchInput() {
     resetMouseHoverSuppression()
     const keyword = JTrim(searchKeyword.value)
 
-    if (!keyword || songLinkId.value) {
+    if (!keyword) {
         requestSeq.value += 1
         loadingSuggest.value = false
         suggestList.value = []
-        if (!keyword && assistVisible.value) fetchHotList()
+        if (assistVisible.value) fetchHotList()
         return
     }
 
@@ -499,7 +497,7 @@ onUnmounted(() => {
             <div class="search-border-2 search-border8"></div>
 
             <Transition name="assist-fade">
-                <div class="search-assist" v-if="assistVisible && !songLinkId">
+                <div class="search-assist" v-if="assistVisible">
                     <div class="assist-corner assist-corner1"></div>
                     <div class="assist-corner assist-corner2"></div>
                     <div class="assist-corner assist-corner3"></div>
@@ -622,7 +620,12 @@ $boderPosition: -1px;
     }
 
     .search-assist {
-        --assist-bg: rgba(183, 208, 216, 0.56);
+        /* 底色改为**完全不透明**：
+           原来浅色是 rgba(183,208,216,.56)（只有 56% 不透明），联想面板叠在
+           首页 Banner 等内容上时，底下的图案和文字会直接透上来。
+           实测 0.96 仍然能看见透出的内容，所以这里直接给实色。
+           原本配套的 backdrop-filter: blur() 在实色底上看不到效果，一并去掉。 */
+        --assist-bg: #e9f2f5;
         --assist-border: rgba(62, 86, 94, 0.26);
         --assist-corner: rgba(38, 52, 58, 0.58);
         --assist-title: rgba(20, 34, 39, 0.92);
@@ -642,7 +645,7 @@ $boderPosition: -1px;
         left: 50%;
         transform: translateX(-50%);
         background: var(--assist-bg);
-        backdrop-filter: blur(12px);
+        /* 实色底 + 不透明列表，blur 已无意义（原来配半透明底用） */
         border: 1px solid var(--assist-border);
         box-shadow: var(--assist-shadow);
         overflow: hidden;
@@ -816,7 +819,8 @@ $boderPosition: -1px;
 
 :global(html.dark .search-container .search-assist),
 :global(.dark .search-container .search-assist) {
-    --assist-bg: var(--panel);
+    /* 深色下同样给实色，不用 var(--panel)（那里是 .92，仍会透出背景内容） */
+    --assist-bg: #262c34;
     --assist-border: var(--border);
     --assist-corner: var(--text);
     --assist-title: var(--text);
@@ -832,7 +836,6 @@ $boderPosition: -1px;
     background: var(--assist-bg) !important;
     border-color: var(--assist-border) !important;
     box-shadow: var(--assist-shadow) !important;
-    backdrop-filter: blur(10px) !important;
 }
 :global(html.dark .search-container .search-assist .assist-corner),
 :global(.dark .search-container .search-assist .assist-corner) {

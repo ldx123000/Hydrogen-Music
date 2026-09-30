@@ -23,7 +23,7 @@
             <div class="item-title" :class="{'item-title-full': props.type == 'search'}">
                 <div class="item-img">
                     <div class="album-back"></div>
-                    <img v-lazy :src="item.blurPicUrl + '?param=150y150'" alt="">
+                    <img v-lazy :src="item.blurPicUrl ? (item.blurPicUrl + '?param=150y150') : undefined" alt="">
                 </div>
                 <div class="item-info">
                     <span class="item-name">{{item.name}}</span>

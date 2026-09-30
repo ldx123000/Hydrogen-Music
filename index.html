@@ -4,8 +4,19 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- 统一适配方案：布局视口固定为移动端设计宽 390px。
+       WebView / 手机浏览器会按「屏幕宽 ÷ 390」自动等比缩放整个页面，
+       因此 320dp~430dp 的所有机型都渲染同一套已校准布局，从根上消除跨机型显示差异。
+       配套：MainActivity 里 textZoom=100 / useWideViewPort；mobile.css 里 text-size-adjust。
+       桌面浏览器（Electron）会忽略 viewport meta，不受影响。 -->
+  <meta name="viewport" content="width=390, viewport-fit=cover, user-scalable=no" />
   <meta name="referrer" content="no-referrer" />
+  <meta name="theme-color" content="#b0d1d9" />
+  <!-- 允许「添加到主屏幕」后以独立窗口运行 -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Hydrogen Music" />
   <meta content="default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'">
   <title>Hydrogen Music</title>
 </head>

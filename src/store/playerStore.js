@@ -81,7 +81,6 @@ const playerPersistStorage = createDedupedLocalStorage()
 export const usePlayerStore = defineStore('playerStore', {
     state: () => {
         return {
-            togetherRoomActive: false, // transient: defer automatic transitions to the room
             widgetState: true,//是否开启widget
             currentMusic: null,//播放列表的索引
             playing: false,//是否正在播放
@@ -106,7 +105,7 @@ export const usePlayerStore = defineStore('playerStore', {
             lyricSize: null,
             tlyricSize: null,
             rlyricSize: null,
-            lyricType: ['original'],
+            lyricType: ['original', 'trans'],
             lyricInterludeTime: null, //歌词间奏等待时间
             searchAssistLimit: 8, //搜索下拉面板显示数量
             lyricShow: false, //歌词是否显示
@@ -120,16 +119,16 @@ export const usePlayerStore = defineStore('playerStore', {
             musicVideoDOM: null,
             videoIsPlaying: false,
             playerShow: true,
-            lyricBlur: false,
+            lyricBlur: true,
             showSongTranslation: true, // 歌曲名是否显示翻译（原名 (翻译)）
-            gaplessPlayback: false, // 是否预缓冲下一首以减少切歌空隙
-            audioVisualizer: false, // 是否显示顶部音频可视化
+            gaplessPlayback: true, // 是否预缓冲下一首以减少切歌空隙
+            audioVisualizer: true, // 是否显示顶部音频可视化
             localHifiOutput: false, // 本地音乐是否使用 HiFi 输出后端
             localHifiOutputMode: 'shared', // 本地 HiFi 输出模式
             localHifiMpvPath: '', // 自定义 MPV 可执行文件路径
             localHifiAudioDevice: 'auto', // MPV 音频输出设备
             isDesktopLyricOpen: false, // 桌面歌词是否打开
-            coverBlur: false, // 播放页使用封面模糊背景
+            coverBlur: true, // 播放页使用封面模糊背景
         }
     },
     actions: {

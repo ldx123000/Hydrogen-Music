@@ -1,0 +1,10 @@
+{
+  "name": "hydrogen-music-nodejs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App 内嵌的网易云 API 运行时",
+  "main": "index.js",
+  "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "4.35.1"
+  }
+}

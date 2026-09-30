@@ -51,7 +51,7 @@
       <svg 
         v-if="!copying" 
         class="copy-icon" 
-        viewBox="-1.7 -1.2 26.4 26.4"
+        viewBox="0 0 24 24" 
         width="14" 
         height="14"
       >
