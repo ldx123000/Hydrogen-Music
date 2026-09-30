@@ -163,3 +163,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1 -C
 Made by ldx123000 | Modified from Hydrogen Music
 Android port by CY
 ```
+
+### 致谢
+
+本项目能落地，离不开以下朋友的帮助，在此一并致谢：
+
+- **羟醛缩合可以增长碳链** —— 与我共同开发
+- **东东**（[ldx123000](https://github.com/ldx123000)）—— Hydrogen Music 复活版作者、上游维护者
+- **P3T、Winston、灰牌哲翰、蒲兰、北川、钱白玉** 等朋友提供的帮助
+- 以及 **DeepSeek、GLM** —— 开发过程中的 AI 助手
+
+感谢以上朋友提供的帮助。
+
