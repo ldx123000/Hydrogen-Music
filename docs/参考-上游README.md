@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="img/icon.png" width="96" alt="Hydrogen Music" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/icon.png" width="96" alt="Hydrogen Music" />
 </p>
 
 <h1 align="center">Hydrogen Music 复活版</h1>
@@ -218,14 +218,14 @@ node scripts/mobile-test/cdp.cjs "http://127.0.0.1:8080/#/search?keywords=周杰
 
 <table>
   <tr>
-    <td><img src="img/mobile/home.jpg" alt="首页" width="210" /></td>
-    <td><img src="img/mobile/player.jpg" alt="播放页" width="210" /></td>
-    <td><img src="img/mobile/lyrics.jpg" alt="歌词" width="210" /></td>
+    <td><img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/home.jpg" alt="首页" width="210" /></td>
+    <td><img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/player.jpg" alt="播放页" width="210" /></td>
+    <td><img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/lyrics.jpg" alt="歌词" width="210" /></td>
   </tr>
   <tr>
-    <td><img src="img/mobile/comments.jpg" alt="评论" width="210" /></td>
-    <td><img src="img/mobile/fm.jpg" alt="私人漫游" width="210" /></td>
-    <td><img src="img/mobile/settings.jpg" alt="设置" width="210" /></td>
+    <td><img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/comments.jpg" alt="评论" width="210" /></td>
+    <td><img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/fm.jpg" alt="私人漫游" width="210" /></td>
+    <td><img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/settings.jpg" alt="设置" width="210" /></td>
   </tr>
 </table>
 

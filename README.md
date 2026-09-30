@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="img/icon.png" width="96" alt="Hydrogen Music" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/icon.png" width="96" alt="Hydrogen Music" />
 </p>
 
 <h1 align="center">Hydrogen Music · Android</h1>
@@ -10,13 +10,13 @@
 </p>
 
 <p align="center">
-  <img src="img/mobile/home.jpg" width="150" alt="首页" />
-  <img src="img/mobile/player.jpg" width="150" alt="播放页" />
-  <img src="img/mobile/lyrics.jpg" width="150" alt="歌词" />
-  <img src="img/mobile/comments.jpg" width="150" alt="评论区" />
-  <img src="img/mobile/fm.jpg" width="150" alt="私人漫游" />
-  <img src="img/mobile/siren.jpg" width="150" alt="塞壬唱片" />
-  <img src="img/mobile/settings.jpg" width="150" alt="设置" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/home.jpg" width="150" alt="首页" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/player.jpg" width="150" alt="播放页" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/lyrics.jpg" width="150" alt="歌词" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/comments.jpg" width="150" alt="评论区" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/fm.jpg" width="150" alt="私人漫游" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/siren.jpg" width="150" alt="塞壬唱片" />
+  <img src="https://github.com/1CYcat1/Hydrogen-Music/releases/download/android-v1.0.2/settings.jpg" width="150" alt="设置" />
 </p>
 
 ---
