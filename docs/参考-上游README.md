@@ -214,18 +214,18 @@ node scripts/mobile-test/cdp.cjs "http://127.0.0.1:8080/#/search?keywords=周杰
 
 ### 手机端界面
 
-下表截图均为 390 × 844 的手机视口下实拍。
+下表为真机实拍截图。
 
 <table>
   <tr>
-    <td><img src="img/mobile/home.png" alt="首页" width="210" /></td>
-    <td><img src="img/mobile/player.png" alt="播放页" width="210" /></td>
-    <td><img src="img/mobile/comments.png" alt="评论" width="210" /></td>
+    <td><img src="img/mobile/home.jpg" alt="首页" width="210" /></td>
+    <td><img src="img/mobile/player.jpg" alt="播放页" width="210" /></td>
+    <td><img src="img/mobile/lyrics.jpg" alt="歌词" width="210" /></td>
   </tr>
   <tr>
-    <td><img src="img/mobile/search.png" alt="搜索" width="210" /></td>
-    <td><img src="img/mobile/mini-player.png" alt="迷你播放条" width="210" /></td>
-    <td><img src="img/mobile/settings.png" alt="设置" width="210" /></td>
+    <td><img src="img/mobile/comments.jpg" alt="评论" width="210" /></td>
+    <td><img src="img/mobile/fm.jpg" alt="私人漫游" width="210" /></td>
+    <td><img src="img/mobile/settings.jpg" alt="设置" width="210" /></td>
   </tr>
 </table>
 
