@@ -16,7 +16,8 @@
     "android:release": "node scripts/build-android.cjs release",
     "android:bundle": "node scripts/build-android.cjs bundle",
     "android:open": "cap open android",
-    "test": "node --test test/*.test.cjs"
+    "test": "node --test test/*.test.cjs",
+    "inspect": "node scripts/device-cdp.cjs"
   },
   "dependencies": {
     "@capacitor/core": "8.5.2",

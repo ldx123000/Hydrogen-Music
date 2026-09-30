@@ -26,7 +26,8 @@
     "android:build": "npm --prefix apps/android run android:build",
     "android:release": "npm --prefix apps/android run android:release",
     "android:bundle": "npm --prefix apps/android run android:bundle",
-    "android:open": "npm --prefix apps/android run android:open"
+    "android:open": "npm --prefix apps/android run android:open",
+    "android:inspect": "npm --prefix apps/android run inspect --"
   },
   "dependencies": {
     "@neteasecloudmusicapienhanced/api": "^4.35.1",

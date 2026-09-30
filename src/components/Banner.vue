@@ -148,8 +148,8 @@
         </div>
         <div class="banner-img" @mouseenter="bannerMouse(true)" @mouseleave="bannerMouse(false)">
             <div class="img-box" :style="{left:`-${leftVal}vw`,transition:`${transitionTime}s`}">
-                <img @click="bannerItem(item, index)" v-for="(item, index) in bannerList" :src="(item.pic || item.imageUrl) + '?param=720y280'" alt="">
-                <img :src="(bannerList[0].pic || bannerList[0].imageUrl) + '?param=720y280'" alt="">
+                <img @click="bannerItem(item, index)" v-for="(item, index) in bannerList" :src="(item.pic || item.imageUrl) ? ((item.pic || item.imageUrl) + '?param=720y280') : undefined" alt="">
+                <img :src="(bannerList[0] && (bannerList[0].pic || bannerList[0].imageUrl)) ? ((bannerList[0].pic || bannerList[0].imageUrl) + '?param=720y280') : undefined" alt="">
             </div>
         </div>
         <div class="selector-box">

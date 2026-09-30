@@ -1,6 +1,6 @@
 # Hydrogen Music Android
 
-从 `hydrogen-music-Android-github.rar` 迁入的 Vue 3 + Capacitor 8 应用。手机内嵌 Node.js 和网易云 API，无需连接电脑提供服务。保留原包名 `com.hydrogen.music`。应用版本与桌面端统一，当前为 `0.6.3`，Android 升级序号 `versionCode = 4`。
+基于 [1CYcat1（CY）](https://github.com/1CYcat1) 的 Android 移植，最初从 `hydrogen-music-Android-github.rar` 迁入，并整合 [PR #64](https://github.com/ldx123000/Hydrogen-Music/pull/64)。使用 Vue 3 + Capacitor 8，手机内嵌 Node.js 和网易云 API，无需连接电脑提供服务。保留原包名 `com.hydrogen.music`。应用版本与桌面端统一，当前为 `0.6.3`，Android 升级序号 `versionCode = 4`。
 
 ## 目录与维护边界
 
@@ -55,6 +55,43 @@ npm run android:open
 `android:sync/build/release/bundle` 每次先运行 Vite 和标准 `cap sync android`，再复制内嵌运行时并应用补丁。会完整重建生成物，避免旧 chunk 和依赖残留。修改 Capacitor 配置、插件或依赖后仍使用这些命令；单独运行 `cap sync` 不会打入内嵌 API。
 
 产物：`apps/android/release/<version>/Hydrogen.Music-Android-<version>-debug.apk`。
+
+## 真机检查
+
+安装 debug APK，连接 ADB 并打开应用。USB 和无线调试均可使用；以下命令中的 `<serial>` 来自 `adb devices`，`<pid>` 来自 `pidof` 的输出：
+
+```sh
+adb devices
+adb -s <serial> shell pidof com.hydrogen.music
+adb -s <serial> forward tcp:9222 localabstract:webview_devtools_remote_<pid>
+npm run android:inspect
+```
+
+`android:inspect` 改编自 PR #64 的真机 CDP 驱动。默认只读取当前页面的视口、主题、可见封面加载状态和播放器按钮位置，不切换路由或播放状态。检查失败、连接中断、页面表达式抛错或执行超过 10 秒时，以非零退出码结束。需要 debug WebView；浏览器预览的结果不能视为真机验证。
+
+也可传入自己的 JavaScript 表达式文件；异步检查使用 `(async () => { ...; return result })()`。自定义表达式会在应用页面执行，适合测量 DOM 或复现具体问题。
+
+```sh
+npm run android:inspect -- /absolute/path/to/check.js
+adb -s <serial> shell dumpsys media_session
+adb -s <serial> shell dumpsys activity services com.hydrogen.music
+adb -s <serial> forward --remove tcp:9222
+```
+
+端口被占用时换一个端口，并通过 `HM_DEVICE_CDP_PORT` 指定。应用重启后重新取得 PID 和转发端口；结束检查时只移除本次创建的转发。
+
+通知栏检查要分别验证歌曲信息、进度和系统卡片按钮。`media_session` 中时长与位置的单位是毫秒；前端播放器的 `time` / `progress` 为秒。媒体键与通知卡片按钮走不同回调，应分别检查；清空队列后还要确认前台服务及通知退出。后台连续播放仍需实际锁屏播放验证。
+
+## PR #64 的整合位置
+
+| 贡献 | 当前实现 |
+| --- | --- |
+| 通知栏进度、数值转换与停止前台服务 | `android/app/src/main/java/com/hydrogen/music/MediaNotificationPlugin.java`、`MediaPlaybackService.java`、`src/utils/mediaSession.js` |
+| 手机导航、每日推荐二级页面、触摸进度条、歌词字号档位 | `src/components/`、`src/views/`、`src/router/router.js` 和 `src/assets/css/mobile.css` |
+| API 启动等待、临时网络故障保留登录态、缺少封面时不发无效图片请求 | `src/utils/request.js`、`accountSession.js` 及封面组件；登录保护和封面空值处理也同步到桌面端 |
+| 真机 WebView 测量 | `scripts/device-cdp.cjs`，通过根目录 `android:inspect` 调用 |
+
+上述原生能力和手机布局大部分已随压缩包迁入；合并保留贡献历史，并沿用现有的版本、图标、登录和轮播修复。仓库只维护本目录这一套安卓工程。历史截图、重复测试数据和仅用于原作者本机的构建脚本可从 PR 历史查看，当前构建与调试以本文为准。
 
 ## 签名与发行
 

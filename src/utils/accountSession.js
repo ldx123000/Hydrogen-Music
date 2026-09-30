@@ -26,6 +26,18 @@ function isAccountSessionTokenActive(token) {
     return token === accountSessionToken
 }
 
+// 区分「登录失效」与「临时故障」：只有前者才允许清空登录态。
+// 冷启动时内嵌 Node 刚就绪，getUserProfile 可能因超时/网络抖动失败，
+// 若一律走 clearCurrentAccountSessionState 会把存储的 MUSIC_U 误杀，
+// 表现为「明明登录过，过几天打开就掉登录」。
+function isAuthError(error) {
+    const data = error?.response?.data
+    const code = data?.code ?? error?.response?.status
+    const text = String(data?.msg || data?.message || error?.message || '')
+    return code === 301 || code === 401 || code === 403
+        || /需要登录|请先登录|not\s*login|invalid\s*session/i.test(text)
+}
+
 function scheduleCloudDiskDataPreload(profile) {
     const userId = profile?.userId
     if (!userId || !userStore.cloudDiskPage) return
@@ -98,6 +110,7 @@ async function hydrateAccountSession(token) {
 }
 
 async function clearCurrentAccountSessionState(token) {
+    if (!isAccountSessionTokenActive(token)) return
     invalidateNcmApiCookieCache()
     await clearAccountScopedState({ clearSessionCookies: true })
     if (!isAccountSessionTokenActive(token)) return
@@ -119,7 +132,9 @@ export async function initializeCurrentAccountSession() {
     try {
         return await hydrateAccountSession(token)
     } catch (error) {
-        await clearCurrentAccountSessionState(token)
+        if (isAuthError(error)) {
+            await clearCurrentAccountSessionState(token)
+        }
         throw error
     }
 }
@@ -141,7 +156,9 @@ export async function applyLoginSession(data) {
         if (!profile?.userId) throw new Error('登录失败，未获取到账号信息，请重试')
         return profile
     } catch (error) {
-        await clearCurrentAccountSessionState(token)
+        if (isAuthError(error)) {
+            await clearCurrentAccountSessionState(token)
+        }
         throw error
     }
 }

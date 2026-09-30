@@ -300,4 +300,6 @@ Hydrogen-Music
 
 本仓库基于原 [Hydrogen-Music](https://github.com/Kaidesuyo/Hydrogen-Music) 的创意与方向继续维护，感谢原作者的设计与实现。如原作者或相关权利方认为本仓库存在不妥，请联系维护者处理。
 
+感谢 [1CYcat1（CY · 羟醛缩合可以增长碳链）](https://github.com/1CYcat1) 提供 Android 移植、原生媒体控制与移动端适配。相关贡献通过 [PR #64](https://github.com/ldx123000/Hydrogen-Music/pull/64) 整合至 [`apps/android/`](apps/android/README.md)。
+
 代码基于 [MIT License](LICENSE) 开源。
