@@ -93,13 +93,6 @@ const BASE_FILE_PATTERNS = [
   '!**/node_modules/@neteasecloudmusicapienhanced/api/data/china_ip_ranges.txt',
   '!**/node_modules/@neteasecloudmusicapienhanced/api/data/deviceid.txt',
   '!**/node_modules/@neteasecloudmusicapienhanced/api/node_modules/xml2js/lib/xml2js.bc.js',
-  '!**/node_modules/ffmpeg-static/example.js',
-  '!**/node_modules/ffmpeg-static/install.js',
-  '!**/node_modules/ffmpeg-static/ffmpeg.README',
-  '!**/node_modules/ffmpeg-static/types',
-  '!**/node_modules/ffmpeg-static/types/**/*',
-  '!**/node_modules/ffmpeg-static/node_modules',
-  '!**/node_modules/ffmpeg-static/node_modules/**/*',
   '!**/node_modules/axios/dist/axios.js',
   '!**/node_modules/axios/dist/axios.min.js',
   '!**/node_modules/axios/dist/browser',
@@ -153,6 +146,14 @@ function getMpvExtraResourcesForPlatform(platform) {
   }));
 }
 
+function getFfmpegExtraResourcesForPlatform(platform) {
+  const target = `${platform}-\${arch}`;
+  return [{
+    from: path.join(__dirname, 'resources', 'ffmpeg', target),
+    to: path.posix.join('ffmpeg', target),
+  }];
+}
+
 module.exports = {
   productName: 'Hydrogen Music',
   appId: 'com.hydrogenmusic.app',
@@ -160,9 +161,6 @@ module.exports = {
   compression: 'maximum',
   // Electron locale naming differs across platforms, so keep both macOS and Windows/Linux variants.
   electronLanguages: ['en', 'en-US', 'zh_CN', 'zh_TW', 'zh-CN', 'zh-TW'],
-  asarUnpack: [
-    '**/node_modules/ffmpeg-static/**',
-  ],
   directories: {
     output: 'release/${version}',
   },
@@ -174,21 +172,25 @@ module.exports = {
     const normalizedPath = filePath.replace(/\\/g, '/');
     return KEEP_NODE_MODULE_FILE.test(normalizedPath);
   },
+  afterSign: require('./scripts/packaging/compress-mac.cjs').afterSign,
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
+    include: path.join(__dirname, 'scripts', 'packaging', 'installer.nsh'),
     artifactName: 'Hydrogen.Music.Setup.${version}.${ext}',
   },
   mac: {
+    // Keep unsigned releases valid on Apple Silicon; CSC_NAME selects a real signing identity.
+    identity: process.env.CSC_NAME || '-',
     category: 'public.app-category.music',
     icon: './src/assets/icon/icon.icns',
-    extraResources: getMpvExtraResourcesForPlatform('darwin'),
+    extraResources: [...getMpvExtraResourcesForPlatform('darwin'), ...getFfmpegExtraResourcesForPlatform('darwin')],
     target: ['dmg'],
     artifactName: 'Hydrogen.Music-${version}-${arch}.${ext}',
   },
   win: {
     icon: './src/assets/icon/icon.ico',
-    extraResources: getMpvExtraResourcesForPlatform('win32'),
+    extraResources: [...getMpvExtraResourcesForPlatform('win32'), ...getFfmpegExtraResourcesForPlatform('win32')],
     target: ['nsis', 'portable', 'zip'],
     verifyUpdateCodeSignature: false,
     artifactName: 'Hydrogen.Music.${version}.${ext}',
@@ -196,7 +198,7 @@ module.exports = {
   linux: {
     category: 'Audio',
     icon: './src/assets/icon/icon.png',
-    extraResources: getMpvExtraResourcesForPlatform('linux'),
+    extraResources: [...getMpvExtraResourcesForPlatform('linux'), ...getFfmpegExtraResourcesForPlatform('linux')],
     target: [
       {
         target: 'AppImage',

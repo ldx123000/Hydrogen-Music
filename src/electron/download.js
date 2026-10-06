@@ -8,10 +8,9 @@ const { nanoid } = require('nanoid')
 const { spawn } = require('child_process')
 let NodeID3 = null
 let Metaflac = null
-let ffmpegPath = null
+const ffmpegPath = require('./ffmpeg')
 try { NodeID3 = require('node-id3') } catch (_) { NodeID3 = null }
 try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
-try { ffmpegPath = require('ffmpeg-static') } catch (_) { ffmpegPath = null }
 
 const COVER_TRANSCODE_TIMEOUT_MS = 10000
 
@@ -65,8 +64,6 @@ function inferCoverImageMime(buffer, contentType = '', sourceUrl = '') {
 }
 
 function convertCoverWithFfmpeg(buffer) {
-  if (!ffmpegPath) return Promise.resolve(null)
-
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpegPath, [
       '-hide_banner',

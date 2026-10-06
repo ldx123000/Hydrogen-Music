@@ -30,12 +30,7 @@ try {
 } catch (_) {
     ncmCrypto = null
 }
-let ffmpegPath = null
-try {
-    ffmpegPath = require('ffmpeg-static')
-} catch (_) {
-    ffmpegPath = null
-}
+const ffmpegPath = require('./ffmpeg')
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require('./shortcuts')
 const Store = require('electron-store').default;
@@ -1353,7 +1348,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                         resolveOnce(resolve, abortCurrentDownload, 'success')
                     }
 
-                    if (isHevc && ffmpegPath) {
+                    if (isHevc) {
                         try {
                             tmpOut = videoPath.replace(/\.mp4$/i, '_avc.mp4')
                             const args = [

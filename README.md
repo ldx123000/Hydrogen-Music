@@ -132,12 +132,11 @@ Hydrogen Music 是一个第三方桌面音乐播放器。当前仓库在原 Hydr
 
 前往 [Releases](https://github.com/ldx123000/Hydrogen-Music/releases) 下载对应平台的安装包。
 
-当前构建配置支持：
+桌面端提供以下安装方式：
 
-- Windows：NSIS 安装包、Portable、Zip。
-- macOS：DMG。
-- Linux：AppImage、Deb、RPM。
-- Android：APK、AAB，工程位于 [`apps/android/`](apps/android/README.md)，与桌面端共用产品版本，使用 Android 签名配置。
+- Windows：推荐安装版（NSIS）；另提供便携版（Portable）。
+- Linux：推荐 AppImage；另提供 Deb、RPM。
+- macOS：DMG，适用于 M 系列芯片。
 
 Arch Linux 用户可通过 AUR 安装：
 
@@ -253,13 +252,17 @@ npm run build
 
 ### 打包当前平台客户端
 
+首次开发或打包桌面端前，需要构建专用 FFmpeg。编译工具和 Windows MSYS2 步骤见
+[FFmpeg 构建说明](resources/ffmpeg/README.md)。发布工作流会自动执行这些步骤。
+
 ```shell
+npm run ffmpeg:build
 npm run dist
 ```
 
 打包产物会输出到 `release/<version>/`。
 
-如需指定平台，可将参数透传给构建脚本：
+如需指定平台，可将参数透传给构建脚本；需先准备目标平台与架构的 FFmpeg 运行时：
 
 ```shell
 npm run dist -- --win
@@ -274,7 +277,8 @@ npm run dist -- --linux
 - 构建工具：Vite、electron-builder
 - 音频播放：Howler、Web Audio API
 - 视频播放：Plyr
-- 本地元数据：music-metadata、node-id3、metaflac-js、ffmpeg-static
+- 本地元数据：music-metadata、node-id3、metaflac-js
+- 封面与视频转码：专用精简 FFmpeg
 - 桌面集成：electron-store、electron-updater、electron-win-state、mpris-service
 
 ## 项目结构

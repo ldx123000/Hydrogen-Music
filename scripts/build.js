@@ -3,10 +3,7 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 
 const projectDir = path.resolve(__dirname, '..');
-const packageJson = require(path.join(projectDir, 'package.json'));
 const builderConfigPath = path.join(projectDir, 'electron-builder.config.cjs');
-const builderConfig = require(builderConfigPath);
-const sizeReportScript = path.join(projectDir, 'scripts', 'size-report.cjs');
 
 function getPlatformFlag() {
   const currentPlatform = process.platform;
@@ -45,19 +42,13 @@ function runNodeScript(scriptPath, args) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: projectDir,
     stdio: 'inherit',
-    env: process.env,
+    env: {
+      ...process.env,
+      // NSIS's bundled 7z decoder cannot read the newer ARM64 executable filter.
+      // BCJ keeps Windows ARM64 payloads compatible with that decoder.
+      ELECTRON_BUILDER_7Z_FILTER: 'BCJ',
+    },
   });
-}
-
-function resolveOutputDir() {
-  const configuredOutput = builderConfig.directories?.output || 'dist';
-  const resolvedOutput = configuredOutput.replaceAll('${version}', packageJson.version);
-
-  if (/\$\{[^}]+\}/.test(resolvedOutput)) {
-    console.warn(`Warning: unresolved output directory macros in "${configuredOutput}". Size report may use the wrong directory.`);
-  }
-
-  return resolvedOutput;
 }
 
 const extraArgs = process.argv.slice(2);
@@ -73,12 +64,4 @@ builderArgs.push(...extraArgs);
 const buildResult = runNodeScript(getElectronBuilderCli(), builderArgs);
 if (buildResult.status !== 0) {
   process.exit(buildResult.status || 1);
-}
-
-if (require('fs').existsSync(sizeReportScript)) {
-  const outputDir = resolveOutputDir();
-  const reportResult = runNodeScript(sizeReportScript, [outputDir]);
-  if (reportResult.status !== 0) {
-    process.exit(reportResult.status || 1);
-  }
 }
