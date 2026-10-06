@@ -1,8 +1,9 @@
 <script setup>
-  import { onMounted, onUnmounted, watch } from 'vue'
+  import { markRaw, onMounted, onBeforeUnmount, watch } from 'vue'
   import Plyr from 'plyr'
   import '../assets/css/plyr.css'
   import { musicVideoCheck } from '../utils/player/lazy';
+  import { getPlaybackSnapshot } from '../utils/player/playbackTicker';
   import { usePlayerStore } from '../store/playerStore';
   const playerStore = usePlayerStore()
   let plyrInstance = null
@@ -36,6 +37,19 @@
     }
   }
 
+  const syncPlayback = () => {
+    if (playerStore.musicVideoDOM !== plyrInstance) return
+    musicVideoCheck(getPlaybackSnapshot().seek)
+  }
+
+  watch(
+    () => playerStore.playing,
+    isPlaying => {
+      if (isPlaying) syncPlayback()
+      else pausePlyrInstance(plyrInstance)
+    }
+  )
+
   watch(
     () => playerStore.videoIsPlaying,
     isPlaying => {
@@ -52,7 +66,7 @@
     };
     const player = new Plyr('#video-player', config)
     plyrInstance = player
-    playerStore.musicVideoDOM = player
+    playerStore.musicVideoDOM = markRaw(player)
     
     let sources = []
     let videoPath = playerStore.currentMusicVideo.path
@@ -77,14 +91,9 @@
       console.error('视频播放错误:', event)
     })
     
-    player.on('play', () => {
+    player.on('loadedmetadata canplay playing', () => {
       mutePlyrInstance(player)
-      let seek = 0
-      try {
-        const value = playerStore.currentMusic?.seek?.()
-        if (Number.isFinite(value)) seek = value
-      } catch (_) {}
-      musicVideoCheck(seek, true)
+      syncPlayback()
     })
     
     // 检查视频元素
@@ -103,19 +112,19 @@
     }
   })
 
-  onUnmounted(() => {
+  onBeforeUnmount(() => {
     if (nativeVideoElement) {
       nativeVideoElement.onerror = null
       nativeVideoElement = null
     }
     if (plyrInstance) {
+      if (playerStore.musicVideoDOM === plyrInstance) {
+        playerStore.musicVideoDOM = null
+      }
       try {
         plyrInstance.destroy()
       } catch (error) {
         console.warn('销毁视频播放器失败:', error)
-      }
-      if (playerStore.musicVideoDOM === plyrInstance) {
-        playerStore.musicVideoDOM = null
       }
       plyrInstance = null
     }

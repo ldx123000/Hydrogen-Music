@@ -286,7 +286,7 @@ watch(currentTrack, (song) => {
             <MusicVideo class="music-video" v-if="playerStore.addMusicVideo"></MusicVideo>
         </Transition>
         <Transition name="fade2">
-            <PlayerVideo class="back-video" v-show="playerStore.videoIsPlaying" v-if="playerStore.currentMusicVideo && playerStore.musicVideo"></PlayerVideo>
+            <PlayerVideo :key="`${playerStore.currentMusicVideo.id}:${playerStore.currentMusicVideo.path}`" class="back-video" v-show="playerStore.videoIsPlaying" v-if="playerStore.currentMusicVideo && playerStore.musicVideo"></PlayerVideo>
         </Transition>
     </div>
 </template>

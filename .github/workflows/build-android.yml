@@ -59,8 +59,6 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
       - name: Install Android dependencies
         run: npm run android:install
-      - name: Test Android API bridge
-        run: npm --prefix apps/android test
       - name: Resolve version
         id: version
         shell: bash

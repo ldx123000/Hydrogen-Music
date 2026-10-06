@@ -377,6 +377,8 @@ function updateWindowTitleDock() {
     }
 }
 let currentTiming = null
+let musicVideoLoadToken = 0
+const MUSIC_VIDEO_SYNC_TOLERANCE_SECONDS = 0.5
 let closedVideoMemory = new Set() // 记录用户主动关闭视频的歌曲ID
 const NORMAL_PLAY_MODES = Object.freeze([0, 1, 2, 3])
 let preFmPlayMode = null
@@ -1082,10 +1084,9 @@ watch(
  * 基于当前歌曲ID检查并加载对应的视频
  */
 export function checkAndLoadVideoForCurrentSong() {
-    loadMusicVideoForSong(songId.value, {
+    return loadMusicVideoForSong(songId.value, {
         respectEnabled: true,
         respectClosedMemory: true,
-        startDelay: 500,
     })
 }
 
@@ -2200,6 +2201,7 @@ function stopVisibleMusicVideo() {
 }
 
 export function unloadMusicVideo() {
+    musicVideoLoadToken += 1
     // 清理状态变量
     currentMusicVideo.value = null
     videoIsPlaying.value = false
@@ -2209,18 +2211,8 @@ export function unloadMusicVideo() {
     // 清理定时器
     stopMusicVideoSampling()
 
-    // 如果存在视频播放器，暂停并清理
-    if (musicVideoDOM.value) {
-        try {
-            pauseMusicVideoDOM()
-            // 尝试清理视频源
-            if (musicVideoDOM.value.source) {
-                musicVideoDOM.value.source = null
-            }
-        } catch (error) {
-            console.warn('清理视频播放器时出错:', error)
-        }
-    }
+    pauseMusicVideoDOM()
+    musicVideoDOM.value = null
 }
 
 function isValidMusicVideoResult(result, targetSongId) {
@@ -2232,67 +2224,30 @@ function isValidMusicVideoResult(result, targetSongId) {
     )
 }
 
-function startCurrentMusicVideoSampling(targetSongId, { respectClosedMemory = false } = {}) {
-    if (
-        songId.value !== targetSongId ||
-        !currentMusicVideo.value ||
-        currentMusicVideo.value.id !== targetSongId ||
-        (respectClosedMemory && closedVideoMemory.has(targetSongId))
-    ) {
-        return
-    }
-
-    startMusicVideoSampling()
-}
-
-function loadMusicVideoForSong(targetSongId, options = {}) {
+async function loadMusicVideoForSong(targetSongId, options = {}) {
     unloadMusicVideo()
+    const loadToken = musicVideoLoadToken
 
     if (!targetSongId) return
     if (options.respectEnabled && !musicVideo.value) return
     if (options.respectClosedMemory && closedVideoMemory.has(targetSongId)) return
 
-    const initialDelay = Math.max(0, Number(options.initialDelay) || 0)
-    const startDelay = Math.max(0, Number(options.startDelay) || 0)
-    const clearOnMiss = options.clearOnMiss === true
+    try {
+        const result = await verifyStoredMusicVideo(targetSongId)
+        if (loadToken !== musicVideoLoadToken || songId.value !== targetSongId) return
+        if (options.respectEnabled && !musicVideo.value) return
+        if (options.respectClosedMemory && closedVideoMemory.has(targetSongId)) return
+        if (!isValidMusicVideoResult(result, targetSongId)) return
 
-    const verifyAndLoadMusicVideo = () => {
-        verifyStoredMusicVideo(targetSongId).then(result => {
-            if (!isValidMusicVideoResult(result, targetSongId)) {
-                if (clearOnMiss) unloadMusicVideo()
-                return
-            }
-            if (songId.value !== targetSongId) return
-            if (options.respectClosedMemory && closedVideoMemory.has(targetSongId)) return
-
-            currentMusicVideo.value = result.data
-
-            const startSampling = () => {
-                startCurrentMusicVideoSampling(targetSongId, {
-                    respectClosedMemory: options.respectClosedMemory === true,
-                })
-            }
-
-            if (startDelay > 0) setTimeout(startSampling, startDelay)
-            else startSampling()
-        }).catch(error => {
-            console.error('检查视频文件时出错:', error)
-            if (clearOnMiss) unloadMusicVideo()
-        })
+        currentMusicVideo.value = result.data
+        startMusicVideoSampling()
+    } catch (error) {
+        console.error('检查视频文件时出错:', error)
     }
-
-    if (initialDelay > 0) setTimeout(verifyAndLoadMusicVideo, initialDelay)
-    else verifyAndLoadMusicVideo()
 }
 
 export function loadMusicVideo(id) {
-    // FM模式下需要稍长的延迟，等待FM切歌异步操作完成
-    const initialDelay = isPersonalFMContext() ? 300 : 100
-
-    loadMusicVideoForSong(id, {
-        initialDelay,
-        clearOnMiss: true,
-    })
+    return loadMusicVideoForSong(id)
 }
 
 export function addSong(id, index, autoplay, isLocal) {
@@ -2583,10 +2538,6 @@ export function startMusic() {
 
     // 检查是否有视频需要同步播放
     if (currentMusicVideo.value && currentMusicVideo.value.id === songId.value) {
-        if (musicVideoDOM.value && videoIsPlaying.value) {
-            prepareMusicVideoDOMForPlayback()
-            musicVideoDOM.value.play()
-        }
         // 根据歌曲类型启动对应的视频时间检查
         if (getCurrentSong()?.type === 'local') {
             startLocalMusicVideo()
@@ -2671,7 +2622,7 @@ export function changeProgress(toTime) {
     const currentHowl = getCurrentHowl()
     const durationLimit = normalizePlaybackDuration(getStablePlaybackDuration(currentHowl, getCurrentSong()) || time.value)
     const normalizedTime = clampPlaybackProgress(toTime, durationLimit)
-    if (videoIsPlaying.value) {
+    if (currentMusicVideo.value) {
         musicVideoCheck(normalizedTime, true)
     }
     // 先更新进度与歌词索引，再执行实际 seek，确保 UI 与索引同步
@@ -3536,18 +3487,29 @@ export function songTime2(time) {
 }
 
 function syncMusicVideoTiming(timing, seek, update) {
-    if (playing.value && musicVideoDOM.value) {
-        prepareMusicVideoDOMForPlayback()
-        musicVideoDOM.value.play()
-    }
+    const player = musicVideoDOM.value
+    // Plyr 在元数据未加载时会忽略 currentTime，等待就绪事件再同步。
+    if (!player?.media || player.media.readyState < 1 || !player.duration) return
 
     const videoTime = timing.videoTiming + seek - timing.start
-    if (musicVideoDOM.value) {
-        musicVideoDOM.value.currentTime = videoTime
+    const enteringTiming = currentTiming !== timing || !videoIsPlaying.value
+    const drifted = Math.abs(player.currentTime - videoTime) > MUSIC_VIDEO_SYNC_TOLERANCE_SECONDS
+    if (update || enteringTiming || (drifted && !player.media.seeking)) {
+        player.currentTime = videoTime
     }
     currentTiming = timing
     videoIsPlaying.value = true
-    if (!update) playerShow.value = false
+    if (!update && enteringTiming) playerShow.value = false
+
+    if (playing.value && player.paused && !player.media.error) {
+        prepareMusicVideoDOMForPlayback()
+        player.play()?.catch(error => {
+            // 切歌或暂停会中止尚未完成的 play 请求。
+            if (error.name !== 'AbortError') console.error('播放音乐视频失败:', error)
+        })
+    } else if (!playing.value && !player.paused) {
+        pauseMusicVideoDOM()
+    }
 }
 
 /**
@@ -3595,42 +3557,22 @@ export function musicVideoCheck(seek, update) {
     const normalizedSeek = normalizePlaybackNumber(seek)
 
     if (currentTiming && isSeekInMusicVideoTiming(normalizedSeek, currentTiming)) {
-        if (!videoIsPlaying.value || update) {
-            syncMusicVideoTiming(currentTiming, normalizedSeek, update)
-        }
+        syncMusicVideoTiming(currentTiming, normalizedSeek, update)
         return
     }
 
-    if (videoIsPlaying.value && currentTiming && !update) {
-        if (normalizedSeek > currentTiming.end) {
-            stopVisibleMusicVideo()
+    for (const timing of currentMusicVideo.value.timing) {
+        if (!isValidMusicVideoTiming(timing)) {
+            console.warn('无效的时间段数据:', timing)
+            continue
         }
+
+        if (!isSeekInMusicVideoTiming(normalizedSeek, timing)) continue
+        syncMusicVideoTiming(timing, normalizedSeek, update)
         return
     }
 
-    if (musicVideo.value && currentMusicVideo.value && (!videoIsPlaying.value || update)) {
-        let foundTiming = false
-
-        for (let i = 0; i < currentMusicVideo.value.timing.length; i++) {
-            const timing = currentMusicVideo.value.timing[i]
-
-            // 验证时间段数据的完整性
-            if (!isValidMusicVideoTiming(timing)) {
-                console.warn('无效的时间段数据:', timing)
-                continue
-            }
-
-            if (!isSeekInMusicVideoTiming(normalizedSeek, timing)) continue
-
-            foundTiming = true
-            syncMusicVideoTiming(timing, normalizedSeek, update)
-            return
-        }
-
-        if (!foundTiming) {
-            stopVisibleMusicVideo()
-        }
-    }
+    stopVisibleMusicVideo()
 }
 
 
