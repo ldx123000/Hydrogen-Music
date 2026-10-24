@@ -47,7 +47,9 @@ jobs:
     steps:
       - name: Preserve LF when checking out Windows build sources
         if: runner.os == 'Windows'
-        run: git config --global core.autocrlf false
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
 
       - uses: actions/checkout@v6
         with:
