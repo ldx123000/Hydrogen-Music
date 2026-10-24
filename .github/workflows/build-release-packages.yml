@@ -45,6 +45,10 @@ jobs:
             os: ubuntu-24.04
 
     steps:
+      - name: Preserve LF when checking out Windows build sources
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
