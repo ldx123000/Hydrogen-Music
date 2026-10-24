@@ -1,6 +1,6 @@
 # Hydrogen Music Android
 
-基于 [1CYcat1（CY）](https://github.com/1CYcat1) 的 Android 移植，最初从 `hydrogen-music-Android-github.rar` 迁入，并整合 [PR #64](https://github.com/ldx123000/Hydrogen-Music/pull/64)。使用 Vue 3 + Capacitor 8，手机内嵌 Node.js 和网易云 API，无需连接电脑提供服务。保留原包名 `com.hydrogen.music`。应用版本与桌面端统一，当前为 `0.6.3`，Android 升级序号 `versionCode = 4`。
+基于 [1CYcat1（CY）](https://github.com/1CYcat1) 的 Android 移植，最初从 `hydrogen-music-Android-github.rar` 迁入，并整合 [PR #64](https://github.com/ldx123000/Hydrogen-Music/pull/64)。使用 Vue 3 + Capacitor 8，手机内嵌 Node.js 和网易云 API，无需连接电脑提供服务。保留原包名 `com.hydrogen.music`。应用版本与桌面端统一，当前为 `0.6.4`，Android 升级序号 `versionCode = 5`。
 
 ## 目录与维护边界
 
@@ -92,7 +92,7 @@ adb -s <serial> forward --remove tcp:9222
 
 ## 签名与发行
 
-产品版本只在仓库根目录 `package.json` 的 `version` 中维护；两端设置页、Android Gradle 的 `versionName`、产物名和 Android CI 标签校验均从这里读取。本目录不再保留独立的 `version` 字段。Android 的 `androidVersionCode` 仍在本目录 `package.json` 中维护，每次发行必须递增；从旧包的 3 升至 4，确保显示版本改为 0.6.3 后仍能覆盖升级（签名需相同）。
+产品版本只在仓库根目录 `package.json` 的 `version` 中维护；两端设置页、Android Gradle 的 `versionName`、产物名和 Android CI 标签校验均从这里读取。本目录不再保留独立的 `version` 字段。Android 的 `androidVersionCode` 仍在本目录 `package.json` 中维护，每次发行必须递增；当前 `0.6.4` 使用 `5`，支持覆盖升级（签名需相同）。
 
 在构建进程的环境变量中设置：
 
@@ -114,7 +114,7 @@ GitHub Actions 的 **Build Android** 工作流独立于桌面发行：
 
 - 涉及 Android 的 PR 自动构建 debug APK。
 - 手动选择 `debug` 或 `release`；产物可在 Actions 下载。
-- 推送 `android-v0.6.3` 这类与仓库根目录版本一致的 tag，构建签名 APK/AAB 并创建 Android **草稿** Release。
+- 推送 `android-v0.6.4` 这类与仓库根目录版本一致的 tag，构建签名 APK/AAB 并创建 Android **草稿** Release。
 - 手动 release 构建也可选择创建草稿；已有 Release 不自动覆盖。
 - 正式构建需仓库 Secrets：`ANDROID_KEYSTORE_BASE64`（keystore 的 Base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
 

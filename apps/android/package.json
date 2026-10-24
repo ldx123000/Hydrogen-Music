@@ -1,7 +1,7 @@
 {
   "name": "hydrogen-music-android",
   "private": true,
-  "androidVersionCode": 4,
+  "androidVersionCode": 5,
   "description": "Hydrogen Music Android app (Vue + Capacitor)",
   "engines": {
     "node": ">=22.12.0"
