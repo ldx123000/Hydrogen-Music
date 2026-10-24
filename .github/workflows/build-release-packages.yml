@@ -46,6 +46,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - uses: actions/setup-node@v6
         with:
@@ -154,13 +156,23 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  android:
+    name: Android
+    uses: ./.github/workflows/build-android.yml
+    with:
+      variant: release
+      ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+    secrets: inherit
+
   draft-release:
     name: Create draft release
     runs-on: ubuntu-24.04
-    needs: build
+    needs: [build, android]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -214,6 +226,10 @@ jobs:
 
           ### Mac
           - Hydrogen.Music-${release_version}-arm64.dmg: Mac 版，适用于 M 系列芯片
+
+          ### Android
+          - Hydrogen.Music-Android-${release_version}-release.apk: Android 安装版
+          - Hydrogen.Music-Android-${release_version}-release.aab: Android 应用商店分发包
           EOF
 
           release_is_draft="$(gh release view "$RELEASE_TAG" --json isDraft -q '.isDraft' 2>/dev/null || true)"

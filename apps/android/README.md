@@ -110,15 +110,14 @@ npm run android:bundle  # 签名 AAB，供商店分发
 
 缺少签名配置时构建会明确失败。debug APK 使用开发证书，正式发行需使用并妥善保存固定证书；覆盖升级要求包名和签名证书一致。keystore、密码、本机 SDK 路径和生成物不进入 Git。
 
-GitHub Actions 的 **Build Android** 工作流独立于桌面发行：
+GitHub Actions 的 **Build release packages** 工作流统一构建桌面端和 Android：
 
-- 涉及 Android 的 PR 自动构建 debug APK。
-- 手动选择 `debug` 或 `release`；产物可在 Actions 下载。
-- 推送 `android-v0.6.4` 这类与仓库根目录版本一致的 tag，构建签名 APK/AAB 并创建 Android **草稿** Release。
-- 手动 release 构建也可选择创建草稿；已有 Release 不自动覆盖。
+- 推送 `v0.6.4` 这类与仓库根目录版本一致的 tag，构建各平台安装包，并汇总到同一个**草稿** Release。
+- Android 提供签名 APK（直接安装）和 AAB（应用商店分发），Release 说明按平台列出文件用途。
+- 手动运行统一发行工作流时，可以指定已有 tag；各平台均从该 tag 构建。
 - 正式构建需仓库 Secrets：`ANDROID_KEYSTORE_BASE64`（keystore 的 Base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
 
-这里仅提供工作流配置，迁移不会推送 tag、设置远端 Secrets 或发布 Release。
+**Build Android** 同时保留独立构建入口：涉及 Android 的 PR 自动构建 debug APK；手动运行可选择 `debug` 或 `release`，并指定源码分支或 tag，产物在 Actions 下载。独立构建不创建额外的 Android Release。
 
 ## 迁移时的整理
 
