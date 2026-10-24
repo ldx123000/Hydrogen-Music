@@ -186,7 +186,7 @@ npm run android:dev      # 另一终端启动手机界面预览
 npm run android:build    # 构建 debug APK（需 JDK 21 和 Android SDK）
 ```
 
-正式发行使用 `npm run android:release`（APK）或 `npm run android:bundle`（AAB）。签名配置、SDK 要求和 `android-v*` 独立发行工作流见 [Android 文档](apps/android/README.md)。原有 Windows/macOS/Linux 构建命令继续使用。
+正式发行使用 `npm run android:release` 构建签名 APK。签名配置、SDK 要求和各平台统一发行工作流见 [Android 文档](apps/android/README.md)。原有 Windows/macOS/Linux 构建命令继续使用。
 
 ### 本地 HiFi 输出与 MPV 后端
 

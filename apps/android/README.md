@@ -49,7 +49,7 @@ npm run android:open
 
 开发时 Vite 将 `/api` 代理到本机 `127.0.0.1:36531`。APK 内由同一个入口启动 API（36530）和跨域转发（36531）。这两个端口应保持空闲；开发 API 与桌面应用的本地 API 不要同时启动。
 
-`android:sync/build/release/bundle` 每次先运行 Vite 和标准 `cap sync android`，再复制内嵌运行时并应用补丁。会完整重建生成物，避免旧 chunk 和依赖残留。修改 Capacitor 配置、插件或依赖后仍使用这些命令；单独运行 `cap sync` 不会打入内嵌 API。
+`android:sync/build/release` 每次先运行 Vite 和标准 `cap sync android`，再复制内嵌运行时并应用补丁。会完整重建生成物，避免旧 chunk 和依赖残留。修改 Capacitor 配置、插件或依赖后仍使用这些命令；单独运行 `cap sync` 不会打入内嵌 API。
 
 产物：`apps/android/release/<version>/Hydrogen.Music-Android-<version>-debug.apk`。
 
@@ -105,7 +105,6 @@ adb -s <serial> forward --remove tcp:9222
 
 ```sh
 npm run android:release  # 签名 APK，直接安装分发
-npm run android:bundle  # 签名 AAB，供商店分发
 ```
 
 缺少签名配置时构建会明确失败。debug APK 使用开发证书，正式发行需使用并妥善保存固定证书；覆盖升级要求包名和签名证书一致。keystore、密码、本机 SDK 路径和生成物不进入 Git。
@@ -113,7 +112,7 @@ npm run android:bundle  # 签名 AAB，供商店分发
 GitHub Actions 的 **Build release packages** 工作流统一构建桌面端和 Android：
 
 - 推送 `v0.6.4` 这类与仓库根目录版本一致的 tag，构建各平台安装包，并汇总到同一个**草稿** Release。
-- Android 提供签名 APK（直接安装）和 AAB（应用商店分发），Release 说明按平台列出文件用途。
+- Android 提供签名 APK，Release 说明按平台列出文件用途。
 - 手动运行统一发行工作流时，可以指定已有 tag；各平台均从该 tag 构建。
 - 正式构建需仓库 Secrets：`ANDROID_KEYSTORE_BASE64`（keystore 的 Base64）、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
 
@@ -133,14 +132,14 @@ GitHub Actions 的 **Build release packages** 工作流统一构建桌面端和 
 
 本次以保留压缩包的界面和功能为目标：竖屏、390px 设计视口、移动端布局及媒体控制保持原实现。浏览器预览不提供原生文件夹授权、通知、锁屏或后台服务。
 
-原交付材料提到冷启动解压较慢、部分移动布局仍需调整，这些属于后续优化范围。音频可视化现在遵守与本体一致的开关和真实频谱逻辑；无法获得频谱时保持平线，不再显示模拟波形。材料中的真机验证记录不代表本次迁移后的真机验证。发布前需在目标设备检查：登录、在线播放、锁屏/后台播放、通知按钮、返回手势、本地目录授权及下载。应用商店的审核和上架要求需另行确认。
+原交付材料提到冷启动解压较慢、部分移动布局仍需调整，这些属于后续优化范围。音频可视化现在遵守与本体一致的开关和真实频谱逻辑；无法获得频谱时保持平线，不再显示模拟波形。材料中的真机验证记录不代表本次迁移后的真机验证。发布前需在目标设备检查：登录、在线播放、锁屏/后台播放、通知按钮、返回手势、本地目录授权及下载。
 
 ## 本次迁移验证（2026-09-30）
 
 - `npm run android:install` 从锁文件安装；Android 依赖中无 Electron、FFmpeg、MPRIS。
 - `npm run android:build` 成功；debug APK 为 181.6 MiB，包含 arm64-v8a、armeabi-v7a、x86_64 原生库。
 - `apksigner verify`、`zipalign -c -P 16 4`、ZIP CRC 检查通过；APK 内运行时与当前源码一致。
-- 临时测试证书的 release APK/AAB 构建和签名验证通过；缺少签名配置时 npm 和直接 Gradle 构建均明确失败。测试签名产物不作为发行包交付。
+- 临时测试证书的 release APK 构建和签名验证通过；缺少签名配置时 npm 和直接 Gradle 构建均明确失败。测试签名产物不作为发行包交付。
 - 全新临时数据目录的 API 启动、xeapi 公钥生成、歌曲详情和播放地址请求通过（宿主 Node.js 测试）。
 - Chrome 手机视口 320×568、390×844、430×932 下，浅色/深色页面、头像进入设置、设置保存后刷新、手机验证码/二维码界面切换、底部导航检查通过，无页面 JS 异常。
 - 桌面 `npm run build` 通过；Android 工作流通过 actionlint 静态检查。

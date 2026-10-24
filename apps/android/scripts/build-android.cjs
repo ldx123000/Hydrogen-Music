@@ -6,9 +6,9 @@ const { spawnSync } = require('node:child_process')
 const root = path.resolve(__dirname, '..')
 const { version } = require('../../../package.json')
 const mode = process.argv[2]
-const tasks = { debug: 'assembleDebug', release: 'assembleRelease', bundle: 'bundleRelease' }
+const tasks = { debug: 'assembleDebug', release: 'assembleRelease' }
 if (mode !== 'sync' && !tasks[mode]) {
-  throw new Error('Usage: node scripts/build-android.cjs sync|debug|release|bundle')
+  throw new Error('Usage: node scripts/build-android.cjs sync|debug|release')
 }
 
 function run(command, args, cwd = root, shell = false) {
@@ -17,7 +17,7 @@ function run(command, args, cwd = root, shell = false) {
   if (result.status !== 0) process.exit(result.status || 1)
 }
 
-if (mode === 'release' || mode === 'bundle') {
+if (mode === 'release') {
   for (const key of ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']) {
     if (!process.env[key]) throw new Error(`${key} is required for a signed release (see apps/android/README.md)`)
   }
@@ -47,11 +47,8 @@ const androidDir = path.join(root, 'android')
 const windows = process.platform === 'win32'
 run(windows ? 'gradlew.bat' : './gradlew', [tasks[mode], '--console=plain', ...process.argv.slice(3)], androidDir, windows)
 
-const bundle = mode === 'bundle'
-const variant = mode === 'debug' ? 'debug' : 'release'
-const extension = bundle ? 'aab' : 'apk'
-const artifact = path.join(androidDir, `app/build/outputs/${bundle ? 'bundle' : 'apk'}/${variant}/app-${variant}.${extension}`)
-const output = path.join(root, 'release', version, `Hydrogen.Music-Android-${version}-${variant}.${extension}`)
+const artifact = path.join(androidDir, `app/build/outputs/apk/${mode}/app-${mode}.apk`)
+const output = path.join(root, 'release', version, `Hydrogen.Music-Android-${version}-${mode}.apk`)
 fs.mkdirSync(path.dirname(output), { recursive: true })
 fs.copyFileSync(artifact, output)
 console.log(`Android artifact: ${output}`)

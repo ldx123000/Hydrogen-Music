@@ -111,16 +111,14 @@ jobs:
       - name: Build debug APK
         if: env.BUILD_VARIANT == 'debug'
         run: npm run android:build
-      - name: Build signed APK and AAB
+      - name: Build signed APK
         if: env.BUILD_VARIANT == 'release'
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          npm run android:release
-          npm run android:bundle
-      - name: Verify signed APK and AAB
+        run: npm run android:release
+      - name: Verify signed APK
         if: env.BUILD_VARIANT == 'release'
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -129,7 +127,6 @@ jobs:
         shell: bash
         run: |
           apk="apps/android/release/$VERSION/Hydrogen.Music-Android-$VERSION-release.apk"
-          aab="apps/android/release/$VERSION/Hydrogen.Music-Android-$VERSION-release.aab"
           keytool -exportcert -keystore "$ANDROID_KEYSTORE_PATH" \
             -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS" \
             -file "$RUNNER_TEMP/hydrogen-android.cer"
@@ -138,8 +135,6 @@ jobs:
           printf '%s\n' "$signature"
           actual="$(printf '%s\n' "$signature" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
           if [[ "$actual" != "$expected" ]]; then echo 'APK signing certificate does not match the release key'; exit 1; fi
-          jarsigner -verify -strict -keystore "$ANDROID_KEYSTORE_PATH" \
-            -storepass:env ANDROID_KEYSTORE_PASSWORD "$aab" "$ANDROID_KEY_ALIAS"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | sed -n '1p'
       - uses: actions/upload-artifact@v7
         if: env.BUILD_VARIANT == 'debug'
@@ -156,7 +151,6 @@ jobs:
         run: |
           mkdir -p _release-assets
           cp "apps/android/release/$VERSION/Hydrogen.Music-Android-$VERSION-release.apk" _release-assets/
-          cp "apps/android/release/$VERSION/Hydrogen.Music-Android-$VERSION-release.aab" _release-assets/
       - uses: actions/upload-artifact@v7
         if: env.BUILD_VARIANT == 'release'
         with:

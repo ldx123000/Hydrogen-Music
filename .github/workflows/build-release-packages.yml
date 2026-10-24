@@ -235,7 +235,6 @@ jobs:
 
           ### Android
           - Hydrogen.Music-Android-${release_version}-release.apk: Android 安装版
-          - Hydrogen.Music-Android-${release_version}-release.aab: Android 应用商店分发包
           EOF
 
           release_is_draft="$(gh release view "$RELEASE_TAG" --json isDraft -q '.isDraft' 2>/dev/null || true)"

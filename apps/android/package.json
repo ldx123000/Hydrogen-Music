@@ -14,7 +14,6 @@
     "sync": "node scripts/build-android.cjs sync",
     "android:build": "node scripts/build-android.cjs debug",
     "android:release": "node scripts/build-android.cjs release",
-    "android:bundle": "node scripts/build-android.cjs bundle",
     "android:open": "cap open android",
     "inspect": "node scripts/device-cdp.cjs"
   },
