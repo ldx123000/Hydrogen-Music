@@ -100,8 +100,8 @@ jobs:
           for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
             if [[ -z "${!name}" ]]; then echo "Missing signing secret: $name"; exit 1; fi
           done
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hydrogen-android.jks"
-          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/hydrogen-android.jks" >> "$GITHUB_ENV"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hydrogen-android.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/hydrogen-android.keystore" >> "$GITHUB_ENV"
       - name: Build debug APK
         if: env.BUILD_VARIANT == 'debug'
         run: npm run android:build
@@ -114,6 +114,27 @@ jobs:
         run: |
           npm run android:release
           npm run android:bundle
+      - name: Verify signed APK and AAB
+        if: env.BUILD_VARIANT == 'release'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        shell: bash
+        run: |
+          apk="apps/android/release/$VERSION/Hydrogen.Music-Android-$VERSION-release.apk"
+          aab="apps/android/release/$VERSION/Hydrogen.Music-Android-$VERSION-release.aab"
+          keytool -exportcert -keystore "$ANDROID_KEYSTORE_PATH" \
+            -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS" \
+            -file "$RUNNER_TEMP/hydrogen-android.cer"
+          expected="$(sha256sum "$RUNNER_TEMP/hydrogen-android.cer" | cut -d ' ' -f 1)"
+          signature="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk")"
+          printf '%s\n' "$signature"
+          actual="$(printf '%s\n' "$signature" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          if [[ "$actual" != "$expected" ]]; then echo 'APK signing certificate does not match the release key'; exit 1; fi
+          jarsigner -verify -strict -keystore "$ANDROID_KEYSTORE_PATH" \
+            -storepass:env ANDROID_KEYSTORE_PASSWORD "$aab" "$ANDROID_KEY_ALIAS"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | sed -n '1p'
       - uses: actions/upload-artifact@v7
         if: env.BUILD_VARIANT == 'debug'
         with:
@@ -139,4 +160,4 @@ jobs:
           retention-days: 14
       - name: Remove signing material
         if: always()
-        run: rm -f "$RUNNER_TEMP/hydrogen-android.jks"
+        run: rm -f "$RUNNER_TEMP/hydrogen-android.keystore" "$RUNNER_TEMP/hydrogen-android.cer"
