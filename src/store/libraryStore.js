@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { getPlaylistDetail, getPlaylistAll, getRecommendSongs, getHistoryRecommendSongsDetail, playlistDynamic } from '../api/playlist'
+import { getPlaylistDetail, getRecommendSongs, getHistoryRecommendSongsDetail, playlistDynamic } from '../api/playlist'
 import { getAlbumDetail, albumDynamic } from '../api/album'
 import { getArtistDetail, getArtistFansCount, getArtistTopSong, getArtistAlbum } from '../api/artist'
 import { getArtistMV } from '../api/mv'
@@ -11,11 +11,12 @@ const PLAYLIST_PAGE_SIZE = 100
 const PLAYLIST_HYDRATION_CONCURRENCY = 4
 const PLAYLIST_OVERVIEW_COUNT_FIELDS = ['trackCount', 'size']
 
-const createPlaylistHydrationState = ({ id = null, total = 0, loaded = 0, status = 'idle' } = {}) => ({
+const createPlaylistHydrationState = ({ id = null, total = 0, loaded = 0, status = 'idle', nextOffset = 0 } = {}) => ({
     id,
     total,
     loaded,
     status,
+    nextOffset,
 })
 const createSearchIndexState = () => ({
     songs: {},
@@ -56,7 +57,26 @@ const trimRecordMap = (records, limit, fallbackLimit) => {
 const hasNeedTimestampUrl = (needTimestamp, url) => {
     return Array.isArray(needTimestamp) && needTimestamp.includes(url)
 }
-const createPlaylistHydrationToken = playlistId => `${playlistId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+const createLibraryDetailToken = key => `${key}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+
+function orderPlaylistSongs(trackIds, songs, privileges = []) {
+    const privilegesById = new Map(privileges.map(privilege => [String(privilege.id), privilege]))
+    const playableSongs = mapSongsPlayableStatus(songs, songs.map(song => privilegesById.get(String(song.id))))
+    const songsById = new Map(playableSongs.map(song => [String(song.id), song]))
+    return trackIds.map(track => songsById.get(String(track.id)))
+}
+
+async function loadPlaylistSongs(trackIds, options, knownSongs = new Map()) {
+    const missingIds = trackIds.filter(track => !knownSongs.has(String(track.id)))
+    let fetchedSongs = []
+    if (missingIds.length > 0) {
+        const result = await getSongDetail(missingIds.map(track => track.id), options)
+        fetchedSongs = orderPlaylistSongs(missingIds, result.songs, result.privileges).filter(Boolean)
+    }
+    const songsById = new Map([...knownSongs, ...fetchedSongs.map(song => [String(song.id), song])])
+    return trackIds.map(track => songsById.get(String(track.id))).filter(Boolean)
+}
 
 export const useLibraryStore = defineStore('libraryStore', {
     state: () => {
@@ -81,20 +101,19 @@ export const useLibraryStore = defineStore('libraryStore', {
             detailCache: {},
             detailCacheLimit: 20,
             playlistHydration: createPlaylistHydrationState(),
-            playlistHydrationToken: null,
+            libraryDetailToken: null,
             playlistHydrationPromise: null,
             librarySongs: null,
             libraryAlbum: null,
             libraryMV: null,
             searchIndexById: createSearchIndexState(),
             needTimestamp: [],
-            libraryChangeAnimation: false,
+            libraryDetailKey: '',
+            libraryDetailStatus: 'idle',
+            playlistDynamicStatus: 'idle',
         }
     },
     actions: {
-        changeAnimation() {
-            this.libraryChangeAnimation = true
-        },
         changeLibraryList(type) {
             if (type == 0) this.libraryList = this.playlistUserCreated
             else if (type == 1) this.libraryList = this.playlistUserSub
@@ -165,7 +184,10 @@ export const useLibraryStore = defineStore('libraryStore', {
         },
         resetPlaylistHydration() {
             this.playlistHydration = createPlaylistHydrationState()
-            this.playlistHydrationToken = null
+            this.playlistHydrationPromise = null
+        },
+        cancelLibraryDetailLoad() {
+            this.libraryDetailToken = null
             this.playlistHydrationPromise = null
         },
         resetAccountState() {
@@ -186,7 +208,10 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.librarySongs = null
             this.libraryAlbum = null
             this.libraryMV = null
-            this.libraryChangeAnimation = false
+            this.cancelLibraryDetailLoad()
+            this.libraryDetailKey = ''
+            this.libraryDetailStatus = 'idle'
+            this.playlistDynamicStatus = 'idle'
             this.resetPlaylistHydration()
             this.resetSearchIndex()
         },
@@ -304,11 +329,14 @@ export const useLibraryStore = defineStore('libraryStore', {
 
             const normalizedId = normalizeOptionalId(id)
             const hydrationId = String(this.playlistHydration?.id || '')
-            if (!normalizedId || hydrationId == normalizedId) this.resetPlaylistHydration()
+            if (!normalizedId || hydrationId == normalizedId) {
+                this.cancelLibraryDetailLoad()
+                this.resetPlaylistHydration()
+            }
         },
         cacheCurrentLibraryDetail(id, routerName) {
             const key = getLibraryDetailCacheKey(id, routerName)
-            if (!key || !this.libraryInfo) return
+            if (key != this.libraryDetailKey || this.libraryDetailStatus != 'ready' || String(this.libraryInfo?.id) != String(id)) return
             if (!this.detailCache || typeof this.detailCache != 'object') this.detailCache = {}
 
             this.detailCache[key] = {
@@ -317,6 +345,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 libraryAlbum: this.libraryAlbum,
                 libraryMV: this.libraryMV,
                 artistPageType: this.artistPageType,
+                playlistDynamicStatus: this.playlistDynamicStatus,
                 playlistHydration: { ...(this.playlistHydration || createPlaylistHydrationState()) },
                 searchIndexById: cloneSearchIndexState(this.searchIndexById),
                 updatedAt: Date.now(),
@@ -335,9 +364,11 @@ export const useLibraryStore = defineStore('libraryStore', {
             this.libraryMV = cached.libraryMV
             this.artistPageType = Number.isInteger(cached.artistPageType) ? cached.artistPageType : 0
             this.searchIndexById = cloneSearchIndexState(cached.searchIndexById)
-            this.libraryChangeAnimation = false
+            this.libraryDetailStatus = 'ready'
 
             if (routerName == 'playlist') {
+                this.playlistDynamicStatus = cached.playlistDynamicStatus
+                if (this.playlistDynamicStatus != 'ready') void this.updatePlaylistDynamic(id, this.libraryDetailToken)
                 this.playlistHydration = { ...(cached.playlistHydration || createPlaylistHydrationState()) }
                 this.resumePlaylistHydrationFromCache(id)
             } else {
@@ -353,235 +384,183 @@ export const useLibraryStore = defineStore('libraryStore', {
             )
         },
         async waitForPlaylistHydration(id) {
-            const targetId = String(id || '')
-            if (!targetId) return
-
-            const hydration = this.playlistHydration || createPlaylistHydrationState()
-            if (String(hydration.id || '') != targetId || hydration.status != 'loading') return
-
-            const task = this.playlistHydrationPromise
-            if (task && typeof task.then == 'function') {
-                await task.catch(() => null)
-            }
-        },
-        async hydratePlaylistRemaining(id, totalTracks, token, initialLoaded = 0, options = {}) {
-            const offsets = []
-            const parsedInitialLoaded = Number(initialLoaded)
-            const safeInitialLoaded = Number.isFinite(parsedInitialLoaded) ? Math.max(0, parsedInitialLoaded) : 0
-            const startOffset = Math.max(
-                PLAYLIST_PAGE_SIZE,
-                Math.floor(safeInitialLoaded / PLAYLIST_PAGE_SIZE) * PLAYLIST_PAGE_SIZE
-            )
-            for (let offset = startOffset; offset < totalTracks; offset += PLAYLIST_PAGE_SIZE) {
-                offsets.push(offset)
-            }
-            if (offsets.length == 0) return []
-
-            const queue = offsets.slice()
-            const pages = []
-            let loadedCount = Math.min(safeInitialLoaded, totalTracks)
-            const worker = async () => {
-                while (queue.length > 0) {
-                    if (this.playlistHydrationToken != token) return
-                    const offset = queue.shift()
-                    const params = {
-                        id,
-                        limit: PLAYLIST_PAGE_SIZE,
-                        offset,
-                    }
-                    const result = await getPlaylistAll(params, options)
-                    if (this.playlistHydrationToken != token) return
-
-                    const songs = mapSongsPlayableStatus(result?.songs || [], result?.privileges || []) || []
-                    pages.push({ offset, songs })
-                    loadedCount = Math.min(totalTracks, loadedCount + songs.length)
-                    this.playlistHydration = createPlaylistHydrationState({
-                        id,
-                        total: totalTracks,
-                        loaded: loadedCount,
-                        status: 'loading',
-                    })
+            const targetId = String(id)
+            const token = this.libraryDetailToken
+            if (String(this.playlistHydration.id) != targetId) return false
+            while (this.libraryDetailToken == token && this.playlistHydration.status == 'loading' && this.playlistHydrationPromise) {
+                try {
+                    await this.playlistHydrationPromise
+                } catch (error) {
+                    return false
                 }
             }
-            const workerCount = Math.min(PLAYLIST_HYDRATION_CONCURRENCY, queue.length)
-            await Promise.all(Array.from({ length: workerCount }, () => worker()))
-            if (this.playlistHydrationToken != token) return []
-
-            pages.sort((a, b) => a.offset - b.offset)
-            const mergedSongs = []
-            pages.forEach(page => mergedSongs.push(...page.songs))
-            return mergedSongs
+            return this.libraryDetailToken == token && this.playlistHydration.status == 'completed'
         },
-        appendHydratedPlaylistSongs(songs) {
-            if (!Array.isArray(songs) || songs.length == 0) return
-
-            const currentSongs = Array.isArray(this.librarySongs) ? this.librarySongs : []
-            if (!Array.isArray(this.librarySongs)) this.librarySongs = currentSongs
-            for (let i = 0; i < songs.length; i++) {
-                currentSongs.push(songs[i])
+        async hydratePlaylistRemaining(id, trackIds, token, initialOffset, options = {}) {
+            const knownSongs = new Map((this.libraryInfo.tracks ?? []).map(song => [String(song.id), song]))
+            const offsets = []
+            for (let offset = initialOffset; offset < trackIds.length; offset += PLAYLIST_PAGE_SIZE) {
+                offsets.push(offset)
             }
-            this.indexLibrarySongs(songs, { append: true })
+            const pages = []
+            let failed = false
+            const worker = async () => {
+                while (offsets.length > 0) {
+                    if (failed || this.libraryDetailToken != token) return
+                    const offset = offsets.shift()
+                    const songs = await loadPlaylistSongs(trackIds.slice(offset, offset + PLAYLIST_PAGE_SIZE), options, knownSongs).catch(error => {
+                        failed = true
+                        throw error
+                    })
+                    if (this.libraryDetailToken != token) return
+                    pages.push({ offset, songs })
+                }
+            }
+            await Promise.all(Array.from({ length: Math.min(PLAYLIST_HYDRATION_CONCURRENCY, offsets.length) }, () => worker()))
+            pages.sort((a, b) => a.offset - b.offset)
+            return pages.flatMap(page => page.songs)
         },
-        startPlaylistHydrationTask(playlistId, totalTracks, token, loadedTracks, options = {}) {
-            const hydrationTask = this.hydratePlaylistRemaining(playlistId, totalTracks, token, loadedTracks, options)
+        startPlaylistHydrationTask(playlistId, trackIds, token, initialOffset, options = {}) {
+            const hydrationTask = this.hydratePlaylistRemaining(playlistId, trackIds, token, initialOffset, options)
                 .then(remainingSongs => {
-                    if (this.playlistHydrationToken != token) return
-                    this.appendHydratedPlaylistSongs(remainingSongs)
-                    const hydratedTrackCount = Array.isArray(this.librarySongs) ? this.librarySongs.length : totalTracks
-                    this.setPlaylistOverviewTrackCount(playlistId, hydratedTrackCount)
+                    if (this.libraryDetailToken != token) return
+                    this.librarySongs.push(...remainingSongs)
+                    this.indexLibrarySongs(remainingSongs, { append: true })
+                    const loaded = this.librarySongs.length
+                    this.setPlaylistOverviewTrackCount(playlistId, loaded)
                     this.playlistHydration = createPlaylistHydrationState({
-                        id: playlistId,
-                        total: hydratedTrackCount,
-                        loaded: hydratedTrackCount,
-                        status: 'completed',
+                        id: playlistId, total: loaded, loaded, status: 'completed', nextOffset: trackIds.length,
                     })
                     this.cacheCurrentLibraryDetail(playlistId, 'playlist')
                 })
-                .catch(() => {
-                    if (this.playlistHydrationToken != token) return
-                    const loadedNow = Array.isArray(this.librarySongs) ? Math.min(this.librarySongs.length, totalTracks) : loadedTracks
-                    this.playlistHydration = createPlaylistHydrationState({
-                        id: playlistId,
-                        total: totalTracks,
-                        loaded: loadedNow,
-                        status: 'failed',
-                    })
+                .catch(error => {
+                    if (this.libraryDetailToken != token) return
+                    console.error('加载剩余歌曲失败:', error)
+                    this.playlistHydration.status = 'failed'
                     this.cacheCurrentLibraryDetail(playlistId, 'playlist')
                 })
                 .finally(() => {
-                    if (this.playlistHydrationToken == token) this.playlistHydrationPromise = null
+                    if (this.playlistHydrationPromise === hydrationTask) this.playlistHydrationPromise = null
                 })
-
             this.playlistHydrationPromise = hydrationTask
             return hydrationTask
         },
         resumePlaylistHydrationFromCache(id) {
-            const playlistId = String(id || '')
-            const totalTracks = Number(this.playlistHydration?.total || 0)
-            const loadedTracks = Array.isArray(this.librarySongs) ? this.librarySongs.length : Number(this.playlistHydration?.loaded || 0)
-            if (!playlistId || !Number.isFinite(totalTracks) || totalTracks <= 0 || loadedTracks >= totalTracks) {
-                this.playlistHydration = createPlaylistHydrationState({
-                    id: playlistId,
-                    total: Math.max(totalTracks || 0, loadedTracks || 0),
-                    loaded: Math.max(totalTracks || 0, loadedTracks || 0),
-                    status: playlistId ? 'completed' : 'idle',
-                })
-                this.playlistHydrationToken = null
-                this.playlistHydrationPromise = null
-                if (playlistId) {
-                    this.setPlaylistOverviewTrackCount(playlistId, loadedTracks)
-                    this.cacheCurrentLibraryDetail(playlistId, 'playlist')
-                }
-                return
-            }
-
-            const token = createPlaylistHydrationToken(playlistId)
-            this.playlistHydrationToken = token
-            this.playlistHydration = createPlaylistHydrationState({
-                id: playlistId,
-                total: totalTracks,
-                loaded: loadedTracks,
-                status: 'loading',
-            })
-
-            this.startPlaylistHydrationTask(playlistId, totalTracks, token, loadedTracks)
-            this.cacheCurrentLibraryDetail(playlistId, 'playlist')
+            if (this.playlistHydration.status == 'completed') return
+            this.playlistHydration.status = 'loading'
+            this.startPlaylistHydrationTask(id, this.libraryInfo.trackIds, this.libraryDetailToken, this.playlistHydration.nextOffset)
         },
         async updateLibraryDetail(id, routerName, options = {}) {
-            const { force = false } = options
-            if (!force && !this.shouldBypassLibraryDetailCache(routerName) && this.restoreLibraryDetailFromCache(id, routerName)) return
+            const { force = false, deferRemaining = false } = options
+            const key = getLibraryDetailCacheKey(id, routerName)
+            const preserveContent = options.preserveContent === true && this.libraryDetailKey == key && this.libraryDetailStatus == 'ready'
+            const token = createLibraryDetailToken(key)
+            this.libraryDetailToken = token
+            this.libraryDetailKey = key
+            this.resetPlaylistHydration()
+            if (!preserveContent) this.playlistDynamicStatus = 'idle'
+            if (!force && !this.shouldBypassLibraryDetailCache(routerName) && this.restoreLibraryDetailFromCache(id, routerName)) return true
 
-            this.changeAnimation()
-            this.resetSearchIndex()
-            if (routerName != 'playlist') this.resetPlaylistHydration()
-            if (routerName == 'playlist') await this.updatePlaylistDetail(id, options)
-            if (routerName == 'album') await this.updateAlbumDetail(id)
-            if (routerName == 'artist') await this.updateArtistDetail(id)
-            this.artistPageType = 0
-            this.libraryAlbum = null
-            this.libraryMV = null
-            this.cacheCurrentLibraryDetail(id, routerName)
-        },
-        async updatePlaylistDetail(id, options = {}) {
-            const { deferRemaining = false, silent = false } = options
-            const requestOptions = { silent }
-            const playlistId = String(id || '')
-            const token = createPlaylistHydrationToken(playlistId)
-            this.playlistHydrationToken = token
-            this.playlistHydrationPromise = null
-            this.playlistHydration = createPlaylistHydrationState({
-                id: playlistId,
-                total: 0,
-                loaded: 0,
-                status: 'loading',
-            })
-
-            const params = {
-                id: playlistId,
-                limit: PLAYLIST_PAGE_SIZE,
-                offset: 0,
+            const overview = routerName == 'playlist'
+                ? [...(this.playlistUserCreated || []), ...(this.playlistUserSub || [])].find(item => String(item.id) == String(id))
+                : null
+            if (!preserveContent) {
+                this.libraryInfo = overview ? { ...overview, followed: overview.subscribed } : null
+                this.librarySongs = []
+                this.libraryAlbum = null
+                this.libraryMV = null
+                this.artistPageType = 0
+                this.libraryDetailStatus = 'loading'
+                this.resetSearchIndex()
             }
             try {
-                const [playlistDetailResult, playlistTrackResult, playlistDynamicResult] = await Promise.all([
-                    getPlaylistDetail(params, requestOptions),
-                    getPlaylistAll(params, requestOptions),
-                    playlistDynamic(playlistId, requestOptions),
-                ])
-                if (this.playlistHydrationToken != token) return
-
-                const playlist = playlistDetailResult?.playlist || null
-                const firstBatchSongs = mapSongsPlayableStatus(playlistTrackResult?.songs || [], playlistTrackResult?.privileges || []) || []
-                const totalTracks = Number(playlist?.trackIds?.length || firstBatchSongs.length || 0)
-                const loadedTracks = Math.min(firstBatchSongs.length, totalTracks)
-
-                this.libraryInfo = playlist
-                this.librarySongs = firstBatchSongs
-                this.indexLibrarySongs(firstBatchSongs)
-                if (this.libraryInfo) this.libraryInfo.followed = !!playlistDynamicResult?.subscribed
-                this.setPlaylistOverviewTrackCount(playlistId, totalTracks)
-
-                if (totalTracks <= loadedTracks) {
-                    this.playlistHydration = createPlaylistHydrationState({
-                        id: playlistId,
-                        total: totalTracks,
-                        loaded: loadedTracks,
-                        status: 'completed',
-                    })
-                    this.libraryChangeAnimation = false
-                    this.cacheCurrentLibraryDetail(playlistId, 'playlist')
-                    return
+                if (routerName == 'playlist') {
+                    const initialLoad = this.loadPlaylistDetail(id, token, { ...options, preserveContent })
+                    this.playlistHydrationPromise = initialLoad
+                    await initialLoad
+                    if (this.libraryDetailToken == token && this.playlistHydrationPromise === initialLoad) this.playlistHydrationPromise = null
                 }
-
-                this.playlistHydration = createPlaylistHydrationState({
-                    id: playlistId,
-                    total: totalTracks,
-                    loaded: loadedTracks,
-                    status: 'loading',
-                })
-
-                const hydrationTask = this.startPlaylistHydrationTask(playlistId, totalTracks, token, loadedTracks, requestOptions)
-                this.libraryChangeAnimation = false
-                if (!deferRemaining) await hydrationTask
+                if (routerName == 'album') await this.updateAlbumDetail(id, token)
+                if (routerName == 'artist') await this.updateArtistDetail(id, token)
+                if (this.libraryDetailToken != token) return false
+                this.libraryDetailStatus = 'ready'
+                this.cacheCurrentLibraryDetail(id, routerName)
+                if (!deferRemaining && this.playlistHydrationPromise) await this.playlistHydrationPromise
+                return this.libraryDetailToken == token
             } catch (error) {
-                if (this.playlistHydrationToken == token) {
-                    this.playlistHydration = createPlaylistHydrationState({
-                        id: playlistId,
-                        total: 0,
-                        loaded: 0,
-                        status: 'failed',
-                    })
-                    this.playlistHydrationPromise = null
-                    this.libraryChangeAnimation = false
-                }
+                if (this.libraryDetailToken != token) return false
+                this.libraryDetailStatus = 'failed'
+                if (routerName == 'playlist') this.playlistHydration.status = 'failed'
                 throw error
             }
         },
-        async updateAlbumDetail(id) {
+        updatePlaylistDetail(id, options = {}) {
+            return this.updateLibraryDetail(id, 'playlist', { ...options, force: true, preserveContent: true })
+        },
+        async updatePlaylistDynamic(id, token = this.libraryDetailToken) {
+            this.playlistDynamicStatus = 'loading'
+            const followed = this.libraryInfo.followed
+            try {
+                const result = await playlistDynamic(id)
+                if (this.libraryDetailToken != token) return
+                if (this.libraryInfo.followed == followed) this.libraryInfo.followed = result.subscribed
+                this.playlistDynamicStatus = 'ready'
+                this.cacheCurrentLibraryDetail(id, 'playlist')
+            } catch (error) {
+                if (this.libraryDetailToken != token) return
+                console.error('加载歌单收藏状态失败:', error)
+                this.playlistDynamicStatus = 'failed'
+            }
+        },
+        async loadPlaylistDetail(id, token, options) {
+            const playlistId = String(id)
+            this.playlistHydration = createPlaylistHydrationState({ id: playlistId, status: 'loading' })
+            const result = await getPlaylistDetail({ id: playlistId }, options)
+            if (this.libraryDetailToken != token) return
+            const playlist = result.playlist
+            const trackIds = playlist.trackIds
+            playlist.followed = playlist.subscribed
+            if (!options.preserveContent) {
+                this.libraryInfo = playlist
+                void this.updatePlaylistDynamic(playlistId, token)
+            }
+            this.playlistHydration.total = trackIds.length
+
+            // 详情中的 tracks 可能已包含部分或全部歌曲，直接展示连续的已知前缀。
+            const providedSongs = orderPlaylistSongs(trackIds, playlist.tracks ?? [], result.privileges)
+            const firstMissing = providedSongs.findIndex(song => !song)
+            let nextOffset = firstMissing == -1 ? trackIds.length : firstMissing
+            let songs = providedSongs.slice(0, nextOffset)
+            if (songs.length == 0 && trackIds.length > 0) {
+                const firstIds = trackIds.slice(0, PLAYLIST_PAGE_SIZE)
+                const knownSongs = new Map(providedSongs.filter(Boolean).map(song => [String(song.id), song]))
+                songs = await loadPlaylistSongs(firstIds, options, knownSongs)
+                if (this.libraryDetailToken != token) return
+                nextOffset = firstIds.length
+            }
+            if (options.preserveContent) {
+                this.libraryInfo = playlist
+                void this.updatePlaylistDynamic(playlistId, token)
+            }
+            this.librarySongs = songs
+            this.indexLibrarySongs(songs)
+            this.setPlaylistOverviewTrackCount(playlistId, trackIds.length)
+            this.playlistHydration = createPlaylistHydrationState({
+                id: playlistId, total: trackIds.length, loaded: songs.length,
+                nextOffset,
+                status: nextOffset == trackIds.length ? 'completed' : 'loading',
+            })
+            if (nextOffset < trackIds.length) {
+                this.startPlaylistHydrationTask(playlistId, trackIds, token, nextOffset, options)
+            }
+        },
+        async updateAlbumDetail(id, token = this.libraryDetailToken) {
             let params = {
                 id: id,
                 // timestamp: new Date().getTime()
             }
             await Promise.all([getAlbumDetail(params), albumDynamic(id)]).then(results => {
+                if (this.libraryDetailToken != token) return
                 const albumDetail = results[0]
                 this.libraryInfo = albumDetail.album
 
@@ -596,15 +575,15 @@ export const useLibraryStore = defineStore('libraryStore', {
                 })
                 this.indexLibrarySongs(this.librarySongs)
                 this.libraryInfo.followed = results[1].isSub
-                this.libraryChangeAnimation = false
             })
         },
-        async updateArtistDetail(id) {
+        async updateArtistDetail(id, token = this.libraryDetailToken) {
             let params = {
                 id: id,
                 // timestamp: new Date().getTime()
             }
             await Promise.all([getArtistDetail(params), getArtistFansCount(id)]).then(async results => {
+                if (this.libraryDetailToken != token) return
                 results[0].artist.follow = results[1].data
                 results[0].artist.followed = results[1].data.follow
                 this.libraryInfo = results[0].artist
@@ -612,25 +591,28 @@ export const useLibraryStore = defineStore('libraryStore', {
                 // 获取热门歌曲的完整详情（包括封面）
                 const songIds = results[0].hotSongs.map(song => song.id)
                 const songDetailResult = await getSongDetail(songIds)
+                if (this.libraryDetailToken != token) return
                 
                 // 使用详情API返回的完整歌曲数据
                 this.librarySongs = mapSongsPlayableStatus(songDetailResult.songs)
                 this.indexLibrarySongs(this.librarySongs)
-                this.libraryChangeAnimation = false
             })
         },
         //获取歌手热门歌曲前50首，并更新Store数据
         async updateArtistTopSong(id) {
+            const token = this.libraryDetailToken
             let params = {
                 id: id,
                 // timestamp: new Date().getTime()
             }
             await getArtistTopSong(params).then(async result => {
+                if (this.libraryDetailToken != token) return
                 // 获取所有歌曲ID
                 const songIds = result.songs.map(song => song.id)
                 
                 // 使用歌曲详情API获取完整信息（包括正确的封面）
                 const songDetailResult = await getSongDetail(songIds)
+                if (this.libraryDetailToken != token) return
                 
                 // 使用详情API返回的完整歌曲数据
                 this.librarySongs = mapSongsPlayableStatus(songDetailResult.songs)
@@ -639,6 +621,7 @@ export const useLibraryStore = defineStore('libraryStore', {
         },
         //获取歌手专辑，并更新Store数据
         async updateArtistAlbum(id) {
+            const token = this.libraryDetailToken
             let params = {
                 id: id,
                 limit: 500,
@@ -646,12 +629,14 @@ export const useLibraryStore = defineStore('libraryStore', {
                 // timestamp: new Date().getTime()
             }
             await getArtistAlbum(params).then(result => {
+                if (this.libraryDetailToken != token) return
                 this.libraryAlbum = result.hotAlbums
                 this.indexLibraryAlbums(this.libraryAlbum)
             })
         },
         //获取歌手MV，并更新Store数据
         async updateArtistsMV(id) {
+            const token = this.libraryDetailToken
             let params = {
                 id: id,
                 limit: 500,
@@ -659,6 +644,7 @@ export const useLibraryStore = defineStore('libraryStore', {
                 // timestamp: new Date().getTime()
             }
             await getArtistMV(params).then(result => {
+                if (this.libraryDetailToken != token) return
                 this.libraryMV = result.mvs
                 this.indexLibraryMVs(this.libraryMV)
             })

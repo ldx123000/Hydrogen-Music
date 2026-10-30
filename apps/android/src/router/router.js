@@ -4,9 +4,7 @@ import { noticeOpen } from '../utils/dialog'
 import { ensureDeferredAppInit } from '../utils/initApp'
 import { runIdleTask } from '../utils/player/idleTask'
 import { useUserStore } from '../store/userStore'
-import { useLibraryStore } from '../store/libraryStore'
 import { useLocalStore } from '../store/localStore'
-import { storeToRefs } from 'pinia'
 import { useOtherStore } from '../store/otherStore'
 
 function createRouteLoader(loader) {
@@ -38,13 +36,9 @@ const Settings = createRouteLoader(() => import('../views/Settings.vue'))
 const RadioDetail = createRouteLoader(() => import('../components/RadioDetail.vue'))
 
 const userStore = useUserStore()
-const libraryStore = useLibraryStore()
-const { updateLibraryDetail } = libraryStore
-const { libraryInfo } = storeToRefs(libraryStore)
 const localStore = useLocalStore()
 const otherStore = useOtherStore()
 const localOnlyRouteNames = new Set(['settings', 'mymusic', 'localFiles', 'localAlbum', 'localArtist'])
-const hasDifferentLibraryId = (to, from) => String(to?.params?.id || '') != String(from?.params?.id || '')
 const routeComponentPreloadLoaders = [
     HomePage,
     MyMusic,
@@ -127,40 +121,16 @@ const routes = [
                 path: '/mymusic/playlist/:id',
                 name: 'playlist',
                 component: LibraryDetail,
-                beforeEnter: async (to, from, next) => {
-                    const needReload = !libraryInfo.value || from.name != 'playlist' || hasDifferentLibraryId(to, from)
-                    try {
-                        if (needReload) await updateLibraryDetail(to.params.id, to.name, { deferRemaining: true })
-                    } finally {
-                        next()
-                    }
-                }
             },
             {
                 path: '/mymusic/album/:id',
                 name: 'album',
                 component: LibraryDetail,
-                beforeEnter: async (to, from, next) => {
-                    const needReload = !libraryInfo.value || from.name != 'album' || hasDifferentLibraryId(to, from)
-                    try {
-                        if (needReload) await updateLibraryDetail(to.params.id, to.name)
-                    } finally {
-                        next()
-                    }
-                }
             },
             {
                 path: '/mymusic/artist/:id',
                 name: 'artist',
                 component: LibraryDetail,
-                beforeEnter: async (to, from, next) => {
-                    const needReload = !libraryInfo.value || from.name != 'artist' || hasDifferentLibraryId(to, from)
-                    try {
-                        if (needReload) await updateLibraryDetail(to.params.id, to.name)
-                    } finally {
-                        next()
-                    }
-                }
             },
             {
                 path: '/mymusic/dj/:id',

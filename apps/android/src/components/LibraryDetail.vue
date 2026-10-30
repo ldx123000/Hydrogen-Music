@@ -25,7 +25,7 @@ const playerStore = usePlayerStore();
 const localStore = useLocalStore();
 const libraryStore = useLibraryStore();
 const { updateLibraryDetail, updateArtistTopSong, updateArtistAlbum, updateArtistsMV, waitForPlaylistHydration, saveDetailScroll, getDetailScroll } = libraryStore;
-const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration } = storeToRefs(libraryStore);
+const { libraryList, libraryInfo, librarySongs, libraryAlbum, libraryMV, playlistUserCreated, artistPageType, listType1, listType2, lastLibraryRoute, lastLibraryScrollTop, restoreLibraryScrollOnActivate, playlistHydration, libraryDetailStatus } = storeToRefs(libraryStore);
 
 const router = useRouter();
 const isAlbum = ref(false);
@@ -115,6 +115,8 @@ const saveCurrentDetailScroll = routeLike => {
 const markHistoryNavigationPending = () => {
     historyNavPending.value = true;
 };
+// 在路由处理同一次历史导航时标记，避免独立 popstate 回调晚于缓存页面恢复。
+const stopHistoryListener = router.options.history.listen(markHistoryNavigationPending);
 const clearPendingScrollPolicy = () => {
     pendingScrollPolicy.value = SCROLL_POLICY.NONE;
     pendingTargetFullPath.value = '';
@@ -162,6 +164,7 @@ const applyScrollTopForRoute = async (targetTop, routeLike = null, options = {})
     const normalizedTargetTop = normalizeScrollTop(targetTop);
 
     const scroller = await waitForLibraryScroller(8);
+    if (router.currentRoute.value.fullPath != targetFullPath) return false;
     const applied = setLibraryScrollTop(normalizedTargetTop, scroller);
     if (!applied) return false;
     const initialAppliedTop = (() => {
@@ -280,6 +283,7 @@ const songSearchEmptyDescription = computed(() => {
 });
 
 const applyPendingScrollPolicy = async () => {
+    if (libraryDetailStatus.value != 'ready') return;
     const currentRoute = router.currentRoute.value;
     const currentRouteName = normalizeRouteName(currentRoute?.name);
     const currentFullPath = String(currentRoute?.fullPath || '');
@@ -328,6 +332,7 @@ libraryTypeCheck(router.currentRoute.value.name);
 
 onBeforeRouteLeave((to, from, next) => {
     saveCurrentDetailScroll(from);
+    libraryStore.cancelLibraryDetailLoad();
     resetSongSearch();
     const toRouteName = normalizeRouteName(to.name);
     if (!isRestorableLibraryRouteName(toRouteName)) {
@@ -342,20 +347,11 @@ onBeforeRouteLeave((to, from, next) => {
     next();
 });
 
-onBeforeRouteUpdate(async (to, from, next) => {
+onBeforeRouteUpdate((to, from, next) => {
     saveCurrentDetailScroll(from);
     resetSongSearch();
     setPendingScrollPolicyForRoute(to);
-
-    const normalizedToName = normalizeRouteName(to.name);
-    const detailLoadOptions = normalizedToName == 'playlist' ? { deferRemaining: true } : {};
-    await updateLibraryDetail(to.params.id, normalizedToName, detailLoadOptions);
-    libraryTypeCheck(to.name);
-    artistPageType.value = 0;
-    libraryAlbum.value = null;
-    libraryMV.value = null;
     next();
-    await applyPendingScrollPolicy();
 });
 
 const routerChange = operation => {
@@ -501,20 +497,36 @@ const checkArtist = artistId => {
     playerStore.forbidLastRouter = true;
 };
 const waitCurrentPlaylistHydration = async () => {
-    if (normalizeRouteName(router.currentRoute.value.name) != 'playlist') return;
-    if (!libraryInfo.value || !libraryInfo.value.id) return;
+    if (!isPlaylistRoute.value) return libraryDetailStatus.value == 'ready';
+    const fullPath = router.currentRoute.value.fullPath;
     await waitForPlaylistHydration(libraryInfo.value.id);
+    return router.currentRoute.value.fullPath == fullPath;
 };
 
 const playAllSafe = async () => {
-    await waitCurrentPlaylistHydration();
+    if (!await waitCurrentPlaylistHydration()) return;
     playAll(router.currentRoute.value.name || 'other', sortedLibrarySongs.value);
 };
 
 //下载本歌单/专辑全部歌曲
 const downloadAll = async () => {
-    await waitCurrentPlaylistHydration();
+    if (!await waitCurrentPlaylistHydration()) return;
     localStore.updateDownloadList(librarySongs.value || []);
+};
+
+const loadCurrentLibrary = async () => {
+    const route = router.currentRoute.value;
+    const name = normalizeRouteName(route.name);
+    if (!isRestorableLibraryRouteName(name)) return;
+    libraryTypeCheck(name);
+    try {
+        const loaded = await updateLibraryDetail(route.params.id, name, { deferRemaining: true });
+        if (!loaded || router.currentRoute.value.fullPath != route.fullPath) return;
+        await nextTick();
+        await applyPendingScrollPolicy();
+    } catch (error) {
+        console.error('加载音乐库详情失败:', error);
+    }
 };
 
 watch(
@@ -527,11 +539,10 @@ watch(
 
 watch(
     () => router.currentRoute.value.fullPath,
-    async () => {
-        await nextTick();
+    () => {
         updateNavState();
         if (pendingScrollPolicy.value == SCROLL_POLICY.NONE) setPendingScrollPolicyForRoute(router.currentRoute.value);
-        await applyPendingScrollPolicy();
+        void loadCurrentLibrary();
     },
     { immediate: true }
 );
@@ -542,7 +553,6 @@ onActivated(async () => {
     await applyPendingScrollPolicy();
 });
 onMounted(async () => {
-    window.addEventListener('popstate', markHistoryNavigationPending);
     if (pendingScrollPolicy.value == SCROLL_POLICY.NONE) setPendingScrollPolicyForRoute(router.currentRoute.value);
     await applyPendingScrollPolicy();
 });
@@ -550,7 +560,7 @@ onDeactivated(() => {
     saveCurrentDetailScroll(router.currentRoute.value);
 });
 onBeforeUnmount(() => {
-    window.removeEventListener('popstate', markHistoryNavigationPending);
+    stopHistoryListener();
 });
 
 const onAfterEnter = () => (introduceDetailShowDelay.value = true);

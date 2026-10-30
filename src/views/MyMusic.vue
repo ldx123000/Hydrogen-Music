@@ -12,7 +12,7 @@
   import { storeToRefs } from 'pinia'
   const router = useRouter()
   const libraryStore = useLibraryStore()
-  const { listType1, listType2, libraryInfo, lastLibraryRoute, libraryChangeAnimation } = storeToRefs(libraryStore)
+  const { listType1, listType2, libraryInfo, lastLibraryRoute } = storeToRefs(libraryStore)
   const userStore = useUserStore()
   const { user } = storeToRefs(userStore)
   const playerStore = usePlayerStore()
@@ -42,7 +42,7 @@
         <router-view v-slot="{ Component }">
           <keep-alive :include="['LibraryDetail','LibrarySongList','LibraryAlbumList','LibraryMVList']">
             <Transition name="fade">
-              <component :is="Component" v-show="!libraryChangeAnimation"></component>
+              <component :is="Component"></component>
             </Transition>
           </keep-alive>
         </router-view>

@@ -1,4 +1,4 @@
-import { onBeforeUnmount, onMounted, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getPlaylistDetail } from '../api/playlist'
 import { getLikelist } from '../api/user'
@@ -118,6 +118,7 @@ export function usePlaylistSync() {
     const syncCurrentPlaylist = async ({ force = false } = {}) => {
         const playlistId = getCurrentPlaylistId()
         if (!playlistId || userStore.localOnlyMode || !isLogin()) return false
+        if (libraryStore.libraryDetailKey != `playlist:${playlistId}` || libraryStore.libraryDetailStatus != 'ready') return false
         if (playlistSyncPromise) {
             if (playlistSyncTargetId == playlistId) return playlistSyncPromise
             await playlistSyncPromise
@@ -134,7 +135,7 @@ export function usePlaylistSync() {
         const currentSignature = getPlaylistSignature(currentPlaylist)
         const task = (async () => {
             const result = await getPlaylistDetail({ id: playlistId, timestamp: Date.now() }, { silent: true })
-            if (getCurrentPlaylistId() != playlistId) return false
+            if (getCurrentPlaylistId() != playlistId || libraryStore.libraryDetailStatus != 'ready') return false
 
             const activePlaylist = String(libraryStore.libraryInfo?.id || '') == playlistId
                 ? libraryStore.libraryInfo
@@ -171,7 +172,7 @@ export function usePlaylistSync() {
         if (refreshOverview) requestPlaylistOverviewRefresh({ force })
 
         const playlistId = getCurrentPlaylistId()
-        if (!playlistId) return
+        if (!playlistId || libraryStore.libraryDetailKey != `playlist:${playlistId}` || libraryStore.libraryDetailStatus != 'ready') return
         if (playlistId == getFavoritePlaylistId()) await syncFavoriteState({ force })
         await syncCurrentPlaylist({ force })
     }
@@ -186,11 +187,13 @@ export function usePlaylistSync() {
 
     watch(
         () => router.currentRoute.value?.fullPath,
-        () => {
+        async () => {
             if (router.currentRoute.value?.name == 'mymusic') {
                 requestPlaylistOverviewRefresh({ force: true })
                 return
             }
+            // 让详情页先恢复缓存；新加载中的歌单无需重复查询，缓存仍在进入时同步。
+            await nextTick()
             if (getCurrentPlaylistId()) void syncActivePlaylist({ force: true })
         }
     )

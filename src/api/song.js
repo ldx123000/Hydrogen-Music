@@ -1,5 +1,6 @@
 import { get, getById, getWithPagination, operationRequest } from "./base";
 import { buildIdWithTimestamp, buildOperationParams, buildPaginationParams } from "./params";
+import request from '../utils/request';
 
 /**
  * 获取推荐新音乐
@@ -13,9 +14,14 @@ export function getNewestSong(limit = 10) {
  * 获取歌曲详情
  * @param {string|array} ids - 歌曲ID，可以是单个ID或ID数组
  */
-export function getSongDetail(ids) {
+export function getSongDetail(ids, options = {}) {
     const idsParam = Array.isArray(ids) ? ids.join(',') : ids;
-    return get('/song/detail', { ids: idsParam });
+    return request({
+        url: '/song/detail',
+        method: 'get',
+        params: { ids: idsParam },
+        suppressGlobalNotice: options.silent === true,
+    });
 }
 
 /**

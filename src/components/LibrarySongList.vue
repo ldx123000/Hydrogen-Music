@@ -135,7 +135,9 @@ const play = async (song, index) => {
         return
     }
     if (normalizeRouteName(router.currentRoute.value.name) == 'playlist' && libraryInfo.value?.id) {
+        const fullPath = router.currentRoute.value.fullPath
         await libraryStore.waitForPlaylistHydration(libraryInfo.value.id)
+        if (router.currentRoute.value.fullPath != fullPath) return
     }
     const targetQueueSongs = queueSongs.value || []
     const targetIndex = (targetQueueSongs || []).findIndex(item => item?.id == song.id)
