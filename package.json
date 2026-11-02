@@ -40,9 +40,9 @@
     "metaflac-js": "^1.0.5",
     "mime-types": "^3.0.2",
     "mpris-service": "^2.1.2",
-    "music-metadata": "^11.9.0",
+    "music-metadata": "^12.3.4",
     "nanoid": "^5.1.6",
-    "node-id3": "^0.2.9"
+    "music-metadata-editor": "^0.1.1"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",

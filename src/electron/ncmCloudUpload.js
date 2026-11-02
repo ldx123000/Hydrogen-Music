@@ -16,9 +16,7 @@ const {
     sanitizeFilename,
 } = require(path.join(apiRoot, 'util/fileHelper'))
 
-let NodeID3 = null
 let Metaflac = null
-try { NodeID3 = require('node-id3') } catch (_) { NodeID3 = null }
 try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
 
 const CLOUD_INFO_INITIAL_DELAY = 1500
@@ -135,14 +133,14 @@ async function createUploadTempCopy(songFile) {
 async function stripHydrogenSourceTags({ tempFilePath, ext, songName, album, artist }) {
     const normalizedExt = String(ext || '').trim().toLowerCase()
 
-    if (normalizedExt === 'mp3' && NodeID3) {
-        NodeID3.removeTags(tempFilePath)
-        NodeID3.update({
+    if (normalizedExt === 'mp3') {
+        const { updateFile } = await import('music-metadata-editor')
+        await updateFile(tempFilePath, {
             title: songName || undefined,
             artist: artist || undefined,
             album: album || undefined,
-            comment: { language: 'XXX', text: 'Hydrogen Music' },
-        }, tempFilePath)
+            comment: [{ language: 'XXX', text: 'Hydrogen Music' }],
+        }, { replaceId3: true })
         return true
     }
 
