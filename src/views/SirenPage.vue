@@ -430,11 +430,21 @@ watch(
     font: 15px SourceHanSansCN-Bold;
     color: black;
     line-height: 1.35;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    min-height: calc(15px * 1.35 * 2);
 }
 
 .album-artist {
     font: 12px SourceHanSansCN-Bold;
     color: rgba(0, 0, 0, 0.58);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .album-detail {
