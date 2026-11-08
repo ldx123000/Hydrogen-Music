@@ -1529,10 +1529,7 @@ watch(
 const handleFMPlayModeResponse = async event => {
     const { action } = event.detail
 
-    if (action === 'loop') {
-        // 单曲循环模式：重新播放当前歌曲
-        await togglePlay()
-    } else if (action === 'next') {
+    if (action === 'next') {
         // FM模式：播放下一首漫游歌曲
         await goNext()
     }

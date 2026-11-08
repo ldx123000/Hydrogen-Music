@@ -1028,7 +1028,8 @@ export function applyPlayMode(mode, options = {}) {
 
     playMode.value = nextMode
 
-    if (currentMusic.value && typeof currentMusic.value.loop === 'function') {
+    // Web Audio 和 HiFi 在音频后端循环；Howler HTML5 由 ended 事件重播。
+    if (currentMusic.value?.__hmWebAudioPlayer || currentMusic.value?.__hmHifiOutputPlayer) {
         currentMusic.value.loop(nextMode == 2)
     }
     if (nextMode == 3) {
@@ -1613,7 +1614,8 @@ function createPlaybackHowl(url) {
         html5: true,
         preload: true,
         format: ['mp3', 'flac', 'aac', 'm4a', 'wav', 'ogg', 'webm', 'mp4', 'weba', 'oga'],
-        loop: (playMode.value == 2),
+        // Howler 的 HTML5 循环依赖定时器，后台可能延后；统一在 ended 后重播。
+        loop: false,
         volume: volume.value,
         xhr: {
             method: 'GET',
@@ -1930,20 +1932,19 @@ function handlePlaybackEnded() {
     reportCurrentNcmPlaybackEnd('playend', true)
     stopProgressSampling()
     if (typeof window !== 'undefined' && !window.dispatchEvent(new CustomEvent('listentogether:ended', { cancelable: true }))) return
+
+    if (playMode.value == 2) {
+        changeProgress(0)
+        currentMusic.value.play()
+        return
+    }
     if (tryStartGaplessNextFromEnd()) return
 
     if (isPersonalFMContext()) {
-        if (playMode.value == 2) {
-            const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
-                detail: { action: 'loop' }
-            })
-            window.dispatchEvent(fmPlayModeEvent)
-        } else {
-            const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
-                detail: { action: 'next' }
-            })
-            window.dispatchEvent(fmPlayModeEvent)
-        }
+        const fmPlayModeEvent = new CustomEvent('fmPlayModeResponse', {
+            detail: { action: 'next' }
+        })
+        window.dispatchEvent(fmPlayModeEvent)
         return
     }
 
@@ -1951,7 +1952,6 @@ function handlePlaybackEnded() {
     if (playMode.value == 0 && currentIndex.value == songList.value.length - 1) { playing.value = false; playModeOne = true; syncExternalPlaybackState(); return }
     if (playMode.value == 1) { playNext(); return }
     if (playMode.value == 3) { playNext() }
-    if (playMode.value == 2) { clearLycAnimation() }
 }
 
 function applyPlaybackDurationHints(playback, options = {}) {
