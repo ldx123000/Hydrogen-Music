@@ -55,7 +55,7 @@ function containsHydrogenMarkerText(text) {
 }
 
 function hasHydrogenMarker(key, value) {
-    const normalizedKey = String(key || '').trim().toUpperCase()
+    const normalizedKey = String(key || '').trim().toUpperCase().replace(/^TXXX:/, '')
     const text = valueToSearchText(value)
 
     if (/^(?:NCM_ID|NETEASE_ID|SOURCE_SONG_ID)$/.test(normalizedKey) && /\d+/.test(text)) return true

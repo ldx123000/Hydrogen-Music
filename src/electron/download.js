@@ -6,9 +6,7 @@ const Store = require('electron-store').default
 const path = require('path')
 const { nanoid } = require('nanoid')
 const { spawn } = require('child_process')
-let Metaflac = null
 const ffmpegPath = require('./ffmpeg')
-try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
 
 const COVER_TRANSCODE_TIMEOUT_MS = 10000
 
@@ -286,12 +284,64 @@ async function writeLyricFileIfNeeded(lrcPath, lrcText) {
   }
 }
 
+async function fetchDownloadCover(coverUrl) {
+  try {
+    const resp = await axios.get(coverUrl, { responseType: 'arraybuffer', timeout: 15000 })
+    const contentType = (resp.headers && resp.headers['content-type']) || ''
+    return await prepareCoverForEmbedding(Buffer.from(resp.data), contentType, coverUrl)
+  } catch (error) {
+    console.warn('下载封面失败:', error && error.message ? error.message : error)
+    return null
+  }
+}
+
+async function writeMp3DownloadTags(audioPath, patch) {
+  const header = Buffer.alloc(4)
+  const file = await fsp.open(audioPath, 'r')
+  try {
+    await file.read(header, 0, header.length, 0)
+  } finally {
+    await file.close()
+  }
+
+  // The editor only preserves ID3v2.4 tags. Keep the legacy updater for older tags.
+  if (header.toString('ascii', 0, 3) === 'ID3' && (header[3] === 2 || header[3] === 3)) {
+    const NodeID3 = require('node-id3')
+    const tags = {
+      title: patch.title,
+      artist: patch.artist,
+      album: patch.album,
+      comment: patch.comment[0],
+    }
+    if (patch.native) {
+      tags.userDefinedText = [{ description: 'LYRICS', value: patch.native['TXXX:LYRICS'] }]
+    }
+    if (patch.picture) {
+      const picture = patch.picture[0]
+      tags.image = {
+        mime: picture.format,
+        type: { id: 3, name: 'front cover' },
+        description: 'Cover',
+        imageBuffer: picture.data,
+      }
+    }
+    // The library's Promise updater still reads paths synchronously; pass a buffer instead.
+    const audio = await fsp.readFile(audioPath)
+    await fsp.writeFile(audioPath, NodeID3.update(tags, audio))
+    return
+  }
+
+  const { updateFile } = await import('music-metadata-editor')
+  await updateFile(audioPath, patch)
+}
+
 async function finalizeDownloadMetadata(item, context, settings) {
   if (!context) return
   const audioPath = item.getSavePath()
   if (!audioPath) return
   const parsed = path.parse(audioPath)
-  const mp3Patch = {}
+  const extLower = (parsed.ext || '').toLowerCase()
+  const tagPatch = {}
   const saveLyricFile = !!(settings && settings.local && settings.local.downloadSaveLyricFile)
 
   if (context.lyrics && (context.lyrics.lrc || context.lyrics.tlyric || context.lyrics.romalrc)) {
@@ -313,14 +363,11 @@ async function finalizeDownloadMetadata(item, context, settings) {
       const fallbackPlainText = buildUnsyncedLyricText(context.lyrics)
       const hasTimedTags = hasTimedLyricText(timedLrcText)
       const lyricTextForEmbed = (hasTimedTags ? timedLrcText : fallbackPlainText) || ''
-      const extLower = (parsed.ext || '').toLowerCase()
       if (lyricTextForEmbed && lyricTextForEmbed.trim().length > 0) {
         if (extLower === '.mp3') {
-          mp3Patch.native = { 'TXXX:LYRICS': lyricTextForEmbed }
-        } else if (Metaflac && extLower === '.flac') {
-          const flac = new Metaflac(audioPath)
-          try { flac.setTag(`LYRICS=${lyricTextForEmbed}`) } catch (_) {}
-          try { flac.save() } catch (_) {}
+          tagPatch.native = { 'TXXX:LYRICS': lyricTextForEmbed }
+        } else if (extLower === '.flac') {
+          tagPatch.native = { LYRICS: lyricTextForEmbed }
         }
       }
     } catch (e) {
@@ -329,67 +376,43 @@ async function finalizeDownloadMetadata(item, context, settings) {
   }
 
   if (context.coverUrl) {
-    const fetchAndSaveCover = async () => {
-      try {
-        const resp = await axios.get(context.coverUrl, { responseType: 'arraybuffer', timeout: 15000 })
-        const buf = Buffer.from(resp.data)
-        const contentType = (resp.headers && resp.headers['content-type']) || ''
-        const preparedCover = await prepareCoverForEmbedding(buf, contentType, context.coverUrl)
-        const embedBuf = preparedCover.buffer
-        const embedMime = preparedCover.mime
-        try {
-          const extLower = (parsed.ext || '').toLowerCase()
-          const isPngEmbed = (embedMime || '').includes('png')
-          const isJpegEmbed = (embedMime || '').includes('jpeg') || (embedMime || '').includes('jpg')
-          if (extLower === '.mp3') {
-            mp3Patch.picture = [{ format: embedMime || 'image/jpeg', type: 'Cover (front)', description: 'Cover', data: embedBuf }]
-          } else if (Metaflac && extLower === '.flac') {
-            if (isPngEmbed || isJpegEmbed) {
-              try {
-                const flac = new Metaflac(audioPath)
-                flac.importPictureFromBuffer(embedBuf)
-                flac.save()
-              } catch (fe) {
-                console.warn('写入FLAC封面失败:', fe && fe.message ? fe.message : fe)
-              }
-            } else {
-              console.warn('FLAC 封面未写入：需要 PNG/JPEG，但当前类型为', embedMime || 'unknown')
-            }
-          }
-        } catch (e) {
-          console.warn('写入封面到标签失败:', e && e.message ? e.message : e)
-        }
-      } catch (e) {
-        console.warn('下载封面失败:', e && e.message ? e.message : e)
+    const preparedCover = await context.coverPromise
+    if (preparedCover) {
+      const embedBuf = preparedCover.buffer
+      const embedMime = preparedCover.mime
+      if (extLower === '.mp3' || (extLower === '.flac' && (embedMime === 'image/png' || embedMime === 'image/jpeg'))) {
+        // An empty description uses the editor's Windows thumbnail-compatible encoding.
+        tagPatch.picture = [{ format: embedMime || 'image/jpeg', type: 'Cover (front)', data: embedBuf }]
+      } else if (extLower === '.flac') {
+        console.warn('FLAC 封面未写入：需要 PNG/JPEG，但当前类型为', embedMime || 'unknown')
       }
     }
-    await fetchAndSaveCover()
   }
 
   try {
     const titleVal = context.fileName || parsed.name
     const artistsArr = Array.isArray(context.artists) ? context.artists.filter(Boolean) : []
     const albumVal = context.album || ''
-    const extLower = (parsed.ext || '').toLowerCase()
     if (extLower === '.mp3') {
-      const { updateFile } = await import('music-metadata-editor')
-      await updateFile(audioPath, {
-        ...mp3Patch,
+      await writeMp3DownloadTags(audioPath, {
+        ...tagPatch,
         title: titleVal,
         artist: artistsArr.join(' / '),
         album: albumVal,
         comment: [{ language: 'XXX', text: 'Hydrogen Music' }]
-      }, { replaceId3: true })
-    } else if (Metaflac && extLower === '.flac') {
-      const flac = new Metaflac(audioPath)
-      if (titleVal) flac.setTag(`TITLE=${titleVal}`)
-      if (albumVal) flac.setTag(`ALBUM=${albumVal}`)
-      if (artistsArr.length) {
-        artistsArr.forEach(artist => { try { if (artist) flac.setTag(`ARTIST=${artist}`) } catch (_) {} })
+      })
+    } else if (extLower === '.flac') {
+      const { readTags, updateFile } = await import('music-metadata-editor')
+      if (tagPatch.picture) {
+        const { pictures } = await readTags(audioPath)
+        tagPatch.picture.push(...pictures.filter(picture => picture.type !== 'Cover (front)'))
       }
-      try { flac.save() } catch (fe) {
-        console.warn('写入FLAC基础标签失败:', fe && fe.message ? fe.message : fe)
-      }
+      await updateFile(audioPath, {
+        ...tagPatch,
+        title: titleVal,
+        album: albumVal || undefined,
+        artist: artistsArr.length ? artistsArr : undefined,
+      })
     }
   } catch (e) {
     console.warn('写入基础标签失败:', e && e.message ? e.message : e)
@@ -493,6 +516,7 @@ module.exports = MusicDownload = (win) => {
         album: null,
       }
     moduleState.pendingDownloadContext = null
+    if (currentDownload.coverUrl) currentDownload.coverPromise = fetchDownloadCover(currentDownload.coverUrl)
     downloadContextByItem.set(item, currentDownload)
 
     const settings = (() => {
