@@ -134,7 +134,7 @@ async function stripHydrogenSourceTags({ tempFilePath, ext, songName, album, art
     const normalizedExt = String(ext || '').trim().toLowerCase()
 
     if (normalizedExt === 'mp3') {
-        const { updateFile } = await import('music-metadata-editor')
+        const { updateFile } = await import('music-metadata')
         await updateFile(tempFilePath, {
             title: songName || undefined,
             artist: artist || undefined,
