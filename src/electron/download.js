@@ -331,7 +331,7 @@ async function writeMp3DownloadTags(audioPath, patch) {
     return
   }
 
-  const { updateFile } = await import('music-metadata-editor')
+  const { updateFile } = await import('music-metadata')
   await updateFile(audioPath, patch)
 }
 
@@ -402,10 +402,10 @@ async function finalizeDownloadMetadata(item, context, settings) {
         comment: [{ language: 'XXX', text: 'Hydrogen Music' }]
       })
     } else if (extLower === '.flac') {
-      const { readTags, updateFile } = await import('music-metadata-editor')
+      const { parseFile, updateFile } = await import('music-metadata')
       if (tagPatch.picture) {
-        const { pictures } = await readTags(audioPath)
-        tagPatch.picture.push(...pictures.filter(picture => picture.type !== 'Cover (front)'))
+        const metadata = await parseFile(audioPath)
+        tagPatch.picture.push(...(metadata.common?.picture || []).filter(picture => picture.type !== 'Cover (front)'))
       }
       await updateFile(audioPath, {
         ...tagPatch,
