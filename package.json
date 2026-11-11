@@ -37,11 +37,9 @@
     "electron-updater": "^6.6.2",
     "fs-extra": "^11.3.2",
     "iconv-lite": "^0.6.3",
-    "metaflac-js": "^1.0.5",
     "mime-types": "^3.0.2",
     "mpris-service": "^2.1.2",
-    "music-metadata": "^12.3.5",
-    "music-metadata-editor": "^0.3.0",
+    "music-metadata": "^12.4.0",
     "nanoid": "^5.1.6",
     "node-id3": "^0.2.9"
   },
