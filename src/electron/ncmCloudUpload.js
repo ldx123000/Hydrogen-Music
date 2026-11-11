@@ -16,15 +16,12 @@ const {
     sanitizeFilename,
 } = require(path.join(apiRoot, 'util/fileHelper'))
 
-let Metaflac = null
-try { Metaflac = require('metaflac-js') } catch (_) { Metaflac = null }
+let mm
 
 const CLOUD_INFO_INITIAL_DELAY = 1500
 const CLOUD_UPLOAD_CHECK_RETRY_DELAYS = [2500, 4000, 6000]
 const CLOUD_INFO_RETRY_DELAYS = [2500, 4000, 6000, 10000, 15000]
 const AUDIO_PARSE_FAILED_CODE = 409
-
-let mm
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -144,14 +141,16 @@ async function stripHydrogenSourceTags({ tempFilePath, ext, songName, album, art
         return true
     }
 
-    if (normalizedExt === 'flac' && Metaflac) {
-        const flac = new Metaflac(tempFilePath)
-        flac.removeTag('NCM_ID')
-        flac.removeTag('NETEASE_ID')
-        flac.removeTag('SOURCE')
-        flac.removeTag('COMMENT')
-        flac.setTag('COMMENT=Hydrogen Music')
-        flac.save()
+    if (normalizedExt === 'flac') {
+        const { updateFile } = await import('music-metadata')
+        await updateFile(tempFilePath, {
+            native: {
+                NCM_ID: null,
+                NETEASE_ID: null,
+                SOURCE: null,
+                COMMENT: 'Hydrogen Music'
+            }
+        }, { atomic: false })
         return true
     }
 
