@@ -1,5 +1,6 @@
 import pinia from '../store/pinia'
-import { Howl, Howler } from 'howler'
+import { Howler } from 'howler'
+import { BackgroundHowl } from './player/backgroundHowl.mjs'
 import { songTime as formatSongTime, songTime2 as formatSongProgressTime } from './time';
 import { noticeOpen } from './dialog'
 import { checkMusic, likeMusic } from '../api/song'
@@ -121,6 +122,8 @@ watch(volume, (v) => {
     return
   }
   window.playerApi?.setVolume?.(normalizedVolume)
+  // 同步当前实例，避免拖动滑块后要等到下次播放才应用音量。
+  currentMusic.value?.volume?.(normalizedVolume)
   if (gaplessPreload?.howl && !isCurrentHowl(gaplessPreload.howl)) {
     gaplessPreload.howl.volume?.(normalizedVolume)
   }
@@ -1620,7 +1623,7 @@ function handleHowlPlaybackError(playback, eventType, error, message) {
 
 function createPlaybackHowl(url) {
     let nextHowl = null
-    nextHowl = markRaw(new Howl({
+    nextHowl = markRaw(new BackgroundHowl({
         src: url,
         autoplay: false,
         html5: true,
@@ -1744,7 +1747,7 @@ function handlePlaybackStarted(playback) {
     resetStreamRecoveryAttempts()
     const fadeInMs = fadeInDurationByHowl.has(playback) ? fadeInDurationByHowl.get(playback) : 200
     fadeInDurationByHowl.delete(playback)
-    if (playback?.__hmHifiOutputPlayer || fadeInMs <= 0 || volume.value === 0) {
+    if (playback?.__hmHifiOutputPlayer || document.hidden || fadeInMs <= 0 || volume.value === 0) {
         playback.volume(volume.value)
     } else {
         playback.fade(0, volume.value, fadeInMs)
@@ -1761,7 +1764,7 @@ function handlePlaybackPaused(playback) {
     stopProgressSampling()
     playing.value = false
     syncExternalPlaybackState()
-    if (playback?.__hmHifiOutputPlayer || volume.value === 0) return
+    if (playback?.__hmHifiOutputPlayer || document.hidden || volume.value === 0) return
     playback.fade(volume.value, 0, 200)
 }
 
@@ -2553,7 +2556,7 @@ export function pauseMusic() {
     stopProgressSampling()
     const currentHowl = getCurrentHowl()
     persistPlaybackSnapshotNow()
-    if (playing.value && currentHowl && (currentHowl.__hmHifiOutputPlayer || volume.value === 0)) {
+    if (playing.value && currentHowl && (currentHowl.__hmHifiOutputPlayer || document.hidden || volume.value === 0)) {
         currentHowl.pause?.()
         playing.value = false
         syncExternalPlaybackState()

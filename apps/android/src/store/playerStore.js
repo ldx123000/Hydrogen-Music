@@ -15,7 +15,7 @@ function readInitialProgress() {
 
 function normalizePersistedVolume(value) {
     const volume = Number(value)
-    if (!Number.isFinite(volume)) return 0.3
+    if (!Number.isFinite(volume)) return 0.7
     if (volume > 1 && volume <= 100) return volume / 100
     return Math.max(0, Math.min(1, volume))
 }
@@ -86,7 +86,7 @@ export const usePlayerStore = defineStore('playerStore', {
             currentMusic: null,//播放列表的索引
             playing: false,//是否正在播放
             progress: readInitialProgress(),//进度条
-            volume: 0.3,//音量
+            volume: 0.7,//初始音量；已保存的用户音量保持不变
             // volumeBeforeMuted: 0,//静音前音量
             playMode: 0,//0为顺序播放，1为列表循环，2为单曲循环，3为随机播放
             listInfo: null,

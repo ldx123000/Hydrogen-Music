@@ -23,6 +23,7 @@ import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.util.HashSet;
 import java.util.Locale;
@@ -295,36 +296,97 @@ public class LocalMusicPlugin extends Plugin {
      */
     private String readSidecarCover(Uri uri) {
         try {
-            // 先从 MediaStore 拿到该音频所在目录与基名
             String relPath = null;
             String displayName = null;
+            // SAF provider 未必支持 MediaStore 列，查询失败后按 document id 定位私有封面。
             try (Cursor cursor = getContext().getContentResolver().query(uri,
                     new String[] {
                             android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
                             android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
                     }, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
-                    relPath = cursor.isNull(0) ? "" : cursor.getString(0);
-                    displayName = cursor.isNull(1) ? "" : cursor.getString(1);
+                    relPath = cursor.isNull(0) ? null : cursor.getString(0);
+                    displayName = cursor.isNull(1) ? null : cursor.getString(1);
+                }
+            } catch (Throwable ignored) { }
+            if (DocumentsContract.isDocumentUri(getContext(), uri)) {
+                String docId = DocumentsContract.getDocumentId(uri);
+                int colon = docId.indexOf(':');
+                if (colon >= 0) {
+                    String relativeFile = docId.substring(colon + 1);
+                    int slash = relativeFile.lastIndexOf('/');
+                    if (relPath == null && slash >= 0) relPath = relativeFile.substring(0, slash + 1);
+                    if (displayName == null) displayName = relativeFile.substring(slash + 1);
                 }
             }
             if (displayName == null || displayName.isEmpty()) return null;
             String base = stripExtension(displayName);
             if (relPath == null) relPath = "";
 
-            String[] exts = { ".jpg", ".jpeg", ".png", ".webp" };
-            for (String ext : exts) {
-                Uri found = findInMediaStore(relPath, base + ext);
-                if (found == null) continue;
-                byte[] data = readBytesFromUri(found);
+            for (String ext : new String[] { ".jpg", ".jpeg", ".png", ".webp" }) {
+                File coverFile = privateCoverFile(relPath, base + ext);
+                byte[] data = coverFile != null && coverFile.isFile() ? readBytesFromFile(coverFile) : null;
+                if (data == null || data.length == 0) {
+                    Uri found = findInMediaStore(relPath, base + ext);
+                    data = found == null ? null : readBytesFromUri(found);
+                }
                 if (data == null || data.length == 0) continue;
-                String lower = ext.toLowerCase(java.util.Locale.ROOT);
-                String mime = lower.equals(".png") ? "image/png"
-                        : lower.equals(".webp") ? "image/webp" : "image/jpeg";
+                String mime = ext.equals(".png") ? "image/png"
+                        : ext.equals(".webp") ? "image/webp" : "image/jpeg";
                 return "data:" + mime + ";base64," + Base64.encodeToString(data, Base64.NO_WRAP);
             }
         } catch (Throwable ignored) { }
         return null;
+    }
+
+    /**
+     * 用户设置的下载目录名（取最后一级）；未设置时回退公共 Download。
+     * 下载端会优先写进这个目录，扫描「下载管理」时必须用同一个名字过滤，
+     * 否则目录改了就会一首也扫不到。
+     */
+    private String resolveConfiguredDirName() {
+        String uriString = prefs().getString(KEY_TREE_URI, null);
+        if (uriString != null && !uriString.isEmpty()) {
+            try {
+                String docId = DocumentsContract.getTreeDocumentId(Uri.parse(uriString));
+                if (docId != null) {
+                    int colon = docId.indexOf(':');
+                    String rel = (colon >= 0 ? docId.substring(colon + 1) : docId).trim();
+                    rel = rel.replaceAll("^/+|/+$", "");
+                    if (!rel.isEmpty()) {
+                        int slash = rel.lastIndexOf('/');
+                        return slash >= 0 ? rel.substring(slash + 1) : rel;
+                    }
+                }
+            } catch (Throwable ignored) { }
+        }
+        return android.os.Environment.DIRECTORY_DOWNLOADS;
+    }
+
+    /** 应用私有封面目录里的同名图片：covers/<相对目录>/<文件名>；路径非法时返回 null。 */
+    private File privateCoverFile(String relPath, String fileName) {
+        try {
+            File base = getContext().getExternalFilesDir("covers");
+            if (base == null) base = new File(getContext().getFilesDir(), "covers");
+            String cleaned = relPath == null ? "" : relPath.replaceAll("^/+|/+$", "");
+            File dir = cleaned.isEmpty() ? base : new File(base, cleaned.replace('/', File.separatorChar));
+            return new File(dir, fileName);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** 读整个文件的字节；失败返回 null。 */
+    private byte[] readBytesFromFile(File file) {
+        try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[16 * 1024];
+            int len;
+            while ((len = in.read(buffer)) > 0) out.write(buffer, 0, len);
+            return out.toByteArray();
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     /** 在 MediaStore.Files 里按相对目录 + 文件名找文件。 */
@@ -532,11 +594,16 @@ public class LocalMusicPlugin extends Plugin {
     public void scan(PluginCall call) {
         final String type = call.getString("type", "local");
 
-        // Android 优先走 MediaStore：系统媒体库会自动索引公共目录里的音频，
-        // 不需要任何授权，也不会出现"下载目录"和"扫描目录"对不上的问题
-        // （实测踩过：下载写进系统 Download，而 SAF 授权指向第三方 provider 的
-        //  另一个 "Download"，于是永远扫不到）。
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // 用户授权过目录时，直接遍历该目录（SAF），不依赖 MediaStore。
+        // 为什么不再优先 MediaStore：下载会写进用户自定义目录（如 music1），
+        // 系统媒体库对这种 SAF 写入迟迟不索引，MediaStore 查询会稳定返回 0 首
+        // （实测：主动扫描后仍"共0首"，文件在文件管理器里明明存在）。
+        String uriString = prefs().getString(KEY_TREE_URI, null);
+        boolean hasUserTree = uriString != null && !uriString.isEmpty()
+                && hasPersistedPermission(uriString) && isProviderAvailable(uriString);
+
+        // 没授权过目录时才回退 MediaStore（覆盖系统已索引的公共目录）。
+        if (!hasUserTree && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             new Thread(() -> {
                 try {
                     JSObject metadata = scanViaMediaStore(type);
@@ -551,9 +618,6 @@ public class LocalMusicPlugin extends Plugin {
             }).start();
             return;
         }
-
-        // Android 10 以下没有分区存储，仍走 SAF 授权目录
-        String uriString = prefs().getString(KEY_TREE_URI, null);
         if (uriString == null || !hasPersistedPermission(uriString)) {
             clearStaleFolder();
             call.reject("no-folder");
@@ -765,6 +829,7 @@ public class LocalMusicPlugin extends Plugin {
      * 按 RELATIVE_PATH 还原出文件夹层级，保持与桌面端 dirTree 相同的树形状，
      * 前端的文件夹分类逻辑不用改。
      */
+
     private JSObject scanViaMediaStore(String type) throws Exception {
         Uri collection = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
         String[] projection = new String[] {
@@ -778,20 +843,23 @@ public class LocalMusicPlugin extends Plugin {
                 android.provider.MediaStore.Audio.Media.DATE_MODIFIED,
                 android.provider.MediaStore.Audio.Media.IS_MUSIC,
         };
-        // 只取音乐；type=downloaded 时限定在公共「下载」目录，
+        // 只取音乐；type=downloaded 时限定在用户设置的下载目录，
         // 这样"下载管理"看到的就是下载来的那些歌，跟桌面端语义一致。
+        // 目录名从保存的 SAF tree URI 解析，未设置时回退公共 Download ——
+        // 否则把下载目录改成 music1 之后，这里仍按 Download 过滤就一首也扫不到。
         String selection = android.provider.MediaStore.Audio.Media.IS_MUSIC + " != 0";
+        String downloadedDir = resolveConfiguredDirName();
         if ("downloaded".equals(type)) {
             selection += " AND " + android.provider.MediaStore.Audio.Media.RELATIVE_PATH + " LIKE ?";
         }
         String[] args = "downloaded".equals(type)
-                ? new String[] { "%" + android.os.Environment.DIRECTORY_DOWNLOADS + "%" }
+                ? new String[] { "%" + downloadedDir + "/%" }
                 : null;
 
         // 根节点 + 目录索引（按相对路径建树）
         JSObject rootNode = new JSObject();
         rootNode.put("id", UUID.randomUUID().toString());
-        String rootName = "downloaded".equals(type) ? "Download" : "本地音乐";
+        String rootName = "downloaded".equals(type) ? downloadedDir : "本地音乐";
         rootNode.put("name", rootName);
         rootNode.put("dirPath", "mediastore:/");
         rootNode.put("type", "folder");
@@ -947,6 +1015,7 @@ public class LocalMusicPlugin extends Plugin {
             try { mmr.release(); } catch (Throwable ignored) { }
         }
 
+        if (cover == null) cover = readSidecarCover(docUri);
         return buildNode(uriString, fileName, modified, baseName, title, artist, album, durationMs, ext, cover);
     }
 
