@@ -530,11 +530,11 @@ const toggleDjSub = async isSubscribe => {
 
                 <div class="player-voluem">
                     <div class="voluem">
-                        <vue-slider class="volume-slider" v-model="safeVolume" :min="0" :max="1" :interval="0.01" :duration="0.3" :silent="true" tooltip="none"></vue-slider>
+                        <vue-slider class="volume-slider" v-model="safeVolume" :min="0" :max="1" :interval="0.01" :duration="0.3" :silent="true" :dot-size="isMobile ? 18 : 14" :dot-attrs="{ 'aria-label': '音量' }" tooltip="none"></vue-slider>
                     </div>
                     <div class="voluem-num">
-                        <span class="voluem-title">VOLUME</span>
-                        <span class="num">{{ Math.round(safeVolume * 100) }}</span>
+                        <span class="voluem-title">{{ isMobile ? '音量' : 'VOLUME' }}</span>
+                        <span class="num">{{ Math.round(safeVolume * 100) }}{{ isMobile ? '%' : '' }}</span>
                     </div>
                 </div>
             </div>

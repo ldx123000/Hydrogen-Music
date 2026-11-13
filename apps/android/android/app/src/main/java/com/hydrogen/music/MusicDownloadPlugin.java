@@ -145,30 +145,32 @@ public class MusicDownloadPlugin extends Plugin {
             // 2b) 一并存一张同名封面图片。
             // 网易云这类源把封面放在接口里、不写进音频文件；只写内嵌标签的话，
             // 像 flac 这种标签结构写失败时封面就彻底丢了，本地列表/播放器就"没有专辑图"。
-            // 存成 <歌名>.jpg 后，本地扫描的 readSidecarCover 就能找到它。
+            // 但封面**不能**再写进公共媒体库：MediaStore 里的 image/jpeg 会被系统图库
+            // 索引，用户相册里就会冒出一堆专辑封面（实测泄漏）。
+            // 改为存应用私有目录 covers/<相对目录>/<歌名>.jpg，
+            // 由 LocalMusicPlugin.readSidecarCover 在 MediaStore 查不到时回退读取。
             if (coverBytes != null && coverBytes.length > 0) {
-                File coverFile = new File(getContext().getCacheDir(),
-                        "hm_dl_" + System.currentTimeMillis() + ".jpg");
-                try (FileOutputStream fos = new FileOutputStream(coverFile)) {
-                    fos.write(coverBytes);
-                }
-                String coverName = sanitizeFileName(name) + ".jpg";
-                saveToDestination(treeUriString, coverFile, coverName);
-                //noinspection ResultOfMethodCallIgnored
-                coverFile.delete();
+                writePrivateCover(coverBytes, treeUriString, sanitizeFileName(name));
             }
 
-            // 3) 落盘到系统「下载」目录。
-            //    优先用 MediaStore（Android 10+）：直接写公共 Download 目录，
-            //    不需要 SAF 授权、也不受第三方 provider 能否写入的影响。
-            //    低版本（< Q）没有 MediaStore.Downloads，退回 SAF 授权目录。
+            // 3) 落盘到用户选择的目录。
+            //    只要设置里选过目录（SAF 授权），就一律写那里 —— 否则会出现
+            //    "设置成 music1 却仍写进 Download、删掉 Download 还会被系统重建"（实测）。
+            //    没选过目录时：Android 10+ 回退 MediaStore 公共 Download（开箱可用），
+            //    低版本没有 MediaStore.Downloads，只能提示先去设置里选目录。
             String copyError;
             Uri savedUri = null;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            boolean hasUserDir = treeUriString != null && !treeUriString.isEmpty();
+            if (hasUserDir) {
+                copyError = copyToTree(treeUriString, tempFile, fileName);
+                // SAF 写入不会被系统自动索引，立刻通知一次扫描，
+                // 否则"下载完成却在本地面板里看不到"（实测）。
+                if (copyError == null) requestMediaScan(treeUriString, fileName);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 savedUri = copyToMediaStoreDownloads(tempFile, fileName);
                 copyError = savedUri == null ? "mediaStoreFailed" : null;
             } else {
-                copyError = copyToTree(treeUriString, tempFile, fileName);
+                copyError = "noSavePath";
             }
             if (copyError != null) {
                 // 带上真实原因，前端提示与排查都靠它
@@ -186,13 +188,7 @@ public class MusicDownloadPlugin extends Plugin {
                             savedUri, new android.content.ContentValues(), null, null);
                 } catch (Throwable ignored) { }
             }
-            try {
-                android.media.MediaScannerConnection.scanFile(
-                        getContext(),
-                        new String[] { tempFile.getAbsolutePath() },
-                        new String[] { guessMime(fileName) },
-                        null);
-            } catch (Throwable ignored) { }
+
 
             // 4) 可选：同时落一个同名 .lrc（与音频用同一条落盘路径，否则会写不进去）
             if (saveLyricFile && lyricText != null && !lyricText.isEmpty()) {
@@ -274,15 +270,79 @@ public class MusicDownloadPlugin extends Plugin {
         }
     }
 
+    /** 把 SAF 目录下刚写入的文件交给媒体扫描器索引（拿不到绝对路径时静默跳过）。 */
+    private void requestMediaScan(String treeUriString, String displayName) {
+        try {
+            String rel = resolveRelPathFromTree(treeUriString);
+            if (rel == null) return;
+            java.io.File root = android.os.Environment.getExternalStorageDirectory();
+            String abs = new java.io.File(root, rel + displayName).getAbsolutePath();
+            android.media.MediaScannerConnection.scanFile(getContext(), new String[] { abs }, null, null);
+        } catch (Throwable ignored) { }
+    }
+
     /**
-     * 统一的落盘入口：Android 10+ 走 MediaStore，低版本退回 SAF。
-     * 侧车文件（封面/歌词）只关心成功与否，所以返回 boolean。
+     * 解析 SAF 授权目录对应的 MediaStore 相对路径（形如 "music1/"）。
+     * 拿不到时返回 null，调用方回退到公共 Download。
+     */
+    private String resolveRelPathFromTree(String treeUriString) {
+        if (treeUriString == null || treeUriString.isEmpty()) return null;
+        try {
+            String docId = DocumentsContract.getTreeDocumentId(Uri.parse(treeUriString));
+            if (docId == null) return null;
+            int colon = docId.indexOf(':');
+            String rel = (colon >= 0 ? docId.substring(colon + 1) : docId).trim();
+            while (rel.startsWith("/")) rel = rel.substring(1);
+            if (rel.isEmpty()) return null;
+            return rel.endsWith("/") ? rel : rel + "/";
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 应用私有的封面目录：covers/<相对目录>/。
+     * 子目录结构与音频在媒体库里的 RELATIVE_PATH 保持一致，读取时才能一一对上；
+     * 放在应用私有外部目录里系统图库不会索引，封面就不会出现在相册。
+     */
+    private File privateCoverDir(String treeUriString) {
+        File base = getContext().getExternalFilesDir("covers");
+        if (base == null) base = new File(getContext().getFilesDir(), "covers");
+        String rel = resolveRelPathFromTree(treeUriString);
+        if (rel == null) rel = android.os.Environment.DIRECTORY_DOWNLOADS + "/";
+        String cleaned = rel.replaceAll("^/+|/+$", "");
+        File dir = cleaned.isEmpty() ? base : new File(base, cleaned.replace('/', File.separatorChar));
+        //noinspection ResultOfMethodCallIgnored
+        if (!dir.exists()) dir.mkdirs();
+        return dir;
+    }
+
+    /** 把封面写进应用私有目录（不进 MediaStore，因此不会出现在系统相册）。 */
+    private void writePrivateCover(byte[] data, String treeUriString, String baseName) {
+        try {
+            File dir = privateCoverDir(treeUriString);
+            File coverFile = new File(dir, baseName + ".jpg");
+            try (FileOutputStream fos = new FileOutputStream(coverFile)) {
+                fos.write(data);
+            }
+        } catch (Throwable ignored) {
+            // 封面存不下不影响音频本身可用
+        }
+    }
+
+    /**
+     * 侧车文件（目前只有歌词）的落盘入口：有用户目录就走 SAF，
+     * 否则 Android 10+ 回退 MediaStore，低版本返回 false。
      */
     private boolean saveToDestination(String treeUriString, File source, String displayName) {
+        boolean hasUserDir = treeUriString != null && !treeUriString.isEmpty();
+        if (hasUserDir) {
+            return copyToTree(treeUriString, source, displayName) == null;
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             return copyToMediaStoreDownloads(source, displayName) != null;
         }
-        return copyToTree(treeUriString, source, displayName) == null;
+        return false;
     }
 
     /**
